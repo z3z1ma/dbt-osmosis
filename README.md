@@ -9,23 +9,59 @@ Standardize organization of schema files (and provide ability to define and conf
 
 - Config can be set on per directory basis if desired utilizing `dbt_project.yml`, all models require direct or inherited config `+dbt-osmosis:`. If even one dir is missing the config, we close gracefully and inform user to update dbt_project.yml. No assumed defaults. Placing our config under your dbt project name in `models:` is enough to set a default for the project since the config applies to all subdirectories. 
 
-    - Can be one schema file to one model file sharing the same name and directory ie. stg_orders.sql -> stg_orders.yml
+    A directory can be configured to conform to any one of the following standards:
+
+    - Can be one schema file to one model file sharing the same name and directory ie. 
+
+            staging/
+                stg_order.sql
+                stg_order.yml
+                stg_customer.sql
+                stg_customer.yml
+
         - `+dbt-osmosis: "model.yml"`
-    - Can be one schema file per directory wherever model files reside named schema.yml 
+
+    - Can be one schema file per directory wherever model files reside named schema.yml, ie.
+
+            staging/
+                stg_order.sql
+                stg_customer.sql
+                schema.yml
+
         - `+dbt-osmosis: "schema.yml"`
-    - Can be one schema file per directory wherever model files reside named after its containing folder, ie. salesforce/salesforce.yml
+    - Can be one schema file per directory wherever model files reside named after its containing folder, ie. 
+
+            staging/
+                stg_order.sql
+                stg_customer.sql
+                staging.yml
+
         - `+dbt-osmosis: "folder.yml"`
-    - Can be one schema file to one model file sharing the same name _nested_ in a schema subdir wherever model files reside 
+
+    - Can be one schema file to one model file sharing the same name _nested_ in a schema subdir wherever model files reside, ie. 
+
+            staging/
+                stg_order.sql
+                stg_customer.sql
+                schema/
+                    stg_order.yml
+                    stg_customer.yml
+
         - `+dbt-osmosis: "schema/model.yml"`
 
 Build and Inject Non-documented models
 
-- Will automatically conform to above config per directory based on location of model file.
+- Injected models will automatically conform to above config per directory based on location of model file. 
+
+- This means you can focus fully on modelling and documentation (yaml updates/yaml creation depending on your config) will automatically follow with simple CLI invocation
 
 Propagate existing column level documentation downward to children
 
 - Build column level knowledge graph accumulated and updated from furthest identifiable origin (ancestors) to immediate parents
-- Will automatically populate undocumented columns of the same name with passed down knowledge within the context of the models upstream dependency tree
+
+- Will automatically populate undocumented columns of the same name with passed down knowledge accumulated within the context of the models upstream dependency tree
+
+- This means you can freely generate models and all columns you pull in that already have been documented will be automatically learned/documented. Again the focus is fully on modelling and any yaml work is an afterthought.
 
 ### Order Matters
 
