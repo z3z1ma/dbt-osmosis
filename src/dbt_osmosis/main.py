@@ -75,7 +75,7 @@ New workflow enabled!
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List, Sequence, Iterable, Mapping, MutableMapping
+from typing import Optional, Dict, Any, List, Sequence, Iterable, Mapping, MutableMapping, Tuple
 from pathlib import Path
 
 import click
@@ -201,14 +201,17 @@ def update_undocumented_columns_with_prior_knowledge(
     """
     n_actions = 0
     for column in undocumented_columns:
-        prior_knowledge = knowledge.get(column, {})
-        if prior_knowledge.get("description"):
-            node["columns"][column].update(prior_knowledge)
-            node["columns"][column].pop("progenitor", None)
-            for model_column in model["columns"]:
-                if model_column["name"] == column:
-                    model_column["description"] = prior_knowledge["description"]
-            n_actions += 1
+        try:
+            prior_knowledge = knowledge.get(column, {})
+            if prior_knowledge.get("description"):
+                node["columns"][column].update(prior_knowledge)
+                node["columns"][column].pop("progenitor", None)
+                for model_column in model["columns"]:
+                    if model_column["name"] == column:
+                        model_column["description"] = prior_knowledge["description"]
+                n_actions += 1
+        except KeyError:
+            pass
     return n_actions
 
 
@@ -227,13 +230,47 @@ def add_missing_cols_to_node_and_model(
     """
     n_actions = 0
     for column in missing_columns:
-        node[column] = {
+        node["columns"][column] = {
             "name": column,
             "description": None,
         }
         model.setdefault("columns", []).append({"name": column, "description": None})
         n_actions += 1
     return n_actions
+
+
+def update_schema_file_and_node(
+    knowledge: Dict[str, Any],
+    missing_columns: Iterable,
+    undocumented_columns: Iterable,
+    extra_columns: Iterable,
+    node: Dict[str, Any],
+    schema_file: Dict[str, Any],
+) -> Tuple[int, int, int]:
+    """Take action on a schema file mirroring changes in the node. This function mutates both the `schema_file` and the
+    `node`.
+
+    Args:
+        knowledge (Dict[str, Any]): Model column knowledge
+        missing_columns (Iterable): Missing columns present in database not in dbt
+        undocumented_columns (Iterable): Columns in dbt which are not
+        extra_columns (Iterable): [description]
+        node (Dict[str, Any]): [description]
+        schema_file (Dict[str, Any]): [description]
+
+    Returns:
+        Tuple[int, int, int]: [description]
+    """
+    for model in schema_file["models"]:
+        if model["name"] == node["name"]:
+            n_cols_added = add_missing_cols_to_node_and_model(missing_columns, node, model)
+            n_cols_doc_inherited = update_undocumented_columns_with_prior_knowledge(
+                undocumented_columns, knowledge, node, model
+            )
+            n_cols_removed = remove_columns_not_in_database(extra_columns, node, model)
+            return n_cols_added, n_cols_doc_inherited, n_cols_removed
+    else:
+        return 0, 0, 0
 
 
 def commit_project_restructure(restructured_project: MutableMapping[Path, Any]) -> None:
@@ -423,8 +460,7 @@ def get_documented_columns(dbt_columns: Iterable, node: MutableMapping) -> Itera
     return [
         column_name
         for column_name in dbt_columns
-        if node["columns"].get(column_name, {}).get("description")
-        and node["columns"].get(column_name, {}).get("description", "") not in UNDOCUMENTED_STR
+        if node["columns"].get(column_name, {}).get("description", "") not in UNDOCUMENTED_STR
     ]
 
 
@@ -675,57 +711,60 @@ def run(
     with adapter.connection_named("dbt-osmosis"):
         for unique_id, node in manifest["nodes"].items():
             if is_valid_model(node):
+                table = node["database"], node["schema"], node["name"]
                 knowledge = pass_down_knowledge(build_ancestor_tree(node, manifest), manifest)
+                schema_path = schema_map.get(unique_id)
+
+                if schema_path is None:
+                    ...  # We can't take action
 
                 # Build Sets
-                database_columns = set(
-                    get_columns(
-                        node["database"],
-                        node["schema"],
-                        node["name"],
-                        adapter,
-                    )
-                )
+                database_columns = set(get_columns(*table, adapter))
                 dbt_columns = set(column_name for column_name in node["columns"])
                 documented_columns = set(get_documented_columns(dbt_columns, node))
 
-                # These are actioned
-                undocumented_columns = database_columns - documented_columns
-                missing_columns = database_columns - dbt_columns
-                extra_columns = dbt_columns - database_columns
+                if not database_columns:
+                    # Note to user we are using dbt columns as source since we did not resolve them from db
+                    # Doing this means only `undocumented_columns` can be resolved to a non-empty set
+                    click.echo("Falling back to using manifest columns as base column set")
+                    database_columns = dbt_columns
 
-                n_cols_added = 0
-                n_cols_doc_inherited = 0
-                n_cols_removed = 0
+                # Action
+                missing_columns = database_columns - dbt_columns
+                """Columns in database not in dbt -- will be injected into schema file"""
+                undocumented_columns = database_columns - documented_columns
+                """Columns missing documentation -- descriptions will be inherited and injected into schema file where prior knowledge exists"""
+                extra_columns = dbt_columns - database_columns
+                """Columns in schema file not in database -- will be removed from schema file"""
 
                 if (
                     len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0
                 ) and len(database_columns) > 0:
-                    # No database cols returned form adapter is essentially a noop here so we pass
-                    schema_path = schema_map.get(unique_id)
-                    if schema_path is not None:
-                        # We have a schema so we can take corrective action in both node and model simulatneously
-                        schema_file = yaml.load(schema_path.current)
-                        for model in schema_file["models"]:
-                            if model["name"] == node["name"]:
-                                n_cols_added = add_missing_cols_to_node_and_model(
-                                    missing_columns, node, model
-                                )
-                                n_cols_doc_inherited = (
-                                    update_undocumented_columns_with_prior_knowledge(
-                                        undocumented_columns, knowledge, node, model
-                                    )
-                                )
-                                n_cols_removed = remove_columns_not_in_database(
-                                    extra_columns, node, model
-                                )
+                    schema_file = yaml.load(schema_path.current)
+                    (
+                        n_cols_added,
+                        n_cols_doc_inherited,
+                        n_cols_removed,
+                    ) = update_schema_file_and_node(
+                        knowledge,
+                        missing_columns,
+                        undocumented_columns,
+                        extra_columns,
+                        node,
+                        schema_file,
+                    )
+                    if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
                         with open(schema_path.current, "w", encoding="utf-8") as f:
                             yaml.dump(schema_file, f)
 
                 # Print Audit Report
-                n_cols = max(float(len(database_columns)), 1.0)
+                n_cols = float(len(database_columns))
                 n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
-                perc_coverage = min(100 * round(n_cols_documented / n_cols, 3), 100.0)
+                perc_coverage = (
+                    min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
+                    if n_cols > 0
+                    else "Unable to Determine"
+                )
                 click.echo(
                     AUDIT_REPORT.format(
                         database=node["database"],
