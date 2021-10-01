@@ -90,7 +90,7 @@ import dbt.exceptions
 from dbt.adapters.factory import get_adapter, register_adapter, Adapter
 from dbt.tracking import disable_tracking
 
-from exceptions.osmosis import (
+from .exceptions.osmosis import (
     InvalidOsmosisConfig,
     MissingOsmosisConfig,
     SanitizationRequired,
@@ -675,12 +675,13 @@ def run(
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
 ):
-    """Interactively build documentation
+    """This command will conform your project as outlined in `dbt_project.yml`, bootstrap undocumented dbt models,
+    and propagate column level documentation downwards
 
     Args:
-        manifest (str): Path to manifest.json artifact
         target (Optional[str]): Profile target. Defaults to default target set in profile yml
         project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
     """
     click.echo("Executing Model Osmosis")
 
@@ -809,6 +810,7 @@ def list_extra_details(
 
 @cli.command()
 def audit():
+    """Not implemented yet"""
     click.echo("Executing Audit")
 
 
