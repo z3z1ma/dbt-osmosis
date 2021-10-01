@@ -233,9 +233,8 @@ def add_missing_cols_to_node_and_model(
     for column in missing_columns:
         node["columns"][column] = {
             "name": column,
-            "description": None,
         }
-        model.setdefault("columns", []).append({"name": column, "description": None})
+        model.setdefault("columns", []).append({"name": column})
         n_actions += 1
     return n_actions
 
