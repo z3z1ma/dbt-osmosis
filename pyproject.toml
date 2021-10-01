@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "dbt-osmosis"
+version = "0.1.0"
+description = "This package serves to cascadingly populate column level documentation as well as build model files."
+authors = ["Falador_wiz1 <alex@source.co>"]
+license = "Apache 2.0"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+click = "^8.0.1"
+networkx = "^2.6.3"
+dbt = "^0.20.2"
+"ruamel.yaml" = "^0.17.16"
+
+[tool.poetry.dev-dependencies]
+black = "^21.9b0"
+mypy = "^0.910"
+pytest = "^6.2.5"
+coverage = "^5.5"
+pylint = "^2.11.1"
+nox = "^2021.6.12"
+pytest-mock = "^3.6.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
