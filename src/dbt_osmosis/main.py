@@ -109,11 +109,12 @@ Schema: {schema}
 Table: {table}
 
 Total Columns in Database: {total_columns}
+Total Documentation Coverage: {coverage}%
+
+Action Log:
 Columns Added to dbt: {n_cols_added}
 Column Knowledge Inherited: {n_cols_doc_inherited}
 Extra Columns Removed: {n_cols_removed}
-
-Total Documentation Coverage: {coverage}%
 """
 
 UNDOCUMENTED_STR = [
