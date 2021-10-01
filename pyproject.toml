@@ -27,3 +27,6 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 100
+
+[tool.poetry.scripts]
+dbt-osmosis = 'dbt_osmosis.main:cli'
