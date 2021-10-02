@@ -173,7 +173,7 @@ def remove_columns_not_in_database(
     """
     n_actions = 0
     for column in extra_columns:
-        node.pop(column, None)
+        node["columns"].pop(column, None)
         found_ix = None
         for ix, model_column in enumerate(model["columns"]):
             if model_column["name"] == column:
@@ -254,12 +254,12 @@ def update_schema_file_and_node(
         knowledge (Dict[str, Any]): Model column knowledge
         missing_columns (Iterable): Missing columns present in database not in dbt
         undocumented_columns (Iterable): Columns in dbt which are not
-        extra_columns (Iterable): [description]
-        node (Dict[str, Any]): [description]
-        schema_file (Dict[str, Any]): [description]
+        extra_columns (Iterable): Columns which are in dbt but not in database
+        node (Dict[str, Any]): Loaded manifest.json node
+        schema_file (Dict[str, Any]): Input loaded schema file
 
     Returns:
-        Tuple[int, int, int]: [description]
+        Tuple[int, int, int]: Returns a tuple of actions based on input sets; actions are added columns, inherited columns, removed columns
     """
     for model in schema_file["models"]:
         if model["name"] == node["name"]:
