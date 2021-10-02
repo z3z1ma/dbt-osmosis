@@ -8,9 +8,9 @@ license = "Apache 2.0"
 [tool.poetry.dependencies]
 python = "^3.8"
 click = "^8.0.1"
-networkx = "^2.6.3"
 dbt = "^0.20.2"
 "ruamel.yaml" = "^0.17.16"
+rich = "^10.11.0"
 
 [tool.poetry.dev-dependencies]
 black = "^21.9b0"
