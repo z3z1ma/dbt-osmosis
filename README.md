@@ -7,7 +7,7 @@ First and foremost, we want dbt documentation to retain a DRY principle. Every t
 
 Standardize organization of schema files (and provide ability to define and conform with code)
 
-- Config can be set on per directory basis if desired utilizing `dbt_project.yml`, all models require direct or inherited config `+dbt-osmosis:`. If even one dir is missing the config, we close gracefully and inform user to update dbt_project.yml. No assumed defaults. Placing our config under your dbt project name in `models:` is enough to set a default for the project since the config applies to all subdirectories. 
+- Config can be set on per directory basis if desired utilizing `dbt_project.yml`, all models require direct or inherited config `+dbt-osmosis:`. If even one dir is missing the config, we close gracefully and inform user to update dbt_project.yml. No assumed defaults. Placing our config under your dbt project name in `models:` is enough to set a default for the project since the config applies to all subdirectories. Note: You can **change these configs as often as you like** or try them all, dbt-osmosis will take care of restructuring your project schema files-- __no human effort required__. 
 
     A directory can be configured to conform to any one of the following standards:
 
