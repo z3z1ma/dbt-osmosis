@@ -81,7 +81,6 @@ from typing import (
     Dict,
     Any,
     List,
-    Sequence,
     Iterable,
     Mapping,
     MutableMapping,
@@ -663,45 +662,57 @@ def validate_osmosis_config(osmosis_config: Optional[str]) -> None:
     return osmosis_config
 
 
-def is_valid_model(node: MutableMapping) -> bool:
+def is_valid_model(node: MutableMapping, fqn: Optional[str] = None) -> bool:
     """Validates a node as being a targetable model
 
     Args:
         node (MutableMapping): A manifest json node
+        fqn (str, optional): Filter target
 
     Returns:
         bool: returns true if the node is a valid targetable model
     """
-    return node["resource_type"] == "model" and node["config"]["materialized"] != "ephemeral"
+    return (
+        node["resource_type"] == "model"
+        and node["config"]["materialized"] != "ephemeral"
+        and (len(node["fqn"][1:]) >= len(fqn.split(".")))
+        and all(p1 == p2 for p1, p2 in zip(fqn.split("."), node["fqn"][1:]))
+    )
 
 
-def iter_valid_models(nodes: MutableMapping) -> Iterator[Tuple[str, MutableMapping]]:
+def iter_valid_models(
+    nodes: MutableMapping, fqn: Optional[str] = None
+) -> Iterator[Tuple[str, MutableMapping]]:
     """Generates an iterator of valid models
 
     Args:
         nodes (MutableMapping): Nodes as passed from manifest["nodes"]
+        fqn (str, optional): Filter targets
 
     Yields:
         Iterator[Tuple[str, MutableMapping]]: A generator of model ids and contents
     """
     for unique_id, node in nodes.items():
-        if is_valid_model(node):
+        if is_valid_model(node, fqn):
             yield unique_id, node
 
 
-def build_schema_folder_map(root: str, manifest: MutableMapping) -> Dict[str, SchemaFile]:
+def build_schema_folder_map(
+    root: str, manifest: MutableMapping, fqn: Optional[str] = None
+) -> Dict[str, SchemaFile]:
     """Builds a mapping of models to their existing and target schema file paths
 
     Args:
         root (str): Root dbt project path
         manifest (MutableMapping): dbt manifest json artifact
+        fqn (str, optional): Filter targets
 
     Returns:
         Dict[str, SchemaFile]: Mapping of models to their existing and target schema file paths
     """
     schema_map = {}
     logger().info("...building project structure mapping in memory")
-    for unique_id, node in iter_valid_models(manifest["nodes"]):
+    for unique_id, node in iter_valid_models(manifest["nodes"], fqn):
         schema_path = resolve_schema_path(root, node)
         osmosis_config = validate_osmosis_config(node["config"].get("dbt-osmosis"))
         osmosis_schema_path = resolve_osmosis_target_schema_path(osmosis_config, node)
@@ -738,11 +749,14 @@ def verify_connection(adapter: Adapter) -> Adapter:
 
 
 def propagate_documentation_downstream(
-    schema_map: MutableMapping, manifest: MutableMapping, adapter: Adapter
+    schema_map: MutableMapping,
+    manifest: MutableMapping,
+    adapter: Adapter,
+    fqn: Optional[str] = None,
 ) -> None:
     yaml = YAML()
     with adapter.connection_named("dbt-osmosis"):
-        for unique_id, node in track(list(iter_valid_models(manifest["nodes"]))):
+        for unique_id, node in track(list(iter_valid_models(manifest["nodes"], fqn))):
             logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
 
             table = node["database"], node["schema"], node["name"]
@@ -776,6 +790,9 @@ def propagate_documentation_downstream(
             extra_columns = dbt_columns - database_columns
             """Columns in schema file not in database -- will be removed from schema file"""
 
+            n_cols_added = 0
+            n_cols_doc_inherited = 0
+            n_cols_removed = 0
             if (
                 len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0
             ) and len(database_columns) > 0:
@@ -840,7 +857,7 @@ def cli():
 @click.option(
     "--fqn",
     type=click.STRING,
-    help="Allows you to filter models to action based on FQN. Use forward slashes to separate parts. Do not include a suffix if referencing a specific model file",
+    help="Filter models to action using an fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
 )
 def run(
     target: Optional[str] = None,
@@ -878,7 +895,7 @@ def run(
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(project.project_root, manifest)
+    schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
     was_restructured = commit_project_restructure(
         build_project_structure_update_plan(schema_map, manifest, adapter)
     )
@@ -889,7 +906,7 @@ def run(
         schema_map = build_schema_folder_map(project.project_root, manifest)
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(schema_map, manifest, adapter)
+    propagate_documentation_downstream(schema_map, manifest, adapter, fqn)
 
 
 @cli.command()
@@ -904,11 +921,21 @@ def run(
     default=dbt.config.profile.DEFAULT_PROFILES_DIR,
     help="Path to the dbt profiles.yml, defaults to ~/.dbt",
 )
-@click.option("--target")
+@click.option(
+    "--target",
+    type=click.STRING,
+    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+)
+@click.option(
+    "--fqn",
+    type=click.STRING,
+    help="Filter models to action using an fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
+)
 def structure(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
+    fqn: Optional[str] = None,
 ):
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -939,7 +966,7 @@ def structure(
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(project.project_root, manifest)
+    schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
     commit_project_restructure(build_project_structure_update_plan(schema_map, manifest, adapter))
 
 
@@ -969,7 +996,7 @@ def audit():
 @click.option(
     "--fqn",
     type=click.STRING,
-    help="Allows you to filter models to action based on FQN. Use forward slashes to separate parts. Do not include a suffix if referencing a specific model file",
+    help="Filter models to action using an fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
 )
 def document(
     target: Optional[str] = None,
@@ -995,11 +1022,12 @@ def document(
 
     adapter = verify_connection(get_adapter(config))
     manifest = compile_project_load_manifest(config)
-    schema_map = build_schema_folder_map(project.project_root, manifest)
+    schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(schema_map, manifest, adapter)
+    propagate_documentation_downstream(schema_map, manifest, adapter, fqn)
 
 
 if __name__ == "__main__":
-    cli()
+    # Valid kwarg
+    cli(max_content_width=800)  # pylint: disable=unexpected-keyword-arg
