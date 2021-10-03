@@ -7,7 +7,9 @@ First and foremost, we want dbt documentation to retain a DRY principle. Every t
 
 Standardize organization of schema files (and provide ability to define and conform with code)
 
-- Config can be set on per directory basis if desired utilizing `dbt_project.yml`, all models require direct or inherited config `+dbt-osmosis:`. If even one dir is missing the config, we close gracefully and inform user to update dbt_project.yml. No assumed defaults. Placing our config under your dbt project name in `models:` is enough to set a default for the project since the config applies to all subdirectories. Note: You can **change these configs as often as you like** or try them all, dbt-osmosis will take care of restructuring your project schema files-- __no human effort required__. 
+- Config can be set on per directory basis if desired utilizing `dbt_project.yml`, all models which are processed require direct or inherited config `+dbt-osmosis:`. If even one dir is missing the config, we close gracefully and inform user to update dbt_project.yml. No assumed defaults. Placing our config under your dbt project name in `models:` is enough to set a default for the project since the config applies to all subdirectories. 
+
+    Note: You can **change these configs as often as you like** or try them all, dbt-osmosis will take care of restructuring your project schema files-- _no human effort required_. 
 
     A directory can be configured to conform to any one of the following standards:
 
@@ -53,7 +55,7 @@ Build and Inject Non-documented models
 
 - Injected models will automatically conform to above config per directory based on location of model file. 
 
-- This means you can focus fully on modelling and documentation (yaml updates/yaml creation depending on your config) will automatically follow with simple CLI invocation
+- This means you can focus fully on modelling; and documentation, including yaml updates/yaml creation depending on your config, will automatically follow at any time with simple invocation of dbt-osmosis
 
 Propagate existing column level documentation downward to children
 
