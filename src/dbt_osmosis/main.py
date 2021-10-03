@@ -296,8 +296,8 @@ def update_schema_file_and_node(
 
 
 def commit_project_restructure(restructured_project: MutableMapping[Path, Any]) -> bool:
-    """Given a project restrucure plan of pathlib Paths to a mapping of output and supersedes, commit changes to filesystem
-    to conform project to defined structure as code
+    """Given a project restrucure plan of pathlib Paths to a mapping of output and supersedes which is in itself a mapping of Paths to model names,
+    commit changes to filesystem to conform project to defined structure as code fully or partially superseding existing models as needed.
 
     Args:
         restructured_project (MutableMapping[Path, Any]): Project restructure plan as typically created by `build_project_structure_update_plan`
@@ -310,6 +310,15 @@ def commit_project_restructure(restructured_project: MutableMapping[Path, Any]) 
     if not restructured_project:
         logger().info(":1st_place_medal: Project structure approved")
         return False
+
+    logger().info(
+        list(
+            map(
+                lambda plan: (restructured_project[plan]["supersede"], "->", plan),
+                restructured_project.keys(),
+            )
+        )
+    )
 
     logger().info(
         ":construction_worker: Executing action plan and conforming projecting schemas to defined structure"
@@ -334,9 +343,27 @@ def commit_project_restructure(restructured_project: MutableMapping[Path, Any]) 
                 yaml.dump(target_schema, f)
 
         # Clean superseded schema files
-        for dir in structure["supersede"]:
-            logger().info(":rocket: Superseding schema file %s", dir.name)
-            dir.unlink(missing_ok=True)
+        for dir, models in structure["supersede"].items():
+            preserved_models = []
+            raw_schema = yaml.load(dir)
+            models_marked_for_superseding = set(models)
+            models_in_schema = set(map(lambda mdl: mdl["name"], raw_schema.get("models", [])))
+            non_superseded_models = models_in_schema - models_marked_for_superseding
+            if len(non_superseded_models) == 0:
+                logger().info(":rocket: Superseded schema file %s", dir.name)
+                dir.unlink(missing_ok=True)
+            else:
+                for model in raw_schema["models"]:
+                    if model["name"] in non_superseded_models:
+                        preserved_models.append(model)
+                raw_schema["models"] = preserved_models
+                with open(dir, "w", encoding="utf-8") as f:
+                    yaml.dump(raw_schema, f)
+                logger().info(
+                    ":satellite: Model documentation migrated from %s to %s",
+                    dir.name,
+                    target.name,
+                )
 
     return True
 
@@ -376,8 +403,11 @@ def get_columns(database: str, schema: str, identifier: str, adapter: Adapter) -
     try:
         columns = [c.name for c in adapter.get_columns_in_relation(table)]
     except dbt.exceptions.CompilationException:
-        click.echo(
-            f"Could not resolve relation {database}.{schema}.{identifier} against database active tables"
+        logger().info(
+            ":cross_mark: Could not resolve relation %s.%s.%s against database active tables during introspective query",
+            database,
+            schema,
+            identifier,
         )
         columns = []
     return columns
@@ -431,7 +461,9 @@ def create_base_model(
 def build_project_structure_update_plan(
     schema_map: MutableMapping, manifest: MutableMapping, adapter: Adapter
 ) -> MutableMapping:
-    """Build project structure update plan based on `dbt-osmosis:` configs set across dbt_project.yml and model files
+    """Build project structure update plan based on `dbt-osmosis:` configs set across dbt_project.yml and model files.
+    The update plan includes injection of undocumented models. Unless this plan is constructed and executed by the `commit_project_restructure` function,
+    dbt-osmosis will only operate on models it is aware of through the existing documentation.
 
     Args:
         schema_map (MutableMapping): Mapping of model ids to SchemaFile objects which include path to schema and path to target
@@ -451,7 +483,7 @@ def build_project_structure_update_plan(
         for unique_id, schema_file in schema_map.items():
             if not schema_file.is_valid:
                 proj_restructure_plan.setdefault(
-                    schema_file.target, {"output": {"version": 2, "models": []}, "supersede": []}
+                    schema_file.target, {"output": {"version": 2, "models": []}, "supersede": {}}
                 )
                 node = manifest["nodes"][unique_id]
                 if schema_file.current is None:
@@ -471,19 +503,15 @@ def build_project_structure_update_plan(
                                     model, node["database"], node["schema"], node["name"], adapter
                                 )
                             )
-                            # Only add to supersede list once for brevity
-                            if (
-                                schema_file.current
-                                not in proj_restructure_plan[schema_file.target]["supersede"]
-                            ):
-                                proj_restructure_plan[schema_file.target]["supersede"].append(
-                                    schema_file.current
-                                )
+                            # Target to supersede current
+                            proj_restructure_plan[schema_file.target]["supersede"].setdefault(
+                                schema_file.current, []
+                            ).append(model["name"])
                             break
                     else:
-                        ...  # Model not found at patch path -- we should pass on this for now
+                        ...  # Model not found at patch path -- We should pass on this for now
             else:
-                ...  # Valid schema file found for model -- we will update the columns in the osmosis task
+                ...  # Valid schema file found for model -- We will update the columns in the osmosis task
 
     return proj_restructure_plan
 
@@ -672,7 +700,7 @@ def build_schema_folder_map(root: str, manifest: MutableMapping) -> Dict[str, Sc
         Dict[str, SchemaFile]: Mapping of models to their existing and target schema file paths
     """
     schema_map = {}
-    logger().info(":speedboat: Building project structure mapping in memory...")
+    logger().info("...building project structure mapping in memory")
     for unique_id, node in iter_valid_models(manifest["nodes"]):
         schema_path = resolve_schema_path(root, node)
         osmosis_config = validate_osmosis_config(node["config"].get("dbt-osmosis"))
@@ -736,7 +764,7 @@ def propagate_documentation_downstream(
                 # Note to user we are using dbt columns as source since we did not resolve them from db
                 # Doing this means only `undocumented_columns` can be resolved to a non-empty set
                 logger().info(
-                    ":cross_mark: Falling back to using manifest columns as base column set"
+                    ":safety_vest: Unable to resolve columns in database, falling back to using manifest columns as base column set\n"
                 )
                 database_columns = dbt_columns
 
@@ -804,13 +832,26 @@ def cli():
     default=dbt.config.profile.DEFAULT_PROFILES_DIR,
     help="Path to the dbt profiles.yml, defaults to ~/.dbt",
 )
-@click.option("--target")
+@click.option(
+    "--target",
+    type=click.STRING,
+    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+)
+@click.option(
+    "--fqn",
+    type=click.STRING,
+    help="Allows you to filter models to action based on FQN. Use forward slashes to separate parts. Do not include a suffix if referencing a specific model file",
+)
 def run(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
+    fqn: Optional[str] = None,
 ):
-    """This command will conform your project as outlined in `dbt_project.yml`, bootstrap undocumented dbt models,
+    """Structure -> Document -> Audit
+
+    \f
+    This command will conform your project as outlined in `dbt_project.yml`, bootstrap undocumented dbt models,
     and propagate column level documentation downwards
 
     Args:
@@ -851,37 +892,113 @@ def run(
     propagate_documentation_downstream(schema_map, manifest, adapter)
 
 
-def list_extra_details(
-    nonexistent_columns: Optional[Sequence[str]] = None,
-    mutated_columns: Optional[Sequence[str]] = None,
-    progenitors: Optional[Sequence[str]] = None,
-) -> None:
-    """Write some additional details to the console
+@cli.command()
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Path to the dbt project directory, defaults to current working directory",
+)
+@click.option(
+    "--profiles-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+)
+@click.option("--target")
+def structure(
+    target: Optional[str] = None,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+):
+    """Organizes schema ymls based on config and injects undocumented models
+
+    \f
+    This command will conform schema ymls in your project as outlined in `dbt_project.yml` & bootstrap undocumented dbt models
 
     Args:
-        nonexistent_columns (Optional[Sequence[str]], optional): List of columns which are found in dbt yaml files not in database. Defaults to None.
-        mutated_columns (Optional[Sequence[str]], optional): List of columns which have mutated from their progenitor's definition. Defaults to None.
-        progenitors (Optional[Sequence[str]], optional): List of columns with identified progenitors. Defaults to None.
+        target (Optional[str]): Profile target. Defaults to default target set in profile yml
+        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
     """
-    if nonexistent_columns is None:
-        nonexistent_columns = []
-    if mutated_columns is None:
-        mutated_columns = []
-    if progenitors is None:
-        progenitors = []
+    logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    for column in nonexistent_columns:
-        click.echo(f"Column {nonexistent_columns} resolved in manifest not present in database")
-    for column in mutated_columns:
-        click.echo(f"Column {column['name']} has mutated: {column['prior']} -> {column['current']}")
-    for column in progenitors:
-        click.echo(f"Column {column['name']} progenitor: {column['progenitor']}")
+    # Collect/build our args
+    args = PseudoArgs(
+        threads=1,
+        project_dir=project_dir,
+        target=target,
+        profiles_dir=profiles_dir,
+    )
+
+    # Initialize dbt & prepare database adapter
+    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
+    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
+    register_adapter(config)
+
+    adapter = verify_connection(get_adapter(config))
+    manifest = compile_project_load_manifest(config)
+
+    # Conform project structure & bootstrap undocumented models injecting columns
+    schema_map = build_schema_folder_map(project.project_root, manifest)
+    commit_project_restructure(build_project_structure_update_plan(schema_map, manifest, adapter))
 
 
 @cli.command()
 def audit():
-    """Not implemented yet"""
+    """Audits documentation for coverage with actionable artifact or interactive prompt driving user to document progenitors"""
     click.echo("Executing Audit")
+
+
+@cli.command()
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Path to the dbt project directory, defaults to current working directory",
+)
+@click.option(
+    "--profiles-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+)
+@click.option(
+    "--target",
+    type=click.STRING,
+    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+)
+@click.option(
+    "--fqn",
+    type=click.STRING,
+    help="Allows you to filter models to action based on FQN. Use forward slashes to separate parts. Do not include a suffix if referencing a specific model file",
+)
+def document(
+    target: Optional[str] = None,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+    fqn: Optional[str] = None,
+):
+    """Column level documentation inheritance for existing models"""
+    logger().info(":water_wave: Executing dbt-osmosis\n")
+
+    # Collect/build our args
+    args = PseudoArgs(
+        threads=1,
+        project_dir=project_dir,
+        target=target,
+        profiles_dir=profiles_dir,
+    )
+
+    # Initialize dbt & prepare database adapter
+    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
+    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
+    register_adapter(config)
+
+    adapter = verify_connection(get_adapter(config))
+    manifest = compile_project_load_manifest(config)
+    schema_map = build_schema_folder_map(project.project_root, manifest)
+
+    # Propagate documentation & inject/remove schema file columns to align with model in database
+    propagate_documentation_downstream(schema_map, manifest, adapter)
 
 
 if __name__ == "__main__":
