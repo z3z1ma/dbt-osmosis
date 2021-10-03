@@ -672,6 +672,8 @@ def is_valid_model(node: MutableMapping, fqn: Optional[str] = None) -> bool:
     Returns:
         bool: returns true if the node is a valid targetable model
     """
+    if fqn is None:
+        fqn = node["fqn"][1:]
     return (
         node["resource_type"] == "model"
         and node["config"]["materialized"] != "ephemeral"
@@ -903,7 +905,7 @@ def run(
     if was_restructured:
         # Recompile on restructure
         manifest = compile_project_load_manifest(config)
-        schema_map = build_schema_folder_map(project.project_root, manifest)
+        schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
     propagate_documentation_downstream(schema_map, manifest, adapter, fqn)
