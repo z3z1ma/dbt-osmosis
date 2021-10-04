@@ -867,7 +867,7 @@ def run(
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
 ):
-    """Structure -> Document -> Audit
+    """Compose -> Document -> Audit
 
     \f
     This command will conform your project as outlined in `dbt_project.yml`, bootstrap undocumented dbt models,
@@ -933,7 +933,7 @@ def run(
     type=click.STRING,
     help="Filter models to action using an fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
 )
-def structure(
+def compose(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
@@ -968,8 +968,11 @@ def structure(
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
-    commit_project_restructure(build_project_structure_update_plan(schema_map, manifest, adapter))
+    commit_project_restructure(
+        build_project_structure_update_plan(
+            build_schema_folder_map(project.project_root, manifest, fqn), manifest, adapter
+        )
+    )
 
 
 @cli.command()
