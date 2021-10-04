@@ -86,6 +86,7 @@ from typing import (
     MutableMapping,
     Tuple,
     Iterator,
+    Union,
 )
 
 import click
@@ -126,6 +127,22 @@ Total Documentation Coverage: {coverage}%
 Action Log:
 Columns Added to dbt: {n_cols_added}
 Column Knowledge Inherited: {n_cols_doc_inherited}
+Extra Columns Removed: {n_cols_removed}
+"""
+
+SOURCE_REPORT = """
+:white_check_mark: [bold]Audit Report[/bold]
+-------------------------------
+
+Database: [bold green]{database}[/bold green]
+Schema: [bold green]{schema}[/bold green]
+Table: [bold green]{table}[/bold green]
+
+Total Columns in Database: {total_columns}
+Total Documentation Coverage: {coverage}%
+
+Action Log:
+Columns Added to dbt: {n_cols_added}
 Extra Columns Removed: {n_cols_removed}
 """
 
@@ -280,9 +297,23 @@ def update_schema_file_and_node(
     Returns:
         Tuple[int, int, int]: Returns a tuple of actions based on input sets; actions are added columns, inherited columns, removed columns
     """
-    for model in schema_file["models"]:
+    # We can extrapolate this to a general func
+    if node["resource_type"] == "source":
+        _schema_file = None
+        for src in schema_file.get("sources", []):
+            if src["name"] == node["source_name"]:
+                # Scope our pointer to a specific portion of the object
+                _schema_file = src
+        _schema_key = "tables"
+    else:
+        _schema_file = schema_file
+        _schema_key = "models"
+    if _schema_file is None:
+        return 0, 0, 0
+    for model in _schema_file[_schema_key]:
         if model["name"] == node["name"]:
             logger().info(":microscope: Looking for actions")
+            # Empty iterables in the first arg are simply no-ops
             n_cols_added = add_missing_cols_to_node_and_model(missing_columns, node, model)
             n_cols_doc_inherited = update_undocumented_columns_with_prior_knowledge(
                 undocumented_columns, knowledge, node, model
@@ -510,7 +541,7 @@ def build_project_structure_update_plan(
                     else:
                         ...  # Model not found at patch path -- We should pass on this for now
             else:
-                ...  # Valid schema file found for model -- We will update the columns in the osmosis task
+                ...  # Valid schema file found for model -- We will update the columns in the `Document` task
 
     return proj_restructure_plan
 
@@ -597,7 +628,7 @@ def pass_down_knowledge(
 
 
 def resolve_schema_path(root_path: str, node: MutableMapping) -> Optional[Path]:
-    """Resolve schema path for a manifest node
+    """Resolve absolute schema file path for a manifest node
 
     Args:
         root_path (str): Root dbt project path
@@ -606,7 +637,11 @@ def resolve_schema_path(root_path: str, node: MutableMapping) -> Optional[Path]:
     Returns:
         Optional[Path]: Path object representing resolved path to file where schema exists otherwise return None
     """
-    schema_path: str = node.get("patch_path")
+    schema_path = None
+    if node["resource_type"] == "model":
+        schema_path: str = node.get("patch_path")
+    elif node["resource_type"] == "source":
+        schema_path: str = node["source_name"] + FILE_ADAPTER_POSTFIX + node.get("path")
     if schema_path:
         schema_path = Path(root_path).joinpath(schema_path.split(FILE_ADAPTER_POSTFIX, 1)[1])
     return schema_path
@@ -639,11 +674,11 @@ def resolve_osmosis_target_schema_path(osmosis_config: str, node: MutableMapping
     return Path(node["root_path"], node["original_file_path"]).parent / Path(f"{schema}.yml")
 
 
-def validate_osmosis_config(osmosis_config: Optional[str]) -> None:
-    """Validates a config string
+def validate_osmosis_config(node: MutableMapping) -> None:
+    """Validates a config string. If input is a source, we return the resource type str instead
 
     Args:
-        osmosis_config (Optional[str]): Osmosis config string gathered from a node's config
+        node (MutableMapping): A manifest json node representing a model or source
 
     Raises:
         MissingOsmosisConfig: Thrown if no config is present for a node
@@ -652,18 +687,21 @@ def validate_osmosis_config(osmosis_config: Optional[str]) -> None:
     Returns:
         str: Validated config str
     """
+    if node["resource_type"] == "source":
+        return node["resource_type"]
+    osmosis_config = node["config"].get("dbt-osmosis")
     if not osmosis_config:
         raise MissingOsmosisConfig(
-            "Config not set for model, we recommend setting the config at a directory level through the `dbt_project.yml`"
+            f"Config not set for model {node['name']}, we recommend setting the config at a directory level through the `dbt_project.yml`"
         )
     if osmosis_config not in VALID_CONFIGS:
-        raise InvalidOsmosisConfig("Invalid dbt-osmosis config for model")
+        raise InvalidOsmosisConfig(f"Invalid dbt-osmosis config for model {node['name']}")
 
     return osmosis_config
 
 
 def is_valid_model(node: MutableMapping, fqn: Optional[str] = None) -> bool:
-    """Validates a node as being a targetable model
+    """Validates a node as being a targetable model. Validates both models and sources.
 
     Args:
         node (MutableMapping): A manifest json node
@@ -673,10 +711,11 @@ def is_valid_model(node: MutableMapping, fqn: Optional[str] = None) -> bool:
         bool: returns true if the node is a valid targetable model
     """
     if fqn is None:
-        fqn = node["fqn"][1:]
+        fqn = ".".join(node["fqn"][1:])
+    logger().debug("%s: %s -> %s", node["resource_type"], fqn, node["fqn"][1:])
     return (
-        node["resource_type"] == "model"
-        and node["config"]["materialized"] != "ephemeral"
+        node["resource_type"] in ("model", "source")
+        and node["config"].get("materialized", "source") != "ephemeral"
         and (len(node["fqn"][1:]) >= len(fqn.split(".")))
         and all(p1 == p2 for p1, p2 in zip(fqn.split("."), node["fqn"][1:]))
     )
@@ -700,24 +739,35 @@ def iter_valid_models(
 
 
 def build_schema_folder_map(
-    root: str, manifest: MutableMapping, fqn: Optional[str] = None
+    root: str, manifest: MutableMapping, fqn: Optional[str] = None, model_type: str = "nodes"
 ) -> Dict[str, SchemaFile]:
-    """Builds a mapping of models to their existing and target schema file paths
+    """Builds a mapping of models or sources to their existing and target schema file paths
 
     Args:
         root (str): Root dbt project path
         manifest (MutableMapping): dbt manifest json artifact
         fqn (str, optional): Filter targets
+        model_type (str, optional): Model type can be one of either `nodes` or `models`
 
     Returns:
         Dict[str, SchemaFile]: Mapping of models to their existing and target schema file paths
     """
+    assert model_type in (
+        "nodes",
+        "sources",
+    ), "Invalid model_type argument passed to build_schema_folder_map, expected one of ('nodes', 'sources')"
     schema_map = {}
     logger().info("...building project structure mapping in memory")
-    for unique_id, node in iter_valid_models(manifest["nodes"], fqn):
+    for unique_id, node in iter_valid_models(manifest[model_type], fqn):
         schema_path = resolve_schema_path(root, node)
-        osmosis_config = validate_osmosis_config(node["config"].get("dbt-osmosis"))
-        osmosis_schema_path = resolve_osmosis_target_schema_path(osmosis_config, node)
+        osmosis_config = validate_osmosis_config(node)
+        if osmosis_config == "source":
+            # For sources, we will keep the current path and target the same. We have no standards by which to adhere to regarding
+            # how users wish to organize source yamls
+            osmosis_schema_path = schema_path
+        else:
+            # For models, we will resolve the target path -- perhaps this logical fork moves into the function below
+            osmosis_schema_path = resolve_osmosis_target_schema_path(osmosis_config, node)
         schema_map[unique_id] = SchemaFile(target=osmosis_schema_path, current=schema_path)
 
     return schema_map
@@ -725,7 +775,7 @@ def build_schema_folder_map(
 
 def compile_project_load_manifest(
     cfg: Optional[dbt.config.runtime.RuntimeConfig] = None, flat=True
-) -> MutableMapping:
+) -> Union[MutableMapping, dbt.parser.manifest.Manifest]:
     """Compiles dbt project and builds manifest json artifact in memory
 
     Args:
@@ -761,7 +811,7 @@ def propagate_documentation_downstream(
         for unique_id, node in track(list(iter_valid_models(manifest["nodes"], fqn))):
             logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
 
-            table = node["database"], node["schema"], node["name"]
+            table = node["database"], node["schema"], node.get("alias", node["name"])
             knowledge = pass_down_knowledge(build_ancestor_tree(node, manifest), manifest)
             schema_path = schema_map.get(unique_id)
 
@@ -834,6 +884,83 @@ def propagate_documentation_downstream(
             )
 
 
+def synchronize_sources(
+    schema_map: MutableMapping,
+    manifest: MutableMapping,
+    adapter: Adapter,
+    fqn: Optional[str] = None,
+) -> None:
+    yaml = YAML()
+    with adapter.connection_named("dbt-osmosis"):
+        for unique_id, node in track(list(iter_valid_models(manifest["sources"], fqn))):
+            logger().info("\n:point_right: Processing source: [bold]%s[/bold] \n", unique_id)
+
+            table = node["database"], node["schema"], node.get("identifier", node["name"])
+            schema_path = schema_map.get(unique_id)
+
+            if schema_path is None:
+                logger().info(
+                    ":bow: No schema file found for source %s", unique_id
+                )  # We can't take action
+                continue
+
+            # Build Sets
+            database_columns = set(get_columns(*table, adapter))
+            dbt_columns = set(column_name for column_name in node["columns"])
+            documented_columns = set(get_documented_columns(dbt_columns, node))
+
+            if not database_columns:
+                # Note to user we are using dbt columns as source since we did not resolve them from db
+                # Doing this means only `undocumented_columns` can be resolved to a non-empty set
+                logger().info(
+                    ":safety_vest: Unable to resolve columns in database, skipping this source\n"
+                )
+                continue
+
+            # Action
+            missing_columns = database_columns - dbt_columns
+            """Columns in database not in dbt -- will be injected into schema file"""
+            extra_columns = dbt_columns - database_columns
+            """Columns in schema file not in database -- will be removed from schema file"""
+
+            n_cols_added = 0
+            n_cols_removed = 0
+            if (len(missing_columns) > 0 or len(extra_columns) > 0) and len(database_columns) > 0:
+                schema_file = yaml.load(schema_path.current)
+                (n_cols_added, _, n_cols_removed,) = update_schema_file_and_node(
+                    {},  # No ancestors to generate knowledge graph
+                    missing_columns,
+                    [],  # Undocumented columns have nothing upstream to inherit
+                    extra_columns,
+                    node,
+                    schema_file,
+                )
+                if n_cols_added + n_cols_removed > 0:
+                    with open(schema_path.current, "w", encoding="utf-8") as f:
+                        yaml.dump(schema_file, f)
+                    logger().info(":sparkles: Schema file updated")
+
+            # Print Audit Report
+            n_cols = float(len(database_columns))
+            n_cols_documented = float(len(documented_columns))
+            perc_coverage = (
+                min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
+                if n_cols > 0
+                else "Unable to Determine"
+            )
+            logger().info(
+                SOURCE_REPORT.format(
+                    database=node["database"],
+                    schema=node["schema"],
+                    table=node["name"],
+                    total_columns=n_cols,
+                    n_cols_added=n_cols_added,
+                    n_cols_removed=n_cols_removed,
+                    coverage=perc_coverage,
+                )
+            )
+
+
 @click.group()
 def cli():
     pass
@@ -857,9 +984,10 @@ def cli():
     help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
 )
 @click.option(
+    "-f",
     "--fqn",
     type=click.STRING,
-    help="Filter models to action using an fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
+    help="Filter models to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
 )
 def run(
     target: Optional[str] = None,
@@ -929,9 +1057,10 @@ def run(
     help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
 )
 @click.option(
+    "-f",
     "--fqn",
     type=click.STRING,
-    help="Filter models to action using an fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
+    help="Filter models to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
 )
 def compose(
     target: Optional[str] = None,
@@ -999,9 +1128,10 @@ def audit():
     help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
 )
 @click.option(
+    "-f",
     "--fqn",
     type=click.STRING,
-    help="Filter models to action using an fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
+    help="Filter models to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
 )
 def document(
     target: Optional[str] = None,
@@ -1031,6 +1161,72 @@ def document(
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
     propagate_documentation_downstream(schema_map, manifest, adapter, fqn)
+
+
+@cli.command()
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Path to the dbt project directory, defaults to current working directory",
+)
+@click.option(
+    "--profiles-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+)
+@click.option(
+    "--target",
+    type=click.STRING,
+    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+)
+@click.option(
+    "-f",
+    "--fqn",
+    type=click.STRING,
+    help="Filter source to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific source file. Format looks like {folder}.{source_name}.{table}",
+)
+def sources(
+    target: Optional[str] = None,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+    fqn: Optional[str] = None,
+):
+    """Synchronize schema file sources with database
+
+    \f
+    This command will take a source, query the database for columns, and inject it into the existing yaml removing unused columns if needed
+
+    Args:
+        target (Optional[str]): Profile target. Defaults to default target set in profile yml
+        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
+    """
+    logger().info(":water_wave: Executing dbt-osmosis\n")
+
+    # TODO
+    # See if it is worthwhile building a source file, and based on what criteria are database table qualified for this file? Where do we put the file?
+    # Our current preference is to have the user generate source file(s) and allow dbt-osmosis to inject/synchronize columns via CLI
+
+    # Collect/build our args
+    args = PseudoArgs(
+        threads=1,
+        project_dir=project_dir,
+        target=target,
+        profiles_dir=profiles_dir,
+    )
+
+    # Initialize dbt & prepare database adapter
+    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
+    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
+    register_adapter(config)
+
+    adapter = verify_connection(get_adapter(config))
+    manifest = compile_project_load_manifest(config)
+
+    # Conform project structure & bootstrap undocumented models injecting columns
+    schema_map = build_schema_folder_map(project.project_root, manifest, fqn, "sources")
+    synchronize_sources(schema_map, manifest, adapter, fqn)
 
 
 if __name__ == "__main__":
