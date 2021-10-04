@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.1.0"
+version = "0.2.0"
 description = "This package serves to cascadingly populate column level documentation as well as build model files."
 authors = ["Falador_wiz1 <alex@source.co>"]
 license = "Apache 2.0"
