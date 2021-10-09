@@ -16,6 +16,8 @@ First and foremost, we want dbt documentation to retain a DRY principle. Every t
 
 ## How to Use
 
+dbt-osmosis is ready to use as-is. To get familiar, you should run it on a fresh branch and ensure everything is backed in source control. Enjoy!
+
 To use dbt-osmosis, simply run the following:
 
 ```bash

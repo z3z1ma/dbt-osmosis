@@ -1,9 +1,24 @@
 [tool.poetry]
 name = "dbt-osmosis"
 version = "0.2.0"
-description = "This package serves to cascadingly populate column level documentation as well as build model files."
+description = "This package serves to cascadingly populate column level documentation, build & conform schema files, and audit coverage."
 authors = ["Falador_wiz1 <alex@source.co>"]
 license = "Apache 2.0"
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "License :: OSI Approved :: Apache License 2.0",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+keywords = ["data engineering", "dbt", "ETL", "data modelling", "lineage", "documentation"]
+documentation = "https://github.com/z3z1ma/dbt-osmosis"
+repository = "https://github.com/z3z1ma/dbt-osmosis"
 
 [tool.poetry.dependencies]
 python = "^3.8"
