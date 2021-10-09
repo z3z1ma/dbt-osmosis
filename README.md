@@ -2,7 +2,7 @@
 
 <!--![GitHub Actions](https://github.com/z3z1ma/dbt-osmosis/actions/workflows/master.yml/badge.svg)-->
 
-<!--![PyPI](https://img.shields.io/pypi/v/dbt-osmosis)-->
+![PyPI](https://img.shields.io/pypi/v/dbt-osmosis)
 
 <!--![Downloads](https://pepy.tech/badge/dbt-osmosis)-->
 
@@ -11,12 +11,49 @@
 ![black](https://img.shields.io/badge/code%20style-black-000000.svg)
 
 ## Primary Objectives
-First and foremost, we want dbt documentation to retain a DRY principle. Every time we repeat ourselves, we waste our time. 80% of documentation is often a matter of inheritance and continued passing down of columns from parent models to children. they need not be redocumented if there has been no mutation. Second, we want to standardize ways that we all organize our schema files which hold the fruits of our documentation. We should be able to enforce a standard on a per directory basis and jump between layouts at will as certain folder scale up the number of models or scale down. Lastly, and tangential to the first objective, we want to understand column level lineage and automate impact analysis.
+
+First and foremost, we want dbt documentation to retain a DRY principle. Every time we repeat ourselves, we waste our time. 80% of documentation is often a matter of inheritance and continued passing down of columns from parent models to children. They need not be redocumented if there has been no mutation. 
+
+Second, we want to standardize ways that we all organize our schema files which hold the fruits of our documentation. We should be able to enforce a standard on a per directory basis and jump between layouts at will as certain folders scale up the number of models or scale down. 
+
+Lastly, and tangential to the first objective, we want to understand column level lineage, streamline impact analysis, and audit our documentation.
 
 
 ## How to Use
 
 dbt-osmosis is ready to use as-is. To get familiar, you should run it on a fresh branch and ensure everything is backed in source control. Enjoy!
+
+You should set a base config in your dbt_project.yml and ensure any models within the scope of your execution plan will inherit a config/preference. Example below.
+
+```yaml
+models:
+
+    your_dbt_project:
+
+        # This config will apply to your whole project
+        +dbt-osmosis: "schema/model.yml"
+
+        staging:
+
+            # This config will apply to your staging directory
+            +dbt-osmosis: "folder.yml"
+
+            +tags: 
+                - "staged"
+
+            +materialized: view
+
+            monday:
+                intermediate:
+                    +materialized: ephemeral
+
+        marts:
+
+            +tags: 
+                - "mart"
+
+            supply_chain: 
+```
 
 To use dbt-osmosis, simply run the following:
 
@@ -28,14 +65,19 @@ pipx install dbt-osmosis
 
 
 # This command executes all tasks in preferred order and is usually all you need
+
 dbt-osmosis run --project-dir /path/to/dbt/project --target prod
 
 
-# Inherit documentation in staging/salesforce/ & sync schema yaml columns with database columns
+# Inherit documentation in staging/salesforce/ & sync 
+# schema yaml columns with database columns
+
 dbt-osmosis document --project-dir /path/to/dbt/project --target prod --fqn staging.salesforce
 
 
-# Reorganize marts/operations/ & inject undocumented models into schema files or create new schema files as needed
+# Reorganize marts/operations/ & inject undocumented models 
+# into schema files or create new schema files as needed
+
 dbt-osmosis compose --project-dir /path/to/dbt/project --target prod --fqn marts.operations
 ```
 
