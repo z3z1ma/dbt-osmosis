@@ -1163,7 +1163,101 @@ def document(
     propagate_documentation_downstream(schema_map, manifest, adapter, fqn)
 
 
-@cli.command()
+@cli.group()
+def sources():
+    """Synchronize schema file sources with database or create/update a source based on pattern"""
+    ...
+
+
+@sources.command()
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Path to the dbt project directory, defaults to current working directory",
+)
+@click.option(
+    "--profiles-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+)
+@click.option(
+    "--target",
+    type=click.STRING,
+    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+)
+@click.option(
+    "--database",
+    type=click.STRING,
+    help="The database to search for tables in",
+)
+@click.option(
+    "--schema",
+    type=click.STRING,
+    help="the schema to search for tables in",
+)
+@click.option(
+    "--table-prefix",
+    type=click.STRING,
+    help="The pattern used to look for tables",
+)
+def extract(
+    target: Optional[str] = None,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+    **kwargs,
+):
+    """Extract tables from database based on a pattern and load into source file
+
+    \f
+    This command will take a source, query the database for columns, and inject it into either existing yaml or create one if needed
+
+    Args:
+        target (Optional[str]): Profile target. Defaults to default target set in profile yml
+        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
+    """
+
+    logger().warning(":stop: Not implemented yet")
+    raise NotImplementedError("This command is not yet implemented")
+
+    logger().info(":water_wave: Executing dbt-osmosis\n")
+
+    # Collect/build our args
+    args = PseudoArgs(
+        threads=1,
+        project_dir=project_dir,
+        target=target,
+        profiles_dir=profiles_dir,
+    )
+
+    # Initialize dbt & prepare database adapter
+    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
+    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
+    register_adapter(config)
+
+    adapter = verify_connection(get_adapter(config))
+    manifest = compile_project_load_manifest(config)
+
+    # Conform project structure & bootstrap undocumented models injecting columns
+    schema_map = build_schema_folder_map(project.project_root, manifest, model_type="sources")
+
+    while True:
+        click.echo("Found following files from other formats that you may import:")
+        choices = list(schema_map.items())[1:10]
+        for i, (model, path) in enumerate(choices):
+            click.echo(f"{i}. {model}")
+        click.echo(f"9. next")
+        click.echo(f"10. previous")
+        choice = click.prompt(
+            "Please select:",
+            type=click.Choice([str(i) for i in range(len(choices) + 1)]),
+            show_default=False,
+        )
+        print(choice)
+
+
+@sources.command()
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
@@ -1186,13 +1280,13 @@ def document(
     type=click.STRING,
     help="Filter source to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific source file. Format looks like {folder}.{source_name}.{table}",
 )
-def sources(
+def sync(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
 ):
-    """Synchronize schema file sources with database
+    """Synchronize existing schema file sources with database
 
     \f
     This command will take a source, query the database for columns, and inject it into the existing yaml removing unused columns if needed
@@ -1203,10 +1297,6 @@ def sources(
         profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
-
-    # TODO
-    # See if it is worthwhile building a source file, and based on what criteria are database table qualified for this file? Where do we put the file?
-    # Our current preference is to have the user generate source file(s) and allow dbt-osmosis to inject/synchronize columns via CLI
 
     # Collect/build our args
     args = PseudoArgs(
