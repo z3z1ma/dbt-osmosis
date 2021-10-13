@@ -145,7 +145,7 @@ Action Log:
 Columns Added to dbt: {n_cols_added}
 Extra Columns Removed: {n_cols_removed}
 """
-
+CONTEXT = {"max_content_width": 800}
 UNDOCUMENTED_STR = [
     "Pending further documentation",
     "No description for this column.",
@@ -805,6 +805,7 @@ def propagate_documentation_downstream(
     manifest: MutableMapping,
     adapter: Adapter,
     fqn: Optional[str] = None,
+    force_inheritance: bool = False,
 ) -> None:
     yaml = YAML()
     with adapter.connection_named("dbt-osmosis"):
@@ -841,6 +842,10 @@ def propagate_documentation_downstream(
             """Columns missing documentation -- descriptions will be inherited and injected into schema file where prior knowledge exists"""
             extra_columns = dbt_columns - database_columns
             """Columns in schema file not in database -- will be removed from schema file"""
+
+            if force_inheritance:
+                # Consider all columns "undocumented" so that inheritance is not selective
+                undocumented_columns = database_columns
 
             n_cols_added = 0
             n_cols_doc_inherited = 0
@@ -966,34 +971,42 @@ def cli():
     pass
 
 
-@cli.command()
+@cli.command(context_settings=CONTEXT)
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Path to the dbt project directory, defaults to current working directory",
+    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
 )
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     default=dbt.config.profile.DEFAULT_PROFILES_DIR,
-    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
     "--target",
     type=click.STRING,
-    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
 )
 @click.option(
     "-f",
     "--fqn",
     type=click.STRING,
-    help="Filter models to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
+    help="Specify models based on dbt's FQN. Looks like folder.folder, folder.folder.model, or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
+)
+@click.option(
+    "-F",
+    "--force-inheritance",
+    "force",
+    is_flag=True,
+    help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
 )
 def run(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
+    force_inheritance: bool = False,
 ):
     """Compose -> Document -> Audit
 
@@ -1036,31 +1049,31 @@ def run(
         schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(schema_map, manifest, adapter, fqn)
+    propagate_documentation_downstream(schema_map, manifest, adapter, fqn, force_inheritance)
 
 
-@cli.command()
+@cli.command(context_settings=CONTEXT)
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Path to the dbt project directory, defaults to current working directory",
+    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
 )
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     default=dbt.config.profile.DEFAULT_PROFILES_DIR,
-    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
     "--target",
     type=click.STRING,
-    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
 )
 @click.option(
     "-f",
     "--fqn",
     type=click.STRING,
-    help="Filter models to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
+    help="Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
 )
 def compose(
     target: Optional[str] = None,
@@ -1110,34 +1123,42 @@ def audit():
     click.echo("Executing Audit")
 
 
-@cli.command()
+@cli.command(context_settings=CONTEXT)
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Path to the dbt project directory, defaults to current working directory",
+    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
 )
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     default=dbt.config.profile.DEFAULT_PROFILES_DIR,
-    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
     "--target",
     type=click.STRING,
-    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
 )
 @click.option(
     "-f",
     "--fqn",
     type=click.STRING,
-    help="Filter models to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific model file. Ex: staging.segment targets the whole staging/segment folder or marts.core.fct_orders would reference marts/core/fct_orders.sql",
+    help="Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
+)
+@click.option(
+    "-F",
+    "--force-inheritance",
+    "force",
+    is_flag=True,
+    help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
 )
 def document(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
+    force_inheritance: bool = False,
 ):
     """Column level documentation inheritance for existing models"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
@@ -1160,7 +1181,7 @@ def document(
     schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(schema_map, manifest, adapter, fqn)
+    propagate_documentation_downstream(schema_map, manifest, adapter, fqn, force_inheritance)
 
 
 @cli.group()
@@ -1169,22 +1190,22 @@ def sources():
     ...
 
 
-@sources.command()
+@sources.command(context_settings=CONTEXT)
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Path to the dbt project directory, defaults to current working directory",
+    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
 )
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     default=dbt.config.profile.DEFAULT_PROFILES_DIR,
-    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
     "--target",
     type=click.STRING,
-    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
 )
 @click.option(
     "--database",
@@ -1257,28 +1278,28 @@ def extract(
         print(choice)
 
 
-@sources.command()
+@sources.command(context_settings=CONTEXT)
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Path to the dbt project directory, defaults to current working directory",
+    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
 )
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     default=dbt.config.profile.DEFAULT_PROFILES_DIR,
-    help="Path to the dbt profiles.yml, defaults to ~/.dbt",
+    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
     "--target",
     type=click.STRING,
-    help="The dbt target profile. Will default to the default target set in dbt profiles.yml",
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
 )
 @click.option(
     "-f",
     "--fqn",
     type=click.STRING,
-    help="Filter source to action using a fqn selector. Use dots to separate parts. Do not include a suffix if referencing a specific source file. Format looks like {folder}.{source_name}.{table}",
+    help="Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
 )
 def sync(
     target: Optional[str] = None,
@@ -1320,5 +1341,4 @@ def sync(
 
 
 if __name__ == "__main__":
-    # Valid kwarg
-    cli(max_content_width=800)  # pylint: disable=unexpected-keyword-arg
+    cli()
