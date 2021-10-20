@@ -9,7 +9,7 @@
 
 ## Primary Objectives
 
-Hello and welcome to the project! dbt-osmosis 🌊 serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, and we expose a **workbench** which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (extremely performant compilation), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run tests, and more. 
+Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, we enforce user-defined organization for schema yml files in your dbt project automatically making it super tidy, we automatically inject models which are undocumented into the appropriate schema right where you expect it, and we expose a **workbench** which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (extremely performant compilation), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run tests, and more. 
 
 
 ____
@@ -17,7 +17,14 @@ ____
 
 ## Workbench
 
-The workbench is under active development. Feel free to open issues or discuss additions. There is still a lot on the roadmap regarding robustness of diffs (currently we only see rows added/removed), we have no error catched so errors don't break anything but they are piped to the app and displayed- which is pretty to a developer but not to an end user so we should use `st.warning` and `st.error` for pretty notifications and fork the the right logical path. 
+The workbench is under active development. Feel free to open issues or discuss additions. 
+
+```sh
+# Command to start server
+dbt-osmosis workbench
+```
+
+There is still a lot on the roadmap regarding robustness of diffs (currently we only see rows added/removed), we have no error catched so errors don't break anything but they are piped to the app and displayed- which is pretty to a developer but not to an end user so we should use `st.warning` and `st.error` for pretty notifications and fork the the right logical path. 
 
 ✔️ dbt Model Editor
 
