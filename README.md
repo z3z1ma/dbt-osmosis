@@ -3,14 +3,16 @@
 <!--![GitHub Actions](https://github.com/z3z1ma/dbt-osmosis/actions/workflows/master.yml/badge.svg)-->
 
 ![PyPI](https://img.shields.io/pypi/v/dbt-osmosis)
-
 ![Downloads](https://pepy.tech/badge/dbt-osmosis)
-
 ![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)
-
 ![black](https://img.shields.io/badge/code%20style-black-000000.svg)
 
 ## Primary Objectives
+
+Hello and welcome to the project! dbt-osmosis serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, and we expose a workbench which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (incredibly quickly), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run tests, and more. 
+
+
+Here are some of the foundational pillars:
 
 First and foremost, we want dbt documentation to retain a DRY principle. Every time we repeat ourselves, we waste our time. 80% of documentation is often a matter of inheritance and continued passing down of columns from parent models to children. They need not be redocumented if there has been no mutation. 
 
