@@ -12,16 +12,58 @@
 Hello and welcome to the project! dbt-osmosis serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, and we expose a workbench which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (incredibly quickly), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run tests, and more. 
 
 
-Here are some of the foundational pillars:
+## Workbench
 
-First and foremost, we want dbt documentation to retain a DRY principle. Every time we repeat ourselves, we waste our time. 80% of documentation is often a matter of inheritance and continued passing down of columns from parent models to children. They need not be redocumented if there has been no mutation. 
+The workbench is under active development. Feel free to open issues or discuss additions. There is still a lot on the roadmap regarding robustness of diffs (currently we only see rows added/removed), we have no error catched so errors don't break anything but they are piped to the app and displayed- which is pretty to a developer but not to an end user so we should use `st.warning` and `st.error` for pretty notifications and fork the the right logical path. 
 
-Second, we want to standardize ways that we all organize our schema files which hold the fruits of our documentation. We should be able to enforce a standard on a per directory basis and jump between layouts at will as certain folders scale up the number of models or scale down. 
+✔️ dbt Model Editor
 
-Lastly, and tangential to the first objective, we want to understand column level lineage, streamline impact analysis, and audit our documentation.
+✔️ Materialize Active Model in Warehouse
+
+  - Not handling building of upstream dependencies if they are not materialized
+
+✔️ Query Tester
+
+✔️ SQL Model Data Diffs
+
+  - Adding pandas engine and support for `MODIFIED` rows in addition to `ADDED` and `REMOVED`
+
+  - Adding scorecards which show the sum of each of the 3 diff categories
+
+✔️ Data Profiler (leverages pandas-profiling)
+
+  - Need to expose config option for details or basic report to account for vairable dataset size
+
+⚠️ Doc Editor
+
+  - View only, modifications aren't committed yet
+
+❗ Test Runner (not implemented yet)
+
+✔️ Manifest View
 
 
-## How to Use
+The editor is able to compile models with control+enter or as you type. Its speedy!
+![editor](/screenshots/osmosis_editor.png?raw=true "dbt-osmosis Workbench")
+
+
+Select a target, models can also be materialized by executing the SQL against the target using dbt as a wrapper.
+![profiles](/screenshots/osmosis_profile_selection.png?raw=true "dbt-osmosis Profile Selection")
+
+
+See when there are uncommitted changes and commit them to file when ready, or revert to initial state.
+![pivot-uncommitted](/screenshots/osmosis_pivot_layout_uncommitted_changes.png?raw=true "dbt-osmosis Pivot Layout")
+
+
+Test dbt models as you work against whatever profile you have selected and inspect the results.
+![test-model](/screenshots/osmosis_test_dbt_model.png?raw=true "dbt-osmosis Test Model")
+
+
+As you develop and modify a model with uncommitted changes, you can calculate the diff. This allows you instant feedback on if the changes you make are safe.
+![diff-model](/screenshots/osmosis_test_dbt_model.png?raw=true "dbt-osmosis Diff Model")
+
+
+## CLI
 
 dbt-osmosis is ready to use as-is. To get familiar, you should run it on a fresh branch and ensure everything is backed in source control. Enjoy!
 
@@ -81,6 +123,11 @@ dbt-osmosis document --project-dir /path/to/dbt/project --target prod --fqn stag
 # into schema files or create new schema files as needed
 
 dbt-osmosis compose --project-dir /path/to/dbt/project --target prod --fqn marts.operations
+
+
+# Open the dbt-osmosis workbench
+
+dbt-osmosis workbench
 ```
 
 ## Roadmap
@@ -88,7 +135,7 @@ dbt-osmosis compose --project-dir /path/to/dbt/project --target prod --fqn marts
 These features are being actively developed and will be merged into the next few minor releases
 
 1. Complete build out of `sources` tools.
-2. Add `--min-cov` flag to audit task
+2. Add `--min-cov` flag to audit task and to workbench
 3. Add interactive documentation flag that engages user to documents ONLY progenitors and novel columns for a subset of models (the most optimized path to full documentation coverage feasible)
 4. Add `impact` command that allows us to leverage our resolved column level progenitors for ad hoc impact analysis
 
@@ -165,6 +212,15 @@ In a full run [ `dbt-osmosis run` ] we will:
 2. Bootstrap models to ensure all models exist
 3. Recompile Manifest
 4. Propagate definitions downstream to undocumented models solely within the context of each models dependency tree
+
+
+#### Here are some of the original foundational pillars:
+
+First and foremost, we want dbt documentation to retain a DRY principle. Every time we repeat ourselves, we waste our time. 80% of documentation is often a matter of inheritance and continued passing down of columns from parent models to children. They need not be redocumented if there has been no mutation. 
+
+Second, we want to standardize ways that we all organize our schema files which hold the fruits of our documentation. We should be able to enforce a standard on a per directory basis and jump between layouts at will as certain folders scale up the number of models or scale down. 
+
+Lastly, and tangential to the first objective, we want to understand column level lineage, streamline impact analysis, and audit our documentation.
 
 
 ## New workflows enabled!
