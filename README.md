@@ -9,7 +9,10 @@
 
 ## Primary Objectives
 
-Hello and welcome to the project! dbt-osmosis serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, and we expose a workbench which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (incredibly quickly), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run tests, and more. 
+Hello and welcome to the project! dbt-osmosis 🌊 serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, and we expose a **workbench** which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (extremely performant compilation), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run tests, and more. 
+
+
+____
 
 
 ## Workbench
@@ -44,23 +47,30 @@ The workbench is under active development. Feel free to open issues or discuss a
 
 
 The editor is able to compile models with control+enter or as you type. Its speedy!
+
 ![editor](/screenshots/osmosis_editor.png?raw=true "dbt-osmosis Workbench")
 
 
 Select a target, models can also be materialized by executing the SQL against the target using dbt as a wrapper.
+
 ![profiles](/screenshots/osmosis_profile_selection.png?raw=true "dbt-osmosis Profile Selection")
 
 
 See when there are uncommitted changes and commit them to file when ready, or revert to initial state.
+
 ![pivot-uncommitted](/screenshots/osmosis_pivot_layout_uncommitted_changes.png?raw=true "dbt-osmosis Pivot Layout")
 
 
 Test dbt models as you work against whatever profile you have selected and inspect the results.
+
 ![test-model](/screenshots/osmosis_test_dbt_model.png?raw=true "dbt-osmosis Test Model")
 
 
 As you develop and modify a model with uncommitted changes, you can calculate the diff. This allows you instant feedback on if the changes you make are safe.
+
 ![diff-model](/screenshots/osmosis_test_dbt_model.png?raw=true "dbt-osmosis Diff Model")
+
+____
 
 
 ## CLI
