@@ -68,7 +68,7 @@ Test dbt models as you work against whatever profile you have selected and inspe
 
 As you develop and modify a model with uncommitted changes, you can calculate the diff. This allows you instant feedback on if the changes you make are safe.
 
-![diff-model](/screenshots/osmosis_test_dbt_model.png?raw=true "dbt-osmosis Diff Model")
+![diff-model](/screenshots/osmosis_row_level_diff.png?raw=true "dbt-osmosis Diff Model")
 
 ____
 
