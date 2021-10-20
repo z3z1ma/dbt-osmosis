@@ -2178,17 +2178,6 @@ pandas = ["pyarrow (>=3.0.0,<3.1.0)", "pandas (>=1.0.0,<1.3.0)"]
 secure-local-storage = ["keyring (!=16.1.0,<22.0.0)"]
 
 [[package]]
-name = "sql-metadata"
-version = "2.3.0"
-description = "Uses tokenized query returned by python-sqlparse and generates query metadata"
-category = "main"
-optional = false
-python-versions = ">=3.6.2,<4.0.0"
-
-[package.dependencies]
-sqlparse = ">=0.4.1,<0.5.0"
-
-[[package]]
 name = "sqlparse"
 version = "0.4.2"
 description = "A non-validating SQL parser."
@@ -2568,7 +2557,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7,<4.0"
-content-hash = "6b37abfe0b685cba2c233ebf999f8f00a5494580049acf65f5dfd5303b3c07d2"
+content-hash = "35718df80ad43812b9cc805986e4113b58bf9e0f5dce41db827395e3db872ee1"
 
 [metadata.files]
 agate = [
@@ -4212,10 +4201,6 @@ snowflake-connector-python = [
     {file = "snowflake_connector_python-2.5.1-cp39-cp39-manylinux2010_x86_64.whl", hash = "sha256:7fceae682fe455a554a0ab67a83cc06b5fe5af5a19ad9e7a1351e37f57228f04"},
     {file = "snowflake_connector_python-2.5.1-cp39-cp39-manylinux2014_x86_64.whl", hash = "sha256:a435b106234a953a1f3ad72b1b2925ad0c5841abf91ced4bb0c73ae5e0367da5"},
     {file = "snowflake_connector_python-2.5.1-cp39-cp39-win_amd64.whl", hash = "sha256:edddfad0553852bc4f65b78cd25213fd9fff9d58ed42b8e073b817ea2798be42"},
-]
-sql-metadata = [
-    {file = "sql_metadata-2.3.0-py3-none-any.whl", hash = "sha256:fdb62bd1aa44e37b30237fb992a68e9a0c01f9f69303590272c6861a27c4f59c"},
-    {file = "sql_metadata-2.3.0.tar.gz", hash = "sha256:eed8c98e7a1bb719ff1f78227c05e07ad61ddec5d5f81e5014179edd28b77cac"},
 ]
 sqlparse = [
     {file = "sqlparse-0.4.2-py3-none-any.whl", hash = "sha256:48719e356bb8b42991bdbb1e8b83223757b93789c00910a616a071910ca4a64d"},

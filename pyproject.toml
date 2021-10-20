@@ -33,7 +33,6 @@ pydot = "^1.4.2"
 streamlit-agraph = "^0.0.35"
 streamlit-pandas-profiling = "^0.1.2"
 streamlit-aggrid = "^0.2.2"
-sql-metadata = "^2.3.0"
 
 [tool.poetry.dev-dependencies]
 black = "^21.9b0"

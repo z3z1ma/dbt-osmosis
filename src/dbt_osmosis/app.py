@@ -12,7 +12,6 @@ import pandas as pd
 import pandas_profiling
 from dbt.contracts.graph import parsed
 from dbt.task.run import ModelRunner
-from sql_metadata import Parser
 
 import dbt_osmosis.main
 
