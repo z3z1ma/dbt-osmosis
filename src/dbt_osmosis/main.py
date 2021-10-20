@@ -88,6 +88,8 @@ from typing import (
     Iterator,
     Union,
 )
+import sys
+import subprocess
 
 import click
 from rich.progress import track
@@ -99,7 +101,7 @@ import dbt.config.renderer
 import dbt.context.base
 import dbt.parser.manifest
 import dbt.exceptions
-from dbt.adapters.factory import get_adapter, register_adapter, Adapter
+from dbt.adapters.factory import get_adapter, register_adapter, reset_adapters, Adapter
 from dbt.tracking import disable_tracking
 
 from .utils.logging import logger
@@ -158,6 +160,7 @@ VALID_CONFIGS = [
     "schema/model.yml",
 ]
 FILE_ADAPTER_POSTFIX = "://"
+DEFAULT_PROFILES_DIR = dbt.config.profile.DEFAULT_PROFILES_DIR
 
 
 class PseudoArgs:
@@ -165,16 +168,18 @@ class PseudoArgs:
         self,
         threads: Optional[int] = 1,
         target: Optional[str] = None,
-        profiles_dir: Optional[str] = dbt.config.profile.DEFAULT_PROFILES_DIR,
+        profiles_dir: Optional[str] = None,
         project_dir: Optional[str] = None,
         vars: Optional[str] = "{}",
     ):
         self.threads = threads
         if target:
             self.target = target  # We don't want target in args context if it is None
-        self.profiles_dir = profiles_dir
+        self.profiles_dir = profiles_dir or DEFAULT_PROFILES_DIR
         self.project_dir = project_dir
         self.vars = vars  # json.dumps str
+        self.dependencies = []
+        self.single_threaded = threads == 1
 
 
 @dataclass
@@ -773,8 +778,36 @@ def build_schema_folder_map(
     return schema_map
 
 
+def get_raw_profiles(profiles_dir: Optional[str] = None) -> Dict[str, Any]:
+    return dbt.config.profile.read_profile(profiles_dir or dbt.config.profile.DEFAULT_PROFILES_DIR)
+
+
+def load_dbt(
+    threads: int = 1,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+    target: Optional[str] = None,
+):
+    args = PseudoArgs(
+        threads=threads,
+        project_dir=project_dir,
+        profiles_dir=profiles_dir,
+        target=target,
+    )
+    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
+    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
+    reset_adapters()
+    register_adapter(config)
+    adapter = verify_connection(get_adapter(config))
+    return project, profile, config, adapter
+
+
 def compile_project_load_manifest(
-    cfg: Optional[dbt.config.runtime.RuntimeConfig] = None, flat=True
+    cfg: Optional[dbt.config.runtime.RuntimeConfig] = None,
+    flat: bool = True,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> Union[MutableMapping, dbt.parser.manifest.Manifest]:
     """Compiles dbt project and builds manifest json artifact in memory
 
@@ -784,6 +817,8 @@ def compile_project_load_manifest(
     Returns:
         MutableMapping: Loaded manifest.json artifact
     """
+    if not cfg:
+        _, _, cfg, _ = load_dbt(1, project_dir, profiles_dir, target)
     if not flat:
         return dbt.parser.manifest.ManifestLoader.get_full_manifest(cfg)
     else:
@@ -997,7 +1032,6 @@ def cli():
 @click.option(
     "-F",
     "--force-inheritance",
-    "force",
     is_flag=True,
     help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
 )
@@ -1021,20 +1055,8 @@ def run(
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Collect/build our args
-    args = PseudoArgs(
-        threads=1,
-        project_dir=project_dir,
-        target=target,
-        profiles_dir=profiles_dir,
-    )
-
     # Initialize dbt & prepare database adapter
-    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
-    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
-    register_adapter(config)
-
-    adapter = verify_connection(get_adapter(config))
+    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -1093,20 +1115,8 @@ def compose(
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Collect/build our args
-    args = PseudoArgs(
-        threads=1,
-        project_dir=project_dir,
-        target=target,
-        profiles_dir=profiles_dir,
-    )
-
     # Initialize dbt & prepare database adapter
-    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
-    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
-    register_adapter(config)
-
-    adapter = verify_connection(get_adapter(config))
+    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -1149,7 +1159,6 @@ def audit():
 @click.option(
     "-F",
     "--force-inheritance",
-    "force",
     is_flag=True,
     help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
 )
@@ -1163,20 +1172,8 @@ def document(
     """Column level documentation inheritance for existing models"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Collect/build our args
-    args = PseudoArgs(
-        threads=1,
-        project_dir=project_dir,
-        target=target,
-        profiles_dir=profiles_dir,
-    )
-
     # Initialize dbt & prepare database adapter
-    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
-    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
-    register_adapter(config)
-
-    adapter = verify_connection(get_adapter(config))
+    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
     manifest = compile_project_load_manifest(config)
     schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
 
@@ -1244,20 +1241,8 @@ def extract(
 
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Collect/build our args
-    args = PseudoArgs(
-        threads=1,
-        project_dir=project_dir,
-        target=target,
-        profiles_dir=profiles_dir,
-    )
-
     # Initialize dbt & prepare database adapter
-    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
-    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
-    register_adapter(config)
-
-    adapter = verify_connection(get_adapter(config))
+    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -1319,25 +1304,31 @@ def sync(
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Collect/build our args
-    args = PseudoArgs(
-        threads=1,
-        project_dir=project_dir,
-        target=target,
-        profiles_dir=profiles_dir,
-    )
-
     # Initialize dbt & prepare database adapter
-    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
-    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
-    register_adapter(config)
-
-    adapter = verify_connection(get_adapter(config))
+    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
     schema_map = build_schema_folder_map(project.project_root, manifest, fqn, "sources")
     synchronize_sources(schema_map, manifest, adapter, fqn)
+
+
+@cli.command(
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.pass_context
+def workbench(ctx):
+    """Instantiate the dbt-osmosis workbench.
+
+    Pass the --options command to see streamlit specific options that can be passed to the app
+    """
+    if "--options" in ctx.args:
+        subprocess.run(["streamlit", "run", "--help"])
+        ctx.exit()
+    subprocess.run(["streamlit", "run", str(Path(__file__).parent / "app.py")] + ctx.args)
 
 
 if __name__ == "__main__":
