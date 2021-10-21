@@ -112,8 +112,18 @@ for prof in profile_data:
     )
     break
 st.sidebar.markdown(f"Current Target: **{st.session_state['target_profile']}**")
-if st.session_state["profile"].target_name != st.session_state["target_profile"]:
+st.sidebar.write("")
+st.sidebar.write("Utility")
+st.sidebar.button("Reload dbt project", key="refresh_dbt_ctx")
+if (
+    st.session_state["profile"].target_name != st.session_state["target_profile"]
+    or st.session_state["refresh_dbt_ctx"]
+):
     refresh_dbt()
+st.sidebar.caption(
+    "Use this if any updated assets in your project have not yet reflected in the workbench, for example: you add some generic tests to some models while osmosis workbench is running."
+)
+
 
 # ----------------------------------------------------------------
 # MODEL IDE
