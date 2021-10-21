@@ -28,7 +28,7 @@ The workbench is under active development. Feel free to open issues or discuss a
 dbt-osmosis workbench
 ```
 
-There is still a lot on the roadmap regarding robustness of diffs (currently we only see rows added/removed), we have no error catched so errors don't break anything but they are piped to the app and displayed- which is pretty to a developer but not to an end user so we should use `st.warning` and `st.error` for pretty notifications and fork the the right logical path. 
+There is still more on the roadmap regarding robustness of diffs (currently we only see rows added/removed); and exceptions (which don't occur _too_ often) are piped to the app and displayed-- which is useful to a developer but not to an end user so we should use `st.warning` and `st.error` for pretty notifications and fork the the right logical path. 
 
 ✔️ dbt Model Editor
 
@@ -53,35 +53,46 @@ There is still a lot on the roadmap regarding robustness of diffs (currently we 
 ✔️ Manifest View
 
 
+
+**Editor** 
+
 The editor is able to compile models with control+enter or dynamically as you type. Its speedy!
 
 ![editor](/screenshots/osmosis_editor.png?raw=true "dbt-osmosis Workbench")
 
+**Profile Selection**
 
 Select a target, models can also be materialized by executing the SQL against the target using dbt as a wrapper.
 
 ![profiles](/screenshots/osmosis_profile_selection.png?raw=true "dbt-osmosis Profile Selection")
 
 
+**Edit and Save Models**
+
 See when there are uncommitted changes and commit them to file when ready, or revert to initial state.
 
 ![pivot-uncommitted](/screenshots/osmosis_pivot_layout_uncommitted_changes.png?raw=true "dbt-osmosis Pivot Layout")
 
 
+**Test Query**
+
 Test dbt models as you work against whatever profile you have selected and inspect the results.
 
 ![test-model](/screenshots/osmosis_test_dbt_model.png?raw=true "dbt-osmosis Test Model")
 
+**Row Level Diffs**
 
 As you develop and modify a model with uncommitted changes, you can calculate the diff. This allows you instant feedback on if the changes you make are safe.
 
 ![diff-model](/screenshots/osmosis_row_level_diff.png?raw=true "dbt-osmosis Diff Model")
 
+**Profile Model Results**
 
 Profile your datasets on the fly while you develop without switching context. Allows for more refined interactive data modelling when dataset fits in memory.
 
 ![profile-data](/screenshots/osmosis_profile_data.png?raw=true "dbt-osmosis Profile Data")
 
+**Run dbt Tests**
 
 Run declared dbt data tests interactively with the ability to download the results to CSV.
 
