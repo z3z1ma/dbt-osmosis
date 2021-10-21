@@ -9,8 +9,12 @@
 
 ## Primary Objectives
 
-Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, we enforce user-defined organization for schema yml files in your dbt project automatically making it super tidy, we automatically inject models which are undocumented into the appropriate schema right where you expect it, and we expose a **workbench** which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (extremely performant compilation), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run tests, and more. 
+Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, we enforce user-defined organization for schema yml files in your dbt project automatically making it super tidy, we automatically inject models which are undocumented into the appropriate schema right where you expect it, and we expose a **workbench** which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (extremely performant compilation), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run dbt tests interactively & download results, and more. 
 
+
+[Workbench Reference](#Workbench)
+
+[CLI Reference](#Workbench)
 
 ____
 
@@ -30,8 +34,6 @@ There is still a lot on the roadmap regarding robustness of diffs (currently we 
 
 ✔️ Materialize Active Model in Warehouse
 
-  - Not handling building of upstream dependencies if they are not materialized
-
 ✔️ Query Tester
 
 ✔️ SQL Model Data Diffs
@@ -42,18 +44,16 @@ There is still a lot on the roadmap regarding robustness of diffs (currently we 
 
 ✔️ Data Profiler (leverages pandas-profiling)
 
-  - Need to expose config option for details or basic report to account for vairable dataset size
-
 ⚠️ Doc Editor
 
   - View only, modifications aren't committed yet
 
-❗ Test Runner (not implemented yet)
+✔️ Test Runner
 
 ✔️ Manifest View
 
 
-The editor is able to compile models with control+enter or as you type. Its speedy!
+The editor is able to compile models with control+enter or dynamically as you type. Its speedy!
 
 ![editor](/screenshots/osmosis_editor.png?raw=true "dbt-osmosis Workbench")
 
@@ -76,6 +76,17 @@ Test dbt models as you work against whatever profile you have selected and inspe
 As you develop and modify a model with uncommitted changes, you can calculate the diff. This allows you instant feedback on if the changes you make are safe.
 
 ![diff-model](/screenshots/osmosis_row_level_diff.png?raw=true "dbt-osmosis Diff Model")
+
+
+Profile your datasets on the fly while you develop without switching context. Allows for more refined interactive data modelling when dataset fits in memory.
+
+![profile-data](/screenshots/osmosis_profile_data.png?raw=true "dbt-osmosis Profile Data")
+
+
+Run declared dbt data tests interactively with the ability to download the results to CSV.
+
+![data-tests](/screenshots/osmosis_data_tests.png?raw=true "dbt-osmosis Data Tests")
+
 
 ____
 

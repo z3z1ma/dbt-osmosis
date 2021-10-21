@@ -10,6 +10,10 @@ import time
 import numpy as np
 import pandas as pd
 import pandas_profiling
+
+# The app does two things we do not scope ourselves to in the CLI:
+# Build Models, Compile Models
+# So include these imports here
 from dbt.contracts.graph import parsed
 from dbt.task.run import ModelRunner
 
@@ -55,8 +59,7 @@ def refresh_dbt():
         cfg=st.session_state["config"],
         flat=False,
     )
-    print("REFRESHED")
-    print(st.session_state["profile"])
+    return True
 
 
 # ----------------------------------------------------------------
@@ -70,56 +73,47 @@ if (
     or "adapter" not in st.session_state
     or "manifest" not in st.session_state
 ):
-    if not st.session_state["celebrate_good_times_oh_yeah"]:
-        init_profile_val = st.session_state["profiles_dir"]
-        init_project_val = st.session_state["project_dir"]
-        config_container = st.form("boot_up")
-        with config_container:
-            st.session_state["profiles_dir"] = st.text_input(
-                "Enter path to profiles.yml",
-                value=init_profile_val,
-            )
-            st.session_state["project_dir"] = st.text_input(
-                "Enter path to dbt_project.yml",
-                value=init_project_val,
-            )
-            proceed = st.form_submit_button("Confirm")
-        if not st.session_state["verified_project"] and not proceed:
-            st.stop()
-        st.session_state["verified_project"] = proceed or st.session_state["verified_project"]
+    init_profile_val = st.session_state["profiles_dir"]
+    init_project_val = st.session_state["project_dir"]
     config_container = st.empty()
-    del config_container
+    bootup_form = config_container.form("boot_up")
+    st.session_state["profiles_dir"] = bootup_form.text_input(
+        "Enter path to profiles.yml",
+        value=init_profile_val,
+        key="prof_select",
+    )
+    st.session_state["project_dir"] = bootup_form.text_input(
+        "Enter path to dbt_project.yml",
+        value=init_project_val,
+        key="proj_select",
+    )
+    proceed = bootup_form.form_submit_button("Load Project")
+    if not proceed:
+        st.stop()
+    config_container.empty()
     with st.spinner(text="Parsing profile and reading your dbt project 🦸"):
-        refresh_dbt()
-    with st.success("Successfully loaded dbt project"):
-        if not st.session_state["celebrate_good_times_oh_yeah"]:
-            st.balloons()
-        time.sleep(3)
+        LOADED = refresh_dbt()
 
-    st.session_state["celebrate_good_times_oh_yeah"] = True
-    st.write(st.session_state["profile"])
 
 # ----------------------------------------------------------------
 # SIDEBAR
 # ----------------------------------------------------------------
 
-st.sidebar.header("Models")
+st.sidebar.header("Profiles")
 
-st.sidebar.write("Select a dwh target")
+st.sidebar.write(
+    "Select a target profile used for materializing, compiling, and testing models. Can be updated at any time."
+)
 for prof in profile_data:
     st.session_state["target_profile"] = st.sidebar.radio(
-        prof, [targ for targ in profile_data[prof]["outputs"]], key="profile_selector"
+        f"Loaded profiles from {prof}",
+        [targ for targ in profile_data[prof]["outputs"]],
+        key="profile_selector",
     )
     break
-st.sidebar.write(f"Current Target: {st.session_state['target_profile']}")
+st.sidebar.markdown(f"Current Target: **{st.session_state['target_profile']}**")
 if st.session_state["profile"].target_name != st.session_state["target_profile"]:
     refresh_dbt()
-
-opts = []
-for node, config in st.session_state["manifest"].flat_graph["nodes"].items():
-    if config["resource_type"] == "model":
-        opts.append(node)
-        # st.sidebar.button(config["name"])
 
 # ----------------------------------------------------------------
 # MODEL IDE
@@ -145,12 +139,21 @@ def toggle_reset():
 
 
 # Model Selector For IDE
+opts = []
+for node, config in st.session_state["manifest"].flat_graph["nodes"].items():
+    if config["resource_type"] == "model":
+        opts.append(node)
+
 with st.container():
     choice = st.selectbox("Select a model", options=opts)
     model = st.session_state["manifest"].flat_graph["nodes"].get(choice)
 
 st.write("")
-auto_compile = st.checkbox("Automatically compile SQL on change", key="auto_compile_flag")
+auto_compile = st.checkbox("Dynamic Compilation", key="auto_compile_flag")
+if auto_compile:
+    st.caption("Compiling SQL on change")
+else:
+    st.caption("Compiling SQL with control + enter")
 
 if choice not in st.session_state["model_rev"]:
     # Here is our LTS
@@ -468,6 +471,7 @@ if node.same_body(unmodified_node):
 
     with col_test:
         st.button("Test Compiled Query", on_click=test_query)
+        st.caption("This will run the compiled SQL against your data warehouse")
 
     with col_select_1:
         limit = st.number_input(
@@ -479,7 +483,7 @@ else:
 
     with col_test:
         st.button("Test Compiled Query", on_click=test_query)
-        st.caption("This will run the compiled SQl against your data warehouse")
+        st.caption("This will run the compiled SQL against your data warehouse")
 
     with col_select_2:
         pk_opts = database_columns or list(model["columns"].keys())
@@ -512,7 +516,9 @@ if not st.session_state["sql_data"].empty:
     )
 else:
     st.write("")
-    st.write("Introspect the results of your workbench query")
+    st.markdown(
+        "> The results of your workbench query will show up here. Click `Test Compiled Query` to see the results. "
+    )
     st.write("")
 
 
@@ -528,8 +534,8 @@ def convert_df_to_csv(sql_data):
     },
     allow_output_mutation=True,
 )
-def build_profile_report(sql_data):
-    return sql_data.profile_report()
+def build_profile_report(sql_data: pd.DataFrame, minimal: bool):
+    return sql_data.profile_report(minimal=minimal)
 
 
 @st.cache(
@@ -538,12 +544,12 @@ def build_profile_report(sql_data):
         pandas_profiling.report.presentation.core.html.HTML: lambda _: compiled_node,
     }
 )
-def convert_profile_report_to_html(profiled_data):
+def convert_profile_report_to_html(profiled_data: pandas_profiling.ProfileReport) -> str:
     return profiled_data.to_html()
 
 
 st.write("")
-col_download, col_profile, _ = st.columns([1, 1, 3])
+col_download, col_profile, col_profile_opt = st.columns([1, 1, 3])
 with col_download:
     st.download_button(
         label="Download data as CSV",
@@ -553,15 +559,21 @@ with col_download:
     )
 with col_profile:
     st.button("Profile Data", key="do_profile")
+with col_profile_opt:
+    st.checkbox("Basic Profiler", key="do_profile_minimal")
+    st.caption(
+        "Useful for larger datasets, use the minimal pandas-profiling option for a simpler report"
+    )
 
 if st.session_state["do_profile"]:
-    pr = build_profile_report(st.session_state["sql_data"])
+    pr = build_profile_report(st.session_state["sql_data"], st.session_state["do_profile_minimal"])
     st_profile_report(pr, height=500)
     st.download_button(
         label="Download profile report",
         data=convert_profile_report_to_html(pr),
         file_name=f"{choice}_profile.html",
         mime="text/html",
+        key="query_result_downloader",
     )
     st.write("")
 
@@ -588,10 +600,87 @@ with st.expander("Edit documentation"):
 # ----------------------------------------------------------------
 
 st.subheader("Test Runner")
-for test in model["depends_on"]["nodes"]:
-    if test.startswith("test"):
-        st.write(test)
-st.write("Tests will be listed out here and can be executed and validated on the fly")
+st.write("Execute configured tests and validate results")
+
+if "test_results" not in st.session_state:
+    st.session_state["test_results"] = pd.DataFrame()
+
+if "test_meta" not in st.session_state:
+    st.session_state["test_meta"] = ""
+
+
+def run_test(test_node):
+    with st.session_state["adapter"].connection_named("dbt-osmosis-tester"):
+        test_sql = getattr(test_node, "compiled_sql", None)
+        if not test_sql:
+            compiled_test = (
+                st.session_state["adapter"]
+                .get_compiler()
+                .compile_node(test_node, st.session_state["manifest"])
+            )
+            test_sql = compiled_test.compiled_sql
+        test_results = st.session_state["adapter"].execute(
+            test_sql,
+            fetch=True,
+        )
+    table = test_results[1]
+    output = []
+    json_funcs = [c.jsonify for c in table._column_types]
+    for row in table._rows:
+        values = tuple(json_funcs[i](d) for i, d in enumerate(row))
+        output.append(OrderedDict(zip(row.keys(), values)))
+    st.session_state["test_meta"] = test_results[0]
+    st.session_state["test_results"] = pd.DataFrame(output)
+
+
+test_opts = {}
+for node, config in st.session_state["manifest"].nodes.items():
+    if config.resource_type == "test" and choice in config.depends_on.nodes:
+        test_opts[config.name] = config
+
+test_pick_col, test_result_col, test_kpi_col = st.columns([2, 1, 1])
+
+if test_opts:
+    with test_pick_col:
+        selected_test = st.selectbox("Model Test", list(test_opts.keys()), key="test_picker")
+        st.button(
+            "Run Test",
+            key="test_runner",
+            on_click=run_test,
+            kwargs={"test_node": test_opts[selected_test]},
+        )
+    test_record_count = len(st.session_state["test_results"].index)
+    with test_kpi_col:
+        if st.session_state["test_meta"]:
+            st.metric(label="Failing Records", value=test_record_count)
+            st.markdown("#### PASSED" if test_record_count == 0 else "#### FAILED")
+    with test_result_col:
+        if st.session_state["test_meta"]:
+            st.write("Completed Test Metadata")
+            st.caption(f"Model Name: {model['name']}")
+            st.caption(f"Test Name: {selected_test}")
+            if st.session_state["test_results"].empty:
+                st.caption("Test Result: **Passed**! No failing records detected")
+            else:
+                st.caption(f"Test Result: **Failed**! {test_record_count} failing records detected")
+    if st.session_state["test_meta"]:
+        with st.expander("Test Results", expanded=True):
+            st.write("Adapter Response")
+            st.write(st.session_state["test_meta"].__dict__)
+            st.write("")
+            st.write("Returned Data")
+            st.dataframe(st.session_state["test_results"])
+            st.write("")
+            st.download_button(
+                label="Download test results as CSV",
+                data=convert_df_to_csv(st.session_state["test_results"]),
+                file_name=f"{selected_test}.csv",
+                mime="text/csv",
+                key="test_result_downloader",
+            )
+            st.write("")
+else:
+    st.write(f"No tests found for model {choice}")
 
 # ----------------------------------------------------------------
 # MANIFEST INSPECTOR
