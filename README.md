@@ -14,7 +14,7 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
 [Workbench Reference](#Workbench)
 
-[CLI Reference](#Workbench)
+[CLI Reference](#CLI)
 
 ____
 
