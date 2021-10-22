@@ -16,7 +16,7 @@ import pandas_profiling
 # So include these imports here
 from dbt.contracts.graph import parsed
 from dbt.task.run import ModelRunner
-from dbt.exceptions import DatabaseException
+from dbt.exceptions import DatabaseException, CompilationException
 
 import dbt_osmosis.main
 
@@ -284,11 +284,14 @@ def get_database_columns(table):
 
 @st.cache
 def compile_node(current_node):
-    return (
-        st.session_state["adapter"]
-        .get_compiler()
-        .compile_node(current_node, st.session_state["manifest"])
-    )
+    try:
+        return (
+            st.session_state["adapter"]
+            .get_compiler()
+            .compile_node(current_node, st.session_state["manifest"])
+        )
+    except CompilationException:
+        return None
 
 
 @st.cache
@@ -349,18 +352,22 @@ else:
     columns_synced_with_db = False
 
 with compiled_viewer:
-    st.code(compiled_node.compiled_sql, language="sql")
+    if compiled_node:
+        st.code(compiled_node.compiled_sql, language="sql")
+    else:
+        st.warning("Invalid Jinja")
 
 with btn_container:
     pivot_layout_btn, build_model_btn, commit_changes_btn, revert_changes_btn = st.columns(4)
     with pivot_layout_btn:
         st.button("Pivot Layout", on_click=toggle_viewer)
     with build_model_btn:
-        st.button(
-            label=model_action(table_exists_in_db),
-            on_click=build_model,
-            kwargs={"target_node": compiled_node},
-        )
+        if compiled_node:
+            st.button(
+                label=model_action(table_exists_in_db),
+                on_click=build_model,
+                kwargs={"target_node": compiled_node},
+            )
     if not node.same_body(unmodified_node):
         with commit_changes_btn:
             st.button("Commit changes to file", on_click=save_model, kwargs={"target_model": model})
@@ -529,8 +536,9 @@ if node.same_body(unmodified_node):
     col_test, col_select_1, _ = st.columns([1, 1, 3])
 
     with col_test:
-        st.button("Test Compiled Query", on_click=test_query)
-        st.caption("This will run the compiled SQL against your data warehouse")
+        if compiled_node:
+            st.button("Test Compiled Query", on_click=test_query)
+            st.caption("This will run the compiled SQL against your data warehouse")
 
     with col_select_1:
         limit = st.number_input(
@@ -541,8 +549,9 @@ else:
     col_test, col_select_1, col_select_2 = st.columns([1, 1, 3])
 
     with col_test:
-        st.button("Test Compiled Query", on_click=test_query)
-        st.caption("This will run the compiled SQL against your data warehouse")
+        if compiled_node:
+            st.button("Test Compiled Query", on_click=test_query)
+            st.caption("This will run the compiled SQL against your data warehouse")
 
     with col_select_2:
         pk_opts = database_columns or list(model["columns"].keys())
@@ -554,8 +563,9 @@ else:
         )
 
     with col_test:
-        st.button("Calculate Row Level Diff", on_click=diff_query, kwargs={"primary_keys": pks})
-        st.caption("This will output the rows added or removed by changes made to the query")
+        if compiled_node:
+            st.button("Calculate Row Level Diff", on_click=diff_query, kwargs={"primary_keys": pks})
+            st.caption("This will output the rows added or removed by changes made to the query")
 
     with col_select_1:
         diff_engine = st.selectbox(
@@ -588,8 +598,9 @@ def convert_df_to_csv(sql_data):
 
 @st.cache(
     hash_funcs={
-        pandas_profiling.report.presentation.core.container.Container: lambda _: compiled_node,
-        pandas_profiling.report.presentation.core.html.HTML: lambda _: compiled_node,
+        pandas_profiling.report.presentation.core.container.Container: lambda _: compiled_node
+        or node,
+        pandas_profiling.report.presentation.core.html.HTML: lambda _: compiled_node or node,
     },
     allow_output_mutation=True,
 )
@@ -599,8 +610,9 @@ def build_profile_report(sql_data: pd.DataFrame, minimal: bool):
 
 @st.cache(
     hash_funcs={
-        pandas_profiling.report.presentation.core.container.Container: lambda _: compiled_node,
-        pandas_profiling.report.presentation.core.html.HTML: lambda _: compiled_node,
+        pandas_profiling.report.presentation.core.container.Container: lambda _: compiled_node
+        or node,
+        pandas_profiling.report.presentation.core.html.HTML: lambda _: compiled_node or node,
     }
 )
 def convert_profile_report_to_html(profiled_data: pandas_profiling.ProfileReport) -> str:
