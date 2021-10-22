@@ -88,7 +88,6 @@ from typing import (
     Iterator,
     Union,
 )
-import sys
 import subprocess
 
 import click
