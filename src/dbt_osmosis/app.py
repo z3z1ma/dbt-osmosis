@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_ace import st_ace
+from streamlit_ace import st_ace, THEMES
 from streamlit_pandas_profiling import st_profile_report
 
 from collections import OrderedDict
@@ -16,6 +16,7 @@ import pandas_profiling
 # So include these imports here
 from dbt.contracts.graph import parsed
 from dbt.task.run import ModelRunner
+from dbt.exceptions import DatabaseException
 
 import dbt_osmosis.main
 
@@ -23,25 +24,53 @@ import dbt_osmosis.main
 # CONFIG
 # ----------------------------------------------------------------
 
-st.set_page_config(layout="wide")
+st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 st.title("dbt-osmosis 🌊")
 profile_data = dbt_osmosis.main.get_raw_profiles()
 if "target_profile" not in st.session_state:
     st.session_state["target_profile"] = None
+    # Str
+    # Target profile, can be changed freely which invokes refresh_dbt() rebuilding manifest
 if "profiles_dir" not in st.session_state:
     st.session_state["profiles_dir"] = str(dbt_osmosis.main.DEFAULT_PROFILES_DIR)
+    # Str
+    # dbt profile dir saved from bootup form
 if "project_dir" not in st.session_state:
-    st.session_state["project_dir"] = str(Path().cwd())
-if "verified_project" not in st.session_state:
-    st.session_state["verified_project"] = False
-if "celebrate_good_times_oh_yeah" not in st.session_state:
-    st.session_state["celebrate_good_times_oh_yeah"] = False
+    cwd = Path().cwd()
+    root_path = Path("/")
+    while cwd != root_path:
+        project_file = cwd / "dbt_project.yml"
+        if project_file.exists():
+            break
+        cwd = cwd.parent
+    else:
+        cwd = Path().cwd()
+    st.session_state["project_dir"] = str(cwd)
+    # str
+    # dbt project directory saved from bootup form
 if "model_rev" not in st.session_state:
     st.session_state["model_rev"] = {}
+    # MutableMapping
+    # Stores model SQL when initially loaded and can ONLY be mutated by commiting a change
+    # This is used as the basis for reverting changes
 if "this_sql" not in st.session_state:
     st.session_state["this_sql"] = {}
+    # MutableMapping
+    # Key stores current model name, when selected model != key then we know model has changed
+    # Value stores current SQL from workbench as its updated
+if "failed_relation" not in st.session_state:
+    st.session_state["failed_relation"] = None
+    # None or DatabaseException
+if "failed_temp_relation" not in st.session_state:
+    st.session_state["failed_temp_relation"] = False
+    # Bool
+    # We use temp relations to determine output columns from a modified query
+    # If that op fails, we use this state to fork logic
 if "iter_state" not in st.session_state:
     st.session_state["iter_state"] = 0
+    # Int
+    # Iterate this to remount components forcing reload - used in editor during revert
+    # Only remounts components which interpolate this state var in their `key`
 
 
 def refresh_dbt():
@@ -123,7 +152,11 @@ if (
 st.sidebar.caption(
     "Use this if any updated assets in your project have not yet reflected in the workbench, for example: you add some generic tests to some models while osmosis workbench is running."
 )
-
+st.sidebar.write("")
+editor_theme = st.sidebar.selectbox("Editor Theme", THEMES, key="theme_picker")
+editor_lang = st.sidebar.selectbox(
+    "Editor Language", ("pgsql", "mysql", "sql", "sqlserver"), key="lang_picker"
+)
 
 # ----------------------------------------------------------------
 # MODEL IDE
@@ -134,6 +167,8 @@ st.subheader("Osmosis IDE 🛠️")
 
 if "hide_viewer" not in st.session_state:
     st.session_state["hide_viewer"] = False
+    # Bool
+    # This is used to pivot the editor layout
 
 
 def toggle_viewer():
@@ -142,6 +177,10 @@ def toggle_viewer():
 
 if "reset_model" not in st.session_state:
     st.session_state["reset_model"] = False
+    # Bool
+    # Set to true when `revert_model` is called; when editor component requests
+    # its body value, a switch iterates iter_state causing remount and updating display
+    # to the correctly reverted value
 
 
 def toggle_reset():
@@ -168,6 +207,7 @@ else:
 if choice not in st.session_state["model_rev"]:
     # Here is our LTS
     st.session_state["model_rev"][choice] = model.copy()
+    unmodified_node = parsed.ParsedModelNode._deserialize(st.session_state["model_rev"][choice])
 
 if st.session_state["this_sql"].get(choice) is None:
     st.session_state["this_sql"] = {}
@@ -189,21 +229,30 @@ def save_model(target_model):
     st.session_state["model_rev"][choice]["raw_sql"] = target_model["raw_sql"]
 
 
-def build_model(target_node):
+def build_model(target_node, is_temp=False):
     runner = ModelRunner(st.session_state["config"], st.session_state["adapter"], target_node, 1, 1)
     runner.before_execute()
-    result = runner.execute(target_node, st.session_state["manifest"])
-    runner.after_execute(result)
-    return st.session_state["adapter"].Relation.create_from(
-        st.session_state["config"], target_node, type=target_node.config.materialized
-    )
+    try:
+        result = runner.execute(target_node, st.session_state["manifest"])
+    except DatabaseException as err:
+        print(err)
+        st.session_state["failed_relation"] = err
+        if is_temp:
+            st.session_state["failed_temp_relation"] = True
+    else:
+        st.session_state["failed_relation"] = None
+        st.session_state["failed_temp_relation"] = False
+        runner.after_execute(result)
+        return st.session_state["adapter"].Relation.create_from(
+            st.session_state["config"], target_node, type=target_node.config.materialized
+        )
 
 
 def model_action(exists: bool) -> str:
     if exists:
-        return "Sync Database Model"
+        return "Update dbt Model in Database"
     else:
-        return "Build Database Model"
+        return "Build dbt Model in Database"
 
 
 def prepare_model(target_model):
@@ -213,8 +262,7 @@ def prepare_model(target_model):
             target_model["database"], target_model["schema"], target_model["name"]
         )
     table_exists_in_db = table is not None
-    columns_synced_with_db = False
-    return table, table_exists_in_db, columns_synced_with_db
+    return table, table_exists_in_db
 
 
 def get_model_sql(target_model):
@@ -225,106 +273,100 @@ def get_model_sql(target_model):
     return target_model["raw_sql"]
 
 
+@st.cache
+def get_database_columns(table):
+    with st.session_state["adapter"].connection_named("dbt-osmosis"):
+        database_columns = [
+            c.name for c in st.session_state["adapter"].get_columns_in_relation(table)
+        ]
+    return database_columns
+
+
+@st.cache
+def compile_node(current_node):
+    return (
+        st.session_state["adapter"]
+        .get_compiler()
+        .compile_node(current_node, st.session_state["manifest"])
+    )
+
+
+@st.cache
+def update_manifest_node(current_node):
+    st.session_state["manifest"].update_node(current_node)
+    st.session_state["manifest"].build_flat_graph()
+    return True
+
+
 st.write("")
+btn_container = st.container()
+
+db_res = st.session_state["failed_relation"]
+if isinstance(db_res, DatabaseException):
+    show_err_1 = st.error(f"Model materialization failed: {db_res}")
+    time.sleep(4.20)
+    st.session_state["failed_relation"] = None
+    show_err_1.empty()
+
 with st.container():
-    table, table_exists_in_db, columns_synced_with_db = prepare_model(model)
+
     if not st.session_state["hide_viewer"]:
         editor, viewer = st.columns(2)
         with editor:
-            st.button("Pivot Layout", on_click=toggle_viewer)
-            with st.expander("Edit Model"):
-                model["raw_sql"] = st_ace(
-                    value=get_model_sql(model),
-                    theme="twilight",
-                    language="pgsql",
-                    auto_update=auto_compile,
-                    key=f"dbt_ide_{st.session_state['iter_state']}",
-                )
-                st.session_state["this_sql"][choice] = model["raw_sql"]
-        unmodified_node = parsed.ParsedModelNode._deserialize(st.session_state["model_rev"][choice])
-        node = parsed.ParsedModelNode._deserialize(model)
-        st.session_state["manifest"].update_node(node)
-        st.session_state["manifest"].build_flat_graph()
-        with st.session_state["adapter"].connection_named("dbt-osmosis"):
-            compiled_node = (
-                st.session_state["adapter"]
-                .get_compiler()
-                .compile_node(node, st.session_state["manifest"])
-            )
-            if table_exists_in_db:
-                database_columns = [
-                    c.name for c in st.session_state["adapter"].get_columns_in_relation(table)
-                ]
-                columns_synced_with_db = True
-            else:
-                database_columns = list(model["columns"].keys())
-
+            model_editor = st.expander("Edit Model")
         with viewer:
-            if not node.same_body(unmodified_node):
-                st.info("Uncommitted changes detected in model")
-                st.button(
-                    "Commit changes to file", on_click=save_model, kwargs={"target_model": model}
-                )
-                st.button("Revert changes", on_click=revert_model, kwargs={"target_model": model})
-            st.button(
-                label=model_action(table_exists_in_db),
-                on_click=build_model,
-                kwargs={"target_node": compiled_node},
-            )
-            with st.expander("View Compiled SQL"):
-                st.code(compiled_node.compiled_sql, language="sql")
+            compiled_viewer = st.expander("View Compiled SQL")
 
     else:
-        show_compile_btn, build_model_btn, commit_changes_btn, revert_changes_btn = st.columns(4)
-        with show_compile_btn:
-            st.button("Pivot Layout", on_click=toggle_viewer)
 
-        unmodified_node = parsed.ParsedModelNode._deserialize(st.session_state["model_rev"][choice])
-        node = parsed.ParsedModelNode._deserialize(model)
-        st.session_state["manifest"].update_node(node)
-        with st.session_state["adapter"].connection_named("dbt-osmosis"):
-            compiled_node = (
-                st.session_state["adapter"]
-                .get_compiler()
-                .compile_node(node, st.session_state["manifest"])
-            )
-            if table_exists_in_db:
-                database_columns = [
-                    c.name for c in st.session_state["adapter"].get_columns_in_relation(table)
-                ]
-                columns_synced_with_db = True
-            else:
-                database_columns = list(model["columns"].keys())
+        model_editor = st.expander("Edit Model")
+        compiled_viewer = st.expander("View Compiled SQL")
 
-        with build_model_btn:
-            st.button(
-                label=model_action(table_exists_in_db),
-                on_click=build_model,
-                kwargs={"target_node": compiled_node},
-            )
 
-        if not node.same_body(unmodified_node):
-            st.info("Uncommitted changes detected in model")
-            with commit_changes_btn:
-                st.button(
-                    "Commit changes to file", on_click=save_model, kwargs={"target_model": model}
-                )
-            with revert_changes_btn:
-                st.button("Revert changes", on_click=revert_model, kwargs={"target_model": model})
+with model_editor:
+    model["raw_sql"] = st_ace(
+        value=get_model_sql(model),
+        theme=editor_theme,
+        language=editor_lang,
+        auto_update=auto_compile,
+        key=f"dbt_ide_{st.session_state['iter_state']}",
+    )
+    st.session_state["this_sql"][choice] = model["raw_sql"]
 
-        with st.expander("Edit Model"):
-            model["raw_sql"] = st_ace(
-                value=get_model_sql(model),
-                theme="twilight",
-                language="pgsql",
-                auto_update=auto_compile,
-                key=f"dbt_ide_full_{st.session_state['iter_state']}",
-            )
-            st.session_state["this_sql"][choice] = model["raw_sql"]
+unmodified_node = parsed.ParsedModelNode._deserialize(st.session_state["model_rev"][choice])
+node = parsed.ParsedModelNode._deserialize(model)
+manifest_node_current = update_manifest_node(node)
+compiled_node = compile_node(node)
 
-        with st.expander("View Compiled SQL"):
-            st.code(compiled_node.compiled_sql, language="sql")
+# Check for dbt.exceptions.FailedToConnectException(str(e)) here
+table, table_exists_in_db = prepare_model(model)
 
+if table_exists_in_db:
+    database_columns = get_database_columns(table)
+    columns_synced_with_db = True
+else:
+    database_columns = list(model["columns"].keys())
+    columns_synced_with_db = False
+
+with compiled_viewer:
+    st.code(compiled_node.compiled_sql, language="sql")
+
+with btn_container:
+    pivot_layout_btn, build_model_btn, commit_changes_btn, revert_changes_btn = st.columns(4)
+    with pivot_layout_btn:
+        st.button("Pivot Layout", on_click=toggle_viewer)
+    with build_model_btn:
+        st.button(
+            label=model_action(table_exists_in_db),
+            on_click=build_model,
+            kwargs={"target_node": compiled_node},
+        )
+    if not node.same_body(unmodified_node):
+        with commit_changes_btn:
+            st.button("Commit changes to file", on_click=save_model, kwargs={"target_model": model})
+        with revert_changes_btn:
+            st.button("Revert changes", on_click=revert_model, kwargs={"target_model": model})
+        st.info("Uncommitted changes detected in model")
 
 # ----------------------------------------------------------------
 # QUERY RESULT INSPECTOR
@@ -332,12 +374,18 @@ with st.container():
 
 if "sql_data" not in st.session_state:
     st.session_state["sql_data"] = pd.DataFrame()
+    # pd.DataFrame
+    # Stores query viewer output from either test or diff
 
 if "sql_query_info" not in st.session_state:
     st.session_state["sql_query_info"] = ""
+    # AdapterRepsonse
+    # Stores response from dbt adapter with contains minimal metadata
 
 if "sql_query_mode" not in st.session_state:
     st.session_state["sql_query_mode"] = "test"
+    # Str
+    # Track query viewer as having test query results or diff query results
 
 
 st.write("")
@@ -458,6 +506,7 @@ def diff_query(primary_keys: Sequence, diff_compute_engine: str = "database"):
                 select __diff, old.*
                 from old
                 inner join unioned on ({join_cond_removed})
+                --> limit {limit}
                 """,
                 fetch=True,
             )
@@ -477,7 +526,7 @@ def diff_query(primary_keys: Sequence, diff_compute_engine: str = "database"):
 
 
 if node.same_body(unmodified_node):
-    col_test, col_select_1, _ = st.columns([1, 2, 2])
+    col_test, col_select_1, _ = st.columns([1, 1, 3])
 
     with col_test:
         st.button("Test Compiled Query", on_click=test_query)
@@ -595,15 +644,27 @@ st.write("")
 st.subheader("Osmosis Docs Editor ✏️")
 st.write("")
 
+knowledge = dbt_osmosis.main.pass_down_knowledge(
+    dbt_osmosis.main.build_ancestor_tree(model, st.session_state["manifest"].flat_graph),
+    st.session_state["manifest"].flat_graph,
+)
+
 with st.expander("Edit documentation"):
     for column in database_columns:
         st.text_input(
             column,
-            value=model["columns"]
-            .get(column, {"description": "Not present in yaml"})
-            .get("description", "Not documented")
-            or "Not documented",
+            value=(
+                model["columns"]
+                .get(column, {"description": "Not present in yaml"})
+                .get("description", "Not documented")
+                or "Not documented"
+            ),
         )
+        progenitor = knowledge.get(column)
+        if progenitor:
+            st.write(progenitor)
+        else:
+            st.caption("This is the column's origin")
 
 # ----------------------------------------------------------------
 # Data Test Runner
@@ -614,9 +675,14 @@ st.write("Execute configured tests and validate results")
 
 if "test_results" not in st.session_state:
     st.session_state["test_results"] = pd.DataFrame()
+    # pd.DataFrame
+    # Stores data from executed test
 
 if "test_meta" not in st.session_state:
     st.session_state["test_meta"] = ""
+    # AdapterResponse
+    # Stores response from executed test query
+    # The truthiness of this is the switch which renders Test runner results section
 
 
 def run_test(test_node):
@@ -690,7 +756,8 @@ if test_opts:
             )
             st.write("")
 else:
-    st.write(f"No tests found for model {choice}")
+    st.markdown(f" > No tests found for model `{choice}`")
+    st.write("")
 
 # ----------------------------------------------------------------
 # MANIFEST INSPECTOR
