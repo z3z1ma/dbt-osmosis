@@ -28,15 +28,21 @@ The workbench is under active development. Feel free to open issues or discuss a
 dbt-osmosis workbench
 ```
 
-There is still more on the roadmap regarding robustness of diffs (currently we only see rows added/removed); and exceptions (which don't occur _too_ often) are piped to the app and displayed-- which is useful to a developer but not to an end user so we should use `st.warning` and `st.error` for pretty notifications and fork the the right logical path. 
+Press "r" to reload the workbench at any time.
+
+
 
 ✔️ dbt Model Editor
 
+✔️ Full control over model and workbench theme, light and dark mode
+
+✔️ Create or delete models from the workbench without switching context
+
 ✔️ Materialize Active Model in Warehouse
 
-✔️ Query Tester
+✔️ Query Tester, test the model you are working on for instant feedback
 
-✔️ SQL Model Data Diffs
+✔️ SQL Model Data Diffs, modify models with confidence like never before
 
   - Adding pandas engine and support for `MODIFIED` rows in addition to `ADDED` and `REMOVED`
 
@@ -44,11 +50,11 @@ There is still more on the roadmap regarding robustness of diffs (currently we o
 
 ✔️ Data Profiler (leverages pandas-profiling)
 
-⚠️ Doc Editor
+⚠️ Doc Editor (resolves basic column level lineage)
 
   - View only, modifications aren't committed yet
 
-✔️ Test Runner
+✔️ Test Runner, run dbt tests interactively and on the fly with the ability to download or inspect results and action
 
 ✔️ Manifest View
 
@@ -69,7 +75,7 @@ Select a target, models can also be materialized by executing the SQL against th
 
 **Edit and Save Models**
 
-See when there are uncommitted changes and commit them to file when ready, or revert to initial state.
+See when there are uncommitted changes and commit them to file when ready, or revert to initial state. Pivot the layout if you prefer a larger editor context or pivot it back to get side by side instant dbt jinja compilation to accelerate your learning
 
 ![pivot-uncommitted](/screenshots/osmosis_pivot_layout_uncommitted_changes.png?raw=true "dbt-osmosis Pivot Layout")
 
