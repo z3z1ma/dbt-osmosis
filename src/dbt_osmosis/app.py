@@ -8,6 +8,7 @@ from copy import deepcopy
 from typing import Sequence
 from pathlib import Path
 import time
+import os
 
 import numpy as np
 import pandas as pd
@@ -110,6 +111,12 @@ def refresh_dbt():
 # INIT STATE
 # ----------------------------------------------------------------
 
+
+def sync_bootup_state():
+    st.session_state["project_dir"] = st.session_state["proj_select"]
+    st.session_state["profiles_dir"] = st.session_state["prof_select"]
+
+
 if (
     "project" not in st.session_state
     or "profile" not in st.session_state
@@ -119,22 +126,27 @@ if (
 ):
     init_profile_val = st.session_state["profiles_dir"]
     init_project_val = st.session_state["project_dir"]
+    config_toast = st.empty()
     config_container = st.empty()
-    bootup_form = config_container.form("boot_up")
+    bootup_form = config_container.form("boot_up", clear_on_submit=True)
     st.session_state["profiles_dir"] = bootup_form.text_input(
         "Enter path to profiles.yml",
         value=init_profile_val,
-        key="prof_select",
+        key=f"prof_select",
     )
     st.session_state["project_dir"] = bootup_form.text_input(
         "Enter path to dbt_project.yml",
         value=init_project_val,
         key="proj_select",
     )
-    proceed = bootup_form.form_submit_button("Load Project")
-    if not proceed:
+    do_proceed = bootup_form.form_submit_button("Load Project", on_click=sync_bootup_state)
+    if not do_proceed or not (Path(st.session_state["project_dir"]) / "dbt_project.yml").exists():
+        if do_proceed:
+            config_toast.error("Invalid path")
         st.stop()
     config_container.empty()
+    config_toast.empty()
+    os.chdir(st.session_state["project_dir"])
     with st.spinner(text="Parsing profile and reading your dbt project 🦸"):
         LOADED = refresh_dbt()
 
@@ -199,7 +211,7 @@ def recurse_dirs(
     if opts is None:
         opts = []
     for path in list(filter(lambda f: f.is_dir(), Path(curr_dir).iterdir())):
-        opts.append(path)
+        opts.append(path.relative_to(Path(st.session_state["project"].project_root)))
         opts = recurse_dirs(path, opts, depth + 1)
     return opts
 
@@ -215,7 +227,7 @@ with modeller_creator.expander("Create or delete model"):
         model_dirs = st.session_state["project"].model_paths
     dir_opts = []
     for dir_ in model_dirs:
-        dir_opts.extend(recurse_dirs(dir_))
+        dir_opts.extend(recurse_dirs(Path(st.session_state["project"].project_root) / dir_))
 
     # Show opts
     new_model_dir: Sequence[Path] = st.selectbox(
@@ -486,11 +498,12 @@ def compile_node(current_node: parsed.ParsedModelNode) -> compiled.CompiledModel
         compiled.CompiledModelNode: Compiled NODE
     """
     try:
-        return (
-            st.session_state["adapter"]
-            .get_compiler()
-            .compile_node(current_node, st.session_state["manifest"])
-        )
+        with st.session_state["adapter"].connection_named("dbt-osmosis"):
+            return (
+                st.session_state["adapter"]
+                .get_compiler()
+                .compile_node(current_node, st.session_state["manifest"])
+            )
     except CompilationException:
         return None
 
