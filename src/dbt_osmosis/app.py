@@ -158,15 +158,13 @@ if (
 st.sidebar.header("Profiles")
 
 st.sidebar.write(
-    "Select a target profile used for materializing, compiling, and testing models. Can be updated at any time."
+    "Select a profile used for materializing, compiling, and testing models. Can be updated at any time."
 )
-for prof in profile_data:
-    st.session_state["target_profile"] = st.sidebar.radio(
-        f"Loaded profiles from {prof}",
-        [targ for targ in profile_data[prof]["outputs"]],
-        key="profile_selector",
-    )
-    break
+st.session_state["target_profile"] = st.sidebar.radio(
+    f"Loaded profiles from {st.session_state['project'].profile_name}",
+    [targ for targ in profile_data[st.session_state["project"].profile_name].get("outputs", [])],
+    key="profile_selector",
+)
 st.sidebar.markdown(f"Current Target: **{st.session_state['target_profile']}**")
 st.sidebar.write("")
 st.sidebar.write("Utility")
