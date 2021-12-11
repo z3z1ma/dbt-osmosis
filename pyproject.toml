@@ -23,7 +23,7 @@ repository = "https://github.com/z3z1ma/dbt-osmosis"
 [tool.poetry.dependencies]
 python = ">=3.7,<4.0"
 click = ">7"
-dbt = ">=0.19.0"
+dbt-core = ">=0.19.0"
 "ruamel.yaml" = "^0.17"
 rich = "^10"
 streamlit = "^1.0.0"
