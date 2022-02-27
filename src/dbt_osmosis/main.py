@@ -255,6 +255,46 @@ def update_undocumented_columns_with_prior_knowledge(
     return n_actions
 
 
+def update_columns_with_prior_attributes(
+    knowledge: Mapping, node: MutableMapping, model: MutableMapping
+) -> int:
+    """Update columns with inheritable tags, descriptions, and tests
+
+    Args:
+        undocumented_columns (Iterable): Iterable of undocumented columns
+        knowledge (Mapping): Accumulated and updated knowledge from ancestors
+        node (MutableMapping): A manifest.json model node
+        model (MutableMapping): A loaded schema file model
+
+    Returns:
+        int: Number of actions performed
+    """
+    n_actions = 0
+    for column, prior_knowledge in knowledge.items():
+        try:
+            node["columns"][column].update(prior_knowledge)
+            progenitor = node["columns"][column].pop("progenitor", "Unknown")
+            for model_column in model["columns"]:
+                if model_column["name"] == column:
+                    att = {}
+                    if prior_knowledge.get("tags"):
+                        att["tags"] = prior_knowledge["tags"]
+                    if prior_knowledge.get("meta"):
+                        att["meta"] = prior_knowledge["meta"]
+                    if prior_knowledge.get("tests"):
+                        att["tests"] = prior_knowledge["tests"]
+                    model_column.update(att)
+            n_actions += 1
+            logger().info(
+                ":light_bulb: Column %s is inheriting attributes from a progenitor (%s)",
+                column,
+                progenitor,
+            )
+        except KeyError:
+            pass
+    return n_actions
+
+
 def add_missing_cols_to_node_and_model(
     missing_columns: Iterable, node: MutableMapping, model: MutableMapping
 ) -> int:
@@ -322,8 +362,9 @@ def update_schema_file_and_node(
             n_cols_doc_inherited = update_undocumented_columns_with_prior_knowledge(
                 undocumented_columns, knowledge, node, model
             )
+            n_cols_inherit_attr = update_columns_with_prior_attributes(knowledge, node, model)
             n_cols_removed = remove_columns_not_in_database(extra_columns, node, model)
-            return n_cols_added, n_cols_doc_inherited, n_cols_removed
+            return n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_inherit_attr
     else:
         logger().info(":thumbs_up: No actions needed")
         return 0, 0, 0
@@ -527,6 +568,8 @@ def build_project_structure_update_plan(
                     )
                 else:
                     # Model Is Documented but Must be Migrated
+                    if not schema_file.current.exists():
+                        continue
                     schema = assert_schema_has_no_sources(yaml.load(schema_file.current))
                     models: Iterable[MutableMapping] = schema.get("models", [])
                     for model in models:
@@ -704,10 +747,11 @@ def validate_osmosis_config(node: MutableMapping) -> None:
     return osmosis_config
 
 
-def is_valid_model(node: MutableMapping, fqn: Optional[str] = None) -> bool:
+def is_valid_model(proj: str, node: MutableMapping, fqn: Optional[str] = None) -> bool:
     """Validates a node as being a targetable model. Validates both models and sources.
 
     Args:
+        proj (str): Project name
         node (MutableMapping): A manifest json node
         fqn (str, optional): Filter target
 
@@ -719,6 +763,7 @@ def is_valid_model(node: MutableMapping, fqn: Optional[str] = None) -> bool:
     logger().debug("%s: %s -> %s", node["resource_type"], fqn, node["fqn"][1:])
     return (
         node["resource_type"] in ("model", "source")
+        and node.get("package_name") == proj
         and node["config"].get("materialized", "source") != "ephemeral"
         and (len(node["fqn"][1:]) >= len(fqn.split(".")))
         and all(p1 == p2 for p1, p2 in zip(fqn.split("."), node["fqn"][1:]))
@@ -726,11 +771,12 @@ def is_valid_model(node: MutableMapping, fqn: Optional[str] = None) -> bool:
 
 
 def iter_valid_models(
-    nodes: MutableMapping, fqn: Optional[str] = None
+    proj: str, nodes: MutableMapping, fqn: Optional[str] = None
 ) -> Iterator[Tuple[str, MutableMapping]]:
     """Generates an iterator of valid models
 
     Args:
+        proj (str): The name of the target project
         nodes (MutableMapping): Nodes as passed from manifest["nodes"]
         fqn (str, optional): Filter targets
 
@@ -738,16 +784,21 @@ def iter_valid_models(
         Iterator[Tuple[str, MutableMapping]]: A generator of model ids and contents
     """
     for unique_id, node in nodes.items():
-        if is_valid_model(node, fqn):
+        if is_valid_model(proj, node, fqn):
             yield unique_id, node
 
 
 def build_schema_folder_map(
-    root: str, manifest: MutableMapping, fqn: Optional[str] = None, model_type: str = "nodes"
+    proj: str,
+    root: str,
+    manifest: MutableMapping,
+    fqn: Optional[str] = None,
+    model_type: str = "nodes",
 ) -> Dict[str, SchemaFile]:
     """Builds a mapping of models or sources to their existing and target schema file paths
 
     Args:
+        proj (str): The name of the project which is being actioned
         root (str): Root dbt project path
         manifest (MutableMapping): dbt manifest json artifact
         fqn (str, optional): Filter targets
@@ -762,7 +813,7 @@ def build_schema_folder_map(
     ), "Invalid model_type argument passed to build_schema_folder_map, expected one of ('nodes', 'sources')"
     schema_map = {}
     logger().info("...building project structure mapping in memory")
-    for unique_id, node in iter_valid_models(manifest[model_type], fqn):
+    for unique_id, node in iter_valid_models(proj, manifest[model_type], fqn):
         schema_path = resolve_schema_path(root, node)
         osmosis_config = validate_osmosis_config(node)
         if osmosis_config == "source":
@@ -835,6 +886,7 @@ def verify_connection(adapter: Adapter) -> Adapter:
 
 
 def propagate_documentation_downstream(
+    proj: str,
     schema_map: MutableMapping,
     manifest: MutableMapping,
     adapter: Adapter,
@@ -843,7 +895,7 @@ def propagate_documentation_downstream(
 ) -> None:
     yaml = YAML()
     with adapter.connection_named("dbt-osmosis"):
-        for unique_id, node in track(list(iter_valid_models(manifest["nodes"], fqn))):
+        for unique_id, node in track(list(iter_valid_models(proj, manifest["nodes"], fqn))):
             logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
 
             table = node["database"], node["schema"], node.get("alias", node["name"])
@@ -888,7 +940,12 @@ def propagate_documentation_downstream(
                 len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0
             ) and len(database_columns) > 0:
                 schema_file = yaml.load(schema_path.current)
-                (n_cols_added, n_cols_doc_inherited, n_cols_removed,) = update_schema_file_and_node(
+                (
+                    n_cols_added,
+                    n_cols_doc_inherited,
+                    n_cols_removed,
+                    n_cols_inherit_attr,
+                ) = update_schema_file_and_node(
                     knowledge,
                     missing_columns,
                     undocumented_columns,
@@ -896,7 +953,7 @@ def propagate_documentation_downstream(
                     node,
                     schema_file,
                 )
-                if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
+                if n_cols_added + n_cols_doc_inherited + n_cols_removed + n_cols_inherit_attr > 0:
                     with open(schema_path.current, "w", encoding="utf-8") as f:
                         yaml.dump(schema_file, f)
                     logger().info(":sparkles: Schema file updated")
@@ -924,6 +981,7 @@ def propagate_documentation_downstream(
 
 
 def synchronize_sources(
+    proj: str,
     schema_map: MutableMapping,
     manifest: MutableMapping,
     adapter: Adapter,
@@ -931,7 +989,7 @@ def synchronize_sources(
 ) -> None:
     yaml = YAML()
     with adapter.connection_named("dbt-osmosis"):
-        for unique_id, node in track(list(iter_valid_models(manifest["sources"], fqn))):
+        for unique_id, node in track(list(iter_valid_models(proj, manifest["sources"], fqn))):
             logger().info("\n:point_right: Processing source: [bold]%s[/bold] \n", unique_id)
 
             table = node["database"], node["schema"], node.get("identifier", node["name"])
@@ -966,7 +1024,12 @@ def synchronize_sources(
             n_cols_removed = 0
             if (len(missing_columns) > 0 or len(extra_columns) > 0) and len(database_columns) > 0:
                 schema_file = yaml.load(schema_path.current)
-                (n_cols_added, _, n_cols_removed,) = update_schema_file_and_node(
+                (
+                    n_cols_added,
+                    _,
+                    n_cols_removed,
+                    n_cols_inherit_attr,
+                ) = update_schema_file_and_node(
                     {},  # No ancestors to generate knowledge graph
                     missing_columns,
                     [],  # Undocumented columns have nothing upstream to inherit
@@ -974,7 +1037,7 @@ def synchronize_sources(
                     node,
                     schema_file,
                 )
-                if n_cols_added + n_cols_removed > 0:
+                if n_cols_added + n_cols_removed + n_cols_inherit_attr > 0:
                     with open(schema_path.current, "w", encoding="utf-8") as f:
                         yaml.dump(schema_file, f)
                     logger().info(":sparkles: Schema file updated")
@@ -1059,7 +1122,7 @@ def run(
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
+    schema_map = build_schema_folder_map(project.project_name, project.project_root, manifest, fqn)
     was_restructured = commit_project_restructure(
         build_project_structure_update_plan(schema_map, manifest, adapter)
     )
@@ -1067,10 +1130,14 @@ def run(
     if was_restructured:
         # Recompile on restructure
         manifest = compile_project_load_manifest(config)
-        schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
+        schema_map = build_schema_folder_map(
+            project.project_name, project.project_root, manifest, fqn
+        )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(schema_map, manifest, adapter, fqn, force_inheritance)
+    propagate_documentation_downstream(
+        project.project_name, schema_map, manifest, adapter, fqn, force_inheritance
+    )
 
 
 @cli.command(context_settings=CONTEXT)
@@ -1121,7 +1188,9 @@ def compose(
     # Conform project structure & bootstrap undocumented models injecting columns
     commit_project_restructure(
         build_project_structure_update_plan(
-            build_schema_folder_map(project.project_root, manifest, fqn), manifest, adapter
+            build_schema_folder_map(project.project_name, project.project_root, manifest, fqn),
+            manifest,
+            adapter,
         )
     )
 
@@ -1174,10 +1243,12 @@ def document(
     # Initialize dbt & prepare database adapter
     project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
     manifest = compile_project_load_manifest(config)
-    schema_map = build_schema_folder_map(project.project_root, manifest, fqn)
+    schema_map = build_schema_folder_map(project.project_name, project.project_root, manifest, fqn)
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(schema_map, manifest, adapter, fqn, force_inheritance)
+    propagate_documentation_downstream(
+        project.project_name, schema_map, manifest, adapter, fqn, force_inheritance
+    )
 
 
 @cli.group()
@@ -1245,7 +1316,9 @@ def extract(
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(project.project_root, manifest, model_type="sources")
+    schema_map = build_schema_folder_map(
+        project.project_name, project.project_root, manifest, model_type="sources"
+    )
 
     while True:
         click.echo("Found following files from other formats that you may import:")
@@ -1308,8 +1381,10 @@ def sync(
     manifest = compile_project_load_manifest(config)
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(project.project_root, manifest, fqn, "sources")
-    synchronize_sources(schema_map, manifest, adapter, fqn)
+    schema_map = build_schema_folder_map(
+        project.project_name, project.project_root, manifest, fqn, "sources"
+    )
+    synchronize_sources(project.project_name, schema_map, manifest, adapter, fqn)
 
 
 @cli.command(
