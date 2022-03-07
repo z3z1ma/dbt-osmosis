@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.4.8"
+version = "0.4.9"
 description = "This package exposes an interactive workbench for dbt modelling and serves to cascadingly populate column level documentation, build & conform schema files, and audit coverage."
 authors = ["z3z1ma <butler.alex2010@gmail.com>"]
 license = "Apache 2.0"
@@ -21,7 +21,7 @@ documentation = "https://github.com/z3z1ma/dbt-osmosis"
 repository = "https://github.com/z3z1ma/dbt-osmosis"
 
 [tool.poetry.dependencies]
-python = ">=3.7,<4.0"
+python = ">=3.8,<4.0"
 click = ">7"
 dbt-core = ">=0.20.0"
 "ruamel.yaml" = ">=0.17"
@@ -33,6 +33,9 @@ pydot = ">=1.4.2"
 streamlit-agraph = ">=0.0.35"
 streamlit-pandas-profiling = ">=0.1.2"
 streamlit-aggrid = ">=0.2.2"
+Flask = ">=1.1.2"
+itsdangerous = "2.0.1"
+dbt-client = "^0.1.2"
 
 [tool.poetry.dev-dependencies]
 black = ">=21.9b0"
@@ -53,3 +56,4 @@ line-length = 100
 
 [tool.poetry.scripts]
 dbt-osmosis = 'dbt_osmosis.main:cli'
+dbt-osmosis-proxy = 'dbt_osmosis.server:cli'
