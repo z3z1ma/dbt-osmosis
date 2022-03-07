@@ -1064,6 +1064,7 @@ def synchronize_sources(
 
 
 @click.group()
+@click.version_option()
 def cli():
     pass
 
