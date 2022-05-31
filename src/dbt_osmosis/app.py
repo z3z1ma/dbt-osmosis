@@ -1115,10 +1115,10 @@ if "test_meta" not in st.session_state:
 
 def run_test(
     test_node: Union[
-        compiled.CompiledSchemaTestNode,
-        compiled.CompiledDataTestNode,
-        parsed.ParsedSchemaTestNode,
-        parsed.ParsedDataTestNode,
+        compiled.CompiledSingularTestNode,
+        compiled.CompiledGenericTestNode,
+        parsed.ParsedSingularTestNode,
+        parsed.ParsedGenericTestNode,
     ]
 ):
     with st.session_state["adapter"].connection_named("dbt-osmosis-tester"):
