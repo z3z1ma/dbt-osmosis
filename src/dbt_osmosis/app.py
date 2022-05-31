@@ -31,7 +31,6 @@ import dbt_osmosis.main
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 st.title("dbt-osmosis 🌊")
-profile_data = dbt_osmosis.main.get_raw_profiles()
 if "target_profile" not in st.session_state:
     st.session_state["target_profile"] = None
     # Str
@@ -168,6 +167,7 @@ st.sidebar.header("Profiles")
 st.sidebar.write(
     "Select a profile used for materializing, compiling, and testing models. Can be updated at any time."
 )
+profile_data = dbt_osmosis.main.get_raw_profiles(st.session_state["profiles_dir"])
 st.session_state["target_profile"] = st.sidebar.radio(
     f"Loaded profiles from {st.session_state['project'].profile_name}",
     [targ for targ in profile_data[st.session_state["project"].profile_name].get("outputs", [])],
