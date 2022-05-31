@@ -102,6 +102,7 @@ import dbt.parser.manifest
 import dbt.exceptions
 from dbt.adapters.factory import get_adapter, register_adapter, reset_adapters, Adapter
 from dbt.tracking import disable_tracking
+from dbt.flags import set_from_args
 
 from .utils.logging import logger
 from .exceptions.osmosis import (
@@ -844,6 +845,7 @@ def load_dbt(
         profiles_dir=profiles_dir,
         target=target,
     )
+    set_from_args(args, args)
     project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
     config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
     reset_adapters()
