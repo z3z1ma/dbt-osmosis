@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.5.0"
+version = "0.5.1"
 description = "This package exposes an interactive workbench for dbt modelling and serves to cascadingly populate column level documentation, build & conform schema files, and audit coverage."
 authors = ["z3z1ma <butler.alex2010@gmail.com>"]
 license = "Apache 2.0"
@@ -23,7 +23,7 @@ repository = "https://github.com/z3z1ma/dbt-osmosis"
 [tool.poetry.dependencies]
 python = ">=3.8,<3.11"
 click = ">7"
-dbt-core = ">=0.20.0"
+dbt-core = ">=1"
 "ruamel.yaml" = ">=0.17"
 rich = ">=10"
 streamlit = ">=1.0.0"
@@ -46,7 +46,7 @@ coverage = ">=5.5"
 pylint = ">=2.11.1"
 nox = ">=2021.6.12"
 pytest-mock = ">=3.6.1"
-dbt-postgres = ">=0.20.0"
+dbt-bigquery = ">=1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
