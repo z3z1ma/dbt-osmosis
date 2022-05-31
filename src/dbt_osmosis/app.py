@@ -21,6 +21,7 @@ from dbt.contracts.graph import parsed, compiled
 from dbt.task.run import ModelRunner
 from dbt.exceptions import DatabaseException, CompilationException
 from dbt.adapters.base.relation import BaseRelation
+from dbt.flags import set_from_args
 
 import dbt_osmosis.main
 
@@ -117,6 +118,11 @@ def refresh_dbt():
 def sync_bootup_state():
     st.session_state["project_dir"] = st.session_state["proj_select"]
     st.session_state["profiles_dir"] = st.session_state["prof_select"]
+    args = dbt_osmosis.main.PseudoArgs(
+        profiles_dir=st.session_state["profiles_dir"],
+        project_dir=st.session_state["project_dir"],
+    )
+    set_from_args(args, args)
 
 
 if (
