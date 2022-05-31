@@ -102,7 +102,7 @@ def refresh_dbt():
         flat=False,
     )
     st.session_state["schema_map"] = dbt_osmosis.main.build_schema_folder_map(
-        st.session_state["project"].project_root,
+        st.session_state["project"].project_name,
         st.session_state["project"].project_root,
         st.session_state["manifest"].flat_graph,
     )
