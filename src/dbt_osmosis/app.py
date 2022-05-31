@@ -116,13 +116,13 @@ def refresh_dbt():
 
 
 def sync_bootup_state():
-    st.session_state["project_dir"] = st.session_state["proj_select"]
-    st.session_state["profiles_dir"] = st.session_state["prof_select"]
     args = dbt_osmosis.main.PseudoArgs(
         profiles_dir=st.session_state["profiles_dir"],
         project_dir=st.session_state["project_dir"],
     )
     set_from_args(args, args)
+    st.session_state["project_dir"] = st.session_state["proj_select"]
+    st.session_state["profiles_dir"] = st.session_state["prof_select"]
 
 
 if (
