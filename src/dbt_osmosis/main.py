@@ -477,7 +477,7 @@ def get_columns(database: str, schema: str, identifier: str, adapter: Adapter) -
     table = adapter.get_relation(database, schema, identifier)
     try:
         columns = [c.name for c in adapter.get_columns_in_relation(table)]
-    except dbt.exceptions.CompilationException:
+    except (dbt.exceptions.CompilationException, AttributeError):
         logger().info(
             ":cross_mark: Could not resolve relation %s.%s.%s against database active tables during introspective query",
             database,
