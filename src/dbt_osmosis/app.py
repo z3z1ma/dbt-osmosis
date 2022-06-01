@@ -595,6 +595,8 @@ with btn_container:
             run_model = st.button(
                 label=model_action(EXISTS),
             )
+        else:
+            run_model = False
     if not NODE.same_body(UNMODIFIED_NODE):
         with commit_changes_btn:
             st.button("Commit changes to file", on_click=save_model, kwargs={"target_model": model})
