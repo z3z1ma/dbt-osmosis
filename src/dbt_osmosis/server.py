@@ -1,9 +1,8 @@
 from typing import Dict
 
-from flask import Flask, request
-from dbt_client import DbtClient
 import click
-
+from dbt_client import DbtClient
+from flask import Flask, request
 
 app = Flask(__name__)
 

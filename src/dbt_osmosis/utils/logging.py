@@ -1,11 +1,10 @@
 import logging
-from logging.handlers import RotatingFileHandler
 from functools import lru_cache
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional, Union
 
 from rich.logging import RichHandler
-
 
 # Log File Format
 LOG_FILE_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"

@@ -1,27 +1,25 @@
-import streamlit as st
-from streamlit_ace import st_ace, THEMES
-from streamlit_pandas_profiling import st_profile_report
-
-from typing import Optional, Sequence, Union, Tuple, Any
+import os
+import time
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Sequence
 from pathlib import Path
-import time
-import os
+from typing import Any, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pandas_profiling
+import streamlit as st
+from dbt.adapters.base.relation import BaseRelation
 
 # The app does two things we do not scope ourselves to in the CLI:
 # Build Models, Compile Models
 # So include these imports here
-from dbt.contracts.graph import parsed, compiled
-from dbt.task.run import ModelRunner
-from dbt.exceptions import DatabaseException, CompilationException
-from dbt.adapters.base.relation import BaseRelation
+from dbt.contracts.graph import compiled, parsed
+from dbt.exceptions import CompilationException, DatabaseException
 from dbt.flags import set_from_args
+from dbt.task.run import ModelRunner
+from streamlit_ace import THEMES, st_ace
+from streamlit_pandas_profiling import st_profile_report
 
 import dbt_osmosis.main
 
