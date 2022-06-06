@@ -74,43 +74,39 @@ New workflow enabled!
 
 """
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import (
-    Optional,
-    Dict,
     Any,
-    List,
+    Dict,
     Iterable,
+    Iterator,
+    List,
     Mapping,
     MutableMapping,
+    Optional,
     Tuple,
-    Iterator,
     Union,
+    Set,
 )
-import subprocess
 
 import click
-from rich.progress import track
-from ruamel.yaml import YAML
 import dbt.config.profile
 import dbt.config.project
-import dbt.config.runtime
 import dbt.config.renderer
+import dbt.config.runtime
 import dbt.context.base
-import dbt.parser.manifest
 import dbt.exceptions
-from dbt.adapters.factory import get_adapter, register_adapter, reset_adapters, Adapter
-from dbt.tracking import disable_tracking
+import dbt.parser.manifest
+from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters
 from dbt.flags import set_from_args
+from dbt.tracking import disable_tracking
+from rich.progress import track
+from ruamel.yaml import YAML
 
+from .exceptions.osmosis import InvalidOsmosisConfig, MissingOsmosisConfig, SanitizationRequired
 from .utils.logging import logger
-from .exceptions.osmosis import (
-    InvalidOsmosisConfig,
-    MissingOsmosisConfig,
-    SanitizationRequired,
-)
-
 
 disable_tracking()
 
@@ -504,10 +500,10 @@ def bootstrap_existing_model(
     Returns:
         MutableMapping: Model is returned with injected columns or as is if no new columns found
     """
-    model_columns = [c["name"] for c in model.get("columns", [])]
+    model_columns = [c["name"].lower() for c in model.get("columns", [])]
     database_columns = get_columns(database, schema, identifier, adapter)
     for column in database_columns:
-        if column not in model_columns:
+        if column.lower() not in model_columns:
             logger().info(":syringe: Injecting column %s into dbt schema", column)
             model.setdefault("columns", []).append({"name": column})
     return model
@@ -900,9 +896,15 @@ def propagate_documentation_downstream(
         for unique_id, node in track(list(iter_valid_models(proj, manifest["nodes"], fqn))):
             logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
 
-            table = node["database"], node["schema"], node.get("alias", node["name"])
-            knowledge = pass_down_knowledge(build_ancestor_tree(node, manifest), manifest)
-            schema_path = schema_map.get(unique_id)
+            table: Tuple[str, str, str] = (
+                node["database"],
+                node["schema"],
+                node.get("alias", node["name"]),
+            )
+            knowledge: Dict[str, Any] = pass_down_knowledge(
+                build_ancestor_tree(node, manifest), manifest
+            )
+            schema_path: Optional[str] = schema_map.get(unique_id)
 
             if schema_path is None:
                 logger().info(
@@ -911,9 +913,9 @@ def propagate_documentation_downstream(
                 continue
 
             # Build Sets
-            database_columns = set(get_columns(*table, adapter))
-            dbt_columns = set(column_name for column_name in node["columns"])
-            documented_columns = set(get_documented_columns(dbt_columns, node))
+            database_columns: Set[str] = set(get_columns(*table, adapter))
+            dbt_columns: Set[str] = set(column_name for column_name in node["columns"])
+            documented_columns: Set[str] = set(get_documented_columns(dbt_columns, node))
 
             if not database_columns:
                 # Note to user we are using dbt columns as source since we did not resolve them from db
@@ -924,11 +926,19 @@ def propagate_documentation_downstream(
                 database_columns = dbt_columns
 
             # Action
-            missing_columns = database_columns - dbt_columns
+            missing_columns = [
+                x for x in database_columns if x.lower() not in (y.lower() for y in dbt_columns)
+            ]
             """Columns in database not in dbt -- will be injected into schema file"""
-            undocumented_columns = database_columns - documented_columns
+            undocumented_columns = [
+                x
+                for x in database_columns
+                if x.lower() not in (y.lower() for y in documented_columns)
+            ]
             """Columns missing documentation -- descriptions will be inherited and injected into schema file where prior knowledge exists"""
-            extra_columns = dbt_columns - database_columns
+            extra_columns = [
+                x for x in dbt_columns if x.lower() not in (y.lower() for y in database_columns)
+            ]
             """Columns in schema file not in database -- will be removed from schema file"""
 
             if force_inheritance:
@@ -994,8 +1004,12 @@ def synchronize_sources(
         for unique_id, node in track(list(iter_valid_models(proj, manifest["sources"], fqn))):
             logger().info("\n:point_right: Processing source: [bold]%s[/bold] \n", unique_id)
 
-            table = node["database"], node["schema"], node.get("identifier", node["name"])
-            schema_path = schema_map.get(unique_id)
+            table: Tuple[str, str, str] = (
+                node["database"],
+                node["schema"],
+                node.get("alias", node["name"]),
+            )
+            schema_path: Optional[str] = schema_map.get(unique_id)
 
             if schema_path is None:
                 logger().info(
@@ -1004,9 +1018,9 @@ def synchronize_sources(
                 continue
 
             # Build Sets
-            database_columns = set(get_columns(*table, adapter))
-            dbt_columns = set(column_name for column_name in node["columns"])
-            documented_columns = set(get_documented_columns(dbt_columns, node))
+            database_columns: Set[str] = set(get_columns(*table, adapter))
+            dbt_columns: Set[str] = set(column_name for column_name in node["columns"])
+            documented_columns: Set[str] = set(get_documented_columns(dbt_columns, node))
 
             if not database_columns:
                 # Note to user we are using dbt columns as source since we did not resolve them from db
@@ -1017,9 +1031,13 @@ def synchronize_sources(
                 continue
 
             # Action
-            missing_columns = database_columns - dbt_columns
+            missing_columns = [
+                x for x in database_columns if x.lower() not in (y.lower() for y in dbt_columns)
+            ]
             """Columns in database not in dbt -- will be injected into schema file"""
-            extra_columns = dbt_columns - database_columns
+            extra_columns = [
+                x for x in dbt_columns if x.lower() not in (y.lower() for y in database_columns)
+            ]
             """Columns in schema file not in database -- will be removed from schema file"""
 
             n_cols_added = 0
