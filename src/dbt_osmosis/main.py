@@ -389,7 +389,7 @@ def diff(
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
 ):
-    """Column level documentation inheritance for existing models"""
+    """Diff a model based on git HEAD to working copy on disk"""
 
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
