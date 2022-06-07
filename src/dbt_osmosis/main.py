@@ -33,8 +33,10 @@ from typing import Optional
 
 import click
 
+from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.logging import logger
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis
+from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR,
+                                      CompilationException, DbtOsmosis)
 
 CONTEXT = {"max_content_width": 800}
 
@@ -328,6 +330,7 @@ def workbench(
     Pass the --options command to see streamlit specific options that can be passed to the app,
 
     """
+
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
     if "--options" in ctx.args:
@@ -348,20 +351,55 @@ def workbench(
     subprocess.run(["streamlit", "run", Path(__file__).parent / "app.py"] + ctx.args + script_args)
 
 
+@cli.command(context_settings=CONTEXT)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
+)
+@click.option(
+    "--profiles-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    default=DEFAULT_PROFILES_DIR,
+    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
+)
+@click.option(
+    "-t",
+    "--target",
+    type=click.STRING,
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
+)
+@click.option(
+    "-m",
+    "--model",
+    type=click.STRING,
+    required=True,
+    help="The model to edit in the workbench",
+)
+@click.option(
+    "--pk",
+    type=click.STRING,
+    required=True,
+    help="The model to edit in the workbench",
+)
+def diff(
+    model: str,
+    pk: str,
+    target: Optional[str] = None,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+):
+    """Column level documentation inheritance for existing models"""
+
+    logger().info(":water_wave: Executing dbt-osmosis\n")
+
+    runner = DbtOsmosis(
+        project_dir=project_dir,
+        profiles_dir=profiles_dir,
+        target=target,
+    )
+    diff_and_print_to_console(model, pk, runner)
+
+
 if __name__ == "__main__":
     cli()
-
-    # Programmatic Examples:
-
-    # runner = DbtOsmosis(
-    #    project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
-    #    dry_run=True,
-    #    target="prod",
-    # )
-    # output = runner.execute_macro("generate_source", {"schema_name": "github"})
-
-    # runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())
-
-    # runner.commit_project_restructure_to_disk()
-
-    # runner.propagate_documentation_downstream()
