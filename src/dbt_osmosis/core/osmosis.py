@@ -4,12 +4,14 @@ from pathlib import Path
 from typing import (Any, Dict, Iterable, Iterator, List, Mapping,
                     MutableMapping, Optional, Set, Tuple, Union)
 
+import agate
 import dbt.config.runtime as dbt_config
 import dbt.parser.manifest as dbt_parser
 from dbt.adapters.factory import (Adapter, get_adapter, register_adapter,
                                   reset_adapters)
+from dbt.contracts.connection import AdapterResponse
 from dbt.contracts.graph.manifest import ManifestNode, NodeType
-from dbt.contracts.graph.parsed import ColumnInfo
+from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
 from dbt.exceptions import CompilationException, RuntimeException
 from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
 from dbt.tracking import disable_tracking
@@ -170,10 +172,23 @@ class DbtOsmosis:
         return self.dbt.flat_graph
 
     def execute_macro(
-        self, macro: str, kwargs=None
-    ) -> Any:  # returns Macro `return` value from Jinja be it string, SQL, or dict
+        self,
+        macro: str,
+        kwargs: Optional[Dict[str, Any]] = None,
+        run_compiled_sql: bool = False,
+        fetch: bool = False,
+    ) -> Tuple[
+        str, Optional[AdapterResponse], Optional[agate.Table]
+    ]:  # returns Macro `return` value from Jinja be it string, SQL, or dict
         """Wraps adapter execute_macro"""
-        return self.adapter.execute_macro(macro_name=macro, manifest=self.dbt, kwargs=kwargs)
+        with self.adapter.connection_named("dbt-osmosis"):
+            compiled_macro = self.adapter.execute_macro(
+                macro_name=macro, manifest=self.dbt, kwargs=kwargs
+            )
+            if run_compiled_sql:
+                resp, table = self.adapter.execute(compiled_macro, fetch=fetch)
+                return compiled_macro, resp, table
+        return compiled_macro, None, None
 
     def _filter_model(self, node: ManifestNode) -> bool:
         """Validates a node as being a targetable model. Validates both models and sources."""
@@ -750,3 +765,8 @@ def get_raw_profiles(profiles_dir: Optional[str] = None) -> Dict[str, Any]:
     import dbt.config.profile as dbt_profile
 
     return dbt_profile.read_profile(profiles_dir or DEFAULT_PROFILES_DIR)
+
+
+def uncompile_node(node: ManifestNode) -> ManifestNode:
+    """Uncompile a node by removing the compiled_resource_path and compiled_resource_hash"""
+    return ParsedModelNode.from_dict(node.to_dict())
