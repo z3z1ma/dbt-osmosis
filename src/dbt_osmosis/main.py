@@ -25,53 +25,6 @@ Propagate existing column level documentation downward to children
             with the mutation (ie this definition is true upstream/better), or we can mark this column as a new progenitor aka source of 
             truth for the column's definition for the models children (the children would've inherited this definition anyway but the column 
             progenitor would resolve to a further upstream model -- this optimizes how engineers perform impact analysis)."
-
-
-Order Matters
-    1. Conform dbt project
-        -- configuration lives in `dbt_project.yml` --> we require our config to run, can be at root level of `models:` to apply a default convention to a project 
-        or can be folder by folder, follows dbt config resolution where config is overridden by scope. Lets validate this at the onset informing user of any folders 
-        missing config defined in dbt_project.yml models block and gracefully close 
-        Config is called +dbt-osmosis: "folder.yml" | "schema.yml" | "model.yml" | "schema/model.yml"
-    2. Bootstrap models to ensure all models exist
-    3. Recompile Manifest?
-    4. Propagate definitions 
-        - in a perfect world, we iterate the DAG from left to right mutating the in memory manifest to keep it in sync with yaml mutations
-
-Directives: 
-    Organize dbt project () -> non interactive
-    Bootstrap models () -> non interactive
-    Propagate definitions () -> interactive or non interactive
-    Do all of the above () -> interactive or non interactive
-
-
-Interactively bootstrap sources [lower priority but we have the pieces already]
-
-
-New workflow enabled!
-
-1.
-    build one dbt model or a bunch of them
-    run dbt-osmosis
-    get your perfectly prepared schema yamls built with as much of the definitions 
-        pre-populated as possible in exactly the right directories/files that
-        conform to a configured standard upheld and enforced across your dbt 
-        project on a dir by dir basis automatically -- using dbt_project.yml, nice
-    boom, mic drop
-
-2.
-    problem reported by stakeholder with data
-    identify column
-    run dbt-osmosis impact --model --column
-    find the originating model and action
-
-3.
-    need to score our documentation
-    run dbt-osmosis coverage --docs --min-cov 80
-    get a curated list of all the documentation to update
-        in your pre-bootstrapped dbt project
-    sip coffee and engage in documentation
-
 """
 
 import subprocess
@@ -96,12 +49,12 @@ import click
 import dbt.config.runtime as dbt_config
 import dbt.parser.manifest as dbt_parser
 from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters
-from dbt.contracts.graph.manifest import Manifest, ManifestNode, NodeType
+from dbt.contracts.graph.manifest import ManifestNode, NodeType
 from dbt.contracts.graph.parsed import ColumnInfo
-from dbt.exceptions import CompilationException
+from dbt.exceptions import CompilationException, RuntimeException
 from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
 from dbt.tracking import disable_tracking
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from rich.progress import track
 from ruamel.yaml import YAML
 
@@ -129,22 +82,6 @@ Total Documentation Coverage: {coverage}%
 Action Log:
 Columns Added to dbt: {n_cols_added}
 Column Knowledge Inherited: {n_cols_doc_inherited}
-Extra Columns Removed: {n_cols_removed}
-"""
-
-SOURCE_REPORT = """
-:white_check_mark: [bold]Audit Report[/bold]
--------------------------------
-
-Database: [bold green]{database}[/bold green]
-Schema: [bold green]{schema}[/bold green]
-Table: [bold green]{table}[/bold green]
-
-Total Columns in Database: {total_columns}
-Total Documentation Coverage: {coverage}%
-
-Action Log:
-Columns Added to dbt: {n_cols_added}
 Extra Columns Removed: {n_cols_removed}
 """
 
