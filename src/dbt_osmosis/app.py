@@ -12,13 +12,14 @@ import pandas as pd
 import pandas_profiling
 import streamlit as st
 from dbt.adapters.base.relation import BaseRelation
-from dbt.contracts.graph import compiled, parsed, manifest
+from dbt.contracts.graph import compiled, manifest, parsed
 from dbt.exceptions import CompilationException, DatabaseException
 from dbt.task.run import ModelRunner
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
+from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR, DbtOsmosis,
+                                      SchemaFile, get_raw_profiles)
 
 parser = argparse.ArgumentParser(description="dbt osmosis workbench")
 parser.add_argument("--profiles-dir", help="dbt profile directory")
