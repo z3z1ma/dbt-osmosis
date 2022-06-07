@@ -1138,14 +1138,16 @@ def workbench(ctx):
 
 
 if __name__ == "__main__":
-    # cli()
+    cli()
 
-    runner = DbtOsmosis(
-        project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
-        dry_run=True,
-        target="prod",
-    )
-    output = runner.execute_macro("generate_source", {"schema_name": "github"})
+    # Programmatic Examples:
+
+    # runner = DbtOsmosis(
+    #    project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
+    #    dry_run=True,
+    #    target="prod",
+    # )
+    # output = runner.execute_macro("generate_source", {"schema_name": "github"})
 
     # runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())
 
