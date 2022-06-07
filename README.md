@@ -11,6 +11,25 @@
 
 Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, we enforce user-defined organization for schema yml files in your dbt project automatically making it super tidy, we automatically inject models which are undocumented into the appropriate schema right where you expect it, and we expose a **workbench** which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (extremely performant compilation), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run dbt tests interactively & download results, and more. 
 
+```python
+# Programmatic Examples:
+
+runner = DbtOsmosis(
+    project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
+    dry_run=True,
+    target="prod",
+)
+
+output = runner.execute_macro("generate_source", {"schema_name": "github"})  # run a macro
+
+runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())  # review the generated plan
+
+runner.commit_project_restructure_to_disk()  # organize your dbt project based on declarative config
+
+runner.propagate_documentation_downstream()  # propagate column level documentation down the DAG
+
+diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  # leverage git to diff the output of a model from HEAD to your revision on disk to safely audit changes as you work
+```
 
 [Workbench Reference](#Workbench)
 
