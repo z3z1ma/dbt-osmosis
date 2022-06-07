@@ -75,7 +75,8 @@ New workflow enabled!
 """
 
 import subprocess
-from dataclasses import dataclass
+from enum import Enum
+from itertools import chain
 from pathlib import Path
 from typing import (
     Any,
@@ -86,27 +87,30 @@ from typing import (
     Mapping,
     MutableMapping,
     Optional,
+    Set,
     Tuple,
     Union,
-    Set,
 )
 
 import click
-import dbt.config.profile
-import dbt.config.project
-import dbt.config.renderer
-import dbt.config.runtime
-import dbt.context.base
-import dbt.exceptions
-import dbt.parser.manifest
+import dbt.config.runtime as dbt_config
+import dbt.parser.manifest as dbt_parser
 from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters
-from dbt.flags import set_from_args
+from dbt.contracts.graph.manifest import Manifest, ManifestNode, NodeType
+from dbt.contracts.graph.parsed import ColumnInfo
+from dbt.exceptions import CompilationException
+from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
 from dbt.tracking import disable_tracking
+from pydantic import BaseModel, Field
 from rich.progress import track
 from ruamel.yaml import YAML
 
-from .exceptions.osmosis import InvalidOsmosisConfig, MissingOsmosisConfig, SanitizationRequired
-from .utils.logging import logger
+from dbt_osmosis.exceptions.osmosis import (
+    InvalidOsmosisConfig,
+    MissingOsmosisConfig,
+    SanitizationRequired,
+)
+from dbt_osmosis.utils.logging import logger
 
 disable_tracking()
 
@@ -143,20 +147,23 @@ Action Log:
 Columns Added to dbt: {n_cols_added}
 Extra Columns Removed: {n_cols_removed}
 """
+
 CONTEXT = {"max_content_width": 800}
-UNDOCUMENTED_STR = [
+
+# TODO: Let user supply a custom config file / csv of strings which we consider "not-documented placeholders", these are just my own
+PLACEHOLDERS = [
     "Pending further documentation",
+    "Pending further documentation.",
+    "No description for this column",
     "No description for this column.",
+    "Not documented",
+    "Not documented.",
+    "Undefined",
+    "Undefined.",
     "",
 ]
-VALID_CONFIGS = [
-    "schema.yml",
-    "folder.yml",
-    "model.yml",
-    "schema/model.yml",
-]
+
 FILE_ADAPTER_POSTFIX = "://"
-DEFAULT_PROFILES_DIR = dbt.config.profile.DEFAULT_PROFILES_DIR
 
 
 class PseudoArgs:
@@ -178,8 +185,14 @@ class PseudoArgs:
         self.single_threaded = threads == 1
 
 
-@dataclass
-class SchemaFile:
+class OsmosisConfig(str, Enum):
+    SchemaYaml = "schema.yml"
+    FolderYaml = "folder.yml"
+    ModelYaml = "model.yml"
+    SchemaModelYaml = "schema/model.yml"
+
+
+class SchemaFile(BaseModel):
     target: Path
     current: Optional[Path] = None
 
@@ -188,899 +201,664 @@ class SchemaFile:
         return self.current == self.target
 
 
-def remove_columns_not_in_database(
-    extra_columns: Iterable, node: MutableMapping, model: MutableMapping
-) -> int:
-    """Removes columns found in dbt model that do not exist in database from both node and model simultaneously
+class RestructureQuantum(BaseModel):
+    output: Dict[str, Any] = {}
+    supersede: Dict[Path, List[str]] = {}
 
-    Args:
-        extra_columns (Iterable): Iterable of extra columns
-        node (MutableMapping): A manifest json node
-        model (MutableMapping): A schema file model
 
-    Returns:
-        int: Number of actions performed
-    """
-    n_actions = 0
-    for column in extra_columns:
-        node["columns"].pop(column, None)
-        found_ix = None
-        for ix, model_column in enumerate(model["columns"]):
-            if model_column["name"] == column:
-                found_ix = ix
-                break
+class DbtOsmosis:
+    def __init__(
+        self,
+        fqn: Optional[str] = None,
+        target: Optional[str] = None,
+        profiles_dir: Optional[str] = None,
+        project_dir: Optional[str] = None,
+        threads: Optional[int] = 1,
+        dry_run: bool = False,
+    ):
+        # Build pseudo args
+        args = PseudoArgs(
+            threads=threads,
+            target=target,
+            profiles_dir=profiles_dir,
+            project_dir=project_dir,
+        )
+
+        # Load dbt + verify connection to data warehhouse
+        set_from_args(args, args)
+        self.project, self.profile = dbt_config.RuntimeConfig.collect_parts(args)
+        self.config = dbt_config.RuntimeConfig.from_parts(self.project, self.profile, args)
+        reset_adapters()
+        register_adapter(self.config)
+        self.adapter = self._verify_connection(get_adapter(self.config))
+
+        # Parse project
+        self.dbt = dbt_parser.ManifestLoader.get_full_manifest(self.config)
+
+        # Selector Passed in From CLI
+        self.fqn = fqn
+
+        # Utilities
+        self.yaml = self._build_yaml_parser()
+        self.dry_run = dry_run
+
+    @staticmethod
+    def _verify_connection(adapter: Adapter) -> Adapter:
+        try:
+            with adapter.connection_named("debug"):
+                adapter.debug_query()
+        except Exception as exc:
+            raise Exception("Could not connect to Database") from exc
         else:
-            continue
-        model["columns"].pop(found_ix)
-        n_actions += 1
-        logger().info(":wrench: Removing column %s from dbt schema", column)
-    return n_actions
+            return adapter
 
+    @staticmethod
+    def _build_yaml_parser() -> YAML:
+        yaml = YAML()
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        yaml.width = 800
+        yaml.preserve_quotes = True
+        yaml.explicit_start = True
+        yaml.explicit_end = True
+        yaml.default_flow_style = False
+        return yaml
 
-def update_undocumented_columns_with_prior_knowledge(
-    undocumented_columns: Iterable, knowledge: Mapping, node: MutableMapping, model: MutableMapping
-) -> int:
-    """Update undocumented columns with prior knowledge in node and model simultaneously
+    @property
+    def project_name(self) -> str:
+        return self.project.project_name
 
-    Args:
-        undocumented_columns (Iterable): Iterable of undocumented columns
-        knowledge (Mapping): Accumulated and updated knowledge from ancestors
-        node (MutableMapping): A manifest.json model node
-        model (MutableMapping): A loaded schema file model
+    @property
+    def project_root(self) -> str:
+        return self.project.project_root
 
-    Returns:
-        int: Number of actions performed
-    """
-    n_actions = 0
-    for column in undocumented_columns:
+    def rebuild_dbt_manifest(self) -> None:
+        self.dbt = dbt_parser.ManifestLoader.get_full_manifest(self.config)
+
+    @property
+    def manifest(self) -> Dict[str, Any]:
+        return self.dbt.flat_graph
+
+    def execute_macro(
+        self, macro: str, kwargs=None
+    ) -> Any:  # returns Macro `return` value from Jinja be it string, SQL, or dict
+        """Wraps adapter execute_macro"""
+        return self.adapter.execute_macro(macro_name=macro, manifest=self.dbt, kwargs=kwargs)
+
+    def _filter_model(self, node: ManifestNode) -> bool:
+        """Validates a node as being a targetable model. Validates both models and sources."""
+        fqn = self.fqn or ".".join(node.fqn[1:])
+        fqn_parts = fqn.split(".")
+        logger().debug("%s: %s -> %s", node.resource_type, fqn, node.fqn[1:])
+        return (
+            # Verify Resource Type
+            node.resource_type in (NodeType.Model, NodeType.Source)
+            # Verify Package == Current Project
+            and node.package_name == self.project_name
+            # Verify Materialized is Not Ephemeral if NodeType is Model [via short-circuit]
+            and (node.resource_type != NodeType.Model or node.config.materialized != "ephemeral")
+            # Verify FQN Length [Always true if no fqn was supplied]
+            and len(node.fqn[1:]) >= len(fqn_parts)
+            # Verify FQN Matches Parts [Always true if no fqn was supplied]
+            and all(left == right for left, right in zip(fqn_parts, node.fqn[1:]))
+        )
+
+    def filtered_models(
+        self, subset: Optional[MutableMapping[str, ManifestNode]] = None
+    ) -> Iterator[Tuple[str, ManifestNode]]:
+        """Generates an iterator of valid models"""
+        for unique_id, dbt_node in (
+            subset.items() if subset else chain(self.dbt.nodes.items(), self.dbt.sources.items())
+        ):
+            if self._filter_model(dbt_node):
+                yield unique_id, dbt_node
+
+    def get_osmosis_config(self, node: ManifestNode) -> Optional[OsmosisConfig]:
+        """Validates a config string. If input is a source, we return the resource type str instead"""
+        if node.resource_type == NodeType.Source:
+            return None
+        osmosis_config = node.config.get("dbt-osmosis")
+        if not osmosis_config:
+            raise MissingOsmosisConfig(
+                f"Config not set for model {node.name}, we recommend setting the config at a directory level through the `dbt_project.yml`"
+            )
         try:
-            prior_knowledge = knowledge.get(column, {})
-            if prior_knowledge.get("description"):
-                node["columns"][column].update(prior_knowledge)
-                progenitor = node["columns"][column].pop("progenitor", "Unknown")
-                for model_column in model["columns"]:
-                    if model_column["name"] == column:
-                        model_column["description"] = prior_knowledge["description"]
-                n_actions += 1
-                logger().info(
-                    ":light_bulb: Column %s is inheriting knowledge from a progenitor (%s)",
-                    column,
-                    progenitor,
-                )
-        except KeyError:
-            pass
-    return n_actions
+            return OsmosisConfig(osmosis_config)
+        except ValueError as exc:
+            raise InvalidOsmosisConfig(
+                f"Invalid config for model {node.name}: {osmosis_config}"
+            ) from exc
 
+    def get_schema_path(self, node: ManifestNode) -> Optional[Path]:
+        """Resolve absolute schema file path for a manifest node"""
+        schema_path = None
+        if node.resource_type == NodeType.Model and node.patch_path:
+            schema_path: str = node.patch_path.partition(FILE_ADAPTER_POSTFIX)[-1]
+        elif node.resource_type == NodeType.Source:
+            if hasattr(node, "source_name"):
+                schema_path: str = node.path
+        if schema_path:
+            return Path(self.project_root).joinpath(schema_path)
 
-def update_columns_with_prior_attributes(
-    knowledge: Mapping, node: MutableMapping, model: MutableMapping
-) -> int:
-    """Update columns with inheritable tags, descriptions, and tests
+    def get_target_schema_path(self, node: ManifestNode) -> Path:
+        """Resolve the correct schema yml target based on the dbt-osmosis config for the model / directory"""
+        osmosis_config = self.get_osmosis_config(node)
+        if not osmosis_config:
+            return Path(node.root_path, node.original_file_path)
+        # Here we resolve file migration targets based on the config
+        if osmosis_config == OsmosisConfig.SchemaYaml:
+            schema = "schema"
+        elif osmosis_config == OsmosisConfig.FolderYaml:
+            schema = node.fqn[-2]
+        elif osmosis_config == OsmosisConfig.ModelYaml:
+            schema = node.name
+        elif osmosis_config == OsmosisConfig.SchemaModelYaml:
+            schema = "schema/" + node.name
+        else:
+            raise InvalidOsmosisConfig(f"Invalid dbt-osmosis config for model: {node.fqn}")
+        return Path(node.root_path, node.original_file_path).parent / Path(f"{schema}.yml")
 
-    Args:
-        undocumented_columns (Iterable): Iterable of undocumented columns
-        knowledge (Mapping): Accumulated and updated knowledge from ancestors
-        node (MutableMapping): A manifest.json model node
-        model (MutableMapping): A loaded schema file model
+    @staticmethod
+    def get_database_parts(node: ManifestNode) -> Tuple[str, str, str]:
+        return node.database, node.schema, getattr(node, "alias", node.name)
 
-    Returns:
-        int: Number of actions performed
-    """
-    n_actions = 0
-    for column, prior_knowledge in knowledge.items():
-        try:
-            node["columns"][column].update(prior_knowledge)
-            progenitor = node["columns"][column].pop("progenitor", "Unknown")
-            for model_column in model["columns"]:
-                if model_column["name"] == column:
-                    att = {}
-                    if prior_knowledge.get("tags"):
-                        att["tags"] = prior_knowledge["tags"]
-                    if prior_knowledge.get("meta"):
-                        att["meta"] = prior_knowledge["meta"]
-                    if prior_knowledge.get("tests"):
-                        att["tests"] = prior_knowledge["tests"]
-                    model_column.update(att)
-            n_actions += 1
+    def get_base_model(self, node: ManifestNode) -> Dict[str, Any]:
+        """Construct a base model object with model name, column names populated from database"""
+        columns = self.get_columns(node)
+        return {
+            "name": node.alias or node.name,
+            "columns": [{"name": column_name} for column_name in columns],
+        }
+
+    def bootstrap_existing_model(
+        self, model_documentation: Dict[str, Any], node: ManifestNode
+    ) -> Dict[str, Any]:
+        """Injects columns from database into existing model if not found"""
+        model_columns: List[str] = [
+            c["name"].lower() for c in model_documentation.get("columns", [])
+        ]
+        database_columns = self.get_columns(node)
+        for column in database_columns:
+            if column.lower() not in model_columns:
+                logger().info(":syringe: Injecting column %s into dbt schema", column)
+                model_documentation.setdefault("columns", []).append({"name": column})
+        return model_documentation
+
+    def get_columns(self, node: ManifestNode) -> List[str]:
+        """Get all columns in a list for a model"""
+        parts = self.get_database_parts(node)
+        table = self.adapter.get_relation(*parts)
+        columns = []
+        if not table:
             logger().info(
-                ":light_bulb: Column %s is inheriting attributes from a progenitor (%s)",
+                ":cross_mark: Relation %s.%s.%s does not exist in target database, cannot resolve columns",
+                *parts,
+            )
+            return columns
+        try:
+            columns = [c.name for c in self.adapter.get_columns_in_relation(table)]
+        except CompilationException as error:
+            logger().info(
+                ":cross_mark: Could not resolve relation %s.%s.%s against database active tables during introspective query: %s",
+                *parts,
+                str(error),
+            )
+        return columns
+
+    @staticmethod
+    def assert_schema_has_no_sources(schema: Mapping) -> Mapping:
+        """Inline assertion ensuring that a schema does not have a source key"""
+        if schema.get("sources"):
+            raise SanitizationRequired(
+                "Found `sources:` block in a models schema file. We require you separate sources in order to organize your project."
+            )
+        return schema
+
+    def build_schema_folder_mapping(
+        self,
+        target_node_type: Optional[Union[NodeType.Model, NodeType.Source]] = None,
+    ) -> Dict[str, SchemaFile]:
+        """Builds a mapping of models or sources to their existing and target schema file paths"""
+        if target_node_type == NodeType.Source:
+            # Source folder mapping is reserved for source importing
+            target_nodes = self.dbt.sources
+        elif target_node_type == NodeType.Model:
+            target_nodes = self.dbt.nodes
+        else:
+            target_nodes = {**self.dbt.nodes, **self.dbt.sources}
+        # Container for output
+        schema_map = {}
+        logger().info("...building project structure mapping in memory")
+        # Iterate over models and resolve current path vs declarative target path
+        for unique_id, dbt_node in self.filtered_models(target_nodes):
+            schema_path = self.get_schema_path(dbt_node)
+            osmosis_schema_path = self.get_target_schema_path(dbt_node)
+            schema_map[unique_id] = SchemaFile(target=osmosis_schema_path, current=schema_path)
+        return schema_map
+
+    def draft_project_structure_update_plan(self) -> Dict[Path, RestructureQuantum]:
+        """Build project structure update plan based on `dbt-osmosis:` configs set across dbt_project.yml and model files.
+        The update plan includes injection of undocumented models. Unless this plan is constructed and executed by the `commit_project_restructure` function,
+        dbt-osmosis will only operate on models it is aware of through the existing documentation.
+
+        Returns:
+            MutableMapping: Update plan where dict keys consist of targets and contents consist of outputs which match the contents of the `models` to be output in the
+            target file and supersede lists of what files are superseded by a migration
+        """
+
+        # Container for output
+        blueprint: Dict[Path, RestructureQuantum] = {}
+        logger().info(
+            ":chart_increasing: Searching project stucture for required updates and building action plan"
+        )
+        with self.adapter.connection_named("dbt-osmosis"):
+            for unique_id, schema_file in self.build_schema_folder_mapping(
+                target_node_type=NodeType.Model
+            ).items():
+                if not schema_file.is_valid:
+                    blueprint.setdefault(
+                        schema_file.target,
+                        RestructureQuantum(output={"version": 2, "models": []}, supersede={}),
+                    )
+                    node = self.dbt.nodes[unique_id]
+                    if schema_file.current is None:
+                        # Bootstrapping Undocumented Model
+                        blueprint[schema_file.target].output["models"].append(
+                            self.get_base_model(node)
+                        )
+                    else:
+                        # Model Is Documented but Must be Migrated
+                        if not schema_file.current.exists():
+                            continue
+                        # TODO: We avoid sources for complexity reasons but if we are opinionated, we don't have to
+                        schema = self.assert_schema_has_no_sources(
+                            self.yaml.load(schema_file.current)
+                        )
+                        models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
+                        for documented_model in models_in_file:
+                            if documented_model["name"] == node["name"]:
+                                # Bootstrapping Documented Model
+                                blueprint[schema_file.target]["output"]["models"].append(
+                                    self.bootstrap_existing_model(documented_model, node)
+                                )
+                                # Target to supersede current
+                                blueprint[schema_file.target].supersede.setdefault(
+                                    schema_file.current, []
+                                ).append(documented_model["name"])
+                                break
+                        else:
+                            ...  # Model not found at patch path -- We should pass on this for now
+                else:
+                    ...  # Valid schema file found for model -- We will update the columns in the `Document` task
+
+        return blueprint
+
+    def commit_project_restructure_to_disk(
+        self, blueprint: Optional[Dict[Path, RestructureQuantum]] = None
+    ) -> bool:
+        """Given a project restrucure plan of pathlib Paths to a mapping of output and supersedes which is in itself a mapping of Paths to model names,
+        commit changes to filesystem to conform project to defined structure as code fully or partially superseding existing models as needed.
+
+        Args:
+            blueprint (Dict[Path, RestructureQuantum]): Project restructure plan as typically created by `build_project_structure_update_plan`
+
+        Returns:
+            bool: True if the project was restructured, False if no action was required
+        """
+
+        # Build blueprint if not user supplied
+        if not blueprint:
+            blueprint = self.draft_project_structure_update_plan()
+
+        # Verify we have actions in the plan
+        if not blueprint:
+            logger().info(":1st_place_medal: Project structure approved")
+            return False
+
+        # Print plan for user auditability
+        self.pretty_print_restructure_plan(blueprint)
+
+        logger().info(
+            ":construction_worker: Executing action plan and conforming projecting schemas to defined structure"
+        )
+        for target, structure in blueprint.items():
+            if not target.exists():
+                # Build File
+                logger().info(":construction: Building schema file %s", target.name)
+                if not self.dry_run:
+                    target.parent.mkdir(exist_ok=True, parents=True)
+                    target.touch()
+                    self.yaml.dump(structure.output, target)
+
+            else:
+                # Update File
+                logger().info(":toolbox: Updating schema file %s", target.name)
+                target_schema: Dict[str, Any] = self.yaml.load(target)
+                if "version" not in target_schema:
+                    target_schema["version"] = 2
+                target_schema.setdefault("models", []).extend(structure.output["models"])
+                if not self.dry_run:
+                    self.yaml.dump(target_schema, target)
+
+            # Clean superseded schema files
+            for dir, models in structure.supersede.items():
+                preserved_models = []
+                raw_schema: Dict[str, Any] = self.yaml.load(dir)
+                models_marked_for_superseding = set(models)
+                models_in_schema = set(map(lambda mdl: mdl["name"], raw_schema.get("models", [])))
+                non_superseded_models = models_in_schema - models_marked_for_superseding
+                if len(non_superseded_models) == 0:
+                    logger().info(":rocket: Superseded schema file %s", dir.name)
+                    if not self.dry_run:
+                        dir.unlink(missing_ok=True)
+                else:
+                    for model in raw_schema["models"]:
+                        if model["name"] in non_superseded_models:
+                            preserved_models.append(model)
+                    raw_schema["models"] = preserved_models
+                    if not self.dry_run:
+                        self.yaml.dump(raw_schema, dir)
+                    logger().info(
+                        ":satellite: Model documentation migrated from %s to %s",
+                        dir.name,
+                        target.name,
+                    )
+
+        return True
+
+    @staticmethod
+    def pretty_print_restructure_plan(blueprint: Dict[Path, RestructureQuantum]) -> None:
+        logger().info(
+            list(
+                map(
+                    lambda plan: (blueprint[plan].supersede or "CREATE", "->", plan),
+                    blueprint.keys(),
+                )
+            )
+        )
+
+    def build_node_ancestor_tree(
+        self,
+        node: ManifestNode,
+        family_tree: Optional[Dict[str, List[str]]] = None,
+        members_found: Optional[List[str]] = None,
+        depth: int = 0,
+    ) -> Dict[str, List[str]]:
+        """Recursively build dictionary of parents in generational order"""
+        if family_tree is None:
+            family_tree = {}
+        if members_found is None:
+            members_found = []
+        for parent in node.depends_on.nodes:
+            member = self.dbt.nodes.get(parent, self.dbt.sources.get(parent))
+            if member and parent not in members_found:
+                family_tree.setdefault(f"generation_{depth}", []).append(parent)
+                members_found.append(parent)
+                # Recursion
+                family_tree = self.build_node_ancestor_tree(
+                    member, family_tree, members_found, depth + 1
+                )
+        return family_tree
+
+    def inherit_column_level_knowledge(
+        self,
+        family_tree: Dict[str, Any],
+    ) -> Dict[str, Dict[str, Any]]:
+        """Inherit knowledge from ancestors in reverse insertion order to ensure that the most recent ancestor is always the one to inherit from"""
+        knowledge: Dict[str, Dict[str, Any]] = {}
+        for generation in reversed(family_tree):
+            for ancestor in family_tree[generation]:
+                member: ManifestNode = self.dbt.nodes.get(ancestor, self.dbt.sources.get(ancestor))
+                if not member:
+                    continue
+                for name, info in member.columns.items():
+                    knowledge.setdefault(name, {"progenitor": ancestor})
+                    deserialized_info = info.to_dict()
+                    # Handle Info:
+                    # 1. tags are additive
+                    # 2. descriptions are overriden
+                    # 3. meta is merged
+                    # 4. tests are ignored until I am convinced those shouldn't be hand curated with love
+                    if deserialized_info["description"] in PLACEHOLDERS:
+                        deserialized_info.pop("description", None)
+                    deserialized_info["tags"] = list(
+                        set(deserialized_info.pop("tags", []) + knowledge[name].get("tags", []))
+                    )
+                    if not deserialized_info["tags"]:
+                        deserialized_info.pop("tags")  # poppin' tags like Macklemore
+                    deserialized_info["meta"] = {
+                        **knowledge[name].get("meta", {}),
+                        **deserialized_info["meta"],
+                    }
+                    if not deserialized_info["meta"]:
+                        deserialized_info.pop("meta")
+                    knowledge[name].update(deserialized_info)
+        return knowledge
+
+    def get_node_columns_with_inherited_knowledge(
+        self,
+        node: ManifestNode,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build a knowledgebase for the model based on iterating through ancestors"""
+        family_tree = self.build_node_ancestor_tree(node)
+        knowledge = self.inherit_column_level_knowledge(family_tree)
+        return knowledge
+
+    @staticmethod
+    def get_column_sets(
+        database_columns: Iterable[str],
+        yaml_columns: Iterable[str],
+        documented_columns: Iterable[str],
+    ) -> Tuple[List[str], List[str], List[str]]:
+        """Returns:
+        missing_columns: Columns in database not in dbt -- will be injected into schema file
+        undocumented_columns: Columns missing documentation -- descriptions will be inherited and injected into schema file where prior knowledge exists
+        extra_columns: Columns in schema file not in database -- will be removed from schema file
+        """
+        missing_columns = [
+            x for x in database_columns if x.lower() not in (y.lower() for y in yaml_columns)
+        ]
+        undocumented_columns = [
+            x for x in database_columns if x.lower() not in (y.lower() for y in documented_columns)
+        ]
+        extra_columns = [
+            x for x in yaml_columns if x.lower() not in (y.lower() for y in database_columns)
+        ]
+        return missing_columns, undocumented_columns, extra_columns
+
+    def propagate_documentation_downstream(self, force_inheritance: bool = False) -> None:
+        schema_map = self.build_schema_folder_mapping()
+        with self.adapter.connection_named("dbt-osmosis"):
+            for unique_id, node in track(list(self.filtered_models())):
+                logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
+                # Get schema file path, must exist to propagate documentation
+                schema_path: Optional[SchemaFile] = schema_map.get(unique_id)
+                if schema_path is None or schema_path.current is None:
+                    logger().info(
+                        ":bow: No valid schema file found for model %s", unique_id
+                    )  # We can't take action
+                    continue
+
+                # Build Sets
+                database_columns: Set[str] = set(self.get_columns(node))
+                yaml_columns: Set[str] = set(column for column in node.columns)
+
+                if not database_columns:
+                    logger().info(
+                        ":safety_vest: Unable to resolve columns in database, falling back to using yaml columns as base column set\n"
+                    )
+                    database_columns = yaml_columns
+
+                # Get documentated columns
+                documented_columns: Set[str] = set(
+                    column
+                    for column, info in node.columns.items()
+                    if info.description and info.description not in PLACEHOLDERS
+                )
+
+                # Queue
+                missing_columns, undocumented_columns, extra_columns = self.get_column_sets(
+                    database_columns, yaml_columns, documented_columns
+                )
+
+                if force_inheritance:
+                    # Consider all columns "undocumented" so that inheritance is not selective
+                    undocumented_columns = database_columns
+
+                # Engage
+                n_cols_added = 0
+                n_cols_doc_inherited = 0
+                n_cols_removed = 0
+                if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
+                    schema_file = self.yaml.load(schema_path.current)
+                    (
+                        n_cols_added,
+                        n_cols_doc_inherited,
+                        n_cols_removed,
+                    ) = self.update_schema_file_and_node(
+                        missing_columns,
+                        undocumented_columns,
+                        extra_columns,
+                        node,
+                        schema_file,
+                    )
+                    if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
+                        # Dump the mutated schema file back to the disk
+                        if not self.dry_run:
+                            self.yaml.dump(schema_file, schema_path.current)
+                        logger().info(":sparkles: Schema file updated")
+
+                # Print Audit Report
+                n_cols = float(len(database_columns))
+                n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
+                perc_coverage = (
+                    min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
+                    if n_cols > 0
+                    else "Unable to Determine"
+                )
+                logger().info(
+                    AUDIT_REPORT.format(
+                        database=node.database,
+                        schema=node.schema,
+                        table=node.name,
+                        total_columns=n_cols,
+                        n_cols_added=n_cols_added,
+                        n_cols_doc_inherited=n_cols_doc_inherited,
+                        n_cols_removed=n_cols_removed,
+                        coverage=perc_coverage,
+                    )
+                )
+
+    @staticmethod
+    def remove_columns_not_in_database(
+        extra_columns: Iterable[str],
+        node: ManifestNode,
+        yaml_file_model_section: Dict[str, Any],
+    ) -> int:
+        """Removes columns found in dbt model that do not exist in database from both node and model simultaneously
+        THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
+        changes_committed = 0
+        for column in extra_columns:
+            node.columns.pop(column, None)
+            yaml_file_model_section["columns"] = [
+                c for c in yaml_file_model_section["columns"] if c["name"] != column
+            ]
+            changes_committed += 1
+            logger().info(":wrench: Removing column %s from dbt schema", column)
+        return changes_committed
+
+    def update_undocumented_columns_with_prior_knowledge(
+        self,
+        undocumented_columns: Iterable[str],
+        node: ManifestNode,
+        yaml_file_model_section: Dict[str, Any],
+    ) -> int:
+        """Update undocumented columns with prior knowledge in node and model simultaneously
+        THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
+        knowledge = self.get_node_columns_with_inherited_knowledge(node)
+        inheritables = ("description", "tags", "meta")
+        changes_committed = 0
+        for column in undocumented_columns:
+            prior_knowledge = knowledge.get(column, {})
+            progenitor = prior_knowledge.pop("progenitor", "Unknown")
+            prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
+            if not prior_knowledge:
+                continue
+            if column not in node.columns:
+                node.columns[column] = ColumnInfo.from_dict({"name": column, **prior_knowledge})
+            else:
+                node.columns[column].replace(kwargs={"name": column, **prior_knowledge})
+            for model_column in yaml_file_model_section["columns"]:
+                if model_column["name"] == column:
+                    model_column.update(prior_knowledge)
+            changes_committed += 1
+            logger().info(
+                ":light_bulb: Column %s is inheriting knowledge from the lineage of progenitor (%s)",
                 column,
                 progenitor,
             )
-        except KeyError:
-            pass
-    return n_actions
+            logger().info(prior_knowledge)
+        return changes_committed
 
-
-def add_missing_cols_to_node_and_model(
-    missing_columns: Iterable, node: MutableMapping, model: MutableMapping
-) -> int:
-    """Add missing columns to node and model simultaneously
-
-    Args:
-        missing_columns (Iterable): An iterable of missing columns
-        node (MutableMapping): A manifest.json model node
-        model (MutableMapping): A loaded schema file model
-
-    Returns:
-        int: Number of actions performed
-    """
-    n_actions = 0
-    for column in missing_columns:
-        node["columns"][column] = {
-            "name": column,
-        }
-        model.setdefault("columns", []).append({"name": column})
-        n_actions += 1
-        logger().info(":syringe: Injecting column %s into dbt schema", column)
-    return n_actions
-
-
-def update_schema_file_and_node(
-    knowledge: Dict[str, Any],
-    missing_columns: Iterable,
-    undocumented_columns: Iterable,
-    extra_columns: Iterable,
-    node: Dict[str, Any],
-    schema_file: Dict[str, Any],
-) -> Tuple[int, int, int]:
-    """Take action on a schema file mirroring changes in the node. This function mutates both the `schema_file` and the
-    `node`.
-
-    Args:
-        knowledge (Dict[str, Any]): Model column knowledge
-        missing_columns (Iterable): Missing columns present in database not in dbt
-        undocumented_columns (Iterable): Columns in dbt which are not
-        extra_columns (Iterable): Columns which are in dbt but not in database
-        node (Dict[str, Any]): Loaded manifest.json node
-        schema_file (Dict[str, Any]): Input loaded schema file
-
-    Returns:
-        Tuple[int, int, int]: Returns a tuple of actions based on input sets; actions are added columns, inherited columns, removed columns
-    """
-    # We can extrapolate this to a general func
-    if node["resource_type"] == "source":
-        _schema_file = None
-        for src in schema_file.get("sources", []):
-            if src["name"] == node["source_name"]:
-                # Scope our pointer to a specific portion of the object
-                _schema_file = src
-        _schema_key = "tables"
-    else:
-        _schema_file = schema_file
-        _schema_key = "models"
-    if _schema_file is None:
-        return 0, 0, 0
-    for model in _schema_file[_schema_key]:
-        if model["name"] == node["name"]:
-            logger().info(":microscope: Looking for actions")
-            # Empty iterables in the first arg are simply no-ops
-            n_cols_added = add_missing_cols_to_node_and_model(missing_columns, node, model)
-            n_cols_doc_inherited = update_undocumented_columns_with_prior_knowledge(
-                undocumented_columns, knowledge, node, model
-            )
-            n_cols_inherit_attr = update_columns_with_prior_attributes(knowledge, node, model)
-            n_cols_removed = remove_columns_not_in_database(extra_columns, node, model)
-            return n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_inherit_attr
-    else:
-        logger().info(":thumbs_up: No actions needed")
-        return 0, 0, 0
-
-
-def commit_project_restructure(restructured_project: MutableMapping[Path, Any]) -> bool:
-    """Given a project restrucure plan of pathlib Paths to a mapping of output and supersedes which is in itself a mapping of Paths to model names,
-    commit changes to filesystem to conform project to defined structure as code fully or partially superseding existing models as needed.
-
-    Args:
-        restructured_project (MutableMapping[Path, Any]): Project restructure plan as typically created by `build_project_structure_update_plan`
-
-    Returns:
-        bool: True if the project was restructured, False if no action was required
-    """
-    yaml = YAML()
-
-    if not restructured_project:
-        logger().info(":1st_place_medal: Project structure approved")
-        return False
-
-    logger().info(
-        list(
-            map(
-                lambda plan: (restructured_project[plan]["supersede"], "->", plan),
-                restructured_project.keys(),
-            )
-        )
-    )
-
-    logger().info(
-        ":construction_worker: Executing action plan and conforming projecting schemas to defined structure"
-    )
-    for target, structure in restructured_project.items():
-        if not target.exists():
-            # Build File
-            logger().info(":construction: Building schema file %s", target.name)
-            target.parent.mkdir(exist_ok=True, parents=True)
-            target.touch()
-            with open(target, "w", encoding="utf-8") as f:
-                yaml.dump(structure["output"], f)
-
-        else:
-            # Update File
-            logger().info(":toolbox: Updating schema file %s", target.name)
-            target_schema = yaml.load(target)
-            if "version" not in target_schema:
-                target_schema["version"] = 2
-            target_schema.setdefault("models", []).extend(structure["output"]["models"])
-            with open(target, "w", encoding="utf-8") as f:
-                yaml.dump(target_schema, f)
-
-        # Clean superseded schema files
-        for dir, models in structure["supersede"].items():
-            preserved_models = []
-            raw_schema = yaml.load(dir)
-            models_marked_for_superseding = set(models)
-            models_in_schema = set(map(lambda mdl: mdl["name"], raw_schema.get("models", [])))
-            non_superseded_models = models_in_schema - models_marked_for_superseding
-            if len(non_superseded_models) == 0:
-                logger().info(":rocket: Superseded schema file %s", dir.name)
-                dir.unlink(missing_ok=True)
-            else:
-                for model in raw_schema["models"]:
-                    if model["name"] in non_superseded_models:
-                        preserved_models.append(model)
-                raw_schema["models"] = preserved_models
-                with open(dir, "w", encoding="utf-8") as f:
-                    yaml.dump(raw_schema, f)
-                logger().info(
-                    ":satellite: Model documentation migrated from %s to %s",
-                    dir.name,
-                    target.name,
-                )
-
-    return True
-
-
-def assert_schema_has_no_sources(schema: Mapping) -> Mapping:
-    """Asserts that a schema does not have a source key
-
-    Args:
-        schema (Mapping): Loaded schema file to scheck
-
-    Raises:
-        SanitizationRequired: Raises this error if we require the user to sanitize and separate models from sources file
-
-    Returns:
-        Mapping: Loaded schema is returned on success
-    """
-    if schema.get("sources"):
-        raise SanitizationRequired(
-            "Found `sources:` block in a models schema file. We require you separate sources in order to organize your project."
-        )
-    return schema
-
-
-def get_columns(database: str, schema: str, identifier: str, adapter: Adapter) -> Iterable:
-    """Get all columns in a list for a model
-
-    Args:
-        database (str): Database name
-        schema (str): Schema name
-        identifier (str): Model name
-        adapter (Adapter): dbt database adapter
-
-    Returns:
-        Iterable: List of column names for model from database
-    """
-    table = adapter.get_relation(database, schema, identifier)
-    try:
-        columns = [c.name for c in adapter.get_columns_in_relation(table)]
-    except (dbt.exceptions.CompilationException, AttributeError):
-        logger().info(
-            ":cross_mark: Could not resolve relation %s.%s.%s against database active tables during introspective query",
-            database,
-            schema,
-            identifier,
-        )
-        columns = []
-    return columns
-
-
-def bootstrap_existing_model(
-    model: MutableMapping, database: str, schema: str, identifier: str, adapter: Adapter
-) -> MutableMapping:
-    """Injects columns from database into existing model if not found
-
-    Args:
-        model (MutableMapping): Model node
-        database (str): Database name
-        schema (str): Schema name
-        identifier (str): Model name
-        adapter (Adapter): dbt database adapter
-
-    Returns:
-        MutableMapping: Model is returned with injected columns or as is if no new columns found
-    """
-    model_columns = [c["name"].lower() for c in model.get("columns", [])]
-    database_columns = get_columns(database, schema, identifier, adapter)
-    for column in database_columns:
-        if column.lower() not in model_columns:
+    @staticmethod
+    def add_missing_cols_to_node_and_model(
+        missing_columns: Iterable,
+        node: ManifestNode,
+        yaml_file_model_section: Dict[str, Any],
+    ) -> int:
+        """Add missing columns to node and model simultaneously
+        THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
+        changes_committed = 0
+        for column in missing_columns:
+            node.columns[column] = ColumnInfo.from_dict({"name": column})
+            yaml_file_model_section.setdefault("columns", []).append({"name": column})
+            changes_committed += 1
             logger().info(":syringe: Injecting column %s into dbt schema", column)
-            model.setdefault("columns", []).append({"name": column})
-    return model
+        return changes_committed
 
-
-def create_base_model(
-    database: str, schema: str, identifier: str, adapter: Adapter
-) -> MutableMapping:
-    """Creates a base model with model name, column names populated from database
-
-    Args:
-        database (str): Database name
-        schema (str): Schema name
-        identifier (str): Model name
-        adapter (Adapter): dbt database adapter
-
-    Returns:
-        MutableMapping: Base model with model name and column names populated
-    """
-    columns = get_columns(database, schema, identifier, adapter)
-    return {
-        "name": identifier,
-        "columns": [{"name": column_name} for column_name in columns],
-    }
-
-
-def build_project_structure_update_plan(
-    schema_map: MutableMapping, manifest: MutableMapping, adapter: Adapter
-) -> MutableMapping:
-    """Build project structure update plan based on `dbt-osmosis:` configs set across dbt_project.yml and model files.
-    The update plan includes injection of undocumented models. Unless this plan is constructed and executed by the `commit_project_restructure` function,
-    dbt-osmosis will only operate on models it is aware of through the existing documentation.
-
-    Args:
-        schema_map (MutableMapping): Mapping of model ids to SchemaFile objects which include path to schema and path to target
-        manifest (MutableMapping): A dbt manifest.json artifact
-        adapter (Adapter): dbt database adapter
-
-    Returns:
-        MutableMapping: Update plan where dict keys consist of targets and contents consist of outputs which match the contents of the `models` to be output in the
-        target file and supersede lists of what files are superseded by a migration
-    """
-    yaml = YAML()
-    proj_restructure_plan = {}
-    logger().info(
-        ":chart_increasing: Searching project stucture for required updates and building action plan"
-    )
-    with adapter.connection_named("dbt-osmosis"):
-        for unique_id, schema_file in schema_map.items():
-            if not schema_file.is_valid:
-                proj_restructure_plan.setdefault(
-                    schema_file.target, {"output": {"version": 2, "models": []}, "supersede": {}}
-                )
-                node = manifest["nodes"][unique_id]
-                if schema_file.current is None:
-                    # Bootstrapping Undocumented Model
-                    proj_restructure_plan[schema_file.target]["output"]["models"].append(
-                        create_base_model(node["database"], node["schema"], node["name"], adapter)
-                    )
-                else:
-                    # Model Is Documented but Must be Migrated
-                    if not schema_file.current.exists():
-                        continue
-                    schema = assert_schema_has_no_sources(yaml.load(schema_file.current))
-                    models: Iterable[MutableMapping] = schema.get("models", [])
-                    for model in models:
-                        if model["name"] == node["name"]:
-                            # Bootstrapping Documented Model
-                            proj_restructure_plan[schema_file.target]["output"]["models"].append(
-                                bootstrap_existing_model(
-                                    model, node["database"], node["schema"], node["name"], adapter
-                                )
-                            )
-                            # Target to supersede current
-                            proj_restructure_plan[schema_file.target]["supersede"].setdefault(
-                                schema_file.current, []
-                            ).append(model["name"])
-                            break
-                    else:
-                        ...  # Model not found at patch path -- We should pass on this for now
-            else:
-                ...  # Valid schema file found for model -- We will update the columns in the `Document` task
-
-    return proj_restructure_plan
-
-
-def get_documented_columns(dbt_columns: Iterable, node: MutableMapping) -> Iterable:
-    """Return all documented columns for a node based on columns existing in dbt schema file
-
-    Args:
-        dbt_columns (Iterable): dbt columns extracted from manifest as derived from dbt schema file
-        node (MutableMapping): A manifest json node representing a model
-
-    Returns:
-        set: A set of column names which are documented in the schema file
-    """
-    return [
-        column_name
-        for column_name in dbt_columns
-        if node["columns"].get(column_name, {}).get("description", "") not in UNDOCUMENTED_STR
-    ]
-
-
-def build_ancestor_tree(
-    node: MutableMapping,
-    manifest: MutableMapping,
-    family_tree: Optional[MutableMapping] = None,
-    members_found: Optional[List[str]] = None,
-    depth: int = 0,
-) -> MutableMapping:
-    """Recursively build dictionary of parents in generational order
-
-    Args:
-        node (MutableMapping): A manifest node from a loaded compiled manifest
-        manifest (MutableMapping): A fully compile manifest.json
-        family_tree (Optional[MutableMapping], optional): Used in recursion. Defaults to None.
-        members_found (Optional[List[str]]): Used in recursion. Defaults to None.
-        depth (int, optional): Used in recursion. Defaults to 0.
-
-    Returns:
-        MutableMapping: Mapping of parents keyed by generations removed
-    """
-    if family_tree is None:
-        family_tree = {}
-    if members_found is None:
-        members_found = []
-
-    for parent in node.get("depends_on", {}).get("nodes", []):
-        member = manifest["nodes"].get(parent, manifest["sources"].get(parent))
-        if member and parent not in members_found:
-            family_tree.setdefault(f"generation_{depth}", []).append(parent)
-            members_found.append(parent)
-            family_tree = build_ancestor_tree(
-                member, manifest, family_tree, members_found, depth + 1
-            )
-
-    return family_tree
-
-
-def pass_down_knowledge(
-    family_tree: MutableMapping,
-    manifest: MutableMapping,
-) -> MutableMapping:
-    """Build a knowledgebase for the model based on iterating through ancestors
-
-    Args:
-        family_tree (MutableMapping): Hash map of parents keyed by generation
-        manifest (MutableMapping): dbt Manifest
-
-    Returns:
-        MutableMapping: Mapping of columns to dbt Column representations
-    """
-    knowledge = {}
-    for generation in reversed(family_tree):
-        for ancestor in family_tree[generation]:
-            member = manifest["nodes"].get(ancestor, manifest["sources"].get(ancestor))
-            if not member:
-                continue
-            for column_name, column_details in member["columns"].items():
-                knowledge.setdefault(column_name, {"progenitor": ancestor})
-                if column_details.get("description", "") in UNDOCUMENTED_STR:
-                    column_details.pop("description", None)
-                knowledge[column_name].update(column_details)
-
-    return knowledge
-
-
-def resolve_schema_path(root_path: str, node: MutableMapping) -> Optional[Path]:
-    """Resolve absolute schema file path for a manifest node
-
-    Args:
-        root_path (str): Root dbt project path
-        node (MutableMapping): A manifest json node representing a model
-
-    Returns:
-        Optional[Path]: Path object representing resolved path to file where schema exists otherwise return None
-    """
-    schema_path = None
-    if node["resource_type"] == "model":
-        schema_path: str = node.get("patch_path")
-    elif node["resource_type"] == "source":
-        schema_path: str = node["source_name"] + FILE_ADAPTER_POSTFIX + node.get("path")
-    if schema_path:
-        schema_path = Path(root_path).joinpath(schema_path.split(FILE_ADAPTER_POSTFIX, 1)[1])
-    return schema_path
-
-
-def resolve_osmosis_target_schema_path(osmosis_config: str, node: MutableMapping) -> Path:
-    """Resolve the correct schema yml target based on the dbt-osmosis config for the model / directory
-
-    Args:
-        osmosis_config (str): config string as seen in `VALID_CONFIGS`
-        node (MutableMapping): A manifest json node representing a model
-
-    Raises:
-        InvalidOsmosisConfig: If no valid config is found
-
-    Returns:
-        Path: Path object representing resolved path to file where schema should exists
-    """
-    if osmosis_config == "schema.yml":
-        schema = "schema"
-    elif osmosis_config == "folder.yml":
-        schema = node["fqn"][-2]
-    elif osmosis_config == "model.yml":
-        schema = node["name"]
-    elif osmosis_config == "schema/model.yml":
-        schema = "schema/" + node["name"]
-    else:
-        raise InvalidOsmosisConfig("Invalid dbt-osmosis config for model")
-
-    return Path(node["root_path"], node["original_file_path"]).parent / Path(f"{schema}.yml")
-
-
-def validate_osmosis_config(node: MutableMapping) -> None:
-    """Validates a config string. If input is a source, we return the resource type str instead
-
-    Args:
-        node (MutableMapping): A manifest json node representing a model or source
-
-    Raises:
-        MissingOsmosisConfig: Thrown if no config is present for a node
-        InvalidOsmosisConfig: Thrown if an invalid config is present on a node under our key `dbt-osmosis`
-
-    Returns:
-        str: Validated config str
-    """
-    if node["resource_type"] == "source":
-        return node["resource_type"]
-    osmosis_config = node["config"].get("dbt-osmosis")
-    if not osmosis_config:
-        raise MissingOsmosisConfig(
-            f"Config not set for model {node['name']}, we recommend setting the config at a directory level through the `dbt_project.yml`"
-        )
-    if osmosis_config not in VALID_CONFIGS:
-        raise InvalidOsmosisConfig(f"Invalid dbt-osmosis config for model {node['name']}")
-
-    return osmosis_config
-
-
-def is_valid_model(proj: str, node: MutableMapping, fqn: Optional[str] = None) -> bool:
-    """Validates a node as being a targetable model. Validates both models and sources.
-
-    Args:
-        proj (str): Project name
-        node (MutableMapping): A manifest json node
-        fqn (str, optional): Filter target
-
-    Returns:
-        bool: returns true if the node is a valid targetable model
-    """
-    if fqn is None:
-        fqn = ".".join(node["fqn"][1:])
-    logger().debug("%s: %s -> %s", node["resource_type"], fqn, node["fqn"][1:])
-    return (
-        node["resource_type"] in ("model", "source")
-        and node.get("package_name") == proj
-        and node["config"].get("materialized", "source") != "ephemeral"
-        and (len(node["fqn"][1:]) >= len(fqn.split(".")))
-        and all(p1 == p2 for p1, p2 in zip(fqn.split("."), node["fqn"][1:]))
-    )
-
-
-def iter_valid_models(
-    proj: str, nodes: MutableMapping, fqn: Optional[str] = None
-) -> Iterator[Tuple[str, MutableMapping]]:
-    """Generates an iterator of valid models
-
-    Args:
-        proj (str): The name of the target project
-        nodes (MutableMapping): Nodes as passed from manifest["nodes"]
-        fqn (str, optional): Filter targets
-
-    Yields:
-        Iterator[Tuple[str, MutableMapping]]: A generator of model ids and contents
-    """
-    for unique_id, node in nodes.items():
-        if is_valid_model(proj, node, fqn):
-            yield unique_id, node
-
-
-def build_schema_folder_map(
-    proj: str,
-    root: str,
-    manifest: MutableMapping,
-    fqn: Optional[str] = None,
-    model_type: str = "nodes",
-) -> Dict[str, SchemaFile]:
-    """Builds a mapping of models or sources to their existing and target schema file paths
-
-    Args:
-        proj (str): The name of the project which is being actioned
-        root (str): Root dbt project path
-        manifest (MutableMapping): dbt manifest json artifact
-        fqn (str, optional): Filter targets
-        model_type (str, optional): Model type can be one of either `nodes` or `models`
-
-    Returns:
-        Dict[str, SchemaFile]: Mapping of models to their existing and target schema file paths
-    """
-    assert model_type in (
-        "nodes",
-        "sources",
-    ), "Invalid model_type argument passed to build_schema_folder_map, expected one of ('nodes', 'sources')"
-    schema_map = {}
-    logger().info("...building project structure mapping in memory")
-    for unique_id, node in iter_valid_models(proj, manifest[model_type], fqn):
-        schema_path = resolve_schema_path(root, node)
-        osmosis_config = validate_osmosis_config(node)
-        if osmosis_config == "source":
-            # For sources, we will keep the current path and target the same. We have no standards by which to adhere to regarding
-            # how users wish to organize source yamls
-            osmosis_schema_path = schema_path
+    def update_schema_file_and_node(
+        self,
+        missing_columns: Iterable[str],
+        undocumented_columns: Iterable[str],
+        extra_columns: Iterable[str],
+        node: ManifestNode,
+        yaml_file: Dict[str, Any],
+    ) -> Tuple[int, int, int]:
+        """Take action on a schema file mirroring changes in the node."""
+        # We can extrapolate this to a general func
+        noop = 0, 0, 0
+        if node.resource_type == NodeType.Source:
+            KEY = "tables"
+            yaml_file_models = None
+            for src in yaml_file.get("sources", []):
+                if src["name"] == node.source_name:
+                    # Scope our pointer to a specific portion of the object
+                    yaml_file_models = src
         else:
-            # For models, we will resolve the target path -- perhaps this logical fork moves into the function below
-            osmosis_schema_path = resolve_osmosis_target_schema_path(osmosis_config, node)
-        schema_map[unique_id] = SchemaFile(target=osmosis_schema_path, current=schema_path)
-
-    return schema_map
+            KEY = "models"
+            yaml_file_models = yaml_file
+        if yaml_file_models is None:
+            return noop
+        for yaml_file_model_section in yaml_file_models[KEY]:
+            if yaml_file_model_section["name"] == node.name:
+                logger().info(":microscope: Looking for actions")
+                n_cols_added = self.add_missing_cols_to_node_and_model(
+                    missing_columns, node, yaml_file_model_section
+                )
+                n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
+                    undocumented_columns, node, yaml_file_model_section
+                )
+                n_cols_removed = self.remove_columns_not_in_database(
+                    extra_columns, node, yaml_file_model_section
+                )
+                return n_cols_added, n_cols_doc_inherited, n_cols_removed
+        logger().info(":thumbs_up: No actions needed")
+        return noop
 
 
 def get_raw_profiles(profiles_dir: Optional[str] = None) -> Dict[str, Any]:
-    return dbt.config.profile.read_profile(profiles_dir or dbt.config.profile.DEFAULT_PROFILES_DIR)
+    import dbt.config.profile as dbt_profile
 
-
-def load_dbt(
-    threads: int = 1,
-    project_dir: Optional[str] = None,
-    profiles_dir: Optional[str] = None,
-    target: Optional[str] = None,
-):
-    args = PseudoArgs(
-        threads=threads,
-        project_dir=project_dir,
-        profiles_dir=profiles_dir,
-        target=target,
-    )
-    set_from_args(args, args)
-    project, profile = dbt.config.runtime.RuntimeConfig.collect_parts(args)
-    config = dbt.config.runtime.RuntimeConfig.from_parts(project, profile, args)
-    reset_adapters()
-    register_adapter(config)
-    adapter = verify_connection(get_adapter(config))
-    return project, profile, config, adapter
-
-
-def compile_project_load_manifest(
-    cfg: Optional[dbt.config.runtime.RuntimeConfig] = None,
-    flat: bool = True,
-    project_dir: Optional[str] = None,
-    profiles_dir: Optional[str] = None,
-    target: Optional[str] = None,
-) -> Union[MutableMapping, dbt.parser.manifest.Manifest]:
-    """Compiles dbt project and builds manifest json artifact in memory
-
-    Args:
-        cfg (Optional[RuntimeConfig]): dbt runtime config
-
-    Returns:
-        MutableMapping: Loaded manifest.json artifact
-    """
-    if not cfg:
-        _, _, cfg, _ = load_dbt(1, project_dir, profiles_dir, target)
-    if not flat:
-        return dbt.parser.manifest.ManifestLoader.get_full_manifest(cfg)
-    else:
-        return dbt.parser.manifest.ManifestLoader.get_full_manifest(cfg).flat_graph
-
-
-def verify_connection(adapter: Adapter) -> Adapter:
-    try:
-        with adapter.connection_named("debug"):
-            adapter.debug_query()
-    except Exception as exc:
-        raise Exception("Could not connect to Database") from exc
-    else:
-        return adapter
-
-
-def propagate_documentation_downstream(
-    proj: str,
-    schema_map: MutableMapping,
-    manifest: MutableMapping,
-    adapter: Adapter,
-    fqn: Optional[str] = None,
-    force_inheritance: bool = False,
-) -> None:
-    yaml = YAML()
-    with adapter.connection_named("dbt-osmosis"):
-        for unique_id, node in track(list(iter_valid_models(proj, manifest["nodes"], fqn))):
-            logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
-
-            table: Tuple[str, str, str] = (
-                node["database"],
-                node["schema"],
-                node.get("alias", node["name"]),
-            )
-            knowledge: Dict[str, Any] = pass_down_knowledge(
-                build_ancestor_tree(node, manifest), manifest
-            )
-            schema_path: Optional[str] = schema_map.get(unique_id)
-
-            if schema_path is None:
-                logger().info(
-                    ":bow: No schema file found for model %s", unique_id
-                )  # We can't take action
-                continue
-
-            # Build Sets
-            database_columns: Set[str] = set(get_columns(*table, adapter))
-            dbt_columns: Set[str] = set(column_name for column_name in node["columns"])
-            documented_columns: Set[str] = set(get_documented_columns(dbt_columns, node))
-
-            if not database_columns:
-                # Note to user we are using dbt columns as source since we did not resolve them from db
-                # Doing this means only `undocumented_columns` can be resolved to a non-empty set
-                logger().info(
-                    ":safety_vest: Unable to resolve columns in database, falling back to using manifest columns as base column set\n"
-                )
-                database_columns = dbt_columns
-
-            # Action
-            missing_columns = [
-                x for x in database_columns if x.lower() not in (y.lower() for y in dbt_columns)
-            ]
-            """Columns in database not in dbt -- will be injected into schema file"""
-            undocumented_columns = [
-                x
-                for x in database_columns
-                if x.lower() not in (y.lower() for y in documented_columns)
-            ]
-            """Columns missing documentation -- descriptions will be inherited and injected into schema file where prior knowledge exists"""
-            extra_columns = [
-                x for x in dbt_columns if x.lower() not in (y.lower() for y in database_columns)
-            ]
-            """Columns in schema file not in database -- will be removed from schema file"""
-
-            if force_inheritance:
-                # Consider all columns "undocumented" so that inheritance is not selective
-                undocumented_columns = database_columns
-
-            n_cols_added = 0
-            n_cols_doc_inherited = 0
-            n_cols_removed = 0
-            if (
-                len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0
-            ) and len(database_columns) > 0:
-                schema_file = yaml.load(schema_path.current)
-                (
-                    n_cols_added,
-                    n_cols_doc_inherited,
-                    n_cols_removed,
-                    n_cols_inherit_attr,
-                ) = update_schema_file_and_node(
-                    knowledge,
-                    missing_columns,
-                    undocumented_columns,
-                    extra_columns,
-                    node,
-                    schema_file,
-                )
-                if n_cols_added + n_cols_doc_inherited + n_cols_removed + n_cols_inherit_attr > 0:
-                    with open(schema_path.current, "w", encoding="utf-8") as f:
-                        yaml.dump(schema_file, f)
-                    logger().info(":sparkles: Schema file updated")
-
-            # Print Audit Report
-            n_cols = float(len(database_columns))
-            n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
-            perc_coverage = (
-                min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
-                if n_cols > 0
-                else "Unable to Determine"
-            )
-            logger().info(
-                AUDIT_REPORT.format(
-                    database=node["database"],
-                    schema=node["schema"],
-                    table=node["name"],
-                    total_columns=n_cols,
-                    n_cols_added=n_cols_added,
-                    n_cols_doc_inherited=n_cols_doc_inherited,
-                    n_cols_removed=n_cols_removed,
-                    coverage=perc_coverage,
-                )
-            )
-
-
-def synchronize_sources(
-    proj: str,
-    schema_map: MutableMapping,
-    manifest: MutableMapping,
-    adapter: Adapter,
-    fqn: Optional[str] = None,
-) -> None:
-    yaml = YAML()
-    with adapter.connection_named("dbt-osmosis"):
-        for unique_id, node in track(list(iter_valid_models(proj, manifest["sources"], fqn))):
-            logger().info("\n:point_right: Processing source: [bold]%s[/bold] \n", unique_id)
-
-            table: Tuple[str, str, str] = (
-                node["database"],
-                node["schema"],
-                node.get("alias", node["name"]),
-            )
-            schema_path: Optional[str] = schema_map.get(unique_id)
-
-            if schema_path is None:
-                logger().info(
-                    ":bow: No schema file found for source %s", unique_id
-                )  # We can't take action
-                continue
-
-            # Build Sets
-            database_columns: Set[str] = set(get_columns(*table, adapter))
-            dbt_columns: Set[str] = set(column_name for column_name in node["columns"])
-            documented_columns: Set[str] = set(get_documented_columns(dbt_columns, node))
-
-            if not database_columns:
-                # Note to user we are using dbt columns as source since we did not resolve them from db
-                # Doing this means only `undocumented_columns` can be resolved to a non-empty set
-                logger().info(
-                    ":safety_vest: Unable to resolve columns in database, skipping this source\n"
-                )
-                continue
-
-            # Action
-            missing_columns = [
-                x for x in database_columns if x.lower() not in (y.lower() for y in dbt_columns)
-            ]
-            """Columns in database not in dbt -- will be injected into schema file"""
-            extra_columns = [
-                x for x in dbt_columns if x.lower() not in (y.lower() for y in database_columns)
-            ]
-            """Columns in schema file not in database -- will be removed from schema file"""
-
-            n_cols_added = 0
-            n_cols_removed = 0
-            if (len(missing_columns) > 0 or len(extra_columns) > 0) and len(database_columns) > 0:
-                schema_file = yaml.load(schema_path.current)
-                (
-                    n_cols_added,
-                    _,
-                    n_cols_removed,
-                    n_cols_inherit_attr,
-                ) = update_schema_file_and_node(
-                    {},  # No ancestors to generate knowledge graph
-                    missing_columns,
-                    [],  # Undocumented columns have nothing upstream to inherit
-                    extra_columns,
-                    node,
-                    schema_file,
-                )
-                if n_cols_added + n_cols_removed + n_cols_inherit_attr > 0:
-                    with open(schema_path.current, "w", encoding="utf-8") as f:
-                        yaml.dump(schema_file, f)
-                    logger().info(":sparkles: Schema file updated")
-
-            # Print Audit Report
-            n_cols = float(len(database_columns))
-            n_cols_documented = float(len(documented_columns))
-            perc_coverage = (
-                min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
-                if n_cols > 0
-                else "Unable to Determine"
-            )
-            logger().info(
-                SOURCE_REPORT.format(
-                    database=node["database"],
-                    schema=node["schema"],
-                    table=node["name"],
-                    total_columns=n_cols,
-                    n_cols_added=n_cols_added,
-                    n_cols_removed=n_cols_removed,
-                    coverage=perc_coverage,
-                )
-            )
+    return dbt_profile.read_profile(profiles_dir or DEFAULT_PROFILES_DIR)
 
 
 @click.group()
@@ -1098,7 +876,7 @@ def cli():
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    default=DEFAULT_PROFILES_DIR,
     help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
@@ -1118,12 +896,19 @@ def cli():
     is_flag=True,
     help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
 )
+@click.option(
+    "-d",
+    "--dry-run",
+    is_flag=True,
+    help="If specified, no changes are committed to disk.",
+)
 def run(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
     force_inheritance: bool = False,
+    dry_run: bool = False,
 ):
     """Compose -> Document -> Audit
 
@@ -1138,27 +923,18 @@ def run(
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Initialize dbt & prepare database adapter
-    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
-    manifest = compile_project_load_manifest(config)
+    runner = DbtOsmosis(
+        project_dir=project_dir,
+        profiles_dir=profiles_dir,
+        target=target,
+        fqn=fqn,
+        dry_run=dry_run,
+    )
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(project.project_name, project.project_root, manifest, fqn)
-    was_restructured = commit_project_restructure(
-        build_project_structure_update_plan(schema_map, manifest, adapter)
-    )
-
-    if was_restructured:
-        # Recompile on restructure
-        manifest = compile_project_load_manifest(config)
-        schema_map = build_schema_folder_map(
-            project.project_name, project.project_root, manifest, fqn
-        )
-
-    # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(
-        project.project_name, schema_map, manifest, adapter, fqn, force_inheritance
-    )
+    if runner.commit_project_restructure_to_disk():
+        runner.rebuild_dbt_manifest()
+    runner.propagate_documentation_downstream(force_inheritance=force_inheritance)
 
 
 @cli.command(context_settings=CONTEXT)
@@ -1170,10 +946,11 @@ def run(
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    default=DEFAULT_PROFILES_DIR,
     help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
+    "-t",
     "--target",
     type=click.STRING,
     help="Which profile to load. Overrides setting in dbt_project.yml.",
@@ -1184,11 +961,18 @@ def run(
     type=click.STRING,
     help="Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
 )
+@click.option(
+    "-d",
+    "--dry-run",
+    is_flag=True,
+    help="If specified, no changes are committed to disk.",
+)
 def compose(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
+    dry_run: bool = False,
 ):
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -1202,18 +986,16 @@ def compose(
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Initialize dbt & prepare database adapter
-    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
-    manifest = compile_project_load_manifest(config)
+    runner = DbtOsmosis(
+        project_dir=project_dir,
+        profiles_dir=profiles_dir,
+        target=target,
+        fqn=fqn,
+        dry_run=dry_run,
+    )
 
     # Conform project structure & bootstrap undocumented models injecting columns
-    commit_project_restructure(
-        build_project_structure_update_plan(
-            build_schema_folder_map(project.project_name, project.project_root, manifest, fqn),
-            manifest,
-            adapter,
-        )
-    )
+    runner.commit_project_restructure_to_disk()
 
 
 @cli.command()
@@ -1231,10 +1013,11 @@ def audit():
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    default=DEFAULT_PROFILES_DIR,
     help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
+    "-t",
     "--target",
     type=click.STRING,
     help="Which profile to load. Overrides setting in dbt_project.yml.",
@@ -1251,25 +1034,33 @@ def audit():
     is_flag=True,
     help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
 )
+@click.option(
+    "-d",
+    "--dry-run",
+    is_flag=True,
+    help="If specified, no changes are committed to disk.",
+)
 def document(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
     force_inheritance: bool = False,
+    dry_run: bool = False,
 ):
     """Column level documentation inheritance for existing models"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Initialize dbt & prepare database adapter
-    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
-    manifest = compile_project_load_manifest(config)
-    schema_map = build_schema_folder_map(project.project_name, project.project_root, manifest, fqn)
+    runner = DbtOsmosis(
+        project_dir=project_dir,
+        profiles_dir=profiles_dir,
+        target=target,
+        fqn=fqn,
+        dry_run=dry_run,
+    )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    propagate_documentation_downstream(
-        project.project_name, schema_map, manifest, adapter, fqn, force_inheritance
-    )
+    runner.propagate_documentation_downstream(force_inheritance)
 
 
 @cli.group()
@@ -1287,28 +1078,19 @@ def sources():
 @click.option(
     "--profiles-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
+    default=DEFAULT_PROFILES_DIR,
     help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
 @click.option(
+    "--t",
     "--target",
     type=click.STRING,
     help="Which profile to load. Overrides setting in dbt_project.yml.",
 )
 @click.option(
-    "--database",
-    type=click.STRING,
-    help="The database to search for tables in",
-)
-@click.option(
     "--schema",
     type=click.STRING,
     help="the schema to search for tables in",
-)
-@click.option(
-    "--table-prefix",
-    type=click.STRING,
-    help="The pattern used to look for tables",
 )
 def extract(
     target: Optional[str] = None,
@@ -1332,81 +1114,6 @@ def extract(
 
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    # Initialize dbt & prepare database adapter
-    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
-    manifest = compile_project_load_manifest(config)
-
-    # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(
-        project.project_name, project.project_root, manifest, model_type="sources"
-    )
-
-    while True:
-        click.echo("Found following files from other formats that you may import:")
-        choices = list(schema_map.items())[1:10]
-        for i, (model, path) in enumerate(choices):
-            click.echo(f"{i}. {model}")
-        click.echo(f"9. next")
-        click.echo(f"10. previous")
-        choice = click.prompt(
-            "Please select:",
-            type=click.Choice([str(i) for i in range(len(choices) + 1)]),
-            show_default=False,
-        )
-        print(choice)
-
-
-@sources.command(context_settings=CONTEXT)
-@click.option(
-    "--project-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
-)
-@click.option(
-    "--profiles-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=dbt.config.profile.DEFAULT_PROFILES_DIR,
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
-)
-@click.option(
-    "--target",
-    type=click.STRING,
-    help="Which profile to load. Overrides setting in dbt_project.yml.",
-)
-@click.option(
-    "-f",
-    "--fqn",
-    type=click.STRING,
-    help="Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
-)
-def sync(
-    target: Optional[str] = None,
-    project_dir: Optional[str] = None,
-    profiles_dir: Optional[str] = None,
-    fqn: Optional[str] = None,
-):
-    """Synchronize existing schema file sources with database
-
-    \f
-    This command will take a source, query the database for columns, and inject it into the existing yaml removing unused columns if needed
-
-    Args:
-        target (Optional[str]): Profile target. Defaults to default target set in profile yml
-        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
-        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
-    """
-    logger().info(":water_wave: Executing dbt-osmosis\n")
-
-    # Initialize dbt & prepare database adapter
-    project, profile, config, adapter = load_dbt(1, project_dir, profiles_dir, target)
-    manifest = compile_project_load_manifest(config)
-
-    # Conform project structure & bootstrap undocumented models injecting columns
-    schema_map = build_schema_folder_map(
-        project.project_name, project.project_root, manifest, fqn, "sources"
-    )
-    synchronize_sources(project.project_name, schema_map, manifest, adapter, fqn)
-
 
 @cli.command(
     context_settings=dict(
@@ -1420,6 +1127,10 @@ def workbench(ctx):
 
     Pass the --options command to see streamlit specific options that can be passed to the app
     """
+    logger().warning(":stop: Under rework")
+    raise NotImplementedError(
+        "Please downgrade to the latest version on PyPi to continue to use the workbench. It is undergoing rework!"
+    )
     if "--options" in ctx.args:
         subprocess.run(["streamlit", "run", "--help"])
         ctx.exit()
@@ -1427,4 +1138,17 @@ def workbench(ctx):
 
 
 if __name__ == "__main__":
-    cli()
+    # cli()
+
+    runner = DbtOsmosis(
+        project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
+        dry_run=True,
+        target="prod",
+    )
+    output = runner.execute_macro("generate_source", {"schema_name": "github"})
+
+    # runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())
+
+    # runner.commit_project_restructure_to_disk()
+
+    # runner.propagate_documentation_downstream()

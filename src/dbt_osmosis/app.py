@@ -10,7 +10,6 @@ import pandas as pd
 import pandas_profiling
 import streamlit as st
 from dbt.adapters.base.relation import BaseRelation
-
 # The app does two things we do not scope ourselves to in the CLI:
 # Build Models, Compile Models
 # So include these imports here

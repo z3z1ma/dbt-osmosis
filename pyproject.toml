@@ -37,6 +37,7 @@ Flask = ">=1.1.2"
 itsdangerous = "2.0.1"
 dbt-client = "^0.1.2"
 scipy = "^1.8.1"
+pydantic = "^1.9.1"
 
 [tool.poetry.dev-dependencies]
 black = ">=21.9b0"
