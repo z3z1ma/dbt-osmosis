@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.5.1"
+version = "0.5.2"
 description = "This package exposes an interactive workbench for dbt modelling and serves to cascadingly populate column level documentation, build & conform schema files, and audit coverage."
 authors = ["z3z1ma <butler.alex2010@gmail.com>"]
 license = "Apache 2.0"
@@ -36,6 +36,7 @@ streamlit-aggrid = ">=0.2.2"
 dbt-client = "^0.1.2"
 scipy = "^1.8.1"
 pydantic = "^1.9.1"
+GitPython = "^3.1.27"
 
 [tool.poetry.dev-dependencies]
 black = ">=21.9b0"
