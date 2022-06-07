@@ -1,26 +1,48 @@
-import os
+import argparse
+import multiprocessing
+import sys
 import time
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pandas_profiling
 import streamlit as st
 from dbt.adapters.base.relation import BaseRelation
-# The app does two things we do not scope ourselves to in the CLI:
-# Build Models, Compile Models
-# So include these imports here
-from dbt.contracts.graph import compiled, parsed
+from dbt.contracts.graph import compiled, parsed, manifest
 from dbt.exceptions import CompilationException, DatabaseException
-from dbt.flags import set_from_args
 from dbt.task.run import ModelRunner
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
-import dbt_osmosis.main
+from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
+
+parser = argparse.ArgumentParser(description="dbt osmosis workbench")
+parser.add_argument("--profiles-dir", help="dbt profile directory")
+parser.add_argument("--project-dir", help="dbt project directory")
+parser.add_argument("-m", "--model", required=True, help="dbt model")
+args = vars(parser.parse_args(sys.argv[1:]))
+
+DBT = "dbt_osmosis_controller_interface"
+MAP = "dbt_osmosis_folder_mapping"
+
+BASE_NODE = "dbt_osmosis_base_node"
+FAILED_RELATION = "dbt_osmosis_failed_relation"
+PROJ_DIR = "dbt_osmosis_project_dir"
+PROF_DIR = "dbt_osmosis_profiles_dir"
+REVERT_MODEL = "dbt_osmosis_revert_model"
+TARGET_PROFILE = "dbt_osmosis_target_profile"
+DBT_DO_RELOAD = "dbt_osmosis_do_reload"
+THEME_PICKER = "dbt_osmosis_editor_theme"
+DIALECT_PICKER = "dbt_osmosis_dialect"
+DIALECTS = ("pgsql", "mysql", "sql", "sqlserver")
+HIDE_VIEWER = "dbt_osmosis_hide_viewer"
+PROFILE_SELECTOR = "dbt_osmosis_profile_selector"
+EDITOR_STATE_ITER_1 = "dbt_osmosis_iter_state_1"
+THIS_SQL = "dbt_osmosis_current_sql"
 
 # ----------------------------------------------------------------
 # CONFIG
@@ -28,81 +50,28 @@ import dbt_osmosis.main
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 st.title("dbt-osmosis 🌊")
-if "target_profile" not in st.session_state:
-    st.session_state["target_profile"] = None
-    # Str
-    # Target profile, can be changed freely which invokes refresh_dbt() rebuilding manifest
-if "profiles_dir" not in st.session_state:
-    st.session_state["profiles_dir"] = str(dbt_osmosis.main.DEFAULT_PROFILES_DIR)
-    # Str
-    # dbt profile dir saved from bootup form
-if "project_dir" not in st.session_state:
-    cwd = Path().cwd()
-    root_path = Path("/")
-    while cwd != root_path:
-        project_file = cwd / "dbt_project.yml"
-        if project_file.exists():
-            break
-        cwd = cwd.parent
+
+st.session_state.setdefault(PROJ_DIR, args["project_dir"] or str(Path.cwd()))
+st.session_state.setdefault(PROF_DIR, args["profiles_dir"] or DEFAULT_PROFILES_DIR)
+st.session_state.setdefault(FAILED_RELATION, None)
+st.session_state.setdefault(REVERT_MODEL, False)
+st.session_state.setdefault(HIDE_VIEWER, False)
+st.session_state.setdefault(EDITOR_STATE_ITER_1, 1)
+st.session_state.setdefault(THIS_SQL, "")
+
+
+def inject_dbt():
+    if DBT not in st.session_state:
+        dbt_ctx = DbtOsmosis(
+            project_dir=st.session_state[PROJ_DIR],
+            profiles_dir=st.session_state[PROF_DIR],
+        )
     else:
-        cwd = Path().cwd()
-    st.session_state["project_dir"] = str(cwd)
-    # str
-    # dbt project directory saved from bootup form
-if "model_rev" not in st.session_state:
-    st.session_state["model_rev"] = {}
-    # MutableMapping
-    # Stores model SQL when initially loaded and can ONLY be mutated by commiting a change
-    # This is used as the basis for reverting changes
-if "this_sql" not in st.session_state:
-    st.session_state["this_sql"] = {}
-    # MutableMapping
-    # Key stores current model name, when selected model != key then we know model has changed
-    # Value stores current SQL from workbench as its updated
-if "failed_relation" not in st.session_state:
-    st.session_state["failed_relation"] = None
-    # None or DatabaseException
-if "failed_temp_relation" not in st.session_state:
-    st.session_state["failed_temp_relation"] = False
-    # Bool
-    # We use temp relations to determine output columns from a modified query
-    # If that op fails, we use this state to fork logic
-if "iter_state" not in st.session_state:
-    st.session_state["iter_state"] = 0
-    # Int
-    # Iterate this to remount components forcing reload - used in editor during revert
-    # Only remounts components which interpolate this state var in their `key`
-if "new_model_name" not in st.session_state:
-    st.session_state["new_model_name"] = ""
-    # str
-    # Stores the name of a created model in the state so it can be automatically selected
-    # on refresh
-if "schema_map" not in st.session_state:
-    st.session_state["schema_map"] = {}
-    # dict
-    # Stores a mapping of model unique id to schema yml current location and target location
+        dbt_ctx: DbtOsmosis = st.session_state[DBT]
+        dbt_ctx.rebuild_dbt_manifest()
 
-
-def refresh_dbt():
-    (
-        st.session_state["project"],
-        st.session_state["profile"],
-        st.session_state["config"],
-        st.session_state["adapter"],
-    ) = dbt_osmosis.main.load_dbt(
-        project_dir=st.session_state["project_dir"],
-        profiles_dir=st.session_state["profiles_dir"],
-        target=st.session_state["target_profile"],
-    )
-    st.session_state["manifest"] = dbt_osmosis.main.compile_project_load_manifest(
-        cfg=st.session_state["config"],
-        flat=False,
-    )
-    st.session_state["schema_map"] = dbt_osmosis.main.build_schema_folder_map(
-        st.session_state["project"].project_name,
-        st.session_state["project"].project_root,
-        st.session_state["manifest"].flat_graph,
-    )
+    st.session_state[DBT] = dbt_ctx
+    st.session_state[MAP] = dbt_ctx.build_schema_folder_mapping()
     return True
 
 
@@ -110,50 +79,14 @@ def refresh_dbt():
 # INIT STATE
 # ----------------------------------------------------------------
 
-
-def sync_bootup_state():
-    args = dbt_osmosis.main.PseudoArgs(
-        profiles_dir=st.session_state["profiles_dir"],
-        project_dir=st.session_state["project_dir"],
-    )
-    set_from_args(args, args)
-    st.session_state["project_dir"] = st.session_state["proj_select"]
-    st.session_state["profiles_dir"] = st.session_state["prof_select"]
-
-
-if (
-    "project" not in st.session_state
-    or "profile" not in st.session_state
-    or "config" not in st.session_state
-    or "adapter" not in st.session_state
-    or "manifest" not in st.session_state
-):
-    init_profile_val = st.session_state["profiles_dir"]
-    init_project_val = st.session_state["project_dir"]
-    config_toast = st.empty()
-    config_container = st.empty()
-    bootup_form = config_container.form("boot_up", clear_on_submit=True)
-    st.session_state["profiles_dir"] = bootup_form.text_input(
-        "Enter path to profiles.yml",
-        value=init_profile_val,
-        key=f"prof_select",
-    )
-    st.session_state["project_dir"] = bootup_form.text_input(
-        "Enter path to dbt_project.yml",
-        value=init_project_val,
-        key="proj_select",
-    )
-    do_proceed = bootup_form.form_submit_button("Load Project", on_click=sync_bootup_state)
-    if not do_proceed or not (Path(st.session_state["project_dir"]) / "dbt_project.yml").exists():
-        if do_proceed:
-            config_toast.error("Invalid path")
-        st.stop()
-    config_container.empty()
-    config_toast.empty()
-    os.chdir(st.session_state["project_dir"])
-    with st.spinner(text="Parsing profile and reading your dbt project 🦸"):
-        LOADED = refresh_dbt()
-
+if DBT not in st.session_state:
+    inject_dbt()
+ctx: DbtOsmosis = st.session_state[DBT]
+schema_map: Dict[str, SchemaFile] = st.session_state[MAP]
+st.session_state.setdefault(TARGET_PROFILE, ctx.profile.target_name)
+base_node = ctx.dbt.ref_lookup.find(args["model"], package=None, manifest=ctx.dbt)
+st.session_state.setdefault(BASE_NODE, base_node)
+mut_node = deepcopy(st.session_state[BASE_NODE])
 
 # ----------------------------------------------------------------
 # SIDEBAR
@@ -164,29 +97,24 @@ st.sidebar.header("Profiles")
 st.sidebar.write(
     "Select a profile used for materializing, compiling, and testing models. Can be updated at any time."
 )
-profile_data = dbt_osmosis.main.get_raw_profiles(st.session_state["profiles_dir"])
-st.session_state["target_profile"] = st.sidebar.radio(
-    f"Loaded profiles from {st.session_state['project'].profile_name}",
-    [targ for targ in profile_data[st.session_state["project"].profile_name].get("outputs", [])],
-    key="profile_selector",
+dbt_profile_yml = get_raw_profiles(st.session_state[PROF_DIR])
+st.session_state[TARGET_PROFILE] = st.sidebar.radio(
+    f"Loaded profiles from {ctx.project.profile_name}",
+    [target for target in dbt_profile_yml[ctx.profile.profile_name].get("outputs", [])],
+    key=PROFILE_SELECTOR,
 )
-st.sidebar.markdown(f"Current Target: **{st.session_state['target_profile']}**")
+st.sidebar.markdown(f"Current Target: **{st.session_state[TARGET_PROFILE]}**")
 st.sidebar.write("")
 st.sidebar.write("Utility")
-st.sidebar.button("Reload dbt project", key="refresh_dbt_ctx")
-if (
-    st.session_state["profile"].target_name != st.session_state["target_profile"]
-    or st.session_state["refresh_dbt_ctx"]
-):
-    refresh_dbt()
+st.sidebar.button("Reload dbt project", key=DBT_DO_RELOAD)
+if ctx.profile.target_name != st.session_state[TARGET_PROFILE] or st.session_state[DBT_DO_RELOAD]:
+    inject_dbt()
 st.sidebar.caption(
     "Use this if any updated assets in your project have not yet reflected in the workbench, for example: you add some generic tests to some models while osmosis workbench is running."
 )
 st.sidebar.write("")
-editor_theme = st.sidebar.selectbox("Editor Theme", THEMES, key="theme_picker")
-editor_lang = st.sidebar.selectbox(
-    "Editor Language", ("pgsql", "mysql", "sql", "sqlserver"), key="lang_picker"
-)
+editor_theme = st.sidebar.selectbox("Editor Theme", THEMES, index=8, key=THEME_PICKER)
+editor_lang = st.sidebar.selectbox("Editor Language", DIALECTS, key=DIALECT_PICKER)
 
 # ----------------------------------------------------------------
 # MODEL IDE
@@ -194,240 +122,88 @@ editor_lang = st.sidebar.selectbox(
 
 st.write("")
 
-modeller_header, modeller_creator = st.columns(2)
-modeller_header.subheader("Osmosis IDE 🛠️")
 
-
-def recurse_dirs(
-    curr_dir: Path = Path().cwd(), opts: Optional[Sequence] = None, depth: Optional[int] = 0
-) -> Sequence[Path]:
-    """Resursively build a list of directories starting from input
-
-    Args:
-        curr_dir (Path, optional): Initial input directory. Defaults to current working dir
-        opts (Optional[Sequence], optional): Container list which to accumulates values. Defaults to None which instantiates new list.
-        depth (Optional[int], optional): Can be used in recursion to render interesting list vals using "."*depth for example. Defaults to 0.
-
-    Returns:
-        Sequence[Path]: List of directory paths
-    """
-    if opts is None:
-        opts = []
-    for path in list(filter(lambda f: f.is_dir(), Path(curr_dir).iterdir())):
-        opts.append(path.relative_to(Path(st.session_state["project"].project_root)))
-        opts = recurse_dirs(path, opts, depth + 1)
-    return opts
-
-
-# MODEL CREATE/DELETE
-with modeller_creator.expander("Create or delete model"):
-    model_creator_status = st.empty()
-
-    # Build opts accounting for dbt change in model path
-    try:
-        model_dirs = st.session_state["project"].source_paths
-    except AttributeError:
-        model_dirs = st.session_state["project"].model_paths
-    dir_opts = []
-    for dir_ in model_dirs:
-        dir_opts.extend(recurse_dirs(Path(st.session_state["project"].project_root) / dir_))
-
-    # Show opts
-    new_model_dir: Sequence[Path] = st.selectbox(
-        "Model Directory", dir_opts, key=f"new_model_dir_{st.session_state['iter_state']}"
-    )
-    new_model_name = st.text_input(
-        "Model Name (exclude .sql)", key=f"new_model_name_{st.session_state['iter_state']}"
-    )
-    if st.button("Create Model", key="new_model_create"):
-        if not new_model_name:
-            model_creator_status.error("Please provide a model name")
-        else:
-            new_model: Path = new_model_dir / f"{new_model_name}.sql"
-            if not new_model.exists():
-                new_model.touch()
-                f = new_model.open("w", encoding="utf-8")
-                f.write("SELECT 1")
-                f.close()
-                model_creator_status.success("Successfully created model")
-                st.session_state["new_model_name"] = new_model_name
-                with st.spinner(text="Reloading your dbt project 🦸"):
-                    LOADED = refresh_dbt()
-                model_creator_status.empty()
-                st.session_state["iter_state"] += 1
-            else:
-                model_creator_status.warning("Model already exists")
-    if st.button("Delete Model", key="delete_model"):
-        if not new_model_name:
-            model_creator_status.error("Please provide a model name")
-        else:
-            new_model: Path = new_model_dir / f"{new_model_name}.sql"
-            if not new_model.exists():
-                model_creator_status.warning("Model does not exist")
-            else:
-                new_model.unlink(missing_ok=True)
-                model_creator_status.success("Successfully deleted model")
-                with st.spinner(text="Reloading your dbt project 🦸"):
-                    LOADED = refresh_dbt()
-                model_creator_status.empty()
-                st.session_state["iter_state"] += 1
-
-st.write("")
-
-if "hide_viewer" not in st.session_state:
-    st.session_state["hide_viewer"] = False
-    # Bool
-    # This is used to pivot the editor layout
-
-
-def toggle_viewer():
-    st.session_state["hide_viewer"] = not st.session_state["hide_viewer"]
-
-
-if "reset_model" not in st.session_state:
-    st.session_state["reset_model"] = False
-    # Bool
-    # Set to true when `revert_model` is called; when editor component requests
-    # its body value, a switch iterates iter_state causing remount and updating display
-    # to the correctly reverted value
-
-
-def toggle_reset():
-    st.session_state["reset_model"] = not st.session_state["reset_model"]
-
-
-# MODEL SELECTOR VALID OPTIONS
-opts = []
-init_model_ix = 0
-iter_model_ix = 0
-for NODE, config in st.session_state["manifest"].flat_graph["nodes"].items():
-    if config["resource_type"] == "model":
-        opts.append(NODE)
-        if config["name"] == st.session_state["new_model_name"]:
-            init_model_ix = iter_model_ix
-            st.session_state["new_model_name"] = ""
-        iter_model_ix += 1
-
-
-# MODEL SELECTOR
-with st.container():
-    choice = st.selectbox("Select a model to edit", options=opts, index=init_model_ix)
-    model = st.session_state["manifest"].flat_graph["nodes"].get(choice)
+def toggle_viewer() -> None:
+    st.session_state[HIDE_VIEWER] = not st.session_state[HIDE_VIEWER]
 
 
 # DYNAMIC COMPILATION OPTION
 st.write("")
-auto_compile = st.checkbox("Dynamic Compilation", key="auto_compile_flag")
+auto_compile = st.checkbox("Dynamic Compilation [Experimental]", key="auto_compile_flag")
 if auto_compile:
     st.caption("Compiling SQL on change")
 else:
     st.caption("Compiling SQL with control + enter")
 
 
-if choice not in st.session_state["model_rev"]:
-    # Here is our LTS
-    st.session_state["model_rev"][choice] = model.copy()
-    UNMODIFIED_NODE = parsed.ParsedModelNode._deserialize(st.session_state["model_rev"][choice])
+def revert_model(node: manifest.ManifestNode) -> None:
+    """Reverts the editor to the last known value of the model prior to any uncommitted changes"""
+    node.raw_sql = ""
+    st.session_state[REVERT_MODEL] = True
 
 
-if st.session_state["this_sql"].get(choice) is None:
-    # MODEL CHANGED
-    st.session_state["this_sql"] = {}
-    st.session_state["sql_data"] = pd.DataFrame()
-    st.session_state["iter_state"] += 1
+def save_model(node: manifest.ManifestNode) -> None:
+    """Saves an updated model committing the changes to file"""
+    path = Path(node.root_path) / Path(node.original_file_path)
+    # with open(path, "w", encoding="utf-8") as sql_file:
+    #    sql_file.write(node.raw_sql)
 
 
-def revert_model(target_model: dict) -> None:
-    """Reverts the editor to the last known value of the model prior to any uncommitted changes,
-    also sets reset_model state to True which is processed by `get_model_sql` to help force update the editor during remount
-
-    Args:
-        target_model (dict): Input model dict containing at least the raw_sql key
-    """
-    target_model["raw_sql"] = st.session_state["model_rev"][choice]["raw_sql"]
-    st.session_state["this_sql"][choice] = ""
-    st.session_state["reset_model"] = True
+import time
 
 
-def save_model(target_model: dict) -> None:
-    """Saves an updated model committing the changes to file and to the last know representation of the model
+@st.cache(
+    hash_funcs={
+        parsed.ParsedModelNode: lambda node_: node_.raw_sql,
+        compiled.CompiledModelNode: lambda node_: node_.raw_sql,
+        multiprocessing.synchronize.Lock: lambda _: time.time(),
+    }
+)
+def compile_model(node: manifest.ManifestNode) -> Optional[manifest.ManifestNode]:
+    """Compiles a NODE, this is agnostic to the fact of whether the SQL is valid but is stringent on valid
+    Jinja, therefore a None return value after catching the error affirms invalid jinja from user (which is fine since they might be compiling as they type)
+    Caching here is immensely valuable since we know a NODE which hashes the same as a prior input will have the same output and this fact gives us a big speedup"""
+    try:
+        print(type(node))
+        if hasattr(node, "compiled") or hasattr(node, "compiled_sql"):
+            node = parsed.ParsedModelNode.from_dict(node.to_dict())
+        ctx.dbt.update_node(node)
+        with ctx.adapter.connection_named("dbt-osmosis"):
+            return ctx.adapter.get_compiler().compile_node(node, ctx.dbt)
+    except CompilationException:
+        return None
 
-    Args:
-        target_model (dict): Input model dict containing at least the raw_sql, root_path, and original_file_path keys
-    """
-    path = Path(target_model["root_path"]) / Path(target_model["original_file_path"])
-    path.touch()
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(target_model["raw_sql"])
-    st.session_state["model_rev"][choice]["raw_sql"] = target_model["raw_sql"]
 
-
-def build_model(
-    target_node: compiled.CompiledModelNode, is_temp: bool = False
-) -> Optional[BaseRelation]:
-    """Builds model in database, this will error if the model exists -- we catch the error but cannot distinguish it from any other
-    `DatabaseException`. This function is only invoked in one place, the model action button
-
-    Args:
-        target_node (compiled.CompiledModelNode): The compiled NODE to manifest
-        is_temp (bool, optional): A flag that tells us to update a state var for rendering a specific error. Defaults to False.
-
-    Returns:
-        Optional[BaseRelation]: Return on error is none, otherwise a Relation
-    """
-    # Copy needed to avoid mutation
-    _target_node = deepcopy(target_node)
-    runner = ModelRunner(
-        st.session_state["config"], st.session_state["adapter"], _target_node, 1, 1
-    )
+def run_model(node: manifest.ManifestNode) -> Optional[BaseRelation]:
+    """Builds model in database"""
+    isolated_node = deepcopy(node)
+    runner = ModelRunner(ctx.config, ctx.adapter, isolated_node, 1, 1)
     with st.session_state["adapter"].connection_named("dbt-osmosis"):
         runner.before_execute()
         try:
-            result = runner.execute(_target_node, st.session_state["manifest"])
-        except DatabaseException as err:
-            print(err)
-            st.session_state["failed_relation"] = err
-            if is_temp:
-                st.session_state["failed_temp_relation"] = True
+            result = runner.execute(isolated_node, ctx.dbt)
+        except DatabaseException as error:
+            st.session_state[FAILED_RELATION] = error
         else:
-            st.session_state["failed_relation"] = None
-            st.session_state["failed_temp_relation"] = False
+            st.session_state[FAILED_RELATION] = None
             runner.after_execute(result)
-            return st.session_state["adapter"].Relation.create_from(
-                st.session_state["config"], _target_node, type=_target_node.config.materialized
+            return ctx.adapter.Relation.create_from(
+                st.session_state["config"], isolated_node, type=isolated_node.config.materialized
             )
 
 
-def model_action(exists: bool) -> str:
-    """Switch function to return string that is represented in model action button,
-    I used this sort of proxy function because of inconsistent button render behavior when performing the switch in the main loop
-
-    Args:
-        exists (bool): Boolean indicator of if model exists or not as determined by `get_relation_if_exists`
-
-    Returns:
-        str: returns string to be rendered in component
-    """
+def get_model_action_text(exists: bool) -> str:
     if exists:
         return "Update dbt Model in Database"
     else:
         return "Build dbt Model in Database"
 
 
-def get_relation_if_exists(target_model: dict) -> Tuple[BaseRelation, bool]:
-    """Check if table exists in database using adapter get_relation
-
-    Args:
-        target_model (dict): Model dictionary containing at least the keys database, schema, and name
-
-    Returns:
-        Tuple[BaseRelation, bool]: Returns a tuple of the relation and True or None and False
-    """
+def get_relation_if_exists(node: manifest.ManifestNode) -> Tuple[BaseRelation, bool]:
+    """Check if table exists in database using adapter get_relation"""
     try:
-        with st.session_state["adapter"].connection_named("dbt-osmosis"):
-            table = st.session_state["adapter"].get_relation(
-                target_model["database"], target_model["schema"], target_model["name"]
-            )
+        with ctx.adapter.connection_named("dbt-osmosis"):
+            table = ctx.adapter.get_relation(node.database, node.schema, node.name)
     except DatabaseException:
         table, table_exists = None, False
         return table, table_exists
@@ -436,92 +212,37 @@ def get_relation_if_exists(target_model: dict) -> Tuple[BaseRelation, bool]:
         return table, table_exists
 
 
-def get_model_sql(target_model: dict) -> str:
-    """Extracts SQL from model, forcibly extracts previous state SQL when reset_model toggle is True
-
-    Args:
-        target_model (dict): Input model dictionary containing at least the key raw_sql
-
-    Returns:
-        str: Output SQL
-    """
-    if st.session_state["reset_model"]:
-        st.session_state["iter_state"] += 1
-        st.session_state["reset_model"] = False
-        return st.session_state["model_rev"][choice]["raw_sql"]
-    return target_model["raw_sql"]
+def get_model_sql(node: manifest.ManifestNode) -> str:
+    """DEPRECATED: Left here for reference in case we need to force trigger state change
+    Extracts SQL from model, forcibly extracts previous state SQL when revert_model toggle is True"""
+    if st.session_state[REVERT_MODEL]:
+        st.session_state[EDITOR_STATE_ITER_1] += 1
+        st.session_state[REVERT_MODEL] = False
+        return base_node.raw_sql
+    return node.raw_sql
 
 
-@st.cache
-def get_database_columns(relation: Optional[BaseRelation]) -> Sequence:
+@st.cache(
+    hash_funcs={
+        parsed.ParsedModelNode: lambda node_: node_.raw_sql,
+        compiled.CompiledModelNode: lambda node_: node_.raw_sql,
+    }
+)
+def get_database_columns(node: manifest.ManifestNode) -> List[str]:
     """Get columns for table from the database. If relation is None, we will return an empty list, if the query fails
-    we will also return an empty list
-
-    Args:
-        table (BaseRelation, optional): Relation to query for typically built by `get_relation_if_exists`
-
-    Returns:
-        Sequence: List of database columns, empty list if unable to satisfy
-    """
-    if not relation:
-        return []
+    we will also return an empty list"""
     try:
-        with st.session_state["adapter"].connection_named("dbt-osmosis"):
-            database_columns = [
-                c.name for c in st.session_state["adapter"].get_columns_in_relation(relation)
-            ]
+        with ctx.adapter.connection_named("dbt-osmosis"):
+            database_columns = ctx.get_columns(node)
     except DatabaseException:
         database_columns = []
     return database_columns
 
 
-@st.cache
-def build_node(current_model: dict) -> parsed.ParsedModelNode:
-    """Takes a dict representing the model and deserializes it into a parsed NODE
-
-    Args:
-        current_model (dict): Dict representing the model
-
-    Returns:
-        parsed.ParsedModelNode: Parsed NODE
-    """
-    return parsed.ParsedModelNode._deserialize(current_model)
-
-
-@st.cache
-def compile_node(current_node: parsed.ParsedModelNode) -> compiled.CompiledModelNode:
-    """Compiles a NODE, this is agnostic to the fact of whether the SQL is valid but is stringent on valid
-    Jinja, therefore a None return value after catching the error affirms invalid jinja from user (which is fine since they might be compiling as they type)
-    Caching here is immensely valuable since we know a NODE which hashes the same as a prior input will have the same output and this fact gives us a big speedup
-
-    Args:
-        current_node (parsed.ParsedModelNode): Input model NODE with SQL in sync with editor
-
-    Returns:
-        compiled.CompiledModelNode: Compiled NODE
-    """
-    try:
-        with st.session_state["adapter"].connection_named("dbt-osmosis"):
-            return (
-                st.session_state["adapter"]
-                .get_compiler()
-                .compile_node(current_node, st.session_state["manifest"])
-            )
-    except CompilationException:
-        return None
-
-
-def update_manifest_node(current_node: parsed.ParsedModelNode) -> bool:
-    """Updates NODE in stateful manifest so it is preserved even as we traverse models unless dbt is refreshed
-
-    Args:
-        current_node (parsed.ParsedModelNode): Current NODE in sync with editor
-
-    Returns:
-        bool: True when complete
-    """
-    st.session_state["manifest"].update_node(current_node)
-    st.session_state["manifest"].build_flat_graph()
+def update_manifest_node(node: manifest.ManifestNode) -> bool:
+    """Updates NODE in stateful manifest so it is preserved even as we traverse models unless dbt is refreshed"""
+    ctx.dbt.update_node(node)
+    # ctx.dbt.build_flat_graph()
     return True
 
 
@@ -531,54 +252,49 @@ st.write("")
 btn_container = st.container()
 
 # EDITOR ERROR CONTAINER
-db_res = st.session_state["failed_relation"]
-if isinstance(db_res, DatabaseException):
-    show_err_1 = st.error(f"Model materialization failed: {db_res}")
+db_resp = st.session_state[FAILED_RELATION]
+if isinstance(db_resp, DatabaseException):
+    show_err_1 = st.error(f"Model materialization failed: {db_resp}")
     time.sleep(4.20)
-    st.session_state["failed_relation"] = None
+    st.session_state[FAILED_RELATION] = None
     show_err_1.empty()
 
 # EDITOR / VIEWER CONTAINER
 with st.container():
-
-    if not st.session_state["hide_viewer"]:
+    if not st.session_state[HIDE_VIEWER]:
         editor, viewer = st.columns(2)
         with editor:
-            model_editor = st.expander("Edit Model")
+            model_editor = st.expander("Edit Model", expanded=True)
         with viewer:
-            compiled_viewer = st.expander("View Compiled SQL")
-
+            compiled_viewer = st.expander("View Compiled SQL", expanded=True)
     else:
-
         model_editor = st.expander("Edit Model")
         compiled_viewer = st.expander("View Compiled SQL")
 
 
 # MODEL EDITOR CONTENTS
 with model_editor:
-    model["raw_sql"] = st_ace(
-        value=get_model_sql(model),
+    mut_node.raw_sql = st_ace(
+        value=mut_node.raw_sql,
         theme=editor_theme,
         language=editor_lang,
         auto_update=auto_compile,
-        key=f"dbt_ide_{st.session_state['iter_state']}",
+        key="AceEditorGoGoGo",
+        max_lines=15,
     )
-    if model["raw_sql"] != st.session_state["this_sql"].get(choice, ""):
-        NODE = build_node(model)
-        manifest_node_current = update_manifest_node(NODE)
-    st.session_state["this_sql"][choice] = model["raw_sql"]
+    if mut_node.raw_sql != st.session_state[THIS_SQL]:
+        update_manifest_node(mut_node)
+        st.session_state[THIS_SQL] = mut_node.raw_sql
 
 # CACHE OPTIMIZED GLOBALLY USED VALS
-UNMODIFIED_NODE = build_node(st.session_state["model_rev"][choice])
-NODE = build_node(model)
-COMPILED_UNMODIFIED_NODE = compile_node(UNMODIFIED_NODE)
-COMPILED_NODE = compile_node(NODE)
-THIS, EXISTS = get_relation_if_exists(model)
+compiled_mut_node = compile_model(deepcopy(mut_node))
+compiled_base_node = compile_model(deepcopy(base_node))
+THIS, EXISTS = get_relation_if_exists(base_node)
 
 # COMPILED SQL VIEWER CONTENTS
 with compiled_viewer:
-    if COMPILED_NODE:
-        st.code(COMPILED_NODE.compiled_sql, language="sql")
+    if compiled_mut_node:
+        st.code(compiled_mut_node.compiled_sql, language="sql")
     else:
         st.warning("Invalid Jinja")
 
@@ -588,29 +304,28 @@ with btn_container:
     with pivot_layout_btn:
         st.button("Pivot Layout", on_click=toggle_viewer)
     with build_model_btn:
-        if COMPILED_NODE:
-            run_model = st.button(
-                label=model_action(EXISTS),
-            )
-        else:
-            run_model = False
-    if not NODE.same_body(UNMODIFIED_NODE):
+        do_run_model = st.button(
+            label=get_model_action_text(EXISTS),
+        )
+    if not mut_node.same_body(base_node):
         with commit_changes_btn:
-            st.button("Commit changes to file", on_click=save_model, kwargs={"target_model": model})
+            st.button("Commit changes to file", on_click=save_model, kwargs={"node": mut_node})
         with revert_changes_btn:
-            st.button("Revert changes", on_click=revert_model, kwargs={"target_model": model})
+            st.button("Revert changes", on_click=revert_model, kwargs={"node": mut_node})
         st.info("Uncommitted changes detected in model")
 
-    if run_model:
+    if do_run_model and compiled_mut_node:
         with st.spinner("Running model against target... ⚙️"):
-            build_model(COMPILED_NODE)
+            run_model(mut_node)
         with st.spinner("Model ran against target! 🧑‍🏭"):
             time.sleep(2)
-        run_model = False
+        do_run_model = False
 
 # ----------------------------------------------------------------
 # QUERY RESULT INSPECTOR
 # ----------------------------------------------------------------
+
+st.stop()
 
 if "sql_data" not in st.session_state:
     st.session_state["sql_data"] = pd.DataFrame()
@@ -1018,10 +733,10 @@ st.write("")
 st.subheader("Osmosis Docs Editor ✏️")
 st.write("")
 
-SCHEMA_FILE = st.session_state["schema_map"].get(choice)
+SCHEMA_FILE = st.session_state[MAP].get(choice)
 KNOWLEDGE = dbt_osmosis.main.pass_down_knowledge(
-    dbt_osmosis.main.build_ancestor_tree(model, st.session_state["manifest"].flat_graph),
-    st.session_state["manifest"].flat_graph,
+    dbt_osmosis.main.build_ancestor_tree(model, st.session_state[DBT].manifest),
+    st.session_state[DBT].manifest,
 )
 
 
@@ -1031,7 +746,7 @@ def fix_documentation() -> bool:
     schema_map = {choice: SCHEMA_FILE}
     was_restructured = dbt_osmosis.main.commit_project_restructure(
         dbt_osmosis.main.build_project_structure_update_plan(
-            schema_map, st.session_state["manifest"].flat_graph, st.session_state["adapter"]
+            schema_map, st.session_state[DBT].manifest, st.session_state["adapter"]
         )
     )
     return was_restructured and refresh_dbt()
@@ -1127,7 +842,7 @@ def run_test(
             compiled_test = (
                 st.session_state["adapter"]
                 .get_compiler()
-                .compile_node(test_node, st.session_state["manifest"])
+                .compile_node(test_node, st.session_state[DBT].dbt)
             )
             sql_select_test = compiled_test.compiled_sql
         test_results = st.session_state["adapter"].execute(
@@ -1149,7 +864,7 @@ def run_test(
 
 # DECLARED TESTS
 test_opts = {}
-for node_config in st.session_state["manifest"].nodes.values():
+for node_config in st.session_state[DBT].dbt.nodes.values():
     if node_config.resource_type == "test" and choice in node_config.depends_on.nodes:
         test_opts[node_config.name] = node_config
 
