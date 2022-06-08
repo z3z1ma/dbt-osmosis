@@ -11,6 +11,31 @@ from dbt_osmosis.core.logging import logger
 from dbt_osmosis.core.osmosis import DbtOsmosis
 
 
+def build_diff_queries(model: str, runner: DbtOsmosis) -> Tuple[str, str]:
+    """Leverage git to build two temporary tables for diffing the results of a query throughout a change"""
+    node = runner.dbt.ref_lookup.find(model, package=None, manifest=runner.dbt)
+    dbt_path = Path(node.root_path)
+    abs_path = dbt_path / node.original_file_path
+    repo = Repo(dbt_path, search_parent_directories=True)
+    t = next(Path(repo.working_dir).rglob(node.original_file_path)).relative_to(repo.working_dir)
+    target = repo.head.object.tree[str(t)]
+    with tempfile.NamedTemporaryFile(delete=True, dir=str(abs_path.parent), suffix=".sql") as f:
+        f.write(target.data_stream.read())
+        f.flush()
+        runner.rebuild_dbt_manifest()
+        original_node = runner.dbt.ref_lookup.find(
+            Path(f.name).stem, package=None, manifest=runner.dbt
+        )  # Injected Original Temp Node --> Identifier resolved ot commit hash at runtime
+        changed_node = runner.dbt.ref_lookup.find(model, package=None, manifest=runner.dbt)
+        with runner.adapter.connection_named("dbt-osmosis"):
+            # Original Node Resolution
+            original_node = runner.adapter.get_compiler().compile_node(original_node, runner.dbt)
+            # Diff Node Resolution
+            changed_node = runner.adapter.get_compiler().compile_node(changed_node, runner.dbt)
+
+    return original_node.compiled_sql, changed_node.compiled_sql
+
+
 def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, BaseRelation]:
     """Leverage git to build two temporary tables for diffing the results of a query throughout a change"""
     node = runner.dbt.ref_lookup.find(model, package=None, manifest=runner.dbt)
@@ -88,10 +113,31 @@ def diff_tables(
     return table
 
 
-def diff_and_print_to_console(model: str, pk: str, runner: DbtOsmosis) -> None:
+def diff_queries(sql_A: str, sql_B: str, pk: str, runner: DbtOsmosis) -> agate.Table:
+
+    logger().info("Running diff")
+    _, _, table = runner.execute_macro(
+        "compare_queries",
+        kwargs={
+            "a_query": sql_A,
+            "b_query": sql_B,
+            "primary_key": pk,
+        },
+        run_compiled_sql=True,
+        fetch=True,
+    )
+    return table
+
+
+def diff_and_print_to_console(
+    model: str, pk: str, runner: DbtOsmosis, make_temp_tables: bool = False
+) -> None:
     """
     Compare two tables and print the results to the console
     """
-    table = diff_tables(*build_diff_tables(model, runner), pk, runner)
+    if make_temp_tables:
+        table = diff_tables(*build_diff_tables(model, runner), pk, runner)
+    else:
+        table = diff_queries(*build_diff_queries(model, runner), pk, runner)
     print("")
     table.print_table()

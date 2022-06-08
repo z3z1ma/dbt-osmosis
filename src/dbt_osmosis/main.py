@@ -380,13 +380,18 @@ def workbench(
     "--model",
     type=click.STRING,
     required=True,
-    help="The model to edit in the workbench",
+    help="The model to edit in the workbench, must be a valid model as would be selected by `ref`",
 )
 @click.option(
     "--pk",
     type=click.STRING,
     required=True,
-    help="The model to edit in the workbench",
+    help="The primary key of the model with which to base the diff",
+)
+@click.option(
+    "--temp-table",
+    is_flag=True,
+    help="If specified, temp tables are used to stage the queries.",
 )
 def diff(
     model: str,
@@ -394,6 +399,7 @@ def diff(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
+    temp_table: bool = False,
 ):
     """Diff a model based on git HEAD to working copy on disk"""
 
@@ -404,7 +410,7 @@ def diff(
         profiles_dir=profiles_dir,
         target=target,
     )
-    diff_and_print_to_console(model, pk, runner)
+    diff_and_print_to_console(model, pk, runner, temp_table)
 
 
 if __name__ == "__main__":
