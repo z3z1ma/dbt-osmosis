@@ -18,7 +18,8 @@ from dbt.task.run import ModelRunner
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
+from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR, DbtOsmosis,
+                                      SchemaFile, get_raw_profiles)
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 
