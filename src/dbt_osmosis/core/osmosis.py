@@ -1,14 +1,24 @@
 from enum import Enum
 from itertools import chain
 from pathlib import Path
-from typing import (Any, Dict, Iterable, Iterator, List, Mapping,
-                    MutableMapping, Optional, Set, Tuple, Union)
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import agate
 import dbt.config.runtime as dbt_config
 import dbt.parser.manifest as dbt_parser
-from dbt.adapters.factory import (Adapter, get_adapter, register_adapter,
-                                  reset_adapters)
+from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters
 from dbt.contracts.connection import AdapterResponse
 from dbt.contracts.graph.manifest import ManifestNode, NodeType
 from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
@@ -19,9 +29,11 @@ from pydantic import BaseModel
 from rich.progress import track
 from ruamel.yaml import YAML
 
-from dbt_osmosis.core.exceptions import (InvalidOsmosisConfig,
-                                         MissingOsmosisConfig,
-                                         SanitizationRequired)
+from dbt_osmosis.core.exceptions import (
+    InvalidOsmosisConfig,
+    MissingOsmosisConfig,
+    SanitizationRequired,
+)
 from dbt_osmosis.core.logging import logger
 
 disable_tracking()
@@ -381,9 +393,9 @@ class DbtOsmosis:
                         )
                         models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
                         for documented_model in models_in_file:
-                            if documented_model["name"] == node["name"]:
+                            if documented_model["name"] == node.name:
                                 # Bootstrapping Documented Model
-                                blueprint[schema_file.target]["output"]["models"].append(
+                                blueprint[schema_file.target].output["models"].append(
                                     self.bootstrap_existing_model(documented_model, node)
                                 )
                                 # Target to supersede current
