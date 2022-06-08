@@ -28,7 +28,7 @@ runner.commit_project_restructure_to_disk()  # organize your dbt project based o
 
 runner.propagate_documentation_downstream()  # propagate column level documentation down the DAG
 
-diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  # leverage git to diff the output of a model from HEAD to your revision on disk to safely audit changes as you work
+diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  # leverage git+dbt_audit_helper to diff the OUTPUT of a model from HEAD to your revision on disk to safely audit changes as you work
 ```
 
 [Workbench Reference](#Workbench)
