@@ -19,6 +19,7 @@ from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
 from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
+from dbt_osmosis.core.diff import diff_queries
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 
@@ -47,6 +48,7 @@ DIFF_PK_SELECTOR = "DIFF_PK_SELECTOR"
 DIFF_AGG_CHECKBOX = "DIFF_AGG_CHECKBOX"
 BASIC_PROFILE_OPT = "BASIC_PROFILE_OPT"
 PROFILE_DOWNLOADER = "PROFILE_DOWNLOADER"
+DYNAMIC_COMPILATION = "DYNAMIC_COMPILATION"
 
 # COMPONENT OPTIONS
 DIALECTS = ("pgsql", "mysql", "sql", "sqlserver")
@@ -135,9 +137,9 @@ def run_model(node: manifest.ManifestNode) -> Optional[BaseRelation]:
 
 def get_model_action_text(exists: bool) -> str:
     if exists:
-        return "Update dbt Model in Database"
+        return "▶️ Run Model"
     else:
-        return "Build dbt Model in Database"
+        return "▶️ Run Model"
 
 
 @st.experimental_memo
@@ -365,11 +367,11 @@ controlsContainer = st.container()
 
 with compileOptionContainer:
     st.write("")
-    auto_compile = st.checkbox("Dynamic Compilation [Experimental]", key="auto_compile_flag")
+    auto_compile = st.checkbox("Dynamic Compilation", key=DYNAMIC_COMPILATION, value=True)
     if auto_compile:
-        st.caption("Compiling SQL on change")
+        st.caption("👉 Compiling SQL on change")
     else:
-        st.caption("Compiling SQL with control + enter")
+        st.caption("👉 Compiling SQL with control + enter")
 
 with idePart1:
     IDE = st_ace(
@@ -387,7 +389,7 @@ if st.session_state[MUT_NODE].raw_sql != IDE:
     st.session_state[COMPILED_MUT_NODE] = compile_model(st.session_state[MUT_NODE])
 
 with idePart2:
-    with st.expander("Compiled SQL", expanded=True):
+    with st.expander("📝 Compiled SQL", expanded=True):
         st.code(
             st.session_state[COMPILED_MUT_NODE].compiled_sql
             if st.session_state[COMPILED_MUT_NODE]
@@ -396,26 +398,29 @@ with idePart2:
         )
 
 with controlsContainer:
-    pivot_layout_btn, build_model_btn, commit_changes_btn, revert_changes_btn = st.columns(4)
+    pivot_layout_btn, build_model_btn, commit_changes_btn, revert_changes_btn = st.columns(
+        [3, 1, 1, 1]
+    )
     with pivot_layout_btn:
-        st.button("Pivot Layout", on_click=toggle_viewer)
+        st.button("📏 Pivot Layout", on_click=toggle_viewer)
     with build_model_btn:
         do_run_model = st.button(
-            label=get_model_action_text(EXISTS),
+            label=get_model_action_text(st.session_state[EXISTS]),
         )
     with commit_changes_btn:
         if not st.session_state[MUT_NODE].same_body(st.session_state[BASE_NODE]):
             st.button(
-                "Commit changes to file",
+                "💾 Save Changes",
                 on_click=save_model,
                 kwargs={"node": st.session_state[MUT_NODE]},
             )
     with revert_changes_btn:
         if not st.session_state[MUT_NODE].same_body(st.session_state[BASE_NODE]):
             st.button(
-                "Revert changes", on_click=revert_model, kwargs={"node": st.session_state[MUT_NODE]}
+                "🔙 Revert changes",
+                on_click=revert_model,
+                kwargs={"node": st.session_state[MUT_NODE]},
             )
-    st.success("Model successfully loaded, started hacking away!")
 
     if do_run_model and st.session_state[COMPILED_MUT_NODE]:
         with st.spinner("Running model against target... ⚙️"):
@@ -463,7 +468,7 @@ agg_diff_results = test_column_2.checkbox("Aggregate Diff Results", key=DIFF_AGG
 test_column_2.caption("Use this to get aggregate diff results when data does not fit in memory")
 test_column_1.button(
     "Calculate Row Level Diff",
-    on_click=lambda *_: None,
+    on_click=lambda **_: None,
     kwargs={
         "primary_keys": diff_cols,
         "aggregate_result": agg_diff_results,
@@ -471,7 +476,9 @@ test_column_1.button(
         "curr_cols": projected_columns,
     },
 )
-test_column_1.caption("This will output the rows added or removed by changes made to the query")
+test_column_1.caption(
+    "(⚠️ being refactored) This will output the rows added or removed by changes made to the query"
+)
 
 with testContainer:
     st.write("\n\n\n\n\n")
@@ -514,7 +521,7 @@ with profileBtnContainer:
     st.button("Profile Data", key=DO_PROFILE)
 
 with profileOptContainer:
-    st.checkbox("Basic Profiler", key=BASIC_PROFILE_OPT)
+    st.checkbox("Basic Profiler", key=BASIC_PROFILE_OPT, value=True)
     st.caption(
         "Useful for larger datasets, use the minimal pandas-profiling option for a simpler report"
     )
