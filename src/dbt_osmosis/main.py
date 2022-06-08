@@ -348,7 +348,13 @@ def workbench(
         script_args.append("--model")
         script_args.append(model)
 
-    subprocess.run(["streamlit", "run", Path(__file__).parent / "app.py"] + ctx.args + script_args)
+    import os
+
+    subprocess.run(
+        ["streamlit", "run", Path(__file__).parent / "app.py"] + ctx.args + script_args,
+        env=os.environ,
+        cwd=Path.cwd(),
+    )
 
 
 @cli.command(context_settings=CONTEXT)
