@@ -1,5 +1,5 @@
 import argparse
-import multiprocessing
+import hashlib
 import sys
 import time
 from collections import OrderedDict
@@ -18,8 +18,9 @@ from dbt.task.run import ModelRunner
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR, DbtOsmosis,
-                                      SchemaFile, get_raw_profiles)
+from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
+
+st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 
 parser = argparse.ArgumentParser(description="dbt osmosis workbench")
 parser.add_argument("--profiles-dir", help="dbt profile directory")
@@ -27,38 +28,46 @@ parser.add_argument("--project-dir", help="dbt project directory")
 parser.add_argument("-m", "--model", required=True, help="dbt model")
 args = vars(parser.parse_args(sys.argv[1:]))
 
+# GLOBAL STATE VARS
 DBT = "dbt_osmosis_controller_interface"
 MAP = "dbt_osmosis_folder_mapping"
+st.session_state.setdefault(
+    (PROJ_DIR := "dbt_osmosis_project_dir"), args["project_dir"] or str(Path.cwd())
+)
+st.session_state.setdefault(
+    (PROF_DIR := "dbt_osmosis_profiles_dir"), args["profiles_dir"] or DEFAULT_PROFILES_DIR
+)
 
-BASE_NODE = "dbt_osmosis_base_node"
-FAILED_RELATION = "dbt_osmosis_failed_relation"
-PROJ_DIR = "dbt_osmosis_project_dir"
-PROF_DIR = "dbt_osmosis_profiles_dir"
-REVERT_MODEL = "dbt_osmosis_revert_model"
-TARGET_PROFILE = "dbt_osmosis_target_profile"
-DBT_DO_RELOAD = "dbt_osmosis_do_reload"
+# COMPONENT KEYS
+PROFILE_SELECTOR = "dbt_osmosis_profile_selector"
 THEME_PICKER = "dbt_osmosis_editor_theme"
 DIALECT_PICKER = "dbt_osmosis_dialect"
+
+# COMPONENT OPTIONS
 DIALECTS = ("pgsql", "mysql", "sql", "sqlserver")
-HIDE_VIEWER = "dbt_osmosis_hide_viewer"
-PROFILE_SELECTOR = "dbt_osmosis_profile_selector"
-EDITOR_STATE_ITER_1 = "dbt_osmosis_iter_state_1"
-THIS_SQL = "dbt_osmosis_current_sql"
 
-# ----------------------------------------------------------------
-# CONFIG
-# ----------------------------------------------------------------
+# TRIGGERS
+st.session_state.setdefault((EDITOR_STATE_ITER_1 := "EDITOR_STATE_ITER_1"), 1)
+DBT_DO_RELOAD = "DBT_DO_RELOAD"
+st.session_state.setdefault((PIVOT_LAYOUT := "PIVOT_LAYOUT"), False)
+st.session_state.setdefault((FAILED_RELATION := "FAILED_RELATION"), None)
+st.session_state.setdefault((REVERT_MODEL := "REVERT_MODEL"), False)
 
-st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
-st.title("dbt-osmosis 🌊")
 
-st.session_state.setdefault(PROJ_DIR, args["project_dir"] or str(Path.cwd()))
-st.session_state.setdefault(PROF_DIR, args["profiles_dir"] or DEFAULT_PROFILES_DIR)
-st.session_state.setdefault(FAILED_RELATION, None)
-st.session_state.setdefault(REVERT_MODEL, False)
-st.session_state.setdefault(HIDE_VIEWER, False)
-st.session_state.setdefault(EDITOR_STATE_ITER_1, 1)
-st.session_state.setdefault(THIS_SQL, "")
+def hash_parsed_node(node: parsed.ParsedModelNode) -> str:
+    return hashlib.md5(node.raw_sql.encode("utf-8")).hexdigest()
+
+
+def hash_compiled_node(node: parsed.ParsedModelNode):
+    return hashlib.md5(node.raw_sql.encode("utf-8")).hexdigest()
+
+
+hash_funcs = {
+    parsed.ParsedModelNode: hash_parsed_node,
+    compiled.CompiledModelNode: hash_compiled_node,
+    manifest.Manifest: lambda _: None,
+    DbtOsmosis: lambda _: None,
+}
 
 
 def inject_dbt():
@@ -76,65 +85,15 @@ def inject_dbt():
     return True
 
 
-# ----------------------------------------------------------------
-# INIT STATE
-# ----------------------------------------------------------------
-
 if DBT not in st.session_state:
     inject_dbt()
 ctx: DbtOsmosis = st.session_state[DBT]
 schema_map: Dict[str, SchemaFile] = st.session_state[MAP]
-st.session_state.setdefault(TARGET_PROFILE, ctx.profile.target_name)
-base_node = ctx.dbt.ref_lookup.find(args["model"], package=None, manifest=ctx.dbt)
-st.session_state.setdefault(BASE_NODE, base_node)
-mut_node = deepcopy(st.session_state[BASE_NODE])
-
-# ----------------------------------------------------------------
-# SIDEBAR
-# ----------------------------------------------------------------
-
-st.sidebar.header("Profiles")
-
-st.sidebar.write(
-    "Select a profile used for materializing, compiling, and testing models. Can be updated at any time."
-)
-dbt_profile_yml = get_raw_profiles(st.session_state[PROF_DIR])
-st.session_state[TARGET_PROFILE] = st.sidebar.radio(
-    f"Loaded profiles from {ctx.project.profile_name}",
-    [target for target in dbt_profile_yml[ctx.profile.profile_name].get("outputs", [])],
-    key=PROFILE_SELECTOR,
-)
-st.sidebar.markdown(f"Current Target: **{st.session_state[TARGET_PROFILE]}**")
-st.sidebar.write("")
-st.sidebar.write("Utility")
-st.sidebar.button("Reload dbt project", key=DBT_DO_RELOAD)
-if ctx.profile.target_name != st.session_state[TARGET_PROFILE] or st.session_state[DBT_DO_RELOAD]:
-    inject_dbt()
-st.sidebar.caption(
-    "Use this if any updated assets in your project have not yet reflected in the workbench, for example: you add some generic tests to some models while osmosis workbench is running."
-)
-st.sidebar.write("")
-editor_theme = st.sidebar.selectbox("Editor Theme", THEMES, index=8, key=THEME_PICKER)
-editor_lang = st.sidebar.selectbox("Editor Language", DIALECTS, key=DIALECT_PICKER)
-
-# ----------------------------------------------------------------
-# MODEL IDE
-# ----------------------------------------------------------------
-
-st.write("")
+st.session_state.setdefault((TARGET_PROFILE := "TARGET_PROFILE"), ctx.profile.target_name)
 
 
 def toggle_viewer() -> None:
-    st.session_state[HIDE_VIEWER] = not st.session_state[HIDE_VIEWER]
-
-
-# DYNAMIC COMPILATION OPTION
-st.write("")
-auto_compile = st.checkbox("Dynamic Compilation [Experimental]", key="auto_compile_flag")
-if auto_compile:
-    st.caption("Compiling SQL on change")
-else:
-    st.caption("Compiling SQL with control + enter")
+    st.session_state[PIVOT_LAYOUT] = not st.session_state[PIVOT_LAYOUT]
 
 
 def revert_model(node: manifest.ManifestNode) -> None:
@@ -148,31 +107,6 @@ def save_model(node: manifest.ManifestNode) -> None:
     path = Path(node.root_path) / Path(node.original_file_path)
     # with open(path, "w", encoding="utf-8") as sql_file:
     #    sql_file.write(node.raw_sql)
-
-
-import time
-
-
-@st.cache(
-    hash_funcs={
-        parsed.ParsedModelNode: lambda node_: node_.raw_sql,
-        compiled.CompiledModelNode: lambda node_: node_.raw_sql,
-        multiprocessing.synchronize.Lock: lambda _: time.time(),
-    }
-)
-def compile_model(node: manifest.ManifestNode) -> Optional[manifest.ManifestNode]:
-    """Compiles a NODE, this is agnostic to the fact of whether the SQL is valid but is stringent on valid
-    Jinja, therefore a None return value after catching the error affirms invalid jinja from user (which is fine since they might be compiling as they type)
-    Caching here is immensely valuable since we know a NODE which hashes the same as a prior input will have the same output and this fact gives us a big speedup"""
-    try:
-        print(type(node))
-        if hasattr(node, "compiled") or hasattr(node, "compiled_sql"):
-            node = parsed.ParsedModelNode.from_dict(node.to_dict())
-        ctx.dbt.update_node(node)
-        with ctx.adapter.connection_named("dbt-osmosis"):
-            return ctx.adapter.get_compiler().compile_node(node, ctx.dbt)
-    except CompilationException:
-        return None
 
 
 def run_model(node: manifest.ManifestNode) -> Optional[BaseRelation]:
@@ -200,11 +134,12 @@ def get_model_action_text(exists: bool) -> str:
         return "Build dbt Model in Database"
 
 
-def get_relation_if_exists(node: manifest.ManifestNode) -> Tuple[BaseRelation, bool]:
+@st.experimental_memo
+def get_relation_if_exists(_node: manifest.ManifestNode) -> Tuple[BaseRelation, bool]:
     """Check if table exists in database using adapter get_relation"""
     try:
         with ctx.adapter.connection_named("dbt-osmosis"):
-            table = ctx.adapter.get_relation(node.database, node.schema, node.name)
+            table = ctx.adapter.get_relation(_node.database, _node.schema, _node.name)
     except DatabaseException:
         table, table_exists = None, False
         return table, table_exists
@@ -219,16 +154,11 @@ def get_model_sql(node: manifest.ManifestNode) -> str:
     if st.session_state[REVERT_MODEL]:
         st.session_state[EDITOR_STATE_ITER_1] += 1
         st.session_state[REVERT_MODEL] = False
-        return base_node.raw_sql
+        return st.session_state[BASE_NODE].raw_sql
     return node.raw_sql
 
 
-@st.cache(
-    hash_funcs={
-        parsed.ParsedModelNode: lambda node_: node_.raw_sql,
-        compiled.CompiledModelNode: lambda node_: node_.raw_sql,
-    }
-)
+@st.cache(hash_funcs=hash_funcs)
 def get_database_columns(node: manifest.ManifestNode) -> List[str]:
     """Get columns for table from the database. If relation is None, we will return an empty list, if the query fails
     we will also return an empty list"""
@@ -247,60 +177,118 @@ def update_manifest_node(node: manifest.ManifestNode) -> bool:
     return True
 
 
-st.write("")
+@st.cache(hash_funcs=hash_funcs)
+def compile_model(node: manifest.ManifestNode) -> Optional[manifest.ManifestNode]:
+    """Compiles a NODE, this is agnostic to the fact of whether the SQL is valid but is stringent on valid
+    Jinja, therefore a None return value after catching the error affirms invalid jinja from user (which is fine since they might be compiling as they type)
+    Caching here is immensely valuable since we know a NODE which hashes the same as a prior input will have the same output and this fact gives us a big speedup"""
+    try:
+        node = parsed.ParsedModelNode.from_dict(node.to_dict())
+        ctx.dbt.update_node(node)
+        with ctx.adapter.connection_named(f"dbt-osmosis"):
+            compiled_node = ctx.adapter.get_compiler().compile_node(node, ctx.dbt)
+        return compiled_node
+    except CompilationException:
+        return None
 
-# EDITOR CONTROLS CONTAINER
-btn_container = st.container()
 
-# EDITOR ERROR CONTAINER
-db_resp = st.session_state[FAILED_RELATION]
-if isinstance(db_resp, DatabaseException):
-    show_err_1 = st.error(f"Model materialization failed: {db_resp}")
-    time.sleep(4.20)
-    st.session_state[FAILED_RELATION] = None
-    show_err_1.empty()
+@st.experimental_singleton
+def singleton_node_finder(model_name: str) -> Optional[manifest.ManifestNode]:
+    """Finds a singleton node by name"""
+    return ctx.dbt.ref_lookup.find(model_name, package=None, manifest=ctx.dbt)
 
-# EDITOR / VIEWER CONTAINER
-with st.container():
-    if not st.session_state[HIDE_VIEWER]:
-        editor, viewer = st.columns(2)
-        with editor:
-            model_editor = st.expander("Edit Model", expanded=True)
-        with viewer:
-            compiled_viewer = st.expander("View Compiled SQL", expanded=True)
+
+# Singleton Base Node
+st.session_state.setdefault((BASE_NODE := "BASE_NODE"), singleton_node_finder(args["model"]))
+
+# Deepcopy a Node for Mutating
+st.session_state.setdefault(
+    (COMPILED_BASE_NODE := "COMPILED_BASE_NODE"), compile_model(st.session_state[BASE_NODE])
+)
+THIS, EXISTS = get_relation_if_exists(st.session_state[BASE_NODE])
+
+# Deepcopy a Node for Mutating
+st.session_state.setdefault((MUT_NODE := "MUT_NODE"), deepcopy(st.session_state[BASE_NODE]))
+
+# Initial Compilation
+st.session_state.setdefault(
+    (COMPILED_MUT_NODE := "COMPILED_MUT_NODE"), compile_model(st.session_state[MUT_NODE])
+)
+
+# Raw Profiles So User Can Select
+if "profiles" not in locals():
+    profiles = get_raw_profiles(st.session_state[PROF_DIR])
+
+# IDE Starting Text
+if not locals().get("IDE"):
+    IDE = st.session_state[MUT_NODE].raw_sql
+
+st.title("dbt-osmosis 🌊")
+
+st.sidebar.header("Profiles")
+st.sidebar.write(
+    "Select a profile used for materializing, compiling, and testing models. Can be updated at any time."
+)
+st.session_state[TARGET_PROFILE] = st.sidebar.radio(
+    f"Loaded profiles from {ctx.project.profile_name}",
+    [target for target in profiles[ctx.profile.profile_name].get("outputs", [])],
+    key=PROFILE_SELECTOR,
+)
+st.sidebar.markdown(f"Current Target: **{st.session_state[TARGET_PROFILE]}**")
+st.sidebar.write("")
+st.sidebar.write("Utility")
+st.sidebar.button("Reload dbt project", key=DBT_DO_RELOAD)
+st.sidebar.caption(
+    "Use this if any updated assets in your project have not yet reflected in the workbench, for example: you add some generic tests to some models while osmosis workbench is running."
+)
+st.sidebar.write("")
+st.sidebar.selectbox("Editor Theme", THEMES, index=8, key=THEME_PICKER)
+st.sidebar.selectbox("Editor Language", DIALECTS, key=DIALECT_PICKER)
+
+# IDE LAYOUT
+compileOptionContainer = st.container()
+ideContainer = st.container()
+if not st.session_state[PIVOT_LAYOUT]:
+    idePart1, idePart2 = ideContainer.columns(2)
+else:
+    idePart1 = ideContainer.container()
+    idePart2 = ideContainer.container()
+controlsContainer = st.container()
+
+
+with compileOptionContainer:
+    st.write("")
+    auto_compile = st.checkbox("Dynamic Compilation [Experimental]", key="auto_compile_flag")
+    if auto_compile:
+        st.caption("Compiling SQL on change")
     else:
-        model_editor = st.expander("Edit Model")
-        compiled_viewer = st.expander("View Compiled SQL")
+        st.caption("Compiling SQL with control + enter")
 
-
-# MODEL EDITOR CONTENTS
-with model_editor:
-    mut_node.raw_sql = st_ace(
-        value=mut_node.raw_sql,
-        theme=editor_theme,
-        language=editor_lang,
+with idePart1:
+    IDE = st_ace(
+        value=IDE,
+        theme=st.session_state[THEME_PICKER],
+        language=st.session_state[DIALECT_PICKER],
         auto_update=auto_compile,
         key="AceEditorGoGoGo",
-        max_lines=15,
     )
-    if mut_node.raw_sql != st.session_state[THIS_SQL]:
-        update_manifest_node(mut_node)
-        st.session_state[THIS_SQL] = mut_node.raw_sql
 
-# CACHE OPTIMIZED GLOBALLY USED VALS
-compiled_mut_node = compile_model(deepcopy(mut_node))
-compiled_base_node = compile_model(deepcopy(base_node))
-THIS, EXISTS = get_relation_if_exists(base_node)
+if st.session_state[MUT_NODE].raw_sql != IDE:
+    st.session_state[
+        MUT_NODE
+    ].raw_sql = IDE  # update the st.session_state[MUT_NODE] with the new SQL
+    st.session_state[COMPILED_MUT_NODE] = compile_model(st.session_state[MUT_NODE])
 
-# COMPILED SQL VIEWER CONTENTS
-with compiled_viewer:
-    if compiled_mut_node:
-        st.code(compiled_mut_node.compiled_sql, language="sql")
-    else:
-        st.warning("Invalid Jinja")
+with idePart2:
+    with st.expander("Compiled SQL", expanded=True):
+        st.code(
+            st.session_state[COMPILED_MUT_NODE].compiled_sql
+            if st.session_state[COMPILED_MUT_NODE]
+            else " -- Invalid Jinja, awaiting model to become valid",
+            language="sql",
+        )
 
-# BUTTON & NOTIFICATION CONTAINER CONTENTS
-with btn_container:
+with controlsContainer:
     pivot_layout_btn, build_model_btn, commit_changes_btn, revert_changes_btn = st.columns(4)
     with pivot_layout_btn:
         st.button("Pivot Layout", on_click=toggle_viewer)
@@ -308,23 +296,35 @@ with btn_container:
         do_run_model = st.button(
             label=get_model_action_text(EXISTS),
         )
-    if not mut_node.same_body(base_node):
-        with commit_changes_btn:
-            st.button("Commit changes to file", on_click=save_model, kwargs={"node": mut_node})
-        with revert_changes_btn:
-            st.button("Revert changes", on_click=revert_model, kwargs={"node": mut_node})
-        st.info("Uncommitted changes detected in model")
+    with commit_changes_btn:
+        if not st.session_state[MUT_NODE].same_body(st.session_state[BASE_NODE]):
+            st.button(
+                "Commit changes to file",
+                on_click=save_model,
+                kwargs={"node": st.session_state[MUT_NODE]},
+            )
+    with revert_changes_btn:
+        if not st.session_state[MUT_NODE].same_body(st.session_state[BASE_NODE]):
+            st.button(
+                "Revert changes", on_click=revert_model, kwargs={"node": st.session_state[MUT_NODE]}
+            )
+    st.success("Model successfully loaded, started hacking away!")
 
-    if do_run_model and compiled_mut_node:
+    if do_run_model and st.session_state[COMPILED_MUT_NODE]:
         with st.spinner("Running model against target... ⚙️"):
-            run_model(mut_node)
+            run_model(st.session_state[MUT_NODE])
         with st.spinner("Model ran against target! 🧑‍🏭"):
             time.sleep(2)
         do_run_model = False
 
+
 # ----------------------------------------------------------------
 # QUERY RESULT INSPECTOR
 # ----------------------------------------------------------------
+
+if ctx.profile.target_name != st.session_state[TARGET_PROFILE] or st.session_state[DBT_DO_RELOAD]:
+    print("RELOADING DBT")
+    inject_dbt()
 
 st.stop()
 
