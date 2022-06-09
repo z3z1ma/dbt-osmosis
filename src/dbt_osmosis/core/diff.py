@@ -113,11 +113,13 @@ def diff_tables(
     return table
 
 
-def diff_queries(sql_A: str, sql_B: str, pk: str, runner: DbtOsmosis) -> agate.Table:
+def diff_queries(
+    sql_A: str, sql_B: str, pk: str, runner: DbtOsmosis, aggregate: bool = True
+) -> agate.Table:
 
     logger().info("Running diff")
     _, _, table = runner.execute_macro(
-        "compare_queries",
+        "compare_queries" if aggregate else "dbt_osmosis_compare",
         kwargs={
             "a_query": sql_A,
             "b_query": sql_B,

@@ -35,8 +35,8 @@ import click
 
 from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.logging import logger
-from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR,
-                                      CompilationException, DbtOsmosis)
+from dbt_osmosis.core.macros import inject_macros
+from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis
 
 CONTEXT = {"max_content_width": 800}
 
@@ -410,6 +410,7 @@ def diff(
         profiles_dir=profiles_dir,
         target=target,
     )
+    inject_macros(runner)
     diff_and_print_to_console(model, pk, runner, temp_table)
 
 

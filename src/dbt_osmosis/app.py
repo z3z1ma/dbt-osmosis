@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -13,13 +13,16 @@ import pandas_profiling
 import streamlit as st
 from dbt.adapters.base.relation import BaseRelation
 from dbt.contracts.graph import compiled, manifest, parsed
-from dbt.exceptions import CompilationException, DatabaseException
+from dbt.exceptions import (CompilationException, DatabaseException,
+                            RuntimeException)
 from dbt.task.run import ModelRunner
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
 from dbt_osmosis.core.diff import diff_queries
+from dbt_osmosis.core.macros import inject_macros
+from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR, DbtOsmosis,
+                                      SchemaFile, get_raw_profiles)
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 
@@ -72,31 +75,32 @@ def hash_compiled_node(node: parsed.ParsedModelNode):
 
 hash_funcs = {
     parsed.ParsedModelNode: hash_parsed_node,
-    compiled.CompiledModelNode: hash_compiled_node,
+    compiled.CompiledModelNode: lambda _: None,
     manifest.Manifest: lambda _: None,
     DbtOsmosis: lambda _: None,
 }
 
 
-def inject_dbt():
+def inject_dbt(change_target: Optional[str] = None):
     if DBT not in st.session_state:
         dbt_ctx = DbtOsmosis(
             project_dir=st.session_state[PROJ_DIR],
             profiles_dir=st.session_state[PROF_DIR],
+            target=change_target,
         )
+        # st.session_state[MAP] = dbt_ctx.build_schema_folder_mapping()
     else:
         dbt_ctx: DbtOsmosis = st.session_state[DBT]
-        dbt_ctx.rebuild_dbt_manifest()
+        dbt_ctx.rebuild_dbt_manifest(reset=True)
 
     st.session_state[DBT] = dbt_ctx
-    st.session_state[MAP] = dbt_ctx.build_schema_folder_mapping()
     return True
 
 
 if DBT not in st.session_state:
     inject_dbt()
 ctx: DbtOsmosis = st.session_state[DBT]
-schema_map: Dict[str, SchemaFile] = st.session_state[MAP]
+# schema_map: Dict[str, SchemaFile] = st.session_state[MAP]
 st.session_state.setdefault((TARGET_PROFILE := "TARGET_PROFILE"), ctx.profile.target_name)
 
 
@@ -104,17 +108,17 @@ def toggle_viewer() -> None:
     st.session_state[PIVOT_LAYOUT] = not st.session_state[PIVOT_LAYOUT]
 
 
-def revert_model(node: manifest.ManifestNode) -> None:
-    """Reverts the editor to the last known value of the model prior to any uncommitted changes"""
-    node.raw_sql = ""
-    st.session_state[REVERT_MODEL] = True
-
-
 def save_model(node: manifest.ManifestNode) -> None:
     """Saves an updated model committing the changes to file"""
-    path = Path(node.root_path) / Path(node.original_file_path)
-    # with open(path, "w", encoding="utf-8") as sql_file:
-    #    sql_file.write(node.raw_sql)
+    with notificationContainer:
+        with st.spinner("Saving model..."):
+            path = Path(node.root_path) / Path(node.original_file_path)
+            with open(path, "w", encoding="utf-8") as sql_file:
+                sql_file.write(node.raw_sql)
+        st.success(
+            f"Saved model {path.stem}! Go back to your IDE to see the changes and commit them to git."
+        )
+        time.sleep(2.5)
 
 
 def run_model(node: manifest.ManifestNode) -> Optional[BaseRelation]:
@@ -137,9 +141,9 @@ def run_model(node: manifest.ManifestNode) -> Optional[BaseRelation]:
 
 def get_model_action_text(exists: bool) -> str:
     if exists:
-        return "▶️ Run Model"
+        return "▶️ Run Model UPDATE"
     else:
-        return "▶️ Run Model"
+        return "▶️ Run Model CREATE"
 
 
 @st.experimental_memo
@@ -242,22 +246,26 @@ def test_query(node: manifest.ManifestNode, limit: int = 2000) -> None:
     sql_query_mode is set to "test" which acts as a switch for the components rendered post function execution
     """
 
-    with ctx.adapter.connection_named("dbt-osmosis"):
-        query = ctx.adapter.execute(
-            f"select * from ({node.compiled_sql}) as __all_data limit {limit}",
-            fetch=True,
-        )
+    try:
+        with ctx.adapter.connection_named("dbt-osmosis"):
+            query = ctx.adapter.execute(
+                f"select * from ({node.compiled_sql}) as __all_data limit {limit}",
+                fetch=True,
+            )
+    except DatabaseException as error:
+        st.session_state[SQL_QUERY_MODE] = "error"
+        st.session_state[SQL_RESP_INFO] = str(error)
+    else:
+        table = query[1]
+        output = []
+        json_funcs = [c.jsonify for c in table._column_types]
+        for row in table._rows:
+            values = tuple(json_funcs[i](d) for i, d in enumerate(row))
+            output.append(OrderedDict(zip(row.keys(), values)))
 
-    table = query[1]
-    output = []
-    json_funcs = [c.jsonify for c in table._column_types]
-    for row in table._rows:
-        values = tuple(json_funcs[i](d) for i, d in enumerate(row))
-        output.append(OrderedDict(zip(row.keys(), values)))
-
-    st.session_state[SQL_RESULT] = pd.DataFrame(output)
-    st.session_state[SQL_RESP_INFO] = query[0]
-    st.session_state[SQL_QUERY_MODE] = "test"
+        st.session_state[SQL_RESULT] = pd.DataFrame(output)
+        st.session_state[SQL_RESP_INFO] = query[0]
+        st.session_state[SQL_QUERY_MODE] = "test"
 
 
 @st.cache
@@ -301,8 +309,45 @@ def convert_profile_report_to_html(profile: pandas_profiling.ProfileReport) -> s
     return profile.to_html()
 
 
+@st.cache(hash_funcs=hash_funcs)  # Questionable whether we want to cache this
+def run_diff(
+    node_A: manifest.ManifestNode, node_B: manifest.ManifestNode, pk: str, aggregate: bool = False
+) -> None:
+    try:
+        table = diff_queries(node_A.compiled_sql, node_B.compiled_sql, pk, ctx, aggregate)
+    except DatabaseException as error:
+        st.session_state[SQL_QUERY_MODE] = "error"
+        st.session_state[SQL_RESP_INFO] = str(error)
+    except RuntimeException as error:
+        inject_macros(ctx)
+        st.session_state[SQL_QUERY_MODE] = "error"
+        st.session_state[SQL_RESP_INFO] = (
+            str(error)
+            + "\nWe injected the required macros into your project, please refresh the page & try again. Ensure dbt-audit-helper is installed."
+        )
+    else:
+        output = []
+        json_funcs = [c.jsonify for c in table._column_types]
+        for row in table._rows:
+            values = tuple(json_funcs[i](d) for i, d in enumerate(row))
+            output.append(OrderedDict(zip(row.keys(), values)))
+
+        st.session_state[SQL_QUERY_MODE] = "diff"
+        st.session_state[SQL_RESULT] = pd.DataFrame(output)
+
+
 # Singleton Base Node
 st.session_state.setdefault((BASE_NODE := "BASE_NODE"), singleton_node_finder(args["model"]))
+
+# Load Docs
+st.session_state.setdefault(
+    (DOCS_PATH := "DOCS_PATH"),
+    Path(ctx.project_root) / ctx.get_patch_path(st.session_state[BASE_NODE]),
+)
+st.session_state.setdefault(
+    (DOCS_STR := "DOCS_STR"),
+    st.session_state[DOCS_PATH].read_text() if st.session_state[DOCS_PATH].exists() else "",
+)
 
 # Deepcopy a Node for Mutating
 st.session_state.setdefault(
@@ -355,15 +400,20 @@ st.sidebar.selectbox("Editor Theme", THEMES, index=8, key=THEME_PICKER)
 st.sidebar.selectbox("Editor Language", DIALECTS, key=DIALECT_PICKER)
 
 # IDE LAYOUT
+notificationContainer = st.empty()
 compileOptionContainer = st.container()
+with st.expander("Controls", expanded=True):
+    controlsContainer = st.container()
 ideContainer = st.container()
 if not st.session_state[PIVOT_LAYOUT]:
     idePart1, idePart2 = ideContainer.columns(2)
 else:
     idePart1 = ideContainer.container()
     idePart2 = ideContainer.container()
-controlsContainer = st.container()
-
+with controlsContainer:
+    pivot_layout_btn, commit_changes_btn, revert_changes_btn, build_model_btn = st.columns(
+        [1, 1, 1, 1]
+    )
 
 with compileOptionContainer:
     st.write("")
@@ -373,20 +423,24 @@ with compileOptionContainer:
     else:
         st.caption("👉 Compiling SQL with control + enter")
 
+with revert_changes_btn:
+    revert = st.button("🔙 Revert changes")
+    if revert:
+        IDE = st.session_state[BASE_NODE].raw_sql
+        st.session_state[MUT_NODE] = deepcopy(st.session_state[BASE_NODE])
+        st.session_state[COMPILED_MUT_NODE] = compile_model(st.session_state[MUT_NODE])
+        st.session_state[EDITOR_STATE_ITER_1] += 1
+        st.experimental_rerun()
+    st.caption("Revert file to last saved state")
+
 with idePart1:
     IDE = st_ace(
         value=IDE,
         theme=st.session_state[THEME_PICKER],
         language=st.session_state[DIALECT_PICKER],
         auto_update=auto_compile,
-        key="AceEditorGoGoGo",
+        key=f"AceEditorGoGoGo-{st.session_state[EDITOR_STATE_ITER_1]}",
     )
-
-if st.session_state[MUT_NODE].raw_sql != IDE:
-    st.session_state[
-        MUT_NODE
-    ].raw_sql = IDE  # update the st.session_state[MUT_NODE] with the new SQL
-    st.session_state[COMPILED_MUT_NODE] = compile_model(st.session_state[MUT_NODE])
 
 with idePart2:
     with st.expander("📝 Compiled SQL", expanded=True):
@@ -396,42 +450,54 @@ with idePart2:
             else " -- Invalid Jinja, awaiting model to become valid",
             language="sql",
         )
-
-with controlsContainer:
-    pivot_layout_btn, build_model_btn, commit_changes_btn, revert_changes_btn = st.columns(
-        [3, 1, 1, 1]
-    )
-    with pivot_layout_btn:
-        st.button("📏 Pivot Layout", on_click=toggle_viewer)
-    with build_model_btn:
-        do_run_model = st.button(
-            label=get_model_action_text(st.session_state[EXISTS]),
+    with st.expander("📝 Documentation (read-only)", expanded=False):
+        st.code(
+            st.session_state[DOCS_PATH].read_text(),
+            language="yaml",
         )
-    with commit_changes_btn:
-        if not st.session_state[MUT_NODE].same_body(st.session_state[BASE_NODE]):
-            st.button(
-                "💾 Save Changes",
-                on_click=save_model,
-                kwargs={"node": st.session_state[MUT_NODE]},
-            )
-    with revert_changes_btn:
-        if not st.session_state[MUT_NODE].same_body(st.session_state[BASE_NODE]):
-            st.button(
-                "🔙 Revert changes",
-                on_click=revert_model,
-                kwargs={"node": st.session_state[MUT_NODE]},
-            )
 
-    if do_run_model and st.session_state[COMPILED_MUT_NODE]:
+if st.session_state[MUT_NODE].raw_sql != IDE:
+    st.session_state[
+        MUT_NODE
+    ].raw_sql = IDE  # Update the st.session_state[MUT_NODE] with the new SQL
+    st.session_state[COMPILED_MUT_NODE] = compile_model(st.session_state[MUT_NODE])
+    st.experimental_rerun()  # This eager re-run speeds up the app
+
+with pivot_layout_btn:
+    st.button("📏 Pivot Layout", on_click=toggle_viewer)
+    st.caption("Rotate the layout of the IDE")
+with build_model_btn:
+    do_run_model = st.button(
+        label=get_model_action_text(st.session_state[EXISTS]),
+    )
+    st.caption("Run model DDL against target profile")
+with commit_changes_btn:
+    st.button(
+        "💾 Save Changes",
+        on_click=save_model,
+        kwargs={"node": st.session_state[MUT_NODE]},
+    )
+    st.caption("Commit the changes to local file")
+
+
+if do_run_model and st.session_state[COMPILED_MUT_NODE]:
+    with notificationContainer:
         with st.spinner("Running model against target... ⚙️"):
             run_model(st.session_state[MUT_NODE])
         with st.spinner("Model ran against target! 🧑‍🏭"):
             time.sleep(2)
-        do_run_model = False
+    do_run_model = False
 
 if ctx.profile.target_name != st.session_state[TARGET_PROFILE] or st.session_state[DBT_DO_RELOAD]:
-    print("RELOADING DBT")
-    inject_dbt()
+    print("Reloading dbt project...")
+    with notificationContainer:
+        ctx.profile.target_name = st.session_state[TARGET_PROFILE]
+        ctx.config.target_name = st.session_state[TARGET_PROFILE]
+        with st.spinner("Reloading dbt... ⚙️"):
+            inject_dbt(st.session_state[TARGET_PROFILE])
+            st.session_state[COMPILED_MUT_NODE] = compile_model(st.session_state[MUT_NODE])
+    st.experimental_rerun()
+
 
 # TEST LAYOUT
 testHeaderContainer = st.container()
@@ -468,24 +534,24 @@ agg_diff_results = test_column_2.checkbox("Aggregate Diff Results", key=DIFF_AGG
 test_column_2.caption("Use this to get aggregate diff results when data does not fit in memory")
 test_column_1.button(
     "Calculate Row Level Diff",
-    on_click=lambda **_: None,
+    on_click=run_diff,
     kwargs={
-        "primary_keys": diff_cols,
-        "aggregate_result": agg_diff_results,
-        "prev_cols": st.session_state[BASE_COLUMNS],
-        "curr_cols": projected_columns,
+        "node_A": st.session_state[COMPILED_BASE_NODE],
+        "node_B": st.session_state[COMPILED_MUT_NODE],
+        "pk": "concat(" + ",".join(diff_cols) + ")",
+        "aggregate": agg_diff_results,
     },
 )
-test_column_1.caption(
-    "(⚠️ being refactored) This will output the rows added or removed by changes made to the query"
-)
+test_column_1.caption("This will output the rows added or removed by changes made to the query")
 
 with testContainer:
     st.write("\n\n\n\n\n")
     if st.session_state[SQL_QUERY_MODE] == "test":
         st.write("Compiled SQL query results")
     elif st.session_state[SQL_QUERY_MODE] == "diff":
-        st.write("Compiled SQL query row-level diff")
+        st.write("Compiled SQL query diff")
+    elif st.session_state[SQL_QUERY_MODE] == "error":
+        st.warning(f"SQL query error: {st.session_state[SQL_RESP_INFO]}")
     if not st.session_state[SQL_RESULT].empty:
         st.write(st.session_state[SQL_RESP_INFO])
         st.dataframe(

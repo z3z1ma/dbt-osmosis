@@ -14,6 +14,7 @@ from dbt.contracts.graph.manifest import ManifestNode, NodeType
 from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
 from dbt.exceptions import CompilationException, RuntimeException
 from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
+from dbt.task.deps import DepsTask
 from dbt.tracking import disable_tracking
 from pydantic import BaseModel
 from rich.progress import track
@@ -116,6 +117,7 @@ class DbtOsmosis:
             profiles_dir=profiles_dir,
             project_dir=project_dir,
         )
+        self.args = args
 
         # Load dbt + verify connection to data warehhouse
         set_from_args(args, args)
@@ -134,6 +136,9 @@ class DbtOsmosis:
         # Utilities
         self.yaml = self._build_yaml_parser()
         self.dry_run = dry_run
+        self.track_package_install = (
+            lambda *args, **kwargs: None
+        )  # Monkey patching to make self compatible with DepsTask
 
     @staticmethod
     def _verify_connection(adapter: Adapter) -> Adapter:
@@ -151,8 +156,6 @@ class DbtOsmosis:
         yaml.indent(mapping=2, sequence=4, offset=2)
         yaml.width = 800
         yaml.preserve_quotes = True
-        yaml.explicit_start = True
-        yaml.explicit_end = True
         yaml.default_flow_style = False
         return yaml
 
@@ -164,12 +167,16 @@ class DbtOsmosis:
     def project_root(self) -> str:
         return self.project.project_root
 
-    def rebuild_dbt_manifest(self) -> None:
-        self.dbt = dbt_parser.ManifestLoader.get_full_manifest(self.config)
+    def rebuild_dbt_manifest(self, reset: bool = False) -> None:
+        self.dbt = dbt_parser.ManifestLoader.get_full_manifest(self.config, reset=reset)
 
     @property
     def manifest(self) -> Dict[str, Any]:
         return self.dbt.flat_graph
+
+    @staticmethod
+    def get_patch_path(node: ManifestNode) -> Path:
+        return Path(node.patch_path.split(FILE_ADAPTER_POSTFIX)[-1])
 
     def execute_macro(
         self,
