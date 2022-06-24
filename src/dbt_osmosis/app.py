@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -13,16 +13,14 @@ import pandas_profiling
 import streamlit as st
 from dbt.adapters.base.relation import BaseRelation
 from dbt.contracts.graph import compiled, manifest, parsed
-from dbt.exceptions import (CompilationException, DatabaseException,
-                            RuntimeException)
+from dbt.exceptions import CompilationException, DatabaseException, RuntimeException
 from dbt.task.run import ModelRunner
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
 from dbt_osmosis.core.diff import diff_queries
 from dbt_osmosis.core.macros import inject_macros
-from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR, DbtOsmosis,
-                                      SchemaFile, get_raw_profiles)
+from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 
@@ -456,10 +454,10 @@ with idePart2:
             language="yaml",
         )
 
-if st.session_state[MUT_NODE].raw_sql != IDE:
-    st.session_state[
-        MUT_NODE
-    ].raw_sql = IDE  # Update the st.session_state[MUT_NODE] with the new SQL
+if cast(manifest.ManifestNode, st.session_state[MUT_NODE]).raw_sql != IDE:
+    cast(
+        manifest.ManifestNode, st.session_state[MUT_NODE]
+    ).raw_sql = IDE  # Update the st.session_state[MUT_NODE] with the new SQL
     st.session_state[COMPILED_MUT_NODE] = compile_model(st.session_state[MUT_NODE])
     st.experimental_rerun()  # This eager re-run speeds up the app
 
@@ -555,7 +553,7 @@ with testContainer:
     if not st.session_state[SQL_RESULT].empty:
         st.write(st.session_state[SQL_RESP_INFO])
         st.dataframe(
-            st.session_state[SQL_RESULT]
+            cast(pd.DataFrame, st.session_state[SQL_RESULT])
             .style.apply(
                 _highlight_string,
                 string="REMOVED",
@@ -614,77 +612,6 @@ with manifestViewer:
 st.stop()
 
 # ----------------------------------------------------------------
-# Documentation IDE
-# ----------------------------------------------------------------
-
-st.write("")
-st.subheader("Osmosis Docs Editor ✏️")
-st.write("")
-
-SCHEMA_FILE = st.session_state[MAP].get(choice)
-KNOWLEDGE = dbt_osmosis.main.pass_down_knowledge(
-    dbt_osmosis.main.build_ancestor_tree(model, st.session_state[DBT].manifest),
-    st.session_state[DBT].manifest,
-)
-
-
-doc_btns = []
-doc_actions = []
-n_doc_note = 1
-if SCHEMA_FILE.current is None:
-    st.caption(f"{n_doc_note}. This model is currently not documented")
-    n_doc_note += 1
-    if SCHEMA_FILE.target.exists():
-        doc_btns.append("Update schema file")  # fix_documentation
-        doc_actions.append(fix_documentation)
-        st.caption(f"{n_doc_note}. An appropriate target schema yml exists")
-        n_doc_note += 1
-    else:
-        doc_btns.append("Build schema file")  # fix_documentation
-        doc_actions.append(fix_documentation)
-        st.caption(f"{n_doc_note}. The target schema yml does not exist")
-        n_doc_note += 1
-else:
-    st.caption(f"{n_doc_note}. This model is currently documented")
-    if not SCHEMA_FILE.is_valid:
-        st.caption(
-            f"{n_doc_note}. The current location of the schema file is invalid. This model should be migrated to target schema file"
-        )
-        doc_btns.append("Migrate schema file model")  # fix_documentation
-        doc_actions.append(fix_documentation)
-        n_doc_note += 1
-    else:
-        st.caption(f"{n_doc_note}. Schema file location is valid")
-        # only actions are inherit + commit
-        n_doc_note += 1
-if not EXISTS:
-    st.caption(
-        f"{n_doc_note}. Table must exist in database to action. Use the `Build dbt Model in Database` button to build the model"
-    )
-elif len(doc_btns) > 0:
-    st.write("")
-    for doc_btn, doc_col, doc_action in zip(doc_btns, st.columns(len(doc_btns)), doc_actions):
-        doc_col.button(doc_btn, on_click=doc_action)
-
-# DOC EDITOR
-with st.expander("Edit documentation"):
-    for column in database_columns:
-        st.text_input(
-            column,
-            value=(
-                model["columns"]
-                .get(column, {"description": "Not in schema file"})
-                .get("description")
-                or "Not documented"
-            ),
-        )
-        progenitor = KNOWLEDGE.get(column)
-        if progenitor:
-            st.write(progenitor)
-        else:
-            st.caption("This is the column's origin")
-
-# ----------------------------------------------------------------
 # Data Test Runner
 # ----------------------------------------------------------------
 
@@ -726,8 +653,6 @@ def run_test(
             fetch=True,
         )
 
-    # I WISH THERE WAS A BETTER WAY TO WORK WITH AGATE IN STREAMLIT
-    # This is admittedly terrible efficiency-wise IMO, the user defined LIMIT alleviates this somewhat
     table = test_results[1]
     output = []
     json_funcs = [c.jsonify for c in table._column_types]
