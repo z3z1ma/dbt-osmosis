@@ -13,14 +13,16 @@ import pandas_profiling
 import streamlit as st
 from dbt.adapters.base.relation import BaseRelation
 from dbt.contracts.graph import compiled, manifest, parsed
-from dbt.exceptions import CompilationException, DatabaseException, RuntimeException
+from dbt.exceptions import (CompilationException, DatabaseException,
+                            RuntimeException)
 from dbt.task.run import ModelRunner
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
 from dbt_osmosis.core.diff import diff_queries
 from dbt_osmosis.core.macros import inject_macros
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, SchemaFile, get_raw_profiles
+from dbt_osmosis.core.osmosis import (DEFAULT_PROFILES_DIR, DbtOsmosis,
+                                      SchemaFile, get_raw_profiles)
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 
@@ -340,11 +342,7 @@ st.session_state.setdefault((BASE_NODE := "BASE_NODE"), singleton_node_finder(ar
 # Load Docs
 st.session_state.setdefault(
     (DOCS_PATH := "DOCS_PATH"),
-    Path(ctx.project_root) / ctx.get_patch_path(st.session_state[BASE_NODE]),
-)
-st.session_state.setdefault(
-    (DOCS_STR := "DOCS_STR"),
-    st.session_state[DOCS_PATH].read_text() if st.session_state[DOCS_PATH].exists() else "",
+    Path(ctx.project_root) / (ctx.get_patch_path(st.session_state[BASE_NODE]) or ""),
 )
 
 # Deepcopy a Node for Mutating
@@ -450,7 +448,10 @@ with idePart2:
         )
     with st.expander("📝 Documentation (read-only)", expanded=False):
         st.code(
-            st.session_state[DOCS_PATH].read_text(),
+            cast(Path, st.session_state[DOCS_PATH]).read_text()
+            if cast(Path, st.session_state[DOCS_PATH]).exists()
+            and cast(Path, st.session_state[DOCS_PATH]).is_file()
+            else "No documentation found",
             language="yaml",
         )
 

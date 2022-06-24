@@ -14,7 +14,6 @@ from dbt.contracts.graph.manifest import ManifestNode, NodeType
 from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
 from dbt.exceptions import CompilationException, RuntimeException
 from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
-from dbt.task.deps import DepsTask
 from dbt.tracking import disable_tracking
 from pydantic import BaseModel
 from rich.progress import track
@@ -175,8 +174,9 @@ class DbtOsmosis:
         return self.dbt.flat_graph
 
     @staticmethod
-    def get_patch_path(node: ManifestNode) -> Path:
-        return Path(node.patch_path.split(FILE_ADAPTER_POSTFIX)[-1])
+    def get_patch_path(node: ManifestNode) -> Optional[Path]:
+        if node.patch_path:
+            return Path(node.patch_path.split(FILE_ADAPTER_POSTFIX)[-1])
 
     def execute_macro(
         self,
