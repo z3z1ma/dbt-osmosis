@@ -82,6 +82,7 @@ class OsmosisConfig(str, Enum):
     SchemaYaml = "schema.yml"
     FolderYaml = "folder.yml"
     ModelYaml = "model.yml"
+    UnderscoreModelYaml = "_model.yml"
     SchemaModelYaml = "schema/model.yml"
 
 
@@ -266,6 +267,8 @@ class DbtOsmosis:
             schema = node.name
         elif osmosis_config == OsmosisConfig.SchemaModelYaml:
             schema = "schema/" + node.name
+        elif osmosis_config == OsmosisConfig.UnderscoreModelYaml:
+            schema = "_" + node.name
         else:
             raise InvalidOsmosisConfig(f"Invalid dbt-osmosis config for model: {node.fqn}")
         return Path(node.root_path, node.original_file_path).parent / Path(f"{schema}.yml")
