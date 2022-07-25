@@ -338,6 +338,10 @@ def run_diff(
 
 # Singleton Base Node
 st.session_state.setdefault((BASE_NODE := "BASE_NODE"), singleton_node_finder(args["model"]))
+if st.session_state[BASE_NODE] is None:
+    st.stop(
+        f"Model {args['model']} not found! Try running dbt-osmosis again with a valid model selection"
+    )
 
 # Load Docs
 st.session_state.setdefault(

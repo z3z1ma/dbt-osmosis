@@ -175,7 +175,7 @@ class DbtOsmosis:
 
     @staticmethod
     def get_patch_path(node: ManifestNode) -> Optional[Path]:
-        if node.patch_path:
+        if node is not None and node.patch_path:
             return Path(node.patch_path.split(FILE_ADAPTER_POSTFIX)[-1])
 
     def execute_macro(
