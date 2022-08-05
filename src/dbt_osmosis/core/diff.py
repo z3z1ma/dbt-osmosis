@@ -7,7 +7,7 @@ import agate
 from dbt.adapters.base.relation import BaseRelation
 from git import Repo
 
-from dbt_osmosis.core.logging import logger
+from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.osmosis import DbtOsmosis
 
 

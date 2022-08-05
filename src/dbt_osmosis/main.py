@@ -34,7 +34,7 @@ from typing import Optional
 import click
 
 from dbt_osmosis.core.diff import diff_and_print_to_console
-from dbt_osmosis.core.logging import logger
+from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.macros import inject_macros
 from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis
 
