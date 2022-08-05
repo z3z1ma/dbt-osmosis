@@ -1,30 +1,91 @@
+import os
+from dataclasses import dataclass
 from enum import Enum
+from functools import cache
+from hashlib import md5
 from itertools import chain
 from pathlib import Path
-from typing import (Any, Dict, Iterable, Iterator, List, Mapping,
-                    MutableMapping, Optional, Set, Tuple, Union)
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 import agate
-import dbt.config.runtime as dbt_config
-import dbt.parser.manifest as dbt_parser
-from dbt.adapters.factory import (Adapter, get_adapter, register_adapter,
-                                  reset_adapters)
+import sqlparse
+from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters
+from dbt.clients import jinja
+from dbt.clients.jinja import extract_toplevel_blocks
+from dbt.config.runtime import RuntimeConfig
+from dbt.context.providers import generate_runtime_model_context
 from dbt.contracts.connection import AdapterResponse
-from dbt.contracts.graph.manifest import ManifestNode, NodeType
-from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
-from dbt.exceptions import CompilationException, RuntimeException
-from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
+from dbt.contracts.graph.compiled import (
+    COMPILED_TYPES,
+    CompiledGenericTestNode,
+    InjectedCTE,
+    ManifestNode,
+    NonSourceCompiledNode,
+)
+from dbt.contracts.graph.manifest import Manifest, ManifestNode, NodeType, SourceFile
+from dbt.contracts.graph.parsed import ColumnInfo, ParsedMacro, ParsedModelNode, ParsedSqlNode
+from dbt.contracts.graph.unparsed import UnparsedMacro
+from dbt.contracts.results import NodeStatus, RunResult, RunStatus
+from dbt.exceptions import CompilationException, InternalException, RuntimeException
+from dbt.flags import DEFAULT_PROFILES_DIR, env_set_truthy, set_from_args
+from dbt.node_types import NodeType
+from dbt.parser.base import SimpleSQLParser
+from dbt.parser.macros import MacroParser
+from dbt.parser.manifest import ManifestLoader, process_macro, process_node
+from dbt.parser.search import FileBlock
 from dbt.tracking import disable_tracking
 from pydantic import BaseModel
 from rich.progress import track
 from ruamel.yaml import YAML
 
-from dbt_osmosis.core.exceptions import (InvalidOsmosisConfig,
-                                         MissingOsmosisConfig,
-                                         SanitizationRequired)
-from dbt_osmosis.core.logging import logger
+from dbt_osmosis.core.exceptions import (
+    InvalidOsmosisConfig,
+    MissingOsmosisConfig,
+    SanitizationRequired,
+)
+from dbt_osmosis.core.log_controller import logger
+
+
+def memoize_get_rendered(function):
+    memo = {}
+
+    def wrapper(
+        string: str,
+        ctx: Dict[str, Any],
+        node=None,
+        capture_macros: bool = False,
+        native: bool = False,
+    ):
+        v = md5(string.encode("utf-8")).hexdigest()
+        if capture_macros == True and node is not None:
+            # Now the node is important, cache mutated node
+            v += node.name
+        rv = memo.get(v)
+        if rv is not None:
+            return rv
+        else:
+            rv = function(string, ctx, node, capture_macros, native)
+            memo[v] = rv
+            return rv
+
+    return wrapper
+
 
 disable_tracking()
+jinja.get_rendered = memoize_get_rendered(jinja.get_rendered)
 
 AUDIT_REPORT = """
 :white_check_mark: [bold]Audit Report[/bold]
@@ -57,6 +118,8 @@ PLACEHOLDERS = [
 ]
 
 FILE_ADAPTER_POSTFIX = "://"
+
+SINGLE_THREADED_HANDLER = env_set_truthy("DBT_SINGLE_THREADED_HANDLER")
 
 
 class PseudoArgs:
@@ -100,6 +163,55 @@ class RestructureQuantum(BaseModel):
     supersede: Dict[Path, List[str]] = {}
 
 
+@dataclass
+class SqlBlock(FileBlock):
+    sql_name: str
+
+    @property
+    def name(self):
+        return self.sql_name
+
+
+class LocalCallParser(SimpleSQLParser[ParsedSqlNode]):
+    def parse_from_dict(self, dct, validate=True) -> ParsedSqlNode:
+        if validate:
+            ParsedSqlNode.validate(dct)
+        return ParsedSqlNode.from_dict(dct)
+
+    @property
+    def resource_type(self) -> NodeType:
+        return NodeType.SqlOperation
+
+    def get_compiled_path(cls, block: FileBlock):
+        if not isinstance(block, SqlBlock):
+            raise InternalException(
+                "While parsing SQL calls, got an actual file block instead of "
+                "an SQL block: {}".format(block)
+            )
+
+        return os.path.join("sql", block.name)
+
+    def parse_remote(self, sql: str, name: str) -> ParsedSqlNode:
+        """Add a node to the manifest parsing arbitrary SQL"""
+        source_file = SourceFile.remote(sql, self.project.project_name)
+        contents = SqlBlock(sql_name=name, file=source_file)
+        return self.parse_node(contents)
+
+
+class LocalMacroParser(MacroParser):
+    @cache
+    def parse_remote(self, contents) -> Iterable[ParsedMacro]:
+        base = UnparsedMacro(
+            path="from local system",
+            original_file_path="from local system",
+            package_name=self.project.project_name,
+            raw_sql=contents,
+            root_path=self.project.project_root,
+            resource_type=NodeType.Macro,
+        )
+        return [node for node in self.parse_unparsed_macros(base)]
+
+
 class DbtOsmosis:
     def __init__(
         self,
@@ -121,14 +233,14 @@ class DbtOsmosis:
 
         # Load dbt + verify connection to data warehhouse
         set_from_args(args, args)
-        self.project, self.profile = dbt_config.RuntimeConfig.collect_parts(args)
-        self.config = dbt_config.RuntimeConfig.from_parts(self.project, self.profile, args)
+        self.project, self.profile = RuntimeConfig.collect_parts(args)
+        self.config = RuntimeConfig.from_parts(self.project, self.profile, args)
         reset_adapters()
         register_adapter(self.config)
         self.adapter = self._verify_connection(get_adapter(self.config))
 
         # Parse project
-        self.dbt = dbt_parser.ManifestLoader.get_full_manifest(self.config)
+        self.dbt = ManifestLoader.get_full_manifest(self.config)
 
         # Selector Passed in From CLI
         self.fqn = fqn
@@ -139,6 +251,36 @@ class DbtOsmosis:
         self.track_package_install = (
             lambda *args, **kwargs: None
         )  # Monkey patching to make self compatible with DepsTask
+        self._cached_exec_nodes = set()
+
+        # Dependency injection
+        self._sql_parser = None
+        self._macro_parser = None
+
+    # PARSERS
+
+    @property
+    def sql_parser(self) -> LocalCallParser:
+        if self._sql_parser is None:
+            self._sql_parser = LocalCallParser(self.project, self.dbt, self.config)
+        return self._sql_parser
+
+    @property
+    def macro_parser(self) -> LocalMacroParser:
+        if self._macro_parser is None:
+            self._macro_parser = LocalMacroParser(self.project, self.dbt)
+        return self._macro_parser
+
+    @staticmethod
+    def _build_yaml_parser() -> YAML:
+        yaml = YAML()
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        yaml.width = 800
+        yaml.preserve_quotes = True
+        yaml.default_flow_style = False
+        return yaml
+
+    # RUNTIME VALIDATORS
 
     @staticmethod
     def _verify_connection(adapter: Adapter) -> Adapter:
@@ -150,14 +292,7 @@ class DbtOsmosis:
         else:
             return adapter
 
-    @staticmethod
-    def _build_yaml_parser() -> YAML:
-        yaml = YAML()
-        yaml.indent(mapping=2, sequence=4, offset=2)
-        yaml.width = 800
-        yaml.preserve_quotes = True
-        yaml.default_flow_style = False
-        return yaml
+    # HELPERS
 
     @property
     def project_name(self) -> str:
@@ -167,17 +302,42 @@ class DbtOsmosis:
     def project_root(self) -> str:
         return self.project.project_root
 
-    def rebuild_dbt_manifest(self, reset: bool = False) -> None:
-        self.dbt = dbt_parser.ManifestLoader.get_full_manifest(self.config, reset=reset)
-
     @property
     def manifest(self) -> Dict[str, Any]:
         return self.dbt.flat_graph
 
-    @staticmethod
-    def get_patch_path(node: ManifestNode) -> Optional[Path]:
-        if node is not None and node.patch_path:
-            return Path(node.patch_path.split(FILE_ADAPTER_POSTFIX)[-1])
+    # REPARSE
+
+    def rebuild_dbt_manifest(self, reset: bool = False) -> None:
+        self.dbt = ManifestLoader.get_full_manifest(self.config, reset=reset)
+
+    # FIND MODEL
+
+    def get_ref_node(self, target_model_name: str):
+        """
+        target_model_name:
+            ie, ref('stg_users') = name -> stg_users
+        """
+        return self.dbt.resolve_ref(
+            target_model_name=target_model_name,
+            target_model_package=None,
+            current_project=self.config.project_name,
+            package_name=self.config.project_name,
+        )
+
+    def get_source_node(self, target_source_name: str, target_table_name: str):
+        """
+        target_table_name:
+            ie, source('jira', 'users') = source_name -> jira, table_name -> users
+        """
+        return self.dbt.resolve_source(
+            target_source_name=target_source_name,
+            target_table_name=target_table_name,
+            current_project=self.config.project_name,
+            node_package=self.config.project_name,
+        )
+
+    # DBT EXECUTION
 
     def execute_macro(
         self,
@@ -198,6 +358,235 @@ class DbtOsmosis:
                 return compiled_macro, resp, table
         return compiled_macro, None, None
 
+    def execute_sql(
+        self,
+        sql: str,
+        compile: bool = False,
+        fetch: bool = False,
+    ) -> Tuple[AdapterResponse, agate.Table]:
+        """Wraps adapter execute"""
+        if compile:
+            sql = self.compile_sql(sql).compiled_sql
+        with self.adapter.connection_named("dbt-osmosis"):
+            resp, table = self.adapter.execute(sql, fetch=fetch)
+        return resp, table
+
+    # DBT COMPILATION
+
+    def compile_sql(
+        self, sql: str, name: str = "dbt_osmosis_node", persist: bool = False
+    ) -> ManifestNode:
+        """Compile dbt SQL 🔥"""
+        return self.compile_node(self._get_exec_node(sql, name=name), persist=persist)
+
+    def compile_node(
+        self,
+        node: ManifestNode,
+        extra_context: Optional[Dict[str, Any]] = None,
+        persist: bool = False,
+    ) -> NonSourceCompiledNode:
+
+        if extra_context is None:
+            extra_context = {}
+
+        data = node.to_dict(omit_none=True)
+        data.update(
+            {
+                "compiled": False,
+                "compiled_sql": None,
+                "extra_ctes_injected": False,
+                "extra_ctes": [],
+            }
+        )
+        compiled_node = _compiled_type_for(node).from_dict(data)
+        context = self._create_node_context(compiled_node, extra_context)
+
+        compiled_node.compiled_sql = jinja.get_rendered(
+            node.raw_sql,
+            context,
+            node,
+        )
+
+        compiled_node.relation_name = self._get_relation_name(node)
+        compiled_node.compiled = True
+        compiled_node, _ = self._recursively_prepend_ctes(compiled_node, extra_context)
+        if not persist:
+            self.dbt.nodes.pop(compiled_node.unique_id)
+        return compiled_node
+
+    def _add_new_refs(self, node: ParsedSqlNode, macros: Dict[str, Any]) -> None:
+
+        # TODO: Vet multi-threaded execution as-is
+        # if self.args.single_threaded or SINGLE_THREADED_HANDLER:
+        #     manifest = self.dbt.deepcopy()
+        # else:
+        #     manifest = self.dbt
+
+        self.dbt.macros.update(macros)
+
+        for macro in macros.values():
+            process_macro(self.config, self.dbt, macro)
+
+        process_node(self.config, self.dbt, node)
+
+    @cache
+    def _extract_jinja_data(self, sql: str):
+        macro_blocks = []
+        data_chunks = []
+        for block in extract_toplevel_blocks(sql):
+            if block.block_type_name == "macro":
+                macro_blocks.append(block.full_block)
+            else:
+                data_chunks.append(block.full_block)
+        macros = "\n".join(macro_blocks)
+        sql = "".join(data_chunks)
+        return sql, macros
+
+    def _get_exec_node(self, sql: str, name: str = "dbt_osmosis_node"):
+        macro_overrides = {}
+        sql, macros = self._extract_jinja_data(sql)
+
+        if macros:
+            for node in self.macro_parser.parse_remote(macros):
+                macro_overrides[node.unique_id] = node
+            self.dbt.macros.update(macro_overrides)
+
+        # TODO: Alternatively, we could supply a node and make it FAST when working with existing models
+        # Adds node to manifest (dbt)
+        sql_node = self.sql_parser.parse_remote(sql, name)
+
+        # Populate depends_on
+        # TODO: If we use an existing node, we should set node.depends_on to [] since its an append op to update
+        self._add_new_refs(node=sql_node, macros=macro_overrides)
+
+        # TODO: the extra compile below is likely uneeded
+        # self.graph = self.adapter.get_compiler().compile(self.dbt, write=False)
+        return sql_node
+
+    def _create_node_context(
+        self,
+        node: NonSourceCompiledNode,
+        extra_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Creates a ModelContext which is converted to a dict for jinja rendering of SQL"""
+        context = generate_runtime_model_context(node, self.config, self.dbt)
+        context.update(extra_context)
+        if isinstance(node, CompiledGenericTestNode):
+            # for test nodes, add a special keyword args value to the context
+            jinja.add_rendered_test_kwargs(context, node)
+
+        return context
+
+    def _recursively_prepend_ctes(
+        self,
+        model: NonSourceCompiledNode,
+        extra_context: Optional[Dict[str, Any]],
+    ) -> Tuple[NonSourceCompiledNode, List[InjectedCTE]]:
+        if model.compiled_sql is None:
+            raise RuntimeException("Cannot inject ctes into an unparsed node", model)
+        if model.extra_ctes_injected:
+            return (model, model.extra_ctes)
+
+        if not model.extra_ctes:
+            model.extra_ctes_injected = True
+            self.dbt.update_node(model)
+            return (model, model.extra_ctes)
+
+        prepended_ctes: List[InjectedCTE] = []
+
+        for cte in model.extra_ctes:
+            if cte.id not in self.dbt.nodes:
+                raise InternalException(
+                    f"During compilation, found a cte reference that "
+                    f"could not be resolved: {cte.id}"
+                )
+            cte_model = self.dbt.nodes[cte.id]
+
+            if not cte_model.is_ephemeral_model:
+                raise InternalException(f"{cte.id} is not ephemeral")
+
+            if getattr(cte_model, "compiled", False):
+                assert isinstance(cte_model, tuple(COMPILED_TYPES.values()))
+                cte_model = cast(NonSourceCompiledNode, cte_model)
+                new_prepended_ctes = cte_model.extra_ctes
+
+            else:
+                cte_model = self.compile_node(cte_model, extra_context)
+                cte_model, new_prepended_ctes = self._recursively_prepend_ctes(
+                    cte_model, extra_context
+                )
+                self.dbt.sync_update_node(cte_model)
+
+            _extend_prepended_ctes(prepended_ctes, new_prepended_ctes)
+
+            new_cte_name = self._add_ephemeral_prefix(cte_model.name)
+            rendered_sql = cte_model._pre_injected_sql or cte_model.compiled_sql
+            sql = f" {new_cte_name} as (\n{rendered_sql}\n)"
+
+            _add_prepended_cte(prepended_ctes, InjectedCTE(id=cte.id, sql=sql))
+
+        injected_sql = self._inject_ctes_into_sql(
+            model.compiled_sql,
+            prepended_ctes,
+        )
+        model._pre_injected_sql = model.compiled_sql
+        model.compiled_sql = injected_sql
+        model.extra_ctes_injected = True
+        model.extra_ctes = prepended_ctes
+        model.validate(model.to_dict(omit_none=True))
+
+        self.dbt.update_node(model)
+
+        return model, prepended_ctes
+
+    def _add_ephemeral_prefix(self, name: str):
+        relation_cls = self.adapter.Relation
+        return relation_cls.add_ephemeral_prefix(name)
+
+    def _inject_ctes_into_sql(self, sql: str, ctes: List[InjectedCTE]) -> str:
+        if len(ctes) == 0:
+            return sql
+
+        parsed_stmts = sqlparse.parse(sql)
+        parsed = parsed_stmts[0]
+
+        with_stmt = None
+        for token in parsed.tokens:
+            if token.is_keyword and token.normalized == "WITH":
+                with_stmt = token
+                break
+
+        if with_stmt is None:
+            # no with stmt, add one, and inject CTEs right at the beginning
+            first_token = parsed.token_first()
+            with_stmt = sqlparse.sql.Token(sqlparse.tokens.Keyword, "with")
+            parsed.insert_before(first_token, with_stmt)
+        else:
+            # stmt exists, add a comma (which will come after injected CTEs)
+            trailing_comma = sqlparse.sql.Token(sqlparse.tokens.Punctuation, ",")
+            parsed.insert_after(with_stmt, trailing_comma)
+
+        token = sqlparse.sql.Token(sqlparse.tokens.Keyword, ", ".join(c.sql for c in ctes))
+        parsed.insert_after(with_stmt, token)
+
+        return str(parsed)
+
+    def _safe_release_connection(self):
+        try:
+            self.adapter.release_connection()
+        except Exception as exc:
+            return str(exc)
+        return None
+
+    def _get_relation_name(self, node: ManifestNode):
+        relation_name = None
+        if node.is_relational and not node.is_ephemeral_model:
+            relation_cls = self.adapter.Relation
+            relation_name = str(relation_cls.create_from(self.config, node))
+        return relation_name
+
+    # DBT-OSMOSIS SPECIFIC METHODS
+
     def _filter_model(self, node: ManifestNode) -> bool:
         """Validates a node as being a targetable model. Validates both models and sources."""
         fqn = self.fqn or ".".join(node.fqn[1:])
@@ -215,6 +604,11 @@ class DbtOsmosis:
             # Verify FQN Matches Parts [Always true if no fqn was supplied]
             and all(left == right for left, right in zip(fqn_parts, node.fqn[1:]))
         )
+
+    @staticmethod
+    def get_patch_path(node: ManifestNode) -> Optional[Path]:
+        if node is not None and node.patch_path:
+            return Path(node.patch_path.split(FILE_ADAPTER_POSTFIX)[-1])
 
     def filtered_models(
         self, subset: Optional[MutableMapping[str, ManifestNode]] = None
@@ -780,3 +1174,22 @@ def get_raw_profiles(profiles_dir: Optional[str] = None) -> Dict[str, Any]:
 def uncompile_node(node: ManifestNode) -> ManifestNode:
     """Uncompile a node by removing the compiled_resource_path and compiled_resource_hash"""
     return ParsedModelNode.from_dict(node.to_dict())
+
+
+def _compiled_type_for(model: ManifestNode):
+    if type(model) not in COMPILED_TYPES:
+        raise InternalException(f"Asked to compile {type(model)} node, but it has no compiled form")
+    return COMPILED_TYPES[type(model)]
+
+
+def _add_prepended_cte(prepended_ctes, new_cte):
+    for cte in prepended_ctes:
+        if cte.id == new_cte.id:
+            cte.sql = new_cte.sql
+            return
+    prepended_ctes.append(new_cte)
+
+
+def _extend_prepended_ctes(prepended_ctes, new_prepended_ctes):
+    for new_cte in new_prepended_ctes:
+        _add_prepended_cte(prepended_ctes, new_cte)
