@@ -47,6 +47,7 @@ pylint = ">=2.11.1"
 nox = ">=2021.6.12"
 pytest-mock = ">=3.6.1"
 dbt-bigquery = ">=1"
+viztracer = "^0.15.3"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -54,6 +55,11 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 100
+
+[tool.isort]
+line_length=100
+multi_line_output=3
+include_trailing_comma=true
 
 [tool.poetry.scripts]
 dbt-osmosis = 'dbt_osmosis.main:cli'
