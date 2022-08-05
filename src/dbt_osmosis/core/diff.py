@@ -18,11 +18,12 @@ def build_diff_queries(model: str, runner: DbtOsmosis) -> Tuple[str, str]:
     dbt_path = Path(node.root_path)
     repo = Repo(dbt_path, search_parent_directories=True)
     t = next(Path(repo.working_dir).rglob(node.original_file_path)).relative_to(repo.working_dir)
+    sha = repo.head.object.hexsha
     target = repo.head.object.tree[str(t)]
 
     # Create original node
-    git_node_name = "z" + str(uuid.uuid4()).replace("-", "")
-    original_node = runner.sql_parser.parse_remote(target.data_stream.read(), git_node_name)
+    git_node_name = "z_" + sha[-7:]
+    original_node = runner._get_exec_node(target.data_stream.read().decode("utf-8"), git_node_name)
 
     # Alias changed node
     changed_node = node
@@ -45,8 +46,8 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
     target = repo.head.object.tree[str(t)]
 
     # Create original node
-    git_node_name = "z_" + sha[-5:]
-    original_node = runner.sql_parser.parse_remote(target.data_stream.read(), git_node_name)
+    git_node_name = "z_" + sha[-7:]
+    original_node = runner._get_exec_node(target.data_stream.read().decode("utf-8"), git_node_name)
 
     # Alias changed node
     changed_node = node
@@ -56,7 +57,7 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
     changed_node = runner.compile_node(changed_node)
 
     # Lookup and resolve original ref based on git sha
-    git_node_parts = original_node.database, original_node.schema, git_node_name
+    git_node_parts = original_node.database, changed_node.schema, git_node_name
     check_ref = runner.adapter.get_relation(*git_node_parts)
     if not check_ref:
         ref_A = runner.adapter.Relation.create(*git_node_parts)
@@ -76,7 +77,7 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
         logger().info("Found existing relation for %s", ref_A)
 
     # Resolve modified fake ref
-    temp_node_name = "z_" + hashlib.md5(changed_node.identifier.encode("utf-8")).hexdigest()
+    temp_node_name = "z_" + hashlib.md5(changed_node.identifier.encode("utf-8")).hexdigest()[-7:]
     ref_B = runner.adapter.Relation.create(
         changed_node.database, changed_node.schema, temp_node_name
     )
@@ -95,12 +96,12 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
 
 
 def diff_tables(
-    ref_A: BaseRelation, ref_B: BaseRelation, pk: str, runner: DbtOsmosis
+    ref_A: BaseRelation, ref_B: BaseRelation, pk: str, runner: DbtOsmosis, aggregate: bool = True
 ) -> agate.Table:
 
     logger().info("Running diff")
     _, _, table = runner.execute_macro(
-        "_dbt_osmosis_compare_relations",
+        "_dbt_osmosis_compare_relations_agg" if aggregate else "_dbt_osmosis_compare_relations",
         kwargs={
             "a_relation": ref_A,
             "b_relation": ref_B,
@@ -131,7 +132,11 @@ def diff_queries(
 
 
 def diff_and_print_to_console(
-    model: str, pk: str, runner: DbtOsmosis, make_temp_tables: bool = False
+    model: str,
+    pk: str,
+    runner: DbtOsmosis,
+    make_temp_tables: bool = False,
+    agg: bool = True,
 ) -> None:
     """
     Compare two tables and print the results to the console
@@ -139,6 +144,6 @@ def diff_and_print_to_console(
     if make_temp_tables:
         table = diff_tables(*build_diff_tables(model, runner), pk, runner)
     else:
-        table = diff_queries(*build_diff_queries(model, runner), pk, runner)
+        table = diff_queries(*build_diff_queries(model, runner), pk, runner, agg)
     print("")
     table.print_table()
