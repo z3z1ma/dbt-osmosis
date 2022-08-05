@@ -72,6 +72,82 @@ all_records as (
         true as in_b
     from b_except_a
 
+)
+
+select * from all_records
+where not (in_a and in_b)
+order by {{ primary_key ~ ", " if primary_key is not none }} in_a desc, in_b desc
+
+{% endmacro %}
+
+---
+
+{% macro _dbt_osmosis_compare_queries_agg(a_query, b_query, primary_key=None) -%}
+  {{ return(adapter.dispatch('_dbt_osmosis_compare_queries_agg')(a_query, b_query, primary_key)) }}
+{%- endmacro %}
+
+{% macro default___dbt_osmosis_compare_queries_agg(a_query, b_query, primary_key=None) %}
+
+with a as (
+
+    {{ a_query }}
+
+),
+
+b as (
+
+    {{ b_query }}
+
+),
+
+a_intersect_b as (
+
+    select * from a
+    {{ dbt_utils.intersect() }}
+    select * from b
+
+),
+
+a_except_b as (
+
+    select * from a
+    {{ dbt_utils.except() }}
+    select * from b
+
+),
+
+b_except_a as (
+
+    select * from b
+    {{ dbt_utils.except() }}
+    select * from a
+
+),
+
+all_records as (
+
+    select
+        *,
+        true as in_a,
+        true as in_b
+    from a_intersect_b
+
+    union all
+
+    select
+        *,
+        true as in_a,
+        false as in_b
+    from a_except_b
+
+    union all
+
+    select
+        *,
+        false as in_a,
+        true as in_b
+    from b_except_a
+
 ),
 
 summary_stats as (
@@ -134,7 +210,7 @@ select
 from {{ b_relation }}
 {% endset %}
 
-{{ _dbt_osmosis_compare_queries(a_query, b_query, primary_key) }}
+{{ _dbt_osmosis_compare_queries_agg(a_query, b_query, primary_key) }}
 
 {% endmacro %}
 
