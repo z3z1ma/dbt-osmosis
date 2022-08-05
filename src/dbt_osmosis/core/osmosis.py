@@ -322,7 +322,7 @@ class DbtOsmosis:
             target_model_name=target_model_name,
             target_model_package=None,
             current_project=self.config.project_name,
-            package_name=self.config.project_name,
+            node_package=self.config.project_name,
         )
 
     def get_source_node(self, target_source_name: str, target_table_name: str):
