@@ -157,6 +157,9 @@ models:
 
         marts:
 
+            # Underscore prefixed model name as recommended in dbt best practices
+            +dbt-osmosis: "_model.yml"
+
             +tags: 
                 - "mart"
 
@@ -216,26 +219,26 @@ These features are being actively developed and will be merged into the next few
     - Can be one schema file to one model file sharing the same name and directory ie. 
 
             staging/
-                stg_order.sql
-                stg_order.yml
                 stg_customer.sql
                 stg_customer.yml
+                stg_order.sql
+                stg_order.yml
 
         - `+dbt-osmosis: "model.yml"`
 
     - Can be one schema file per directory wherever model files reside named schema.yml, ie.
 
             staging/
-                stg_order.sql
-                stg_customer.sql
                 schema.yml
+                stg_customer.sql
+                stg_order.sql
 
         - `+dbt-osmosis: "schema.yml"`
     - Can be one schema file per directory wherever model files reside named after its containing folder, ie. 
 
             staging/
-                stg_order.sql
                 stg_customer.sql
+                stg_order.sql
                 staging.yml
 
         - `+dbt-osmosis: "folder.yml"`
@@ -246,10 +249,20 @@ These features are being actively developed and will be merged into the next few
                 stg_order.sql
                 stg_customer.sql
                 schema/
-                    stg_order.yml
                     stg_customer.yml
+                    stg_order.yml
 
         - `+dbt-osmosis: "schema/model.yml"`
+
+    - Can be one schema file to one model file sharing the same name and directory, models prefixed with underscore for IDE sorting ie. 
+
+            staging/
+                _stg_customer.yml
+                _stg_order.yml
+                stg_customer.sql
+                stg_order.sql
+
+        - `+dbt-osmosis: "model.yml"`
 
 ### Build and Inject Non-documented models
 
@@ -272,7 +285,7 @@ In a full run [ `dbt-osmosis run` ] we will:
 1. Conform dbt project
     - Configuration lives in `dbt_project.yml` --> we require our config to run, can be at root level of `models:` to apply a default convention to a project 
     or can be folder by folder, follows dbt config resolution where config is overridden by scope. 
-    Config is called `+dbt-osmosis: "folder.yml" | "schema.yml" | "model.yml" | "schema/model.yml"`
+    Config is called `+dbt-osmosis: "folder.yml" | "schema.yml" | "model.yml" | "schema/model.yml" | "_model.yml"`
 2. Bootstrap models to ensure all models exist
 3. Recompile Manifest
 4. Propagate definitions downstream to undocumented models solely within the context of each models dependency tree
