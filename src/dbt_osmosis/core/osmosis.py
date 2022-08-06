@@ -38,7 +38,6 @@ from dbt.contracts.graph.compiled import (
 from dbt.contracts.graph.manifest import Manifest, ManifestNode, NodeType, SourceFile
 from dbt.contracts.graph.parsed import ColumnInfo, ParsedMacro, ParsedModelNode, ParsedSqlNode
 from dbt.contracts.graph.unparsed import UnparsedMacro
-from dbt.contracts.results import NodeStatus, RunResult, RunStatus
 from dbt.exceptions import CompilationException, InternalException, RuntimeException
 from dbt.flags import DEFAULT_PROFILES_DIR, env_set_truthy, set_from_args
 from dbt.node_types import NodeType
@@ -378,7 +377,8 @@ class DbtOsmosis:
         self, sql: str, name: str = "dbt_osmosis_node", persist: bool = False
     ) -> ManifestNode:
         """Compile dbt SQL 🔥"""
-        return self.compile_node(self._get_exec_node(sql, name=name), persist=persist)
+        with self.adapter.connection_named("dbt-osmosis"):
+            return self.compile_node(self._get_exec_node(sql, name=name), persist=persist)
 
     def compile_node(
         self,
