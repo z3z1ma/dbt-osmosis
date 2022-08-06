@@ -1,0 +1,15 @@
+# STREAMLIT DEMO APP DEPENDENCIES
+
+# The only version that works currently
+duckcli==0.0.1
+
+# Database adapter
+dbt-duckdb>=1.1.2,<1.2.0
+dbt-sqlite>=1.0.0,<1.2.0
+
+# Look for `profiles.yml` in the current working directory to avoid needing to `export DBT_PROFILES_DIR=.`
+git+https://github.com/dbt-labs/dbt-core.git@experiment/local-profiles-1.1.1#subdirectory=core
+git+https://github.com/dbt-labs/dbt-core.git@experiment/local-profiles-1.1.1#subdirectory=plugins/postgres
+
+# dbt Osmosis
+dbt-osmosis>=0.5.10
