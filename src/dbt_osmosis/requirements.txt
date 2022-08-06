@@ -12,4 +12,4 @@ git+https://github.com/dbt-labs/dbt-core.git@experiment/local-profiles-1.1.1#sub
 git+https://github.com/dbt-labs/dbt-core.git@experiment/local-profiles-1.1.1#subdirectory=plugins/postgres
 
 # dbt Osmosis
-dbt-osmosis
+dbt-osmosis==0.6.0
