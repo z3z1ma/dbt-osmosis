@@ -37,6 +37,9 @@ dbt-client = "^0.1.2"
 scipy = "^1.8.1"
 pydantic = "^1.9.1"
 GitPython = "^3.1.27"
+duckcli = "0.0.1"
+dbt-duckdb = ">=1.1.2,<1.2.0"
+dbt-sqlite = "^1.1.2"
 
 [tool.poetry.dev-dependencies]
 black = ">=21.9b0"

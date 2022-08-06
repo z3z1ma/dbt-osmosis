@@ -267,6 +267,22 @@ python-versions = ">=3.6.0"
 unicode_backport = ["unicodedata2"]
 
 [[package]]
+name = "cli-helpers"
+version = "2.2.1"
+description = "Helpers for building command-line apps"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[package.dependencies]
+configobj = ">=5.0.5"
+Pygments = {version = ">=1.6", optional = true, markers = "extra == \"styles\""}
+tabulate = {version = ">=0.8.2", extras = ["widechars"]}
+
+[package.extras]
+styles = ["Pygments (>=1.6)"]
+
+[[package]]
 name = "click"
 version = "8.1.3"
 description = "Composable command line interface toolkit"
@@ -279,7 +295,7 @@ colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
 name = "colorama"
-version = "0.4.5"
+version = "0.4.4"
 description = "Cross-platform colored terminal text."
 category = "main"
 optional = false
@@ -311,6 +327,17 @@ python-versions = "*"
 test = ["flake8 (==3.7.8)", "hypothesis (==3.55.3)"]
 
 [[package]]
+name = "configobj"
+version = "5.0.6"
+description = "Config file reading, writing and validation."
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+six = "*"
+
+[[package]]
 name = "coverage"
 version = "6.4.2"
 description = "Code coverage measurement for Python"
@@ -331,14 +358,14 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "dbt-bigquery"
-version = "1.2.0"
+version = "1.1.1"
 description = "The BigQuery adapter plugin for dbt"
 category = "dev"
 optional = false
 python-versions = ">=3.7"
 
 [package.dependencies]
-dbt-core = ">=1.2.0,<1.3.0"
+dbt-core = ">=1.1.0,<1.2.0"
 google-api-core = ">=1.16.0,<3"
 google-cloud-bigquery = ">=1.25.0,<3"
 google-cloud-core = ">=1.3.0,<3"
@@ -358,7 +385,7 @@ requests = ">=2.26.0,<3.0.0"
 
 [[package]]
 name = "dbt-core"
-version = "1.2.0"
+version = "1.1.0"
 description = "With dbt, data analysts and engineers can build analytics the way engineers build applications."
 category = "main"
 optional = false
@@ -368,22 +395,34 @@ python-versions = ">=3.7.2"
 agate = ">=1.6,<1.6.4"
 cffi = ">=1.9,<2.0.0"
 click = ">=7.0,<9"
-colorama = ">=0.3.9,<0.4.6"
+colorama = ">=0.3.9,<0.4.5"
 dbt-extractor = ">=0.4.1,<0.5.0"
-hologram = ">=0.0.14,<=0.0.15"
+hologram = "0.0.14"
 idna = ">=2.5,<4"
 isodate = ">=0.6,<0.7"
 Jinja2 = "2.11.3"
 logbook = ">=1.5,<1.6"
-MarkupSafe = ">=0.23,<2.1"
+MarkupSafe = "2.0.1"
 mashumaro = "2.9"
 minimal-snowplow-tracker = "0.0.2"
-networkx = {version = ">=2.3,<3", markers = "python_version >= \"3.8\""}
+networkx = ">=2.3,<3"
 packaging = ">=20.9,<22.0"
 requests = "<3.0.0"
 sqlparse = ">=0.2.3,<0.5"
 typing-extensions = ">=3.7.4"
 werkzeug = ">=1,<3"
+
+[[package]]
+name = "dbt-duckdb"
+version = "1.1.4"
+description = "The duckdb adapter plugin for dbt (data build tool)"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+dbt-core = ">=1.1.0,<1.2.0"
+duckdb = ">=0.3.2"
 
 [[package]]
 name = "dbt-extractor"
@@ -392,6 +431,17 @@ description = "A tool to analyze and extract information from Jinja used in dbt 
 category = "main"
 optional = false
 python-versions = ">=3.6.1"
+
+[[package]]
+name = "dbt-sqlite"
+version = "1.1.2"
+description = "A SQLite adapter plugin for dbt (data build tool)"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+dbt-core = ">=1.1.0"
 
 [[package]]
 name = "debugpy"
@@ -435,6 +485,34 @@ description = "Distribution utilities"
 category = "dev"
 optional = false
 python-versions = "*"
+
+[[package]]
+name = "duckcli"
+version = "0.0.1"
+description = "CLI for DuckDB with auto-completion and syntax highlighting."
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+cli-helpers = {version = ">=2.2.1", extras = ["styles"]}
+click = ">=4.1"
+configobj = ">=5.0.5"
+duckdb = "*"
+prompt-toolkit = ">=3.0.3,<4.0.0"
+Pygments = ">=1.6"
+sqlparse = "*"
+
+[[package]]
+name = "duckdb"
+version = "0.4.0"
+description = "DuckDB embedded database"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+numpy = ">=1.14"
 
 [[package]]
 name = "entrypoints"
@@ -692,14 +770,14 @@ protobuf = ">=3.12.0"
 
 [[package]]
 name = "hologram"
-version = "0.0.15"
+version = "0.0.14"
 description = "JSON schema generation from dataclasses"
 category = "main"
 optional = false
 python-versions = "*"
 
 [package.dependencies]
-jsonschema = ">=3.0,<4.0"
+jsonschema = ">=3.0,<3.2"
 python-dateutil = ">=2.8,<2.9"
 
 [[package]]
@@ -907,7 +985,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "jsonschema"
-version = "3.2.0"
+version = "3.1.1"
 description = "An implementation of JSON Schema validation for Python"
 category = "main"
 optional = false
@@ -915,12 +993,12 @@ python-versions = "*"
 
 [package.dependencies]
 attrs = ">=17.4.0"
+importlib-metadata = "*"
 pyrsistent = ">=0.14.0"
 six = ">=1.11.0"
 
 [package.extras]
 format = ["idna", "jsonpointer (>1.13)", "rfc3987", "strict-rfc3339", "webcolors"]
-format_nongpl = ["idna", "jsonpointer (>1.13)", "webcolors", "rfc3986-validator (>0.1.0)", "rfc3339-validator"]
 
 [[package]]
 name = "jupyter-client"
@@ -1661,7 +1739,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "pylint"
-version = "2.14.5"
+version = "2.14.2"
 description = "python code static checker"
 category = "dev"
 optional = false
@@ -1669,7 +1747,7 @@ python-versions = ">=3.7.2"
 
 [package.dependencies]
 astroid = ">=2.11.6,<=2.12.0-dev0"
-colorama = {version = ">=0.4.5", markers = "sys_platform == \"win32\""}
+colorama = {version = "*", markers = "sys_platform == \"win32\""}
 dill = ">=0.2"
 isort = ">=4.2.5,<6"
 mccabe = ">=0.6,<0.8"
@@ -2136,6 +2214,20 @@ pandas-profiling = "*"
 streamlit = ">=0.63"
 
 [[package]]
+name = "tabulate"
+version = "0.8.10"
+description = "Pretty-print tabular data"
+category = "main"
+optional = false
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+
+[package.dependencies]
+wcwidth = {version = "*", optional = true, markers = "extra == \"widechars\""}
+
+[package.extras]
+widechars = ["wcwidth"]
+
+[[package]]
 name = "tangled-up-in-unicode"
 version = "0.1.0"
 description = "Access to the Unicode Character Database (UCD)"
@@ -2435,7 +2527,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "73146b54e8ac99424c26d129932325da9e1e77a94f6104b8597dd18e3af33acb"
+content-hash = "6e7ff1b1f29d8271ce15b361864956dc149717a958bb9825a798aaa4ea8e3b41"
 
 [metadata.files]
 agate = [
@@ -2623,13 +2715,14 @@ charset-normalizer = [
     {file = "charset-normalizer-2.1.0.tar.gz", hash = "sha256:575e708016ff3a5e3681541cb9d79312c416835686d054a23accb873b254f413"},
     {file = "charset_normalizer-2.1.0-py3-none-any.whl", hash = "sha256:5189b6f22b01957427f35b6a08d9a0bc45b46d3788ef5a92e978433c7a35f8a5"},
 ]
+cli-helpers = []
 click = [
     {file = "click-8.1.3-py3-none-any.whl", hash = "sha256:bb4d8133cb15a609f44e8213d9b391b0809795062913b383c62be0ee95b1db48"},
     {file = "click-8.1.3.tar.gz", hash = "sha256:7682dc8afb30297001674575ea00d1814d808d6a36af415a82bd481d37ba7b8e"},
 ]
 colorama = [
-    {file = "colorama-0.4.5-py2.py3-none-any.whl", hash = "sha256:854bf444933e37f5824ae7bfc1e98d5bce2ebe4160d46b5edf346a89358e99da"},
-    {file = "colorama-0.4.5.tar.gz", hash = "sha256:e6c6b4334fc50988a639d9b98aa429a0b57da6e17b9a44f0451f930b6967b7a4"},
+    {file = "colorama-0.4.4-py2.py3-none-any.whl", hash = "sha256:9f47eda37229f68eee03b24b9748937c7dc3868f906e8ba69fbcbdd3bc5dc3e2"},
+    {file = "colorama-0.4.4.tar.gz", hash = "sha256:5941b2b48a20143d2267e95b1c2a7603ce057ee39fd88e7329b0c292aa16869b"},
 ]
 colorlog = [
     {file = "colorlog-6.6.0-py2.py3-none-any.whl", hash = "sha256:351c51e866c86c3217f08e4b067a7974a678be78f07f85fc2d55b8babde6d94e"},
@@ -2639,6 +2732,7 @@ commonmark = [
     {file = "commonmark-0.9.1-py2.py3-none-any.whl", hash = "sha256:da2f38c92590f83de410ba1a3cbceafbc74fee9def35f9251ba9a971d6d66fd9"},
     {file = "commonmark-0.9.1.tar.gz", hash = "sha256:452f9dc859be7f06631ddcb328b6919c67984aca654e5fefb3914d54691aed60"},
 ]
+configobj = []
 coverage = []
 cycler = [
     {file = "cycler-0.11.0-py3-none-any.whl", hash = "sha256:3a27e95f763a428a739d2add979fa7494c912a32c17c4c38c4d5f082cad165a3"},
@@ -2649,7 +2743,11 @@ dbt-client = [
     {file = "dbt-client-0.1.3.tar.gz", hash = "sha256:192fff51a51d6d002d4048dd494e601592599e004c0f31f1ea5156aa6d516cf5"},
     {file = "dbt_client-0.1.3-py3-none-any.whl", hash = "sha256:31a0db4844c1559c95c643a6f57d1e39d4e9c3b4d9a8c867f7b3e6ed75cedca0"},
 ]
-dbt-core = []
+dbt-core = [
+    {file = "dbt-core-1.1.0.tar.gz", hash = "sha256:3e33ce5be74e0d4f9f28ad76b4b1de55cb343d4c53c3a8f98c24551881aedf3e"},
+    {file = "dbt_core-1.1.0-py3-none-any.whl", hash = "sha256:4af9124e6ec188db2ce9a32d6b26757fd42c2e14238770ca0661d8963f1ba7ea"},
+]
+dbt-duckdb = []
 dbt-extractor = [
     {file = "dbt_extractor-0.4.1-cp36-abi3-macosx_10_7_x86_64.whl", hash = "sha256:4dc715bd740e418d8dc1dd418fea508e79208a24cf5ab110b0092a3cbe96bf71"},
     {file = "dbt_extractor-0.4.1-cp36-abi3-macosx_10_9_x86_64.macosx_11_0_arm64.macosx_10_9_universal2.whl", hash = "sha256:bc9e0050e3a2f4ea9fe58e8794bc808e6709a0c688ed710fc7c5b6ef3e5623ec"},
@@ -2668,6 +2766,7 @@ dbt-extractor = [
     {file = "dbt_extractor-0.4.1-cp36-abi3-win_amd64.whl", hash = "sha256:35265a0ae0a250623b0c2e3308b2738dc8212e40e0aa88407849e9ea090bb312"},
     {file = "dbt_extractor-0.4.1.tar.gz", hash = "sha256:75b1c665699ec0f1ffce1ba3d776f7dfce802156f22e70a7b9c8f0b4d7e80f42"},
 ]
+dbt-sqlite = []
 debugpy = []
 decorator = [
     {file = "decorator-5.1.1-py3-none-any.whl", hash = "sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186"},
@@ -2682,6 +2781,8 @@ dill = [
     {file = "dill-0.3.5.1.tar.gz", hash = "sha256:d75e41f3eff1eee599d738e76ba8f4ad98ea229db8b085318aa2b3333a208c86"},
 ]
 distlib = []
+duckcli = []
+duckdb = []
 entrypoints = [
     {file = "entrypoints-0.4-py3-none-any.whl", hash = "sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f"},
     {file = "entrypoints-0.4.tar.gz", hash = "sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4"},
@@ -2764,7 +2865,10 @@ googleapis-common-protos = []
 graphviz = []
 grpcio = []
 grpcio-status = []
-hologram = []
+hologram = [
+    {file = "hologram-0.0.14-py3-none-any.whl", hash = "sha256:2911b59115bebd0504eb089532e494fa22ac704989afe41371c5361780433bfe"},
+    {file = "hologram-0.0.14.tar.gz", hash = "sha256:fd67bd069e4681e1d2a447df976c65060d7a90fee7f6b84d133fd9958db074ec"},
+]
 htmlmin = [
     {file = "htmlmin-0.1.12.tar.gz", hash = "sha256:50c1ef4630374a5d723900096a961cff426dff46b48f34d194a81bbe14eca178"},
 ]
@@ -2814,8 +2918,8 @@ joblib = [
     {file = "joblib-1.0.1.tar.gz", hash = "sha256:9c17567692206d2f3fb9ecf5e991084254fe631665c450b443761c4186a613f7"},
 ]
 jsonschema = [
-    {file = "jsonschema-3.2.0-py2.py3-none-any.whl", hash = "sha256:4e5b3cf8216f577bee9ce139cbe72eca3ea4f292ec60928ff24758ce626cd163"},
-    {file = "jsonschema-3.2.0.tar.gz", hash = "sha256:c8a85b28d377cc7737e46e2d9f2b4f44ee3c0e1deac6bf46ddefc7187d30797a"},
+    {file = "jsonschema-3.1.1-py2.py3-none-any.whl", hash = "sha256:94c0a13b4a0616458b42529091624e66700a17f847453e52279e35509a5b7631"},
+    {file = "jsonschema-3.1.1.tar.gz", hash = "sha256:2fa0684276b6333ff3c0b1b27081f4b2305f0a36cf702a23db50edb141893c3f"},
 ]
 jupyter-client = []
 jupyter-core = []
@@ -3554,6 +3658,7 @@ streamlit-pandas-profiling = [
     {file = "streamlit_pandas_profiling-0.1.3-py3-none-any.whl", hash = "sha256:826dcef1dc8d4882bec645f0a3b70c70ff20cc31ae90200445392155607493e3"},
     {file = "streamlit_pandas_profiling-0.1.3.tar.gz", hash = "sha256:6719cf2cfd682b59470d90aa09b4529a6622d915cef4faa3e88f85c00b7faf79"},
 ]
+tabulate = []
 tangled-up-in-unicode = [
     {file = "tangled_up_in_unicode-0.1.0-py3-none-any.whl", hash = "sha256:a06dea9cf93dcda6a720c46bb86a41e84372e3123c7fd6bef9e66add1dd41019"},
     {file = "tangled_up_in_unicode-0.1.0.tar.gz", hash = "sha256:d07ffa62a4d9e9e0a92582f869ac3a2859456f5c9241580c7a5d9fcf2e6e6315"},
