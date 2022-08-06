@@ -393,6 +393,17 @@ def workbench(
     is_flag=True,
     help="If specified, temp tables are used to stage the queries.",
 )
+@click.option(
+    "--agg/--no-agg",
+    default=True,
+    help="Use --no-agg to show sample results, by default we agg for a summary view.",
+)
+@click.option(
+    "-o",
+    "--output",
+    default="table",
+    help="Output format can be one of table, chart/bar, or csv. CSV is saved to a file named dbt-osmosis-diff in working dir",
+)
 def diff(
     model: str,
     pk: str,
@@ -400,6 +411,8 @@ def diff(
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     temp_table: bool = False,
+    agg: bool = True,
+    output: str = "table",
 ):
     """Diff a model based on git HEAD to working copy on disk"""
 
@@ -411,7 +424,7 @@ def diff(
         target=target,
     )
     inject_macros(runner)
-    diff_and_print_to_console(model, pk, runner, temp_table)
+    diff_and_print_to_console(model, pk, runner, temp_table, agg, output)
 
 
 if __name__ == "__main__":

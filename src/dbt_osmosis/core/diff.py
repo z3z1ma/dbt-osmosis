@@ -57,12 +57,16 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
     changed_node = runner.compile_node(changed_node)
 
     # Lookup and resolve original ref based on git sha
-    git_node_parts = original_node.database, changed_node.schema, git_node_name
+    git_node_parts = original_node.database, "dbt_diff", git_node_name
     check_ref = runner.adapter.get_relation(*git_node_parts)
     if not check_ref:
         ref_A = runner.adapter.Relation.create(*git_node_parts)
         logger().info("Creating new relation for %s", ref_A)
         with runner.adapter.connection_named("dbt-osmosis"):
+            runner.execute_macro(
+                "create_schema",
+                kwargs={"relation": ref_A},
+            )
             runner.execute_macro(
                 "create_table_as",
                 kwargs={
@@ -77,20 +81,23 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
         logger().info("Found existing relation for %s", ref_A)
 
     # Resolve modified fake ref
-    temp_node_name = "z_" + hashlib.md5(changed_node.identifier.encode("utf-8")).hexdigest()[-7:]
-    ref_B = runner.adapter.Relation.create(
-        changed_node.database, changed_node.schema, temp_node_name
-    )
+    temp_node_name = "z_" + hashlib.md5(changed_node.compiled_sql.encode("utf-8")).hexdigest()[-7:]
+    ref_B = runner.adapter.Relation.create(changed_node.database, "dbt_diff", temp_node_name)
     logger().info("Creating new relation for %s", ref_B)
-    runner.execute_macro(
-        "create_table_as",
-        kwargs={
-            "sql": changed_node.compiled_sql,
-            "relation": ref_B,
-            "temporary": True,
-        },
-        run_compiled_sql=True,
-    )
+    with runner.adapter.connection_named("dbt-osmosis"):
+        runner.execute_macro(
+            "create_schema",
+            kwargs={"relation": ref_B},
+        )
+        runner.execute_macro(
+            "create_table_as",
+            kwargs={
+                "sql": changed_node.compiled_sql,
+                "relation": ref_B,
+                "temporary": True,
+            },
+            run_compiled_sql=True,
+        )
 
     return ref_A, ref_B
 
@@ -137,13 +144,39 @@ def diff_and_print_to_console(
     runner: DbtOsmosis,
     make_temp_tables: bool = False,
     agg: bool = True,
+    output: str = "table",
 ) -> None:
     """
     Compare two tables and print the results to the console
     """
     if make_temp_tables:
-        table = diff_tables(*build_diff_tables(model, runner), pk, runner)
+        table = diff_tables(*build_diff_tables(model, runner), pk, runner, agg)
     else:
         table = diff_queries(*build_diff_queries(model, runner), pk, runner, agg)
     print("")
-    table.print_table()
+    output = output.lower()
+    if output == "table":
+        table.print_table()
+    elif output in ("chart", "bar"):
+        if not agg:
+            logger().warn(
+                "Cannot render output format chart with --no-agg option, defaulting to table"
+            )
+            table.print_table()
+        else:
+            _table = table.compute(
+                [
+                    (
+                        "in_original, in_changed",
+                        agate.Formula(agate.Text(), lambda r: "%(in_a)s, %(in_b)s" % r),
+                    )
+                ]
+            )
+            _table.print_bars(
+                label_column_name="in_original, in_changed", value_column_name="count"
+            )
+    elif output == "csv":
+        table.to_csv("dbt-osmosis-diff.csv")
+    else:
+        logger().warn("No such output format %s, defaulting to table", output)
+        table.print_table()
