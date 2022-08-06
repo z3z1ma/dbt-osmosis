@@ -317,7 +317,8 @@ ideContainer = st.container()
 
 descriptionContainer.markdown(
     """
-Welcome to the dbt-osmosis workbench 👋. The workbench serves as a no fuss way to spin up 
+Welcome to the [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) workbench 👋. 
+The workbench serves as a no fuss way to spin up 
 an environment where you can very quickly iterate on dbt models. In an ideal flow, a developer
 can spin up the workbench and use it as a _complement_ to their IDE, not a replacement. This means
 copying and pasting over a model you are really digging into 🧑‍💻 OR it is just as valid to use 
@@ -333,13 +334,15 @@ else:
     idePart1 = ideContainer.container()
     idePart2 = ideContainer.container()
 
-with compileOptionContainer:
-    st.write("")
-    auto_update = st.checkbox("Dynamic Compilation", key=DYNAMIC_COMPILATION, value=True)
-    if auto_update:
-        st.caption("👉 Compiling SQL on change")
-    else:
-        st.caption("👉 Compiling SQL with control + enter")
+
+compileOptionContainer.write("")
+compileOpt1, compileOpt2 = compileOptionContainer.columns(2)
+auto_update = compileOpt1.checkbox("Dynamic Compilation", key=DYNAMIC_COMPILATION, value=True)
+if auto_update:
+    compileOpt1.caption("👉 Compiling SQL on change")
+else:
+    compileOpt1.caption("👉 Compiling SQL with control + enter")
+compileOpt2.button("Pivot Layout", on_click=toggle_viewer)
 
 with idePart1:
     state[RAW_SQL] = st_ace(
