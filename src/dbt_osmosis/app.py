@@ -4,7 +4,7 @@ import os
 import sys
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union, cast
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -67,7 +67,71 @@ COMPILED_SQL = "COMPILED_SQL"
 state.setdefault(COMPILED_SQL, "")
 RAW_SQL = "RAW_SQL"
 """Raw sql container"""
-state.setdefault(RAW_SQL, "")
+
+if "demo" in state[PROJ_DIR]:
+    state.setdefault(
+        RAW_SQL,
+        """
+{% set payment_methods = ['credit_card', 'coupon', 'bank_transfer', 'gift_card'] %}
+
+with orders as (
+
+    select * from {{ ref('stg_orders') }}
+
+),
+
+payments as (
+
+    select * from {{ ref('stg_payments') }}
+
+),
+
+order_payments as (
+
+    select
+        order_id,
+
+        {% for payment_method in payment_methods -%}
+        sum(case when payment_method = '{{ payment_method }}' then amount else 0 end) as {{ payment_method }}_amount,
+        {% endfor -%}
+
+        sum(amount) as total_amount
+
+    from payments
+
+    group by order_id
+
+),
+
+final as (
+
+    select
+        orders.order_id,
+        orders.customer_id,
+        orders.order_date,
+        orders.status,
+
+        {% for payment_method in payment_methods -%}
+
+        order_payments.{{ payment_method }}_amount,
+
+        {% endfor -%}
+
+        order_payments.total_amount as amount
+
+    from orders
+
+
+    left join order_payments
+        on orders.order_id = order_payments.order_id
+
+)
+
+select * from final
+    """,
+    )
+else:
+    state.setdefault(RAW_SQL, "")
 
 # COMPONENT KEYS
 PROFILE_SELECTOR = "PROFILE_SELECTOR"
@@ -161,7 +225,7 @@ def compile_model(node: manifest.ManifestNode) -> Optional[manifest.ManifestNode
         return None
 
 
-@st.cache
+# @st.cache
 def compile_sql(sql: str) -> str:
     try:
         return ctx.compile_sql(sql).compiled_sql
@@ -236,9 +300,10 @@ state[TARGET_PROFILE] = st.sidebar.radio(
 st.sidebar.markdown(f"Current Target: **{state[TARGET_PROFILE]}**")
 st.sidebar.write("")
 st.sidebar.write("Utility")
-st.sidebar.button("Reload dbt project", key=DBT_DO_RELOAD)
+# st.sidebar.button("Reload dbt project", key=DBT_DO_RELOAD)
 st.sidebar.caption(
-    "Use this if any updated models or macros in your project have not yet reflected in the workbench as refable or updated."
+    "Refresh the page to reparse dbt. This is useful if any updated models or macros in your physical project \
+    on disk have changed and are not yet reflected in the workbench as refable or updated."
 )
 st.sidebar.write("")
 st.sidebar.selectbox("Editor Theme", THEMES, index=8, key=THEME_PICKER)
@@ -246,8 +311,21 @@ st.sidebar.selectbox("Editor Language", DIALECTS, key=DIALECT_PICKER)
 
 # IDE LAYOUT
 notificationContainer = st.empty()
+descriptionContainer = st.container()
 compileOptionContainer = st.container()
 ideContainer = st.container()
+
+descriptionContainer.markdown(
+    """
+Welcome to the dbt-osmosis workbench 👋. The workbench serves as a no fuss way to spin up 
+an environment where you can very quickly iterate on dbt models. In an ideal flow, a developer
+can spin up the workbench and use it as a _complement_ to their IDE, not a replacement. This means
+copying and pasting over a model you are really digging into 🧑‍💻 OR it is just as valid to use 
+the workbench as a scratchpad 👷‍♀️. In a full day of development, you may never spin down the workbench.
+Refreshing the page is enough to reparse the physical dbt project on disk. The instantaneous feedback
+rarely experienced with jinja + ability to execute the SQL both synergize to supercharge ⚡️ productivity!
+"""
+)
 
 if not state[PIVOT_LAYOUT]:
     idePart1, idePart2 = ideContainer.columns(2)
@@ -270,6 +348,9 @@ with idePart1:
         language=state[DIALECT_PICKER],
         auto_update=auto_update,
         key=f"AceEditor",
+        max_lines=35,
+        min_lines=20,
+        height=500,
     )
 
 with idePart2:
@@ -286,7 +367,8 @@ if compile_sql(state[RAW_SQL]) != state[COMPILED_SQL]:
     st.experimental_rerun()  # This eager re-run speeds up the app
 
 
-if ctx.profile.target_name != state[TARGET_PROFILE] or state[DBT_DO_RELOAD]:
+if ctx.profile.target_name != state[TARGET_PROFILE]:  # or state[DBT_DO_RELOAD]:
+    # TODO: vet the effectiveness of this re-injection
     print("Reloading dbt project...")
     with notificationContainer:
         ctx.profile.target_name = state[TARGET_PROFILE]
@@ -311,6 +393,12 @@ with testHeaderContainer:
     st.write("")
     st.subheader("Osmosis Query Result Inspector 🔬")
     st.write("")
+    st.markdown(
+        """Run queries against your datawarehouse leveraging the selected target profile. This is a critical step in
+    developer productivity 📈 and dbt-osmosis workbench aims to keep it a click away. Additionally, you can leverage the 
+    profiling functionality to get an idea of the dataset you have in memory."""
+    ),
+    st.write(""), st.write("")
 
 query_limit = test_column_2.number_input(
     "Limit Results", min_value=1, max_value=50_000, value=2_000, step=1, key=QUERY_LIMITER
@@ -376,124 +464,21 @@ if state[RUN_PROFILER]:
         )
         st.write("")
 
-# manifestViewer = st.container()
-# with manifestViewer:
-#     st.write("")
-#     st.subheader("Manifest Representation")
-#     st.json(state[MUT_NODE].to_dict(), expanded=False)
+st.write(""), st.write("")
+st.header("Useful Links 🧐")
+st.write("")
+st.markdown(
+    """
+##### dbt docs
+- [docs.getdbt.com](https://docs.getdbt.com/)
 
-st.stop()
+##### dbt core repo
+- [github.com/dbt-labs/dbt-core](https://github.com/dbt-labs/dbt-core/)
 
-# ----------------------------------------------------------------
-# Data Test Runner
-# ----------------------------------------------------------------
+##### data team reference material
 
-st.subheader("Test Runner")
-st.write("Execute configured tests and validate results")
+- [Gitlab Data Team Wiki](https://about.gitlab.com/handbook/business-technology/data-team/)
+- [dbt Best Practices](https://docs.getdbt.com/guides/best-practices/how-we-structure/1-guide-overview)
 
-if "test_results" not in state:
-    state["test_results"] = pd.DataFrame()
-    # pd.DataFrame
-    # Stores data from executed test
-
-if "test_meta" not in state:
-    state["test_meta"] = ""
-    # AdapterResponse
-    # Stores response from executed test query
-    # The truthiness of this is the switch which renders Test runner results section
-
-
-def run_test(
-    test_node: Union[
-        compiled.CompiledSingularTestNode,
-        compiled.CompiledGenericTestNode,
-        parsed.ParsedSingularTestNode,
-        parsed.ParsedGenericTestNode,
-    ]
-):
-    with state["adapter"].connection_named("dbt-osmosis-tester"):
-        # Grab the compiled_sql attribute
-        sql_select_test = getattr(test_node, "compiled_sql", None)
-        if not sql_select_test:
-            compiled_test = state["adapter"].get_compiler().compile_node(test_node, state[DBT].dbt)
-            sql_select_test = compiled_test.compiled_sql
-        test_results = state["adapter"].execute(
-            sql_select_test,
-            fetch=True,
-        )
-
-    table = test_results[1]
-    output = []
-    json_funcs = [c.jsonify for c in table._column_types]
-    for row in table._rows:
-        values = tuple(json_funcs[i](d) for i, d in enumerate(row))
-        output.append(OrderedDict(zip(row.keys(), values)))
-    state["test_meta"] = test_results[0]
-    state["test_results"] = pd.DataFrame(output)
-
-
-# DECLARED TESTS
-test_opts = {}
-for node_config in state[DBT].dbt.nodes.values():
-    if node_config.resource_type == "test" and choice in node_config.depends_on.nodes:
-        test_opts[node_config.name] = node_config
-
-test_pick_col, test_result_col, test_kpi_col = st.columns([2, 1, 1])
-
-# RENDER TEST RUNNER IF WE HAVE OPTS
-if not EXISTS:
-    st.markdown(f" > Model is not materialized in database")
-    st.write("")
-
-elif test_opts:
-
-    with test_pick_col:
-        selected_test = st.selectbox("Model Test", list(test_opts.keys()), key="test_picker")
-        st.button(
-            "Run Test",
-            key="test_runner",
-            on_click=run_test,
-            kwargs={"test_node": test_opts[selected_test]},
-        )
-    test_record_count = len(state["test_results"].index)
-    with test_kpi_col:
-        if state["test_meta"]:
-            st.metric(label="Failing Records", value=test_record_count)
-            st.markdown("#### PASSED" if test_record_count == 0 else "#### FAILED")
-    with test_result_col:
-        if state["test_meta"]:
-            st.write("Completed Test Metadata")
-            st.caption(f"Model Name: {model['name']}")
-            st.caption(f"Test Name: {selected_test}")
-            if state["test_results"].empty:
-                st.caption("Test Result: **Passed**! No failing records detected")
-            else:
-                st.caption(f"Test Result: **Failed**! {test_record_count} failing records detected")
-    if state["test_meta"]:
-        with st.expander("Test Results", expanded=True):
-            st.write("Adapter Response")
-            st.write(state["test_meta"].__dict__)
-            st.write("")
-            st.write("Returned Data")
-            st.dataframe(state["test_results"])
-            st.write("")
-            st.download_button(
-                label="Download test results as CSV",
-                data=convert_df_to_csv(state["test_results"]),
-                file_name=f"{selected_test}.csv",
-                mime="text/csv",
-                key="test_result_downloader",
-            )
-            st.write("")
-
-else:
-    st.markdown(f" > No tests found for model `{choice}` or model")
-    st.write("")
-
-# ----------------------------------------------------------------
-# MANIFEST INSPECTOR
-# ----------------------------------------------------------------
-
-st.subheader("Manifest Representation")
-with st.expander("View Manifest"):
-    st.json(model)
+"""
+)
