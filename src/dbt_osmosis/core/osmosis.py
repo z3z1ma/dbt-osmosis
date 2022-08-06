@@ -139,6 +139,7 @@ class PseudoArgs:
         self.vars = vars  # json.dumps str
         self.dependencies = []
         self.single_threaded = threads == 1
+        self.quiet = True
 
 
 class OsmosisConfig(str, Enum):
