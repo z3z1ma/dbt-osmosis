@@ -13,6 +13,8 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
 ```python
 # Programmatic Examples:
+from dbt_osmosis.core import DbtOsmosis
+from dbt_osmosis.diff import diff_and_print_to_console
 
 runner = DbtOsmosis(
     project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
@@ -20,7 +22,8 @@ runner = DbtOsmosis(
     target="prod",
 )
 
-output = runner.execute_macro("generate_source", {"schema_name": "github"})  # run a macro
+
+# dbt osmosis YAML management 📜
 
 runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())  # review the generated plan
 
@@ -28,7 +31,23 @@ runner.commit_project_restructure_to_disk()  # organize your dbt project based o
 
 runner.propagate_documentation_downstream()  # propagate column level documentation down the DAG
 
+
+# console utilities 📺
+
 diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  # leverage git+dbt_audit_helper to diff the OUTPUT of a model from HEAD to your revision on disk to safely audit changes as you work
+
+
+# massively simplified dbt interfaces you likely won't find elsewhere 👏
+
+runner.execute_macro(
+    "create_schema",
+    kwargs={"relation": relation},
+)  # execute macros through a simple interface without subprocesses
+
+runner.compile_sql("select * from {{ ref('stg_salesforce__users') }}")  # compile SQL as easy as this 🤟
+
+adapter_resp, table = runner.execute_sql("select * from {{ ref('stg_salesforce__users') }}", compile=True, fetch=True)  # run SQL too
+
 ```
 
 [Workbench Reference](#Workbench)
