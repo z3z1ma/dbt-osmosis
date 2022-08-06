@@ -80,24 +80,30 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
         ref_A = check_ref
         logger().info("Found existing relation for %s", ref_A)
 
-    # Resolve modified fake ref
+    # Resolve modified fake ref based on hash of it compiled SQL
     temp_node_name = "z_" + hashlib.md5(changed_node.compiled_sql.encode("utf-8")).hexdigest()[-7:]
-    ref_B = runner.adapter.Relation.create(changed_node.database, "dbt_diff", temp_node_name)
-    logger().info("Creating new relation for %s", ref_B)
-    with runner.adapter.connection_named("dbt-osmosis"):
-        runner.execute_macro(
-            "create_schema",
-            kwargs={"relation": ref_B},
-        )
-        runner.execute_macro(
-            "create_table_as",
-            kwargs={
-                "sql": changed_node.compiled_sql,
-                "relation": ref_B,
-                "temporary": True,
-            },
-            run_compiled_sql=True,
-        )
+    git_node_parts = original_node.database, "dbt_diff", temp_node_name
+    check_ref = runner.adapter.get_relation(*git_node_parts)
+    if not check_ref:
+        ref_B = runner.adapter.Relation.create(*git_node_parts)
+        logger().info("Creating new relation for %s", ref_B)
+        with runner.adapter.connection_named("dbt-osmosis"):
+            runner.execute_macro(
+                "create_schema",
+                kwargs={"relation": ref_B},
+            )
+            runner.execute_macro(
+                "create_table_as",
+                kwargs={
+                    "sql": original_node.compiled_sql,
+                    "relation": ref_B,
+                    "temporary": True,
+                },
+                run_compiled_sql=True,
+            )
+    else:
+        ref_B = check_ref
+        logger().info("Found existing relation for %s", ref_B)
 
     return ref_A, ref_B
 
