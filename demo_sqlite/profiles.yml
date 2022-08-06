@@ -1,11 +1,11 @@
 jaffle_shop:
-  target: dev_correct
+  target: dev
   outputs:
-    dev_correct:
+    dev:
       type: sqlite
       threads: 1
       database: "main"
       schema: "main"
       schemas_and_paths:
-        main: "/Users/alexanderbutler/code_projects/dbt-osmosis/src/dbt_osmosis/demo_sqlite/jaffle_shop.db"
-      schema_directory: "/Users/alexanderbutler/code_projects/dbt-osmosis/src/dbt_osmosis/demo_sqlite/"
+        main: "demo_sqlite/jaffle_shop.db"
+      schema_directory: "demo_sqlite/"
