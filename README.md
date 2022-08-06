@@ -23,30 +23,42 @@ runner = DbtOsmosis(
 )
 
 
-# dbt osmosis YAML management 📜
+# Some dbt osmosis YAML management 📜
 
-runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())  # review the generated plan
+# review the generated plan
+runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())
 
-runner.commit_project_restructure_to_disk()  # organize your dbt project based on declarative config
+# organize your dbt project based on declarative config
+runner.commit_project_restructure_to_disk()
 
-runner.propagate_documentation_downstream()  # propagate column level documentation down the DAG
-
-
-# console utilities 📺
-
-diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  # leverage git+dbt_audit_helper to diff the OUTPUT of a model from HEAD to your revision on disk to safely audit changes as you work
+# propagate column level documentation down the DAG
+runner.propagate_documentation_downstream()
 
 
-# massively simplified dbt interfaces you likely won't find elsewhere 👏
+# Console utilities 📺
 
+# leverage git to diff the OUTPUT of a model from git HEAD 
+# to your revision on disk to safely audit changes as you work
+diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  
+
+
+# Massively simplified dbt interfaces you likely won't find elsewhere 👏
+
+# execute macros through a simple interface without subprocesses
 runner.execute_macro(
     "create_schema",
     kwargs={"relation": relation},
-)  # execute macros through a simple interface without subprocesses
+)
 
-runner.compile_sql("select * from {{ ref('stg_salesforce__users') }}")  # compile SQL as easy as this 🤟
+# compile SQL as easy as this 🤟
+runner.compile_sql("select * from {{ ref('stg_salesforce__users') }}")
 
-adapter_resp, table = runner.execute_sql("select * from {{ ref('stg_salesforce__users') }}", compile=True, fetch=True)  # run SQL too
+# run SQL too
+adapter_resp, table = runner.execute_sql(
+    "select * from {{ ref('stg_salesforce__users') }}", 
+    compile=True, 
+    fetch=True,
+)
 
 ```
 
