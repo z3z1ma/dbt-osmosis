@@ -20,10 +20,13 @@ from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, get_raw_p
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 state = st.session_state
 
-parser = argparse.ArgumentParser(description="dbt osmosis workbench")
-parser.add_argument("--profiles-dir", help="dbt profile directory")
-parser.add_argument("--project-dir", help="dbt project directory")
-args = vars(parser.parse_args(sys.argv[1:]))
+try:
+    parser = argparse.ArgumentParser(description="dbt osmosis workbench")
+    parser.add_argument("--profiles-dir", help="dbt profile directory")
+    parser.add_argument("--project-dir", help="dbt project directory")
+    args = vars(parser.parse_args(sys.argv[1:]))
+except:
+    args = {}
 
 root_path = Path(__file__).parent
 demo_dir = root_path / "demo"
