@@ -6,61 +6,22 @@
 ![Downloads](https://pepy.tech/badge/dbt-osmosis)
 ![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)
 ![black](https://img.shields.io/badge/code%20style-black-000000.svg)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-4y67qs.streamlitapp.com/)
+
 
 ## Primary Objectives
 
-Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this by automating the most of the management of schema yml files, we synchronize inheritable column level documentation which permits a write-it-once principle in a DAG oriented way, we enforce user-defined organization for schema yml files in your dbt project automatically making it super tidy, we automatically inject models which are undocumented into the appropriate schema right where you expect it, and we expose a **workbench** which allows you to interactively develop in dbt. The workbench allows you to develop and instantly compile models side by side (extremely performant compilation), document model columns, test the query against your data warehouse, inspect row level diffs and diff metric as you modify SQL, run dbt tests interactively & download results, and more. 
+Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this through providing 3 core features:
 
-```python
-# Programmatic Examples:
-from dbt_osmosis.core import DbtOsmosis
-from dbt_osmosis.diff import diff_and_print_to_console
+1. Automated schema YAML management (minimize developers repetitive tasks)
 
-runner = DbtOsmosis(
-    project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
-    dry_run=True,
-    target="prod",
-)
+2. Workbench for dbt Jinja SQL (maximize developers dbt SQL authoring efficiency + learning + testing)
+
+3. Diffs for data model outputs to model outputs across git revisions (optimize developers observability during iteration)
 
 
-# Some dbt osmosis YAML management 📜
+When combined with an IDE such as VS Code, developers can work with renewed efficiency, enjoyment, and effectiveness throughout their days. 
 
-# review the generated plan
-runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())
-
-# organize your dbt project based on declarative config
-runner.commit_project_restructure_to_disk()
-
-# propagate column level documentation down the DAG
-runner.propagate_documentation_downstream()
-
-
-# Console utilities 📺
-
-# leverage git to diff the OUTPUT of a model from git HEAD 
-# to your revision on disk to safely audit changes as you work
-diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  
-
-
-# Massively simplified dbt interfaces you likely won't find elsewhere 👏
-
-# execute macros through a simple interface without subprocesses
-runner.execute_macro(
-    "create_schema",
-    kwargs={"relation": relation},
-)
-
-# compile SQL as easy as this 🤟
-runner.compile_sql("select * from {{ ref('stg_salesforce__users') }}")
-
-# run SQL too
-adapter_resp, table = runner.execute_sql(
-    "select * from {{ ref('stg_salesforce__users') }}", 
-    compile=True, 
-    fetch=True,
-)
-
-```
 
 [Workbench Reference](#Workbench)
 
@@ -71,8 +32,11 @@ ____
 
 ## Workbench
 
-The workbench is under active development. Feel free to open issues or discuss additions. 
+Demo the workbench 👇 
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-4y67qs.streamlitapp.com/)
+
+ 
 ```sh
 # Command to start server
 dbt-osmosis workbench
@@ -82,78 +46,37 @@ Press "r" to reload the workbench at any time.
 
 
 
-✔️ dbt Model Editor
+✔️ dbt Editor with instant dbt compilation side-by-side or pivoted
 
 ✔️ Full control over model and workbench theme, light and dark mode
 
-✔️ Create or delete models from the workbench without switching context
-
-✔️ Materialize Active Model in Warehouse
-
 ✔️ Query Tester, test the model you are working on for instant feedback
 
-✔️ SQL Model Data Diffs, modify models with confidence like never before
-
-  - Adding pandas engine and support for `MODIFIED` rows in addition to `ADDED` and `REMOVED`
-
-  - Adding scorecards which show the sum of each of the 3 diff categories
-
 ✔️ Data Profiler (leverages pandas-profiling)
-
-⚠️ Doc Editor (resolves basic column level lineage)
-
-  - View only, modifications aren't committed yet
-
-✔️ Test Runner, run dbt tests interactively and on the fly with the ability to download or inspect results and action
-
-✔️ Manifest View
-
 
 
 **Editor** 
 
-The editor is able to compile models with control+enter or dynamically as you type. Its speedy!
+The editor is able to compile models with control+enter or dynamically as you type. Its speedy! You can choose any target defined in your profiles yml for compilation and execution.
 
 ![editor](/screenshots/osmosis_editor.png?raw=true "dbt-osmosis Workbench")
 
-**Profile Selection**
+You can pivot the editor for a fuller view while workbenching some dbt SQL.
 
-Select a target, models can also be materialized by executing the SQL against the target using dbt as a wrapper.
-
-![profiles](/screenshots/osmosis_profile_selection.png?raw=true "dbt-osmosis Profile Selection")
-
-
-**Edit and Save Models**
-
-See when there are uncommitted changes and commit them to file when ready, or revert to initial state. Pivot the layout if you prefer a larger editor context or pivot it back to get side by side instant dbt jinja compilation to accelerate your learning
-
-![pivot-uncommitted](/screenshots/osmosis_pivot_layout_uncommitted_changes.png?raw=true "dbt-osmosis Pivot Layout")
+![pivot](/screenshots/osmosis_editor_pivot.png?raw=true "dbt-osmosis Pivot Layout")
 
 
 **Test Query**
 
-Test dbt models as you work against whatever profile you have selected and inspect the results.
+Test dbt models as you work against whatever profile you have selected and inspect the results. This allows very fast iterative feedback loops not possible with VS Code alone.
 
-![test-model](/screenshots/osmosis_test_dbt_model.png?raw=true "dbt-osmosis Test Model")
-
-**Row Level Diffs**
-
-As you develop and modify a model with uncommitted changes, you can calculate the diff. This allows you instant feedback on if the changes you make are safe.
-
-![diff-model](/screenshots/osmosis_row_level_diff.png?raw=true "dbt-osmosis Diff Model")
+![test-model](/screenshots/osmosis_tester.png?raw=true "dbt-osmosis Test Model")
 
 **Profile Model Results**
 
 Profile your datasets on the fly while you develop without switching context. Allows for more refined interactive data modelling when dataset fits in memory.
 
 ![profile-data](/screenshots/osmosis_profile_data.png?raw=true "dbt-osmosis Profile Data")
-
-**Run dbt Tests**
-
-Run declared dbt data tests interactively with the ability to download the results to CSV.
-
-![data-tests](/screenshots/osmosis_data_tests.png?raw=true "dbt-osmosis Data Tests")
-
 
 ____
 
@@ -203,7 +126,7 @@ To use dbt-osmosis, simply run the following:
 # Install
 pip install dbt-osmosis
 # Alternatively
-pipx install dbt-osmosis
+pipx install dbt-osmosis dbt-<adapter>
 
 
 # This command executes all tasks in preferred order and is usually all you need
@@ -226,16 +149,12 @@ dbt-osmosis compose --project-dir /path/to/dbt/project --target prod --fqn marts
 # Open the dbt-osmosis workbench
 
 dbt-osmosis workbench
+
+
+# Diff a model from git HEAD to revision on disk
+
+dbt-osmosis diff -m int_account_events --pk 'concat(account_id, date_day)' --output bar
 ```
-
-## Roadmap
-
-These features are being actively developed and will be merged into the next few minor releases
-
-1. Complete build out of `sources` tools.
-2. Add `--min-cov` flag to audit task and to workbench
-3. Add interactive documentation flag that engages user to documents ONLY progenitors and novel columns for a subset of models (the most optimized path to full documentation coverage feasible)
-4. Add `impact` command that allows us to leverage our resolved column level progenitors for ad hoc impact analysis
 
 ## Features
 
@@ -293,7 +212,7 @@ These features are being actively developed and will be merged into the next few
                 stg_customer.sql
                 stg_order.sql
 
-        - `+dbt-osmosis: "model.yml"`
+        - `+dbt-osmosis: "_model.yml"`
 
 ### Build and Inject Non-documented models
 
@@ -322,43 +241,66 @@ In a full run [ `dbt-osmosis run` ] we will:
 4. Propagate definitions downstream to undocumented models solely within the context of each models dependency tree
 
 
-#### Here are some of the original foundational pillars:
+## Python API
 
-First and foremost, we want dbt documentation to retain a DRY principle. Every time we repeat ourselves, we waste our time. 80% of documentation is often a matter of inheritance and continued passing down of columns from parent models to children. They need not be redocumented if there has been no mutation. 
+Though each core function is useful enough to stand as its own package, dbt osmosis sits as a unified interface primarily because all of these functions are built off of the same core API structures in the dbt osmosis package. dbt osmosis provides one of the cleanest interfaces to interacting with dbt if you aren't keen to play with dbt on-the-rails (like me) or you want to extend what osmosis can do.
 
-Second, we want to standardize ways that we all organize our schema files which hold the fruits of our documentation. We should be able to enforce a standard on a per directory basis and jump between layouts at will as certain folders scale up the number of models or scale down. 
+```python
+# Programmatic Examples:
+from dbt_osmosis.core import DbtOsmosis
+from dbt_osmosis.diff import diff_and_print_to_console
 
-Lastly, and tangential to the first objective, we want to understand column level lineage, streamline impact analysis, and audit our documentation.
+runner = DbtOsmosis(
+    project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
+    dry_run=True,
+    target="prod",
+)
 
 
-## New workflows enabled!
+# Some dbt osmosis YAML management 📜
 
-1. Build one dbt model or a __bunch__ of them without documenting anything (gasp)
+# review the generated plan
+runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())
 
-    Run `dbt-osmosis run` or `dbt-osmosis compose && dbt-osmosis document`
-    
-    Sit back and watch as:
+# organize your dbt project based on declarative config
+runner.commit_project_restructure_to_disk()
 
-    Automatically constructed/updated schema yamls are built with as much of the definitions pre-populated as possible from upstream dependencies 
-    
-    Schema yaml(s) are automatically organized in exactly the right directories / style that conform to the easily configurable standard upheld and enforced across your dbt project on a directory by directory basis 
-    
-    boom, mic drop
+# propagate column level documentation down the DAG
+runner.propagate_documentation_downstream()
 
-2. Problem reported by stakeholder with data **(WIP)**
-    
-    Identify column
-    
-    Run `dbt-osmosis impact --model orders --column price`
-    
-    Find the originating model and action
 
-3. Need to score our documentation **(WIP)**
+# Console utilities 📺
 
-    Run `dbt-osmosis audit --docs --min-cov 80`
+# leverage git to diff the OUTPUT of a model from git HEAD 
+# to your revision on disk to safely audit changes as you work
+diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  
 
-    Get a curated list of all the documentation to update in your pre-bootstrapped dbt project
 
-    Sip coffee and engage in documentation
+# Massively simplified dbt interfaces you likely won't find elsewhere 👏
 
-4. Add dbt-osmosis to a pre-commit hook to ensure all your analysts are passing down column level documentation & reaching your designated min-coverage
+# execute macros through a simple interface without subprocesses
+runner.execute_macro(
+    "create_schema",
+    kwargs={"relation": relation},
+)
+
+# compile SQL as easy as this 🤟
+runner.compile_sql("select * from {{ ref('stg_salesforce__users') }}")
+
+# run SQL too
+adapter_resp, table = runner.execute_sql(
+    "select * from {{ ref('stg_salesforce__users') }}", 
+    compile=True, 
+    fetch=True,
+)
+```
+
+## Roadmap
+
+These features are being actively developed and will be merged into the next few minor releases
+
+1. Extend git diff functionality to pin revisions in the warehouse  
+2. Complete build out of `sources` tools.
+3. Add `--min-cov` flag to audit task and to workbench
+4. Add interactive documentation flag that engages user to documents ONLY progenitors and novel columns for a subset of models (the most optimized path to full documentation coverage feasible)
+5. Add `impact` command that allows us to leverage our resolved column level progenitors for ad hoc impact analysis
