@@ -4,13 +4,13 @@ import os
 import sys
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
-import numpy as np
+import feedparser
 import pandas as pd
 import pandas_profiling
 import streamlit as st
-from dbt.contracts.graph import compiled, manifest, parsed
+from dbt.contracts.graph import parsed
 from dbt.exceptions import CompilationException, DatabaseException, RuntimeException
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
@@ -36,7 +36,7 @@ DBT = "DBT"
 """DbtOsmosis object"""
 PROJ_DIR = "PROJ_DIR"
 """dbt project directory"""
-PROF_DIR = "PROJ_DIR"
+PROF_DIR = "PROF_DIR"
 """dbt profile directory"""
 
 _proj_dir = args.get("project_dir")
@@ -172,14 +172,6 @@ def hash_compiled_node(node: parsed.ParsedModelNode):
     return hashlib.md5(node.raw_sql.encode("utf-8")).hexdigest()
 
 
-hash_funcs = {
-    parsed.ParsedModelNode: hash_parsed_node,
-    compiled.CompiledModelNode: lambda _: None,
-    manifest.Manifest: lambda _: None,
-    DbtOsmosis: lambda _: None,
-}
-
-
 def inject_dbt(change_target: Optional[str] = None):
     """Parse dbt project and load context var"""
     if DBT not in state:
@@ -208,21 +200,6 @@ state.setdefault(TARGET_PROFILE, ctx.profile.target_name)
 
 def toggle_viewer() -> None:
     state[PIVOT_LAYOUT] = not state[PIVOT_LAYOUT]
-
-
-@st.cache(hash_funcs=hash_funcs)
-def compile_model(node: manifest.ManifestNode) -> Optional[manifest.ManifestNode]:
-    """Compiles a NODE, this is agnostic to the fact of whether the SQL is valid but is stringent on valid
-    Jinja, therefore a None return value after catching the error affirms invalid jinja from user (which is fine since they might be compiling as they type)
-    Caching here is immensely valuable since we know a NODE which hashes the same as a prior input will have the same output and this fact gives us a big speedup"""
-    try:
-        node = parsed.ParsedModelNode.from_dict(node.to_dict())
-        ctx.dbt.update_node(node)
-        with ctx.adapter.connection_named("dbt-osmosis"):
-            compiled_node = ctx.adapter.get_compiler().compile_node(node, ctx.dbt)
-        return compiled_node
-    except CompilationException:
-        return None
 
 
 # @st.cache
@@ -468,9 +445,11 @@ if state[RUN_PROFILER]:
         st.write("")
 
 st.write(""), st.write("")
-st.header("Useful Links 🧐")
-st.write("")
-st.markdown(
+footer1, footer2 = st.columns([1, 2])
+footer1.header("Useful Links 🧐")
+footer2.header("RSS Feeds 🚨")
+footer1.write("")
+footer1.markdown(
     """
 ##### dbt docs
 - [docs.getdbt.com](https://docs.getdbt.com/)
@@ -484,4 +463,34 @@ st.markdown(
 - [dbt Best Practices](https://docs.getdbt.com/guides/best-practices/how-we-structure/1-guide-overview)
 
 """
+)
+
+
+@st.cache(ttl=300.0)
+def get_feed(url: str):
+    return feedparser.parse(url)
+
+
+d = get_feed("http://www.reddit.com/r/python/.rss")
+footer2.write("")
+rss1 = footer2.expander(f"{d['feed']['title']} ({d['feed']['link']})")
+rss1.write()
+rss1.caption(d["feed"]["subtitle"])
+for i, item in enumerate(d["entries"]):
+    rss1.markdown(f"[{item['title']}]({item['link']})")
+    if i > 5:
+        rss1.markdown(f"[See all]({d['feed']['link']})")
+        break
+d = get_feed("https://news.ycombinator.com/rss")
+rss2 = footer2.expander(f"{d['feed']['title']} ({d['feed']['link']})")
+rss2.write()
+rss2.caption(d["feed"]["subtitle"])
+for i, item in enumerate(d["entries"]):
+    rss2.markdown(f"[{item['title']}]({item['link']})")
+    if i > 5:
+        rss2.markdown(f"[See all]({d['feed']['link']})")
+        break
+footer2.write("")
+footer2.write(
+    "Catch up on any news! Staying up-to-date is important to keeping sharp in an always evolving world."
 )
