@@ -58,9 +58,11 @@ from dbt_osmosis.core.exceptions import (
 from dbt_osmosis.core.log_controller import logger
 
 
-def memoize_get_rendered(function):
-    memo = {}
+class MemoContainer:
+    _MEMO = {}
 
+
+def memoize_get_rendered(function):
     def wrapper(
         string: str,
         ctx: Dict[str, Any],
@@ -72,12 +74,12 @@ def memoize_get_rendered(function):
         if capture_macros == True and node is not None:
             # Now the node is important, cache mutated node
             v += node.name
-        rv = memo.get(v)
+        rv = MemoContainer._MEMO.get(v)
         if rv is not None:
             return rv
         else:
             rv = function(string, ctx, node, capture_macros, native)
-            memo[v] = rv
+            MemoContainer._MEMO[v] = rv
             return rv
 
     return wrapper

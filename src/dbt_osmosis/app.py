@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import os
 import sys
 from collections import OrderedDict
@@ -10,12 +9,16 @@ import feedparser
 import pandas as pd
 import pandas_profiling
 import streamlit as st
-from dbt.contracts.graph import parsed
 from dbt.exceptions import CompilationException, DatabaseException, RuntimeException
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, get_raw_profiles
+from dbt_osmosis.core.osmosis import (
+    DEFAULT_PROFILES_DIR,
+    DbtOsmosis,
+    MemoContainer,
+    get_raw_profiles,
+)
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 state = st.session_state
@@ -164,17 +167,9 @@ PIVOT_LAYOUT = "PIVOT_LAYOUT"
 state.setdefault(PIVOT_LAYOUT, False)
 
 
-def hash_parsed_node(node: parsed.ParsedModelNode) -> str:
-    return hashlib.md5(node.raw_sql.encode("utf-8")).hexdigest()
-
-
-def hash_compiled_node(node: parsed.ParsedModelNode):
-    return hashlib.md5(node.raw_sql.encode("utf-8")).hexdigest()
-
-
 def inject_dbt(change_target: Optional[str] = None):
     """Parse dbt project and load context var"""
-    if DBT not in state:
+    if DBT not in state or change_target:
         dbt_ctx = DbtOsmosis(
             project_dir=state[PROJ_DIR],
             profiles_dir=state[PROF_DIR],
@@ -183,7 +178,6 @@ def inject_dbt(change_target: Optional[str] = None):
     else:
         dbt_ctx: DbtOsmosis = state[DBT]
         dbt_ctx.rebuild_dbt_manifest(reset=True)
-
     state[DBT] = dbt_ctx
     return True
 
@@ -348,14 +342,15 @@ if compile_sql(state[RAW_SQL]) != state[COMPILED_SQL]:
 
 
 if ctx.profile.target_name != state[TARGET_PROFILE]:  # or state[DBT_DO_RELOAD]:
-    # TODO: vet the effectiveness of this re-injection
     print("Reloading dbt project...")
     with notificationContainer:
         ctx.profile.target_name = state[TARGET_PROFILE]
         ctx.config.target_name = state[TARGET_PROFILE]
         with st.spinner("Reloading dbt... ⚙️"):
             inject_dbt(state[TARGET_PROFILE])
+            # state[RAW_SQL] += " "
             state[COMPILED_SQL] = compile_sql(state[RAW_SQL])
+            MemoContainer._MEMO = {}
     st.experimental_rerun()
 
 
