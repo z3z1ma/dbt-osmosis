@@ -271,7 +271,7 @@ name = "cli-helpers"
 version = "2.2.1"
 description = "Helpers for building command-line apps"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -331,7 +331,7 @@ name = "configobj"
 version = "5.0.6"
 description = "Config file reading, writing and validation."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -339,7 +339,7 @@ six = "*"
 
 [[package]]
 name = "coverage"
-version = "6.4.2"
+version = "6.4.3"
 description = "Code coverage measurement for Python"
 category = "dev"
 optional = false
@@ -360,8 +360,8 @@ python-versions = ">=3.6"
 name = "dbt-bigquery"
 version = "1.1.1"
 description = "The BigQuery adapter plugin for dbt"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -385,7 +385,7 @@ requests = ">=2.26.0,<3.0.0"
 
 [[package]]
 name = "dbt-core"
-version = "1.1.0"
+version = "1.1.2"
 description = "With dbt, data analysts and engineers can build analytics the way engineers build applications."
 category = "main"
 optional = false
@@ -397,15 +397,15 @@ cffi = ">=1.9,<2.0.0"
 click = ">=7.0,<9"
 colorama = ">=0.3.9,<0.4.5"
 dbt-extractor = ">=0.4.1,<0.5.0"
-hologram = "0.0.14"
+hologram = ">=0.0.14,<=0.0.15"
 idna = ">=2.5,<4"
 isodate = ">=0.6,<0.7"
 Jinja2 = "2.11.3"
 logbook = ">=1.5,<1.6"
-MarkupSafe = "2.0.1"
+MarkupSafe = ">=0.23,<2.1"
 mashumaro = "2.9"
 minimal-snowplow-tracker = "0.0.2"
-networkx = ">=2.3,<3"
+networkx = ">=2.3,<2.8.4"
 packaging = ">=20.9,<22.0"
 requests = "<3.0.0"
 sqlparse = ">=0.2.3,<0.5"
@@ -417,7 +417,7 @@ name = "dbt-duckdb"
 version = "1.1.4"
 description = "The duckdb adapter plugin for dbt (data build tool)"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -437,7 +437,7 @@ name = "dbt-sqlite"
 version = "1.1.2"
 description = "A SQLite adapter plugin for dbt (data build tool)"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -491,7 +491,7 @@ name = "duckcli"
 version = "0.0.1"
 description = "CLI for DuckDB with auto-completion and syntax highlighting."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -508,7 +508,7 @@ name = "duckdb"
 version = "0.4.0"
 description = "DuckDB embedded database"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -540,6 +540,17 @@ python-versions = "*"
 
 [package.extras]
 devel = ["colorama", "jsonschema", "json-spec", "pylint", "pytest", "pytest-benchmark", "pytest-cache", "validictory"]
+
+[[package]]
+name = "feedparser"
+version = "6.0.10"
+description = "Universal feed parser, handles RSS 0.9x, RSS 1.0, RSS 2.0, CDF, Atom 0.3, and Atom 1.0 feeds"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[package.dependencies]
+sgmllib3k = "*"
 
 [[package]]
 name = "filelock"
@@ -609,8 +620,8 @@ gitdb = ">=4.0.1,<5"
 name = "google-api-core"
 version = "2.8.2"
 description = "Google API client core library"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -628,8 +639,8 @@ grpc = ["grpcio (>=1.33.2,<2.0dev)", "grpcio-status (>=1.33.2,<2.0dev)"]
 name = "google-auth"
 version = "2.10.0"
 description = "Google Authentication Library"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*"
 
 [package.dependencies]
@@ -648,8 +659,8 @@ reauth = ["pyu2f (>=0.1.5)"]
 name = "google-cloud-bigquery"
 version = "2.34.4"
 description = "Google BigQuery API client library"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6, <3.11"
 
 [package.dependencies]
@@ -677,8 +688,8 @@ tqdm = ["tqdm (>=4.7.4,<5.0.0dev)"]
 name = "google-cloud-core"
 version = "2.3.2"
 description = "Google Cloud API client core library"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -692,8 +703,8 @@ grpc = ["grpcio (>=1.38.0,<2.0dev)"]
 name = "google-crc32c"
 version = "1.3.0"
 description = "A python wrapper of the C library 'Google CRC32C'"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -703,8 +714,8 @@ testing = ["pytest"]
 name = "google-resumable-media"
 version = "2.3.3"
 description = "Utilities for Google Media Downloads and Resumable Uploads"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">= 3.6"
 
 [package.dependencies]
@@ -718,8 +729,8 @@ requests = ["requests (>=2.18.0,<3.0.0dev)"]
 name = "googleapis-common-protos"
 version = "1.56.4"
 description = "Common protobufs used in Google APIs"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -745,8 +756,8 @@ test = ["pytest (>=7)", "pytest-mock (>=3)", "mock (>=4)", "pytest-cov", "covera
 name = "grpcio"
 version = "1.48.0"
 description = "HTTP/2-based RPC framework"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -759,8 +770,8 @@ protobuf = ["grpcio-tools (>=1.48.0)"]
 name = "grpcio-status"
 version = "1.48.0"
 description = "Status proto mapping for gRPC"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -770,14 +781,14 @@ protobuf = ">=3.12.0"
 
 [[package]]
 name = "hologram"
-version = "0.0.14"
+version = "0.0.15"
 description = "JSON schema generation from dataclasses"
 category = "main"
 optional = false
 python-versions = "*"
 
 [package.dependencies]
-jsonschema = ">=3.0,<3.2"
+jsonschema = ">=3.0,<4.0"
 python-dateutil = ">=2.8,<2.9"
 
 [[package]]
@@ -985,7 +996,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "jsonschema"
-version = "3.1.1"
+version = "3.2.0"
 description = "An implementation of JSON Schema validation for Python"
 category = "main"
 optional = false
@@ -993,12 +1004,12 @@ python-versions = "*"
 
 [package.dependencies]
 attrs = ">=17.4.0"
-importlib-metadata = "*"
 pyrsistent = ">=0.14.0"
 six = ">=1.11.0"
 
 [package.extras]
 format = ["idna", "jsonpointer (>1.13)", "rfc3987", "strict-rfc3339", "webcolors"]
+format_nongpl = ["idna", "jsonpointer (>1.13)", "webcolors", "rfc3986-validator (>0.1.0)", "rfc3339-validator"]
 
 [[package]]
 name = "jupyter-client"
@@ -1313,7 +1324,7 @@ python-versions = ">=3.5"
 
 [[package]]
 name = "networkx"
-version = "2.8.5"
+version = "2.8.3"
 description = "Python package for creating and manipulating graphs and networks"
 category = "main"
 optional = false
@@ -1322,7 +1333,7 @@ python-versions = ">=3.8"
 [package.extras]
 default = ["numpy (>=1.19)", "scipy (>=1.8)", "matplotlib (>=3.4)", "pandas (>=1.3)"]
 developer = ["pre-commit (>=2.19)", "mypy (>=0.960)"]
-doc = ["sphinx (>=5)", "pydata-sphinx-theme (>=0.9)", "sphinx-gallery (>=0.10)", "numpydoc (>=1.4)", "pillow (>=9.1)", "nb2plots (>=0.6)", "texext (>=0.6.6)"]
+doc = ["sphinx (>=4.5)", "pydata-sphinx-theme (>=0.8.1)", "sphinx-gallery (>=0.10)", "numpydoc (>=1.3)", "pillow (>=9.1)", "nb2plots (>=0.6)", "texext (>=0.6.6)"]
 extra = ["lxml (>=4.6)", "pygraphviz (>=1.9)", "pydot (>=1.4.2)", "sympy (>=1.10)"]
 test = ["pytest (>=7.1)", "pytest-cov (>=3.0)", "codecov (>=2.1)"]
 
@@ -1591,8 +1602,8 @@ wcwidth = "*"
 name = "proto-plus"
 version = "1.20.6"
 description = "Beautiful, Pythonic protocol buffers."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -1662,16 +1673,16 @@ numpy = ">=1.16.6"
 name = "pyasn1"
 version = "0.4.8"
 description = "ASN.1 types and codecs"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [[package]]
 name = "pyasn1-modules"
 version = "0.2.8"
 description = "A collection of ASN.1-based protocols modules."
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1988,8 +1999,8 @@ jupyter = ["ipywidgets (>=7.5.1,<8.0.0)"]
 name = "rsa"
 version = "4.9"
 description = "Pure-Python RSA implementation"
-category = "dev"
-optional = false
+category = "main"
+optional = true
 python-versions = ">=3.6,<4"
 
 [package.dependencies]
@@ -2080,6 +2091,14 @@ typing-extensions = "*"
 [package.extras]
 test = ["pytest (>=6.2)", "virtualenv (>20)"]
 toml = ["setuptools (>=42)"]
+
+[[package]]
+name = "sgmllib3k"
+version = "1.0.0"
+description = "Py3k port of sgmllib."
+category = "main"
+optional = false
+python-versions = "*"
 
 [[package]]
 name = "six"
@@ -2218,7 +2237,7 @@ name = "tabulate"
 version = "0.8.10"
 description = "Pretty-print tabular data"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.dependencies]
@@ -2524,10 +2543,15 @@ python-versions = ">=3.7"
 docs = ["sphinx", "jaraco.packaging (>=9)", "rst.linker (>=1.9)", "jaraco.tidelift (>=1.4)"]
 testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-cov", "pytest-enabler (>=1.3)", "jaraco.itertools", "func-timeout", "pytest-black (>=0.3.7)", "pytest-mypy (>=0.9.1)"]
 
+[extras]
+dbt-bigquery = []
+dbt-duckdb = ["duckcli"]
+dbt-sqlite = []
+
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "6e7ff1b1f29d8271ce15b361864956dc149717a958bb9825a798aaa4ea8e3b41"
+content-hash = "4c6c07cb8f75856f2905818f7d9d2f6cfa5840ef8fd33074e7c732071ff7e356"
 
 [metadata.files]
 agate = [
@@ -2743,10 +2767,7 @@ dbt-client = [
     {file = "dbt-client-0.1.3.tar.gz", hash = "sha256:192fff51a51d6d002d4048dd494e601592599e004c0f31f1ea5156aa6d516cf5"},
     {file = "dbt_client-0.1.3-py3-none-any.whl", hash = "sha256:31a0db4844c1559c95c643a6f57d1e39d4e9c3b4d9a8c867f7b3e6ed75cedca0"},
 ]
-dbt-core = [
-    {file = "dbt-core-1.1.0.tar.gz", hash = "sha256:3e33ce5be74e0d4f9f28ad76b4b1de55cb343d4c53c3a8f98c24551881aedf3e"},
-    {file = "dbt_core-1.1.0-py3-none-any.whl", hash = "sha256:4af9124e6ec188db2ce9a32d6b26757fd42c2e14238770ca0661d8963f1ba7ea"},
-]
+dbt-core = []
 dbt-duckdb = []
 dbt-extractor = [
     {file = "dbt_extractor-0.4.1-cp36-abi3-macosx_10_7_x86_64.whl", hash = "sha256:4dc715bd740e418d8dc1dd418fea508e79208a24cf5ab110b0092a3cbe96bf71"},
@@ -2789,6 +2810,7 @@ entrypoints = [
 ]
 executing = []
 fastjsonschema = []
+feedparser = []
 filelock = [
     {file = "filelock-3.7.1-py3-none-any.whl", hash = "sha256:37def7b658813cda163b56fc564cdc75e86d338246458c4c28ae84cabefa2404"},
     {file = "filelock-3.7.1.tar.gz", hash = "sha256:3a0fd85166ad9dbab54c9aec96737b744106dc5f15c0b09a6744a445299fcf04"},
@@ -2865,10 +2887,7 @@ googleapis-common-protos = []
 graphviz = []
 grpcio = []
 grpcio-status = []
-hologram = [
-    {file = "hologram-0.0.14-py3-none-any.whl", hash = "sha256:2911b59115bebd0504eb089532e494fa22ac704989afe41371c5361780433bfe"},
-    {file = "hologram-0.0.14.tar.gz", hash = "sha256:fd67bd069e4681e1d2a447df976c65060d7a90fee7f6b84d133fd9958db074ec"},
-]
+hologram = []
 htmlmin = [
     {file = "htmlmin-0.1.12.tar.gz", hash = "sha256:50c1ef4630374a5d723900096a961cff426dff46b48f34d194a81bbe14eca178"},
 ]
@@ -2918,8 +2937,8 @@ joblib = [
     {file = "joblib-1.0.1.tar.gz", hash = "sha256:9c17567692206d2f3fb9ecf5e991084254fe631665c450b443761c4186a613f7"},
 ]
 jsonschema = [
-    {file = "jsonschema-3.1.1-py2.py3-none-any.whl", hash = "sha256:94c0a13b4a0616458b42529091624e66700a17f847453e52279e35509a5b7631"},
-    {file = "jsonschema-3.1.1.tar.gz", hash = "sha256:2fa0684276b6333ff3c0b1b27081f4b2305f0a36cf702a23db50edb141893c3f"},
+    {file = "jsonschema-3.2.0-py2.py3-none-any.whl", hash = "sha256:4e5b3cf8216f577bee9ce139cbe72eca3ea4f292ec60928ff24758ce626cd163"},
+    {file = "jsonschema-3.2.0.tar.gz", hash = "sha256:c8a85b28d377cc7737e46e2d9f2b4f44ee3c0e1deac6bf46ddefc7187d30797a"},
 ]
 jupyter-client = []
 jupyter-core = []
@@ -3193,7 +3212,10 @@ nest-asyncio = [
     {file = "nest_asyncio-1.5.5-py3-none-any.whl", hash = "sha256:b98e3ec1b246135e4642eceffa5a6c23a3ab12c82ff816a92c612d68205813b2"},
     {file = "nest_asyncio-1.5.5.tar.gz", hash = "sha256:e442291cd942698be619823a17a86a5759eabe1f8613084790de189fe9e16d65"},
 ]
-networkx = []
+networkx = [
+    {file = "networkx-2.8.3-py3-none-any.whl", hash = "sha256:f151edac6f9b0cf11fecce93e236ac22b499bb9ff8d6f8393b9fef5ad09506cc"},
+    {file = "networkx-2.8.3.tar.gz", hash = "sha256:67fab04a955a73eb660fe7bf281b6fa71a003bc6e23a92d2f6227654c5223dbe"},
+]
 notebook = []
 nox = [
     {file = "nox-2022.1.7-py3-none-any.whl", hash = "sha256:efee12f02d39405b16d68f60e7a06fe1fc450ae58669d6cdda8c7f48e3bae9e3"},
@@ -3627,6 +3649,7 @@ send2trash = [
     {file = "Send2Trash-1.8.0.tar.gz", hash = "sha256:d2c24762fd3759860a0aff155e45871447ea58d2be6bdd39b5c8f966a0c99c2d"},
 ]
 setuptools-scm = []
+sgmllib3k = []
 six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
     {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
