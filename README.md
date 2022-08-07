@@ -59,7 +59,7 @@ Press "r" to reload the workbench at any time.
 
 The editor is able to compile models with control+enter or dynamically as you type. Its speedy! You can choose any target defined in your profiles yml for compilation and execution.
 
-![editor](/screenshots/osmosis_editor.png?raw=true "dbt-osmosis Workbench")
+![editor](/screenshots/osmosis_editor_main.png?raw=true "dbt-osmosis Workbench")
 
 You can pivot the editor for a fuller view while workbenching some dbt SQL.
 
@@ -76,7 +76,7 @@ Test dbt models as you work against whatever profile you have selected and inspe
 
 Profile your datasets on the fly while you develop without switching context. Allows for more refined interactive data modelling when dataset fits in memory.
 
-![profile-data](/screenshots/osmosis_profile_data.png?raw=true "dbt-osmosis Profile Data")
+![profile-data](/screenshots/osmosis_profile.png?raw=true "dbt-osmosis Profile Data")
 
 
 **Useful Links and RSS Feed**
