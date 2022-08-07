@@ -78,6 +78,13 @@ Profile your datasets on the fly while you develop without switching context. Al
 
 ![profile-data](/screenshots/osmosis_profile_data.png?raw=true "dbt-osmosis Profile Data")
 
+
+**Useful Links and RSS Feed**
+
+Some useful links and RSS feeds at the bottom. 🤓
+
+![profile-data](/screenshots/osmosis_links.png?raw=true "dbt-osmosis Profile Data")
+
 ____
 
 
