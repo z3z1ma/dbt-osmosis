@@ -312,17 +312,8 @@ def extract(
     default=DEFAULT_PROFILES_DIR,
     help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
-@click.option(
-    "-m",
-    "--model",
-    type=click.STRING,
-    required=True,
-    help="The model to edit in the workbench",
-)
 @click.pass_context
-def workbench(
-    ctx, model: str, profiles_dir: Optional[str] = None, project_dir: Optional[str] = None
-):
+def workbench(ctx, profiles_dir: Optional[str] = None, project_dir: Optional[str] = None):
     """Instantiate the dbt-osmosis workbench and begin architecting a model.
         --model argument is required
 
@@ -344,9 +335,6 @@ def workbench(
     if profiles_dir:
         script_args.append("--profiles-dir")
         script_args.append(profiles_dir)
-    if model:
-        script_args.append("--model")
-        script_args.append(model)
 
     import os
 
