@@ -319,13 +319,23 @@ def workbench(ctx, profiles_dir: Optional[str] = None, project_dir: Optional[str
 
     \f
     Pass the --options command to see streamlit specific options that can be passed to the app,
-
+    pass --config to see the output of streamlit config show
     """
 
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
     if "--options" in ctx.args:
         subprocess.run(["streamlit", "run", "--help"])
+        ctx.exit()
+
+    import os
+
+    if "--config" in ctx.args:
+        subprocess.run(
+            ["streamlit", "config", "show"],
+            env=os.environ,
+            cwd=Path.cwd(),
+        )
         ctx.exit()
 
     script_args = ["--"]
@@ -336,10 +346,10 @@ def workbench(ctx, profiles_dir: Optional[str] = None, project_dir: Optional[str
         script_args.append("--profiles-dir")
         script_args.append(profiles_dir)
 
-    import os
-
     subprocess.run(
-        ["streamlit", "run", Path(__file__).parent / "app.py"] + ctx.args + script_args,
+        ["streamlit", "run", "--runner.magicEnabled=false", Path(__file__).parent / "app.py"]
+        + ctx.args
+        + script_args,
         env=os.environ,
         cwd=Path.cwd(),
     )
