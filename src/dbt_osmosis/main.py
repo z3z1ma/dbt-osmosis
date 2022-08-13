@@ -383,7 +383,6 @@ def workbench(ctx, profiles_dir: Optional[str] = None, project_dir: Optional[str
 @click.option(
     "--pk",
     type=click.STRING,
-    required=True,
     help="The primary key of the model with which to base the diff",
 )
 @click.option(

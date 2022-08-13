@@ -180,7 +180,7 @@ order by in_a desc, in_b desc
 
 ---
 
-{% macro _dbt_osmosis_compare_relations(a_relation, b_relation, exclude_columns=[], primary_key=None) %}
+{% macro _dbt_osmosis_compare_relations(a_relation, b_relation, exclude_columns=[], primary_key=none) %}
 
 {%- set a_columns = adapter.get_columns_in_relation(a_relation) -%}
 
@@ -191,6 +191,7 @@ order by in_a desc, in_b desc
 {% set a_query %}
 select
     {{ check_cols_csv }}
+    {% if primary_key is none %}, {{ hash(check_cols_csv) }} as _pk{% endif %}
 
 from {{ a_relation }}
 {% endset %}
@@ -198,17 +199,18 @@ from {{ a_relation }}
 {% set b_query %}
 select
     {{ check_cols_csv }}
+    {% if primary_key is none %}, {{ hash(check_cols_csv) }} as _pk{% endif %}
 
 from {{ b_relation }}
 {% endset %}
 
-{{ _dbt_osmosis_compare_queries(a_query, b_query, primary_key) }}
+{{ _dbt_osmosis_compare_queries(a_query, b_query, primary_key or "_pk") }}
 
 {% endmacro %}
 
 ---
 
-{% macro _dbt_osmosis_compare_relations_agg(a_relation, b_relation, exclude_columns=[], primary_key=None) %}
+{% macro _dbt_osmosis_compare_relations_agg(a_relation, b_relation, exclude_columns=[], primary_key=none) %}
 
 {%- set a_columns = adapter.get_columns_in_relation(a_relation) -%}
 
@@ -219,6 +221,7 @@ from {{ b_relation }}
 {% set a_query %}
 select
     {{ check_cols_csv }}
+    {% if primary_key is none %}, {{ hash(check_cols_csv) }} as _pk{% endif %}
 
 from {{ a_relation }}
 {% endset %}
@@ -226,11 +229,12 @@ from {{ a_relation }}
 {% set b_query %}
 select
     {{ check_cols_csv }}
+    {% if primary_key is none %}, {{ hash(check_cols_csv) }} as _pk{% endif %}
 
 from {{ b_relation }}
 {% endset %}
 
-{{ _dbt_osmosis_compare_queries_agg(a_query, b_query, primary_key) }}
+{{ _dbt_osmosis_compare_queries_agg(a_query, b_query, primary_key or "_pk") }}
 
 {% endmacro %}
 
