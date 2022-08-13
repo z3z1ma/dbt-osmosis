@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.6.3"
+version = "0.6.4"
 description = "This package exposes an interactive workbench for dbt modelling and serves to cascadingly populate column level documentation, build & conform schema files, and audit coverage."
 authors = ["z3z1ma <butler.alex2010@gmail.com>"]
 license = "Apache 2.0"
