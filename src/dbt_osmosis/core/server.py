@@ -36,7 +36,7 @@ def run_sql(runner: DbtOsmosis):
         try:
             compiled_query = runner.compile_sql(query).compiled_sql
         except Exception as exc:
-            return {"error": str(exc)}
+            return {"error": {"code": 1, "message": str(exc), "data": exc.__dict__}}
     else:
         compiled_query = query
 
@@ -44,7 +44,7 @@ def run_sql(runner: DbtOsmosis):
     try:
         _, table = runner.execute_sql(query_with_limit, fetch=True)
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": {"code": 2, "message": str(exc), "data": exc.__dict__}}
 
     return {
         "rows": [list(row) for row in table.rows],
@@ -61,7 +61,7 @@ def compile_sql(runner: DbtOsmosis):
         try:
             compiled_query = runner.compile_sql(query).compiled_sql
         except Exception as exc:
-            return {"error": str(exc)}
+            return {"error": {"code": 1, "message": str(exc), "data": exc.__dict__}}
     else:
         compiled_query = query
     return {"result": compiled_query}
@@ -72,7 +72,7 @@ def reset(runner: DbtOsmosis):
     try:
         runner.rebuild_dbt_manifest()
     except Exception as exc:
-        return {"result": "failure", "error": str(exc)}
+        return {"error": {"code": 3, "message": str(exc), "data": exc.__dict__}}
     else:
         return {"result": "success"}
 
