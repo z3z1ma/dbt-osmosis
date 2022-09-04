@@ -37,6 +37,7 @@ from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.macros import inject_macros
 from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis
+from dbt_osmosis.core.server import run_server
 
 CONTEXT = {"max_content_width": 800}
 
@@ -241,6 +242,38 @@ def document(
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
     runner.propagate_documentation_downstream(force_inheritance)
+
+
+@cli.command(context_settings=CONTEXT)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
+)
+@click.option(
+    "--profiles-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    default=DEFAULT_PROFILES_DIR,
+    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
+)
+@click.option(
+    "-t",
+    "--target",
+    type=click.STRING,
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
+)
+def server(project_dir, profiles_dir, target):
+    """Runs a lightweight server compatible with dbt-power-user and convenient for interactively
+    running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
+    logger().info(":water_wave: Executing dbt-osmosis\n")
+
+    runner = DbtOsmosis(
+        project_dir=project_dir,
+        profiles_dir=profiles_dir,
+        target=target,
+    )
+
+    run_server(runner=runner)
 
 
 @cli.group()
