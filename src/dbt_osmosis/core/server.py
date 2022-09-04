@@ -4,7 +4,7 @@ from functools import partial
 from typing import Callable
 
 import orjson
-from bottle import install, request, response, route, run, JSONPlugin
+from bottle import JSONPlugin, install, request, response, route, run
 
 from dbt_osmosis.core.osmosis import DbtOsmosis
 
