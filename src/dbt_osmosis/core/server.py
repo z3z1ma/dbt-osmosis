@@ -67,8 +67,11 @@ def compile_sql(runner: DbtOsmosis):
     return {"result": compiled_query}
 
 
-@route("/reset", method="POST")
+@route("/reset")
 def reset(runner: DbtOsmosis):
+    target = request.query.get("target", runner.config.target_name)
+    runner.profile.target_name = target
+    runner.config.target_name = target
     try:
         runner.rebuild_dbt_manifest()
     except Exception as exc:
