@@ -33,12 +33,18 @@ def run_sql(runner: DbtOsmosis):
     query = request.body.read().decode("utf-8")
     limit = request.query.get("limit", 200)
     if any(CH in query for CH in JINJA_CH):
-        compiled_query = runner.compile_sql(query).compiled_sql
+        try:
+            compiled_query = runner.compile_sql(query).compiled_sql
+        except Exception as exc:
+            return {"error": str(exc)}
     else:
         compiled_query = query
 
     query_with_limit = f"select * from ({compiled_query}) as osmosis_query limit {limit}"
-    _, table = runner.execute_sql(query_with_limit, fetch=True)
+    try:
+        _, table = runner.execute_sql(query_with_limit, fetch=True)
+    except Exception as exc:
+        return {"error": str(exc)}
 
     return {
         "rows": [list(row) for row in table.rows],
@@ -52,10 +58,23 @@ def run_sql(runner: DbtOsmosis):
 def compile_sql(runner: DbtOsmosis):
     query = request.body.read().decode("utf-8")
     if any(CH in query for CH in JINJA_CH):
-        compiled_query = runner.compile_sql(query).compiled_sql
+        try:
+            compiled_query = runner.compile_sql(query).compiled_sql
+        except Exception as exc:
+            return {"error": str(exc)}
     else:
         compiled_query = query
     return {"result": compiled_query}
+
+
+@route("/reset", method="POST")
+def reset(runner: DbtOsmosis):
+    try:
+        runner.rebuild_dbt_manifest()
+    except Exception as exc:
+        return {"result": "failure", "error": str(exc)}
+    else:
+        return {"result": "success"}
 
 
 def run_server(runner: DbtOsmosis, host="localhost", port=8581):
