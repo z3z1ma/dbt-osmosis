@@ -1,5 +1,7 @@
+import datetime
 import decimal
 import time
+import uuid
 from functools import partial
 from typing import Callable
 
@@ -78,6 +80,23 @@ def reset(runner: DbtOsmosis):
         return {"error": {"code": 3, "message": str(exc), "data": exc.__dict__}}
     else:
         return {"result": "success"}
+
+
+@route("/api/health", methods="GET")
+def health_check(runner: DbtOsmosis) -> dict:
+    return {
+        "result": {
+            "status": "ready",
+            "project_name": runner.config.project_name,
+            "target_name": runner.config.target_name,
+            "profile_name": runner.config.project_name,
+            "logs": runner.config.log_path,
+            "timestamp": str(datetime.datetime.utcnow()),
+            "error": None,
+        },
+        "id": str(uuid.uuid4()),
+        "dbt-osmosis-server": __name__,
+    }
 
 
 def run_server(runner: DbtOsmosis, host="localhost", port=8581):
