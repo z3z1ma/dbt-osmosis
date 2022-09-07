@@ -82,7 +82,7 @@ def reset(runner: DbtOsmosis):
         return {"result": "success"}
 
 
-@route("/api/health", methods="GET")
+@route(["/health", "/api/health"], methods="GET")
 def health_check(runner: DbtOsmosis) -> dict:
     return {
         "result": {
