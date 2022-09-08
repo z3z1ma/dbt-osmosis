@@ -262,7 +262,21 @@ def document(
     type=click.STRING,
     help="Which profile to load. Overrides setting in dbt_project.yml.",
 )
-def server(project_dir, profiles_dir, target):
+@click.option(
+    "--host",
+    type=click.STRING,
+    help="The host to serve the server on",
+    default="localhost",
+)
+@click.option(
+    "--port",
+    type=click.INT,
+    help="The port to serve the server on",
+    default=8581,
+)
+def server(
+    project_dir: str, profiles_dir: str, target: str, host: str = "localhost", port: int = 8581
+):
     """Runs a lightweight server compatible with dbt-power-user and convenient for interactively
     running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
@@ -273,7 +287,7 @@ def server(project_dir, profiles_dir, target):
         target=target,
     )
 
-    run_server(runner=runner)
+    run_server(runner=runner, host=host, port=port)
 
 
 @cli.group()
@@ -345,8 +359,26 @@ def extract(
     default=DEFAULT_PROFILES_DIR,
     help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
 )
+@click.option(
+    "--host",
+    type=click.STRING,
+    help="The host to serve the server on",
+    default="localhost",
+)
+@click.option(
+    "--port",
+    type=click.INT,
+    help="The port to serve the server on",
+    default=8501,
+)
 @click.pass_context
-def workbench(ctx, profiles_dir: Optional[str] = None, project_dir: Optional[str] = None):
+def workbench(
+    ctx,
+    profiles_dir: Optional[str] = None,
+    project_dir: Optional[str] = None,
+    host: str = "localhost",
+    port: int = 8501,
+):
     """Instantiate the dbt-osmosis workbench and begin architecting a model.
         --model argument is required
 
@@ -380,7 +412,14 @@ def workbench(ctx, profiles_dir: Optional[str] = None, project_dir: Optional[str
         script_args.append(profiles_dir)
 
     subprocess.run(
-        ["streamlit", "run", "--runner.magicEnabled=false", Path(__file__).parent / "app.py"]
+        [
+            "streamlit",
+            "run",
+            "--runner.magicEnabled=false",
+            f"--browser.serverAddress={host}",
+            f"--browser.serverPort={port}",
+            Path(__file__).parent / "app.py",
+        ]
         + ctx.args
         + script_args,
         env=os.environ,

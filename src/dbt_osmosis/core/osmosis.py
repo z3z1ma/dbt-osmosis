@@ -1,7 +1,15 @@
 import os
 from dataclasses import dataclass
 from enum import Enum
-from functools import cache
+from functools import partial
+
+try:
+    from functools import cache
+except:
+    from functools import lru_cache
+
+    cache = partial(lru_cache, maxsize=None)
+
 from hashlib import md5
 from itertools import chain
 from pathlib import Path
