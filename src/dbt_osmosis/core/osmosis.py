@@ -1,14 +1,7 @@
 import os
 from dataclasses import dataclass
 from enum import Enum
-from functools import partial
-
-try:
-    from functools import cache
-except:
-    from functools import lru_cache
-
-    cache = partial(lru_cache, maxsize=None)
+from functools import lru_cache
 
 from hashlib import md5
 from itertools import chain
@@ -209,7 +202,7 @@ class LocalCallParser(SimpleSQLParser[ParsedSqlNode]):
 
 
 class LocalMacroParser(MacroParser):
-    @cache
+    @lru_cache(maxsize=None)
     def parse_remote(self, contents) -> Iterable[ParsedMacro]:
         base = UnparsedMacro(
             path="from local system",
@@ -440,7 +433,7 @@ class DbtOsmosis:
 
         process_node(self.config, self.dbt, node)
 
-    @cache
+    @lru_cache(maxsize=None)
     def _extract_jinja_data(self, sql: str):
         macro_blocks = []
         data_chunks = []
