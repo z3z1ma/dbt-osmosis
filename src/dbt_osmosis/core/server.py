@@ -74,8 +74,9 @@ def reset(runner: DbtOsmosis):
     target = request.query.get("target", runner.config.target_name)
     runner.profile.target_name = target
     runner.config.target_name = target
+    reset = str(request.query.get("deps", "false")).lower() == "true"
     try:
-        runner.rebuild_dbt_manifest()
+        runner.rebuild_dbt_manifest(reset=reset)
     except Exception as exc:
         return {"error": {"code": 3, "message": str(exc), "data": exc.__dict__}}
     else:

@@ -313,6 +313,9 @@ class DbtOsmosis:
 
     def rebuild_dbt_manifest(self, reset: bool = False) -> None:
         self.dbt = ManifestLoader.get_full_manifest(self.config, reset=reset)
+        path = os.path.join(self.config.project_root, self.config.target_path, "manifest.json")
+        logger().debug("Rewriting manifest to %s", path)
+        self.dbt.write(path)
 
     # FIND MODEL
 
