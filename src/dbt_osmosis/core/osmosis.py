@@ -313,6 +313,8 @@ class DbtOsmosis:
 
     def rebuild_dbt_manifest(self, reset: bool = False) -> None:
         self.dbt = ManifestLoader.get_full_manifest(self.config, reset=reset)
+        self._sql_parser = LocalCallParser(self.project, self.dbt, self.config)
+        self._macro_parser = LocalMacroParser(self.project, self.dbt)
         path = os.path.join(self.config.project_root, self.config.target_path, "manifest.json")
         logger().debug("Rewriting manifest to %s", path)
         self.dbt.write(path)
@@ -379,18 +381,16 @@ class DbtOsmosis:
 
     # DBT COMPILATION
 
-    def compile_sql(
-        self, sql: str, name: str = "dbt_osmosis_node", persist: bool = False
-    ) -> ManifestNode:
+    def compile_sql(self, sql: str, name: str = "dbt_osmosis_node") -> ManifestNode:
         """Compile dbt SQL 🔥"""
+        self.dbt.nodes.pop(f"sql.{self.project_name}.{name}", None)
         with self.adapter.connection_named("dbt-osmosis"):
-            return self.compile_node(self._get_exec_node(sql, name=name), persist=persist)
+            return self.compile_node(self._get_exec_node(sql, name=name))
 
     def compile_node(
         self,
         node: ManifestNode,
         extra_context: Optional[Dict[str, Any]] = None,
-        persist: bool = False,
     ) -> NonSourceCompiledNode:
 
         if extra_context is None:
@@ -417,8 +417,6 @@ class DbtOsmosis:
         compiled_node.relation_name = self._get_relation_name(node)
         compiled_node.compiled = True
         compiled_node, _ = self._recursively_prepend_ctes(compiled_node, extra_context)
-        if not persist:
-            self.dbt.nodes.pop(compiled_node.unique_id)
         return compiled_node
 
     def _add_new_refs(self, node: ParsedSqlNode, macros: Dict[str, Any]) -> None:
@@ -464,6 +462,7 @@ class DbtOsmosis:
 
         # Populate depends_on
         # TODO: If we use an existing node, we should set node.depends_on to [] since its an append op to update
+        sql_node.depends_on.nodes = []
         self._add_new_refs(node=sql_node, macros=macro_overrides)
 
         # TODO: the extra compile below is likely uneeded
