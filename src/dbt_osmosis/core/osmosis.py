@@ -312,12 +312,35 @@ class DbtOsmosis:
     # REPARSE
 
     def rebuild_dbt_manifest(self, reset: bool = False) -> None:
+        reset_adapters()
+        if reset:
+            # Make this as atomic as possible
+            self.clear_caches()
+            proj, prof, conf = self.project, self.profile, self.config
+            try:
+                self.rebuild_project_and_profile()
+                self.rebuild_config()
+            except Exception as parse_error:
+                self.project, self.profile, self.config = proj, prof, conf
+                register_adapter(self.config)
+                raise parse_error
+        register_adapter(self.config)
         self.dbt = ManifestLoader.get_full_manifest(self.config, reset=reset)
         self._sql_parser = LocalCallParser(self.project, self.dbt, self.config)
         self._macro_parser = LocalMacroParser(self.project, self.dbt)
         path = os.path.join(self.config.project_root, self.config.target_path, "manifest.json")
         logger().debug("Rewriting manifest to %s", path)
         self.dbt.write(path)
+
+    def rebuild_project_and_profile(self):
+        self.project, self.profile = RuntimeConfig.collect_parts(self.args)
+
+    def rebuild_config(self):
+        self.config = RuntimeConfig.from_parts(self.project, self.profile, self.args)
+
+    def clear_caches(self):
+        MemoContainer._MEMO.clear()
+        self._extract_jinja_data.cache_clear()
 
     # FIND MODEL
 

@@ -2,11 +2,9 @@ import datetime
 import decimal
 import time
 import uuid
-from functools import partial
-from typing import Callable
 
 import orjson
-from bottle import JSONPlugin, install, request, response, route, run
+from bottle import JSONPlugin, install, uninstall, request, response, route, run
 
 from dbt_osmosis.core.osmosis import DbtOsmosis
 
@@ -19,15 +17,22 @@ def default(obj):
     raise TypeError
 
 
-def _dbt_query_engine(callback: Callable, runner: DbtOsmosis):
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        body = callback(*args, **kwargs, runner=runner)
-        end = time.time()
-        response.headers["X-dbt-Exec-Time"] = str(end - start)
-        return body
+class DbtOsmosisPlugin:
+    name = "dbt-osmosis"
+    api = 2
 
-    return wrapper
+    def __init__(self, runner: DbtOsmosis):
+        self.runner = runner
+
+    def apply(self, callback, route):
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            body = callback(*args, **kwargs, runner=self.runner)
+            end = time.time()
+            response.headers["X-dbt-Exec-Time"] = str(end - start)
+            return body
+
+        return wrapper
 
 
 @route("/run", method="POST")
@@ -69,18 +74,25 @@ def compile_sql(runner: DbtOsmosis):
     return {"result": compiled_query}
 
 
-@route("/reset")
+@route(["/parse", "/reset"])
 def reset(runner: DbtOsmosis):
-    target = request.query.get("target", runner.config.target_name)
-    runner.profile.target_name = target
-    runner.config.target_name = target
-    reset = str(request.query.get("deps", "false")).lower() == "true"
+    reset = str(request.query.get("reset", "false")).lower() == "true"
+    old_target = getattr(runner.args, "target", runner.config.target_name)
+    new_target = request.query.get("target", old_target)
+    target_did_change = old_target != new_target
     try:
+        runner.args.target = new_target
         runner.rebuild_dbt_manifest(reset=reset)
-    except Exception as exc:
-        return {"error": {"code": 3, "message": str(exc), "data": exc.__dict__}}
+    except Exception as reparse_err:
+        runner.args.target = old_target
+        return {"error": {"code": 3, "message": str(reparse_err), "data": reparse_err.__dict__}}
     else:
-        return {"result": "success"}
+        uninstall(DbtOsmosisPlugin), install(DbtOsmosisPlugin(runner=runner))
+        return {
+            "result": f"Profile target changed from {old_target} to {new_target}!"
+            if target_did_change
+            else f"Reparsed project with profile {old_target}!"
+        }
 
 
 @route(["/health", "/api/health"], methods="GET")
@@ -101,7 +113,6 @@ def health_check(runner: DbtOsmosis) -> dict:
 
 
 def run_server(runner: DbtOsmosis, host="localhost", port=8581):
-    dbt_query_engine = partial(_dbt_query_engine, runner=runner)
-    install(dbt_query_engine)
+    install(DbtOsmosisPlugin(runner=runner))
     install(JSONPlugin(json_dumps=lambda body: orjson.dumps(body, default=default).decode("utf-8")))
     run(host=host, port=port)
