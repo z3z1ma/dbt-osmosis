@@ -406,7 +406,7 @@ class DbtOsmosis:
 
     def compile_sql(self, sql: str, name: str = "dbt_osmosis_node") -> ManifestNode:
         """Compile dbt SQL 🔥"""
-        self.dbt.nodes.pop(f"sql.{self.project_name}.{name}", None)
+        self.dbt.nodes.pop(f"{NodeType.SqlOperation}.{self.project_name}.{name}", None)
         with self.adapter.connection_named("dbt-osmosis"):
             return self.compile_node(self._get_exec_node(sql, name=name))
 
