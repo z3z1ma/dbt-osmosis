@@ -368,11 +368,7 @@ class DbtOsmosis:
     def get_compiled_node(self, sql: str) -> ManifestNode:
         """Compile dbt SQL into node"""
         self.clear_node()
-        node = self.sql_parser.parse_remote(sql, name="name")
-        _process_sources_for_node(self.dbt, self.config.project_name, node)
-        _process_refs_for_node(self.dbt, self.config.project_name, node)
-        compiled_node = self.adapter.get_compiler().compile_node(node, self.dbt, {})
-        return compiled_node
+        return compile_sql(self.dbt, self.config.project_root, sql).node
 
     def clear_node(self, name="name"):
         self.dbt.nodes.pop(f"{NodeType.SqlOperation}.{self.project_name}.{name}", None)
