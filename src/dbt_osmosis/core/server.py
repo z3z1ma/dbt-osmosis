@@ -38,7 +38,7 @@ class DbtOsmosisPlugin:
 
 @route("/run", method="POST")
 def run_sql(runner: DbtOsmosis):
-    query = request.body.read().decode("utf-8").strip()
+    query = f'\n{request.body.read().decode("utf-8").strip()}\n'
     limit = request.query.get("limit", 200)
     query_with_limit = f"select * from ({query}) as osmosis_query limit {limit}"
     try:
