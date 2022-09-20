@@ -1,7 +1,7 @@
-from functools import lru_cache
 import os
 from datetime import datetime
 from enum import Enum
+from functools import lru_cache
 from hashlib import md5
 from itertools import chain
 from pathlib import Path
@@ -28,22 +28,18 @@ from dbt.contracts.graph.manifest import ManifestNode, NodeType
 from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
 from dbt.contracts.sql import (
     RemoteCompileResult,
-    RemoteRunResult,
     RemoteExecutionResult,
+    RemoteRunResult,
     ResultTable,
 )
-from dbt.exceptions import CompilationException, InternalException, RuntimeException
 from dbt.events.functions import fire_event  # monkey-patched for perf
+from dbt.exceptions import CompilationException, InternalException, RuntimeException
 from dbt.flags import DEFAULT_PROFILES_DIR, env_set_truthy, set_from_args
 from dbt.lib import compile_sql, execute_sql
 from dbt.node_types import NodeType
-from dbt.parser.manifest import (
-    ManifestLoader,
-    _process_refs_for_node,
-    _process_sources_for_node,
-)
+from dbt.parser.manifest import ManifestLoader, _process_refs_for_node, _process_sources_for_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
-from dbt.task.sql import SqlExecuteRunner, SqlCompileRunner
+from dbt.task.sql import SqlCompileRunner, SqlExecuteRunner
 from dbt.tracking import disable_tracking
 from dbt.version import __version__ as dbt_version
 from pydantic import BaseModel
