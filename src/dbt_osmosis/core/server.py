@@ -1,10 +1,11 @@
 import datetime
 import decimal
+import re
 import time
 import uuid
 
 import orjson
-from bottle import JSONPlugin, install, uninstall, request, response, route, run
+from bottle import JSONPlugin, install, request, response, route, run, uninstall
 
 from dbt_osmosis.core.osmosis import DbtOsmosis
 
@@ -37,25 +38,19 @@ class DbtOsmosisPlugin:
 
 @route("/run", method="POST")
 def run_sql(runner: DbtOsmosis):
-    query = request.body.read().decode("utf-8")
+    query = request.body.read().decode("utf-8").strip()
     limit = request.query.get("limit", 200)
-    if any(CH in query for CH in JINJA_CH):
-        try:
-            compiled_query = runner.compile_sql(query).compiled_sql
-        except Exception as exc:
-            return {"error": {"code": 1, "message": str(exc), "data": exc.__dict__}}
-    else:
-        compiled_query = query
-
-    query_with_limit = f"select * from ({compiled_query}) as osmosis_query limit {limit}"
+    query_with_limit = f"select * from ({query}) as osmosis_query limit {limit}"
     try:
-        _, table = runner.execute_sql(query_with_limit, fetch=True)
+        result = runner.execute_sql(query_with_limit)
     except Exception as exc:
         return {"error": {"code": 2, "message": str(exc), "data": exc.__dict__}}
-
+    compiled_query = re.search(
+        r"select \* from \(([\w\W]+)\) as osmosis_query", result.node.compiled_sql
+    ).groups()[0]
     return {
-        "rows": [list(row) for row in table.rows],
-        "column_names": table.column_names,
+        "rows": [list(row) for row in result.table.rows],
+        "column_names": result.table.column_names,
         "compiled_sql": compiled_query,
         "raw_sql": query,
     }
@@ -63,10 +58,10 @@ def run_sql(runner: DbtOsmosis):
 
 @route("/compile", method="POST")
 def compile_sql(runner: DbtOsmosis):
-    query = request.body.read().decode("utf-8")
+    query = request.body.read().decode("utf-8").strip()
     if any(CH in query for CH in JINJA_CH):
         try:
-            compiled_query = runner.compile_sql(query).compiled_sql
+            compiled_query = runner.compile_sql(query)
         except Exception as exc:
             return {"error": {"code": 1, "message": str(exc), "data": exc.__dict__}}
     else:
@@ -82,7 +77,7 @@ def reset(runner: DbtOsmosis):
     target_did_change = old_target != new_target
     try:
         runner.args.target = new_target
-        runner.rebuild_dbt_manifest(reset=reset)
+        runner.rebuild_dbt_manifest(reset=reset or target_did_change)
     except Exception as reparse_err:
         runner.args.target = old_target
         return {"error": {"code": 3, "message": str(reparse_err), "data": reparse_err.__dict__}}

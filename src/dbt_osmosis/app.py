@@ -16,7 +16,6 @@ from streamlit_pandas_profiling import st_profile_report
 from dbt_osmosis.core.osmosis import (
     DEFAULT_PROFILES_DIR,
     DbtOsmosis,
-    MemoContainer,
     get_raw_profiles,
 )
 
@@ -199,28 +198,26 @@ def toggle_viewer() -> None:
 # @st.cache
 def compile_sql(sql: str) -> str:
     try:
-        return ctx.compile_sql(sql).compiled_sql
+        return ctx.compile_sql(sql)
     except CompilationException:
         return None
 
 
 def run_query(sql: str, limit: int = 2000) -> None:
     try:
-        resp, table = ctx.execute_sql(
-            f"select * from ({sql}) as __all_data limit {limit}", compile=True, fetch=True
-        )
+        result = ctx.execute_sql(f"select * from ({sql}) as __all_data limit {limit}")
     except DatabaseException as error:
         state[SQL_QUERY_STATE] = "error"
         state[SQL_ADAPTER_RESP] = str(error)
     else:
         output = []
-        json_funcs = [c.jsonify for c in table._column_types]
-        for row in table._rows:
+        json_funcs = [c.jsonify for c in result.agate_table._column_types]
+        for row in result.agate_table._rows:
             values = tuple(json_funcs[i](d) for i, d in enumerate(row))
             output.append(OrderedDict(zip(row.keys(), values)))
 
         state[SQL_RESULT] = pd.DataFrame(output)
-        state[SQL_ADAPTER_RESP] = resp
+        state[SQL_ADAPTER_RESP] = result.generated_at
         state[SQL_QUERY_STATE] = "success"
 
 
@@ -350,7 +347,6 @@ if ctx.profile.target_name != state[TARGET_PROFILE]:  # or state[DBT_DO_RELOAD]:
             inject_dbt(state[TARGET_PROFILE])
             # state[RAW_SQL] += " "
             state[COMPILED_SQL] = compile_sql(state[RAW_SQL])
-            MemoContainer._MEMO = {}
     st.experimental_rerun()
 
 
