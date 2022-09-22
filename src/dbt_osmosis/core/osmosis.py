@@ -210,6 +210,8 @@ class DbtOsmosis:
         self._sql_parser = None
         self._macro_parser = None
 
+        self._version: int = 1
+
     # PARSERS
 
     @property

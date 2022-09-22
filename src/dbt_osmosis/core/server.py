@@ -1,15 +1,18 @@
 import datetime
 import decimal
 import re
+import threading
 import time
 import uuid
 
 import orjson
 from bottle import JSONPlugin, install, request, response, route, run, uninstall
 
+from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.osmosis import DbtOsmosis
 
 JINJA_CH = ["{{", "}}", "{%", "%}"]
+MUTEX = threading.Lock()
 
 
 def default(obj):
@@ -75,19 +78,52 @@ def reset(runner: DbtOsmosis):
     old_target = getattr(runner.args, "target", runner.config.target_name)
     new_target = request.query.get("target", old_target)
     target_did_change = old_target != new_target
+    if not reset or not target_did_change:
+        # Async (target same)
+        if MUTEX.acquire(blocking=False):
+            logger().debug("Mutex locked")
+            parse_job = threading.Thread(
+                target=_reset, args=(runner, reset, old_target, new_target)
+            )
+            parse_job.start()
+            return {"result": "Initializing project parsing"}
+        else:
+            logger().debug("Mutex is locked, reparse in progress")
+            return {"result": "Currently reparsing project"}
+    else:
+        # Sync (target changed)
+        if MUTEX.acquire(blocking=False):
+            logger().debug("Mutex locked")
+            return _reset(runner, reset, old_target, new_target)
+        else:
+            logger().debug("Mutex is locked, reparse in progress")
+            return {"result": "Currently reparsing project"}
+
+
+def _reset(runner: DbtOsmosis, reset: bool, old_target: str, new_target: str):
+    target_did_change = old_target != new_target
+    rv = {}
     try:
         runner.args.target = new_target
+        logger().debug("Starting reparse")
         runner.rebuild_dbt_manifest(reset=reset or target_did_change)
     except Exception as reparse_err:
+        logger().debug("Reparse error")
         runner.args.target = old_target
-        return {"error": {"code": 3, "message": str(reparse_err), "data": reparse_err.__dict__}}
+        rv["error"] = {"code": 3, "message": str(reparse_err), "data": reparse_err.__dict__}
     else:
+        logger().debug("Reparse success")
+        runner._version += 1
         uninstall(DbtOsmosisPlugin), install(DbtOsmosisPlugin(runner=runner))
-        return {
-            "result": f"Profile target changed from {old_target} to {new_target}!"
+        rv["result"] = (
+            f"Profile target changed from {old_target} to {new_target}!"
             if target_did_change
             else f"Reparsed project with profile {old_target}!"
-        }
+        )
+    finally:
+        logger().debug("Unlocking mutex")
+        MUTEX.release()
+    return rv
 
 
 @route(["/health", "/api/health"], methods="GET")
@@ -100,6 +136,7 @@ def health_check(runner: DbtOsmosis) -> dict:
             "profile_name": runner.config.project_name,
             "logs": runner.config.log_path,
             "timestamp": str(datetime.datetime.utcnow()),
+            "runner_parse_iteration": runner._version,
             "error": None,
         },
         "id": str(uuid.uuid4()),
