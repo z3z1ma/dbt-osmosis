@@ -77,8 +77,7 @@ def reset(runner: DbtOsmosis):
     reset = str(request.query.get("reset", "false")).lower() == "true"
     old_target = getattr(runner.args, "target", runner.config.target_name)
     new_target = request.query.get("target", old_target)
-    target_did_change = old_target != new_target
-    if not reset or not target_did_change:
+    if not reset and old_target == new_target:
         # Async (target same)
         if MUTEX.acquire(blocking=False):
             logger().debug("Mutex locked")
@@ -92,7 +91,7 @@ def reset(runner: DbtOsmosis):
             return {"result": "Currently reparsing project"}
     else:
         # Sync (target changed)
-        if MUTEX.acquire(blocking=False):
+        if MUTEX.acquire(blocking=old_target != new_target):
             logger().debug("Mutex locked")
             return _reset(runner, reset, old_target, new_target)
         else:
