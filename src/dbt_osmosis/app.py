@@ -206,12 +206,7 @@ def run_query(sql: str, limit: int = 2000) -> None:
         state[SQL_QUERY_STATE] = "error"
         state[SQL_ADAPTER_RESP] = str(error)
     else:
-        output = []
-        json_funcs = [c.jsonify for c in result.agate_table._column_types]
-        for row in result.agate_table._rows:
-            values = tuple(json_funcs[i](d) for i, d in enumerate(row))
-            output.append(OrderedDict(zip(row.keys(), values)))
-
+        output = [OrderedDict(zip(result.table.column_names, row)) for row in result.table.rows]
         state[SQL_RESULT] = pd.DataFrame(output)
         state[SQL_ADAPTER_RESP] = result.generated_at
         state[SQL_QUERY_STATE] = "success"
