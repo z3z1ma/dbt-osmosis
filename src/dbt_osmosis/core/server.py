@@ -90,7 +90,7 @@ def reset(runner: DbtOsmosis):
             logger().debug("Mutex is locked, reparse in progress")
             return {"result": "Currently reparsing project"}
     else:
-        # Sync (target changed)
+        # Sync (target changed or reset is true)
         if MUTEX.acquire(blocking=old_target != new_target):
             logger().debug("Mutex locked")
             return _reset(runner, reset, old_target, new_target)
