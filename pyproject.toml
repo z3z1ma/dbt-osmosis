@@ -16,7 +16,14 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
 ]
-keywords = ["data engineering", "dbt", "ETL", "data modelling", "lineage", "documentation"]
+keywords = [
+    "data engineering",
+    "dbt",
+    "ETL",
+    "data modelling",
+    "lineage",
+    "documentation",
+]
 documentation = "https://github.com/z3z1ma/dbt-osmosis"
 repository = "https://github.com/z3z1ma/dbt-osmosis"
 
@@ -26,22 +33,21 @@ click = ">7"
 dbt-core = ">=1"
 "ruamel.yaml" = ">=0.17"
 rich = ">=10"
-streamlit = ">=1.0.0"
-streamlit-ace = ">=0.1.0"
-graphviz = ">=0.17"
-pydot = ">=1.4.2"
-streamlit-agraph = ">=0.0.35"
-streamlit-pandas-profiling = ">=0.1.2"
-streamlit-aggrid = ">=0.2.2"
-dbt-client = "^0.1.2"
-scipy = "^1.8.1"
+streamlit = { version = ">=1.0.0", optional = true }
+streamlit-ace = { version = ">=0.1.0", optional = true }
+graphviz = { version = ">=0.17", optional = true }
+pydot = { version = ">=1.4.2", optional = true }
+streamlit-agraph = { version = ">=0.0.35", optional = true }
+streamlit-pandas-profiling = { version = ">=0.1.2", optional = true }
+streamlit-aggrid = { version = ">=0.2.2", optional = true }
+scipy = { version = "^1.8.1", optional = true }
 pydantic = "^1.9.1"
 GitPython = "^3.1.27"
-duckcli = {version = "0.0.1", optional = true}
-dbt-duckdb = {version = ">=1.1.2,<1.2.0", optional = true}
-dbt-sqlite = {version = "^1.1.2", optional = true}
-dbt-bigquery = {version = ">=1", optional = true}
-feedparser = "^6.0.10"
+duckcli = { version = "0.0.1", optional = true }
+dbt-duckdb = { version = ">=1.1.2,<1.2.0", optional = true }
+dbt-sqlite = { version = "^1.1.2", optional = true }
+dbt-bigquery = { version = ">=1", optional = true }
+feedparser = { version = "^6.0.10", optional = true }
 bottle = "^0.12.23"
 orjson = "^3.8.0"
 
@@ -59,6 +65,17 @@ viztracer = "^0.15.3"
 dbt-duckdb = ["dbt-duckdb", "duckcli"]
 dbt-sqlite = ["dbt-sqlite"]
 dbt-bigquery = ["dbt-bigquery"]
+workbench = [
+    "streamlit",
+    "streamlit-ace",
+    "graphviz",
+    "pydot",
+    "streamlit-agraph",
+    "streamlit-pandas-profiling",
+    "streamlit-aggrid",
+    "scipy",
+    "feedparser",
+]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -68,9 +85,9 @@ build-backend = "poetry.core.masonry.api"
 line-length = 100
 
 [tool.isort]
-line_length=100
-multi_line_output=3
-include_trailing_comma=true
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
 
 [tool.poetry.scripts]
 dbt-osmosis = 'dbt_osmosis.main:cli'
