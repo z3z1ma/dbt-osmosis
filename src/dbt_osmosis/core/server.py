@@ -180,7 +180,13 @@ def compile_sql(
     project = request.get_header("X-dbt-Project", DEFAULT)
     project_runner = runners.get(project)
     if project != DEFAULT and not project_runner:
-        ...  # requires registration...
+        return OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.ProjectNotRegistered,
+                message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
+                data={"registered_projects": runners.keys()},
+            )
+        ).json()
     elif not project_runner:
         project_runner = runners[DEFAULT]
 
