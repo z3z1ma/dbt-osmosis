@@ -171,7 +171,7 @@ async def compile_sql(
     "/parse",
     response_model=Union[OsmosisResetResult, OsmosisErrorContainer],
 )
-def reset(
+async def reset(
     background_tasks: BackgroundTasks,
     reset: bool = False,
     target: Optional[str] = None,
@@ -242,7 +242,7 @@ def _reset(
 
 
 @app.post("/register")
-def register(
+async def register(
     project_dir: str,
     profiles_dir: str,
     target: Optional[str] = None,
@@ -275,7 +275,7 @@ def register(
 
 
 @app.post("/unregister")
-def unregister(
+async def unregister(
     x_dbt_project: str = Header(),
 ) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
     dbt: DbtProjectContainer = app.state.dbt_project_container
@@ -293,7 +293,7 @@ def unregister(
 
 
 @app.get("/health")
-def health_check(
+async def health_check(
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> dict:
     """TODO: We will likely iterate on this, it is mostly for
@@ -324,18 +324,14 @@ def health_check(
     }
 
 
-# def run_server(host="localhost", port=8581):
-#     ...
-
-
 def test_server():
     """Some quick and dirty functional tests for the server"""
     client = TestClient(app)
     register_response = client.post(
         "/register",
         params={
-            "project_dir": "/Users/alexanderbutler/code_projects/dbt-osmosis/demo_sqlite",
-            "profiles_dir": "/Users/alexanderbutler/code_projects/dbt-osmosis/demo_sqlite",
+            "project_dir": "./demo_sqlite",
+            "profiles_dir": "./demo_sqlite",
             "target": "test",
         },
         headers={"X-dbt-Project": "jaffle_shop_sqlite"},
@@ -344,8 +340,8 @@ def test_server():
     register_response = client.post(
         "/register",
         params={
-            "project_dir": "/Users/alexanderbutler/code_projects/dbt-osmosis/demo_duckdb",
-            "profiles_dir": "/Users/alexanderbutler/code_projects/dbt-osmosis/demo_duckdb",
+            "project_dir": "./demo_duckdb",
+            "profiles_dir": "./demo_duckdb",
             "target": "test",
         },
         headers={"X-dbt-Project": "jaffle_shop_duckdb"},
@@ -356,9 +352,12 @@ def test_server():
     assert response.status_code == 200
     print(response.json())
     print("DUCKDB")
-    response = client.post("/run", data="SELECT 1", headers={"X-dbt-Project": "jaffle_shop_duckdb"})
-    assert response.status_code == 200
-    print(response.json())
+    for i in range(10):
+        response = client.post(
+            "/run", data="SELECT 1", headers={"X-dbt-Project": "jaffle_shop_duckdb"}
+        )
+        assert response.status_code == 200
+        print(response.json())
 
 
 if __name__ == "__main__":
