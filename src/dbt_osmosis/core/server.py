@@ -44,7 +44,7 @@ from bottle import JSONPlugin, install, request, response, route, run
 from pydantic import BaseModel
 
 from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.core.osmosis import DbtOsmosis
+from dbt_osmosis.core.osmosis import DbtProject
 
 DEFAULT = "__default__"
 JINJA_CH = ["{{", "}}", "{%", "%}"]
@@ -105,8 +105,8 @@ class DbtOsmosisPlugin:
     name = "dbt-osmosis"
     api = 2
 
-    def __init__(self, runner: DbtOsmosis):
-        self.runners: Dict[str, DbtOsmosis] = {
+    def __init__(self, runner: DbtProject):
+        self.runners: Dict[str, DbtProject] = {
             DEFAULT: runner,
             runner.config.project_name: runner,
         }
@@ -126,7 +126,7 @@ class DbtOsmosisPlugin:
 
 
 @route("/run", method="POST")
-def run_sql(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisRunResult, OsmosisErrorContainer, str]:
+def run_sql(runners: Dict[str, DbtProject]) -> Union[OsmosisRunResult, OsmosisErrorContainer, str]:
     # Project Support
     project = request.get_header("X-dbt-Project", DEFAULT)
     project_runner = runners.get(project)
@@ -174,7 +174,7 @@ def run_sql(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisRunResult, OsmosisEr
 
 @route("/compile", method="POST")
 def compile_sql(
-    runners: Dict[str, DbtOsmosis]
+    runners: Dict[str, DbtProject]
 ) -> Union[OsmosisCompileResult, OsmosisErrorContainer, str]:
     # Project Support
     project = request.get_header("X-dbt-Project", DEFAULT)
@@ -194,7 +194,7 @@ def compile_sql(
     query: str = request.body.read().decode("utf-8").strip()
     if any(CH in query for CH in JINJA_CH):
         try:
-            compiled_query = project_runner.compile_sql(query)
+            compiled_query = project_runner.compile_sql_cached(query)
         except Exception as compile_err:
             return OsmosisErrorContainer(
                 error=OsmosisError(
@@ -210,7 +210,7 @@ def compile_sql(
 
 
 @route(["/parse", "/reset"])
-def reset(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, OsmosisErrorContainer, str]:
+def reset(runners: Dict[str, DbtProject]) -> Union[OsmosisResetResult, OsmosisErrorContainer, str]:
     # Project Support
     project = request.get_header("X-dbt-Project", DEFAULT)
     project_runner = runners.get(project)
@@ -255,7 +255,7 @@ def reset(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, OsmosisEr
 
 
 def _reset(
-    runner: DbtOsmosis, reset: bool, old_target: str, new_target: str
+    runner: DbtProject, reset: bool, old_target: str, new_target: str
 ) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
     target_did_change = old_target != new_target
     try:
@@ -289,7 +289,9 @@ def _reset(
 
 
 @route("/register", method="POST")
-def register(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
+def register(
+    runners: Dict[str, DbtProject]
+) -> Union[OsmosisResetResult, OsmosisErrorContainer, str]:
     # Project Support
     project = request.get_header("X-dbt-Project")
     if not project:
@@ -302,7 +304,7 @@ def register(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, Osmosi
         ).json()
     if project in runners:
         # Idempotent
-        return OsmosisRegisterResult(added=project, projects=runners.keys())
+        return OsmosisRegisterResult(added=project, projects=runners.keys()).json()
 
     # Inputs
     project_dir = request.json["project_dir"]
@@ -310,7 +312,7 @@ def register(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, Osmosi
     target = request.json.get("target")
 
     try:
-        new_runner = DbtOsmosis(
+        new_runner = DbtProject(
             project_dir=project_dir,
             profiles_dir=profiles_dir,
             target=target,
@@ -322,14 +324,16 @@ def register(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, Osmosi
                 message=str(init_err),
                 data=init_err.__dict__,
             )
-        )
+        ).json()
 
     runners[project] = new_runner
-    return OsmosisRegisterResult(added=project, projects=runners.keys())
+    return OsmosisRegisterResult(added=project, projects=runners.keys()).json()
 
 
 @route("/unregister", method="POST")
-def register(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
+def unregister(
+    runners: Dict[str, DbtProject]
+) -> Union[OsmosisResetResult, OsmosisErrorContainer, str]:
     # Project Support
     project = request.get_header("X-dbt-Project")
     if not project:
@@ -349,11 +353,11 @@ def register(runners: Dict[str, DbtOsmosis]) -> Union[OsmosisResetResult, Osmosi
             )
         ).json()
     runners.pop(project)
-    return OsmosisUnregisterResult(removed=project, projects=runners.keys())
+    return OsmosisUnregisterResult(removed=project, projects=runners.keys()).json()
 
 
 @route(["/health", "/api/health"], methods="GET")
-def health_check(runner: DbtOsmosis) -> dict:
+def health_check(runner: DbtProject) -> dict:
     return {
         "result": {
             "status": "ready",
@@ -370,7 +374,7 @@ def health_check(runner: DbtOsmosis) -> dict:
     }
 
 
-def run_server(runner: DbtOsmosis, host="localhost", port=8581):
+def run_server(runner: DbtProject, host="localhost", port=8581):
     install(DbtOsmosisPlugin(runner=runner))
     install(JSONPlugin(json_dumps=lambda body: orjson.dumps(body, default=default).decode("utf-8")))
     run(host=host, port=port)

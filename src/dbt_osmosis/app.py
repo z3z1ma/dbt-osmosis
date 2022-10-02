@@ -5,6 +5,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
+import dbt.config.profile as dbt_profile
 import feedparser
 import pandas as pd
 import pandas_profiling
@@ -13,7 +14,7 @@ from dbt.exceptions import CompilationException, DatabaseException, RuntimeExcep
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis, get_raw_profiles
+from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtProject
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 state = st.session_state
@@ -31,7 +32,7 @@ demo_dir = root_path / "demo"
 
 # GLOBAL STATE VARS
 DBT = "DBT"
-"""DbtOsmosis object"""
+"""DbtProject object"""
 PROJ_DIR = "PROJ_DIR"
 """dbt project directory"""
 PROF_DIR = "PROF_DIR"
@@ -45,7 +46,7 @@ state.setdefault(PROF_DIR, _prof_dir or os.getenv("DBT_PROFILES_DIR", DEFAULT_PR
 
 RAW_PROFILES = "RAW_PROFILES"
 """All profiles as parsed from raw profiles yaml"""
-state.setdefault(RAW_PROFILES, get_raw_profiles(state[PROF_DIR]))
+state.setdefault(RAW_PROFILES, dbt_profile.read_profile(state[PROF_DIR] or DEFAULT_PROFILES_DIR))
 
 # SQL WORKBENCH VARS
 SQL_RESULT = "SQL_RESULT"
@@ -165,13 +166,13 @@ state.setdefault(PIVOT_LAYOUT, False)
 def inject_dbt(change_target: Optional[str] = None):
     """Parse dbt project and load context var"""
     if DBT not in state or change_target:
-        dbt_ctx = DbtOsmosis(
+        dbt_ctx = DbtProject(
             project_dir=state[PROJ_DIR],
             profiles_dir=state[PROF_DIR],
             target=change_target,
         )
     else:
-        dbt_ctx: DbtOsmosis = state[DBT]
+        dbt_ctx: DbtProject = state[DBT]
         dbt_ctx.rebuild_dbt_manifest(reset=True)
     state[DBT] = dbt_ctx
     return True
@@ -179,7 +180,7 @@ def inject_dbt(change_target: Optional[str] = None):
 
 if DBT not in state:
     inject_dbt()
-ctx: DbtOsmosis = state[DBT]
+ctx: DbtProject = state[DBT]
 
 TARGET_PROFILE = "TARGET_PROFILE"
 """Target profile for dbt to execute against"""
@@ -194,7 +195,7 @@ def toggle_viewer() -> None:
 # @st.cache
 def compile_sql(sql: str) -> str:
     try:
-        return ctx.compile_sql(sql)
+        return ctx.compile_sql_cached(sql)
     except CompilationException:
         return None
 

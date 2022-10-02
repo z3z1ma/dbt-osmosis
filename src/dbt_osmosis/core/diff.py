@@ -1,5 +1,4 @@
 import hashlib
-import uuid
 from pathlib import Path
 from typing import Tuple
 
@@ -8,10 +7,10 @@ from dbt.adapters.base.relation import BaseRelation
 from git import Repo
 
 from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.core.osmosis import DbtOsmosis
+from dbt_osmosis.core.osmosis import DbtProject
 
 
-def build_diff_queries(model: str, runner: DbtOsmosis) -> Tuple[str, str]:
+def build_diff_queries(model: str, runner: DbtProject) -> Tuple[str, str]:
     """Leverage git to build two temporary tables for diffing the results of a query throughout a change"""
     # Resolve git node
     node = runner.get_ref_node(model)
@@ -23,7 +22,7 @@ def build_diff_queries(model: str, runner: DbtOsmosis) -> Tuple[str, str]:
 
     # Create original node
     git_node_name = "z_" + sha[-7:]
-    original_node = runner._get_exec_node(target.data_stream.read().decode("utf-8"), git_node_name)
+    original_node = runner.get_server_node(target.data_stream.read().decode("utf-8"), git_node_name)
 
     # Alias changed node
     changed_node = node
@@ -35,7 +34,7 @@ def build_diff_queries(model: str, runner: DbtOsmosis) -> Tuple[str, str]:
     return original_node.compiled_sql, changed_node.compiled_sql
 
 
-def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, BaseRelation]:
+def build_diff_tables(model: str, runner: DbtProject) -> Tuple[BaseRelation, BaseRelation]:
     """Leverage git to build two temporary tables for diffing the results of a query throughout a change"""
     # Resolve git node
     node = runner.get_ref_node(model)
@@ -47,20 +46,19 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
 
     # Create original node
     git_node_name = "z_" + sha[-7:]
-    original_node = runner._get_exec_node(target.data_stream.read().decode("utf-8"), git_node_name)
+    original_node = runner.get_server_node(target.data_stream.read().decode("utf-8"), git_node_name)
 
     # Alias changed node
     changed_node = node
 
     # Compile models
-    original_node = runner.compile_node(original_node)
-    changed_node = runner.compile_node(changed_node)
+    original_node = runner.compile_node(original_node).node
+    changed_node = runner.compile_node(changed_node).node
 
     # Lookup and resolve original ref based on git sha
     git_node_parts = original_node.database, "dbt_diff", git_node_name
-    check_ref = runner.adapter.get_relation(*git_node_parts)
-    if not check_ref:
-        ref_A = runner.adapter.Relation.create(*git_node_parts)
+    ref_A, did_exist = runner.get_or_create_relation(*git_node_parts)
+    if not did_exist:
         logger().info("Creating new relation for %s", ref_A)
         with runner.adapter.connection_named("dbt-osmosis"):
             runner.execute_macro(
@@ -76,15 +74,12 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
                 },
                 run_compiled_sql=True,
             )
-    else:
-        ref_A = check_ref
-        logger().info("Found existing relation for %s", ref_A)
 
     # Resolve modified fake ref based on hash of it compiled SQL
     temp_node_name = "z_" + hashlib.md5(changed_node.compiled_sql.encode("utf-8")).hexdigest()[-7:]
     git_node_parts = original_node.database, "dbt_diff", temp_node_name
-    check_ref = runner.adapter.get_relation(*git_node_parts)
-    if not check_ref:
+    ref_B, did_exist = runner.get_or_create_relation(*git_node_parts)
+    if not did_exist:
         ref_B = runner.adapter.Relation.create(*git_node_parts)
         logger().info("Creating new relation for %s", ref_B)
         with runner.adapter.connection_named("dbt-osmosis"):
@@ -101,44 +96,49 @@ def build_diff_tables(model: str, runner: DbtOsmosis) -> Tuple[BaseRelation, Bas
                 },
                 run_compiled_sql=True,
             )
-    else:
-        ref_B = check_ref
-        logger().info("Found existing relation for %s", ref_B)
 
     return ref_A, ref_B
 
 
 def diff_tables(
-    ref_A: BaseRelation, ref_B: BaseRelation, pk: str, runner: DbtOsmosis, aggregate: bool = True
+    ref_A: BaseRelation,
+    ref_B: BaseRelation,
+    pk: str,
+    runner: DbtProject,
+    aggregate: bool = True,
 ) -> agate.Table:
 
     logger().info("Running diff")
-    _, _, table = runner.execute_macro(
-        "_dbt_osmosis_compare_relations_agg" if aggregate else "_dbt_osmosis_compare_relations",
-        kwargs={
-            "a_relation": ref_A,
-            "b_relation": ref_B,
-            "primary_key": pk,
-        },
-        run_compiled_sql=True,
+    _, table = runner.safe_adapter_execute(
+        runner.execute_macro(
+            "_dbt_osmosis_compare_relations_agg" if aggregate else "_dbt_osmosis_compare_relations",
+            kwargs={
+                "a_relation": ref_A,
+                "b_relation": ref_B,
+                "primary_key": pk,
+            },
+        ),
+        auto_begin=True,
         fetch=True,
     )
     return table
 
 
 def diff_queries(
-    sql_A: str, sql_B: str, pk: str, runner: DbtOsmosis, aggregate: bool = True
+    sql_A: str, sql_B: str, pk: str, runner: DbtProject, aggregate: bool = True
 ) -> agate.Table:
 
     logger().info("Running diff")
-    _, _, table = runner.execute_macro(
-        "_dbt_osmosis_compare_queries_agg" if aggregate else "_dbt_osmosis_compare_queries",
-        kwargs={
-            "a_query": sql_A,
-            "b_query": sql_B,
-            "primary_key": pk,
-        },
-        run_compiled_sql=True,
+    _, table = runner.safe_adapter_execute(
+        runner.execute_macro(
+            "_dbt_osmosis_compare_queries_agg" if aggregate else "_dbt_osmosis_compare_queries",
+            kwargs={
+                "a_query": sql_A,
+                "b_query": sql_B,
+                "primary_key": pk,
+            },
+        ),
+        auto_begin=True,
         fetch=True,
     )
     return table
@@ -147,7 +147,7 @@ def diff_queries(
 def diff_and_print_to_console(
     model: str,
     pk: str,
-    runner: DbtOsmosis,
+    runner: DbtProject,
     make_temp_tables: bool = False,
     agg: bool = True,
     output: str = "table",

@@ -1,10 +1,10 @@
 from pathlib import Path
 
 from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.core.osmosis import DbtOsmosis
+from dbt_osmosis.core.osmosis import DbtProject
 
 
-def inject_macros(dbt: DbtOsmosis) -> None:
+def inject_macros(dbt: DbtProject) -> None:
     logger().info("Injecting macros, please wait...")
     macro_overrides = {}
     for node in dbt.macro_parser.parse_remote(

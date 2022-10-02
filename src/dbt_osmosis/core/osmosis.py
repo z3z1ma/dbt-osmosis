@@ -1,12 +1,14 @@
 import os
-from datetime import datetime
+from collections import OrderedDict, UserDict
+from copy import copy
 from enum import Enum
-from functools import lru_cache
+from functools import lru_cache, partial
 from hashlib import md5
 from itertools import chain
 from pathlib import Path
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     Iterator,
@@ -18,13 +20,15 @@ from typing import (
     Tuple,
     Union,
 )
+import threading
 
 import agate
-from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters
+from dbt.adapters.base import BaseRelation
+from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters, FACTORY
 from dbt.clients import jinja  # monkey-patched for perf
 from dbt.config.runtime import RuntimeConfig
 from dbt.contracts.connection import AdapterResponse
-from dbt.contracts.graph.manifest import ManifestNode, NodeType
+from dbt.contracts.graph.manifest import ManifestNode, MaybeNonSource, MaybeParsedSource, NodeType
 from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
 from dbt.contracts.sql import (
     RemoteCompileResult,
@@ -34,10 +38,9 @@ from dbt.contracts.sql import (
 )
 from dbt.events.functions import fire_event  # monkey-patched for perf
 from dbt.exceptions import CompilationException, InternalException, RuntimeException
-from dbt.flags import DEFAULT_PROFILES_DIR, env_set_truthy, set_from_args
-from dbt.lib import compile_sql, execute_sql
+from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
 from dbt.node_types import NodeType
-from dbt.parser.manifest import ManifestLoader, _process_refs_for_node, _process_sources_for_node
+from dbt.parser.manifest import ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.sql import SqlCompileRunner, SqlExecuteRunner
 from dbt.tracking import disable_tracking
@@ -53,11 +56,17 @@ from dbt_osmosis.core.exceptions import (
 )
 from dbt_osmosis.core.log_controller import logger
 
+__all__ = ["DbtProject", "DbtYamlManager"]
+
 CACHE = {}
 CACHE_VERSION = 1
+MANIFEST_ARTIFACT = "manifest.json"
+SQL_CACHE_SIZE = 1024
 
 
 def memoize_get_rendered(function):
+    """Custom memoization function for dbt-core jinja interface"""
+
     def wrapper(
         string: str,
         ctx: Dict[str, Any],
@@ -82,46 +91,16 @@ def memoize_get_rendered(function):
     return wrapper
 
 
-jinja.get_rendered = memoize_get_rendered(jinja.get_rendered)
+# Performance hacks
+# jinja.get_rendered = memoize_get_rendered(jinja.get_rendered)
 disable_tracking()
 fire_event = lambda e: None
 
-AUDIT_REPORT = """
-:white_check_mark: [bold]Audit Report[/bold]
--------------------------------
 
-Database: [bold green]{database}[/bold green]
-Schema: [bold green]{schema}[/bold green]
-Table: [bold green]{table}[/bold green]
+class ConfigInterface:
+    """This mimic dbt-core args based interface for dbt-core
+    class instantiation"""
 
-Total Columns in Database: {total_columns}
-Total Documentation Coverage: {coverage}%
-
-Action Log:
-Columns Added to dbt: {n_cols_added}
-Column Knowledge Inherited: {n_cols_doc_inherited}
-Extra Columns Removed: {n_cols_removed}
-"""
-
-# TODO: Let user supply a custom config file / csv of strings which we consider "not-documented placeholders", these are just my own
-PLACEHOLDERS = [
-    "Pending further documentation",
-    "Pending further documentation.",
-    "No description for this column",
-    "No description for this column.",
-    "Not documented",
-    "Not documented.",
-    "Undefined",
-    "Undefined.",
-    "",
-]
-
-FILE_ADAPTER_POSTFIX = "://"
-
-SINGLE_THREADED_HANDLER = env_set_truthy("DBT_SINGLE_THREADED_HANDLER")
-
-
-class PseudoArgs:
     def __init__(
         self,
         threads: Optional[int] = 1,
@@ -141,7 +120,456 @@ class PseudoArgs:
         self.quiet = True
 
 
-class OsmosisConfig(str, Enum):
+class YamlHandler(YAML):
+    """A `ruamel.yaml` wrapper to handle dbt YAML files with sane defaults"""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.indent(mapping=2, sequence=4, offset=2)
+        self.width = 800
+        self.preserve_quotes = True
+        self.default_flow_style = False
+
+
+class ManifestProxy(UserDict):
+    """Proxy for manifest dictionary (`flat_graph`), if we need mutation then we should
+    create a copy of the dict or interface with the dbt-core manifest object instead"""
+
+    def _readonly(self, *args, **kwargs):
+        raise RuntimeError("Cannot modify ManifestProxy")
+
+    __setitem__ = _readonly
+    __delitem__ = _readonly
+    pop = _readonly
+    popitem = _readonly
+    clear = _readonly
+    update = _readonly
+    setdefault = _readonly
+
+
+class DbtProject:
+    """Container for a dbt project. The dbt attribute is the primary interface for
+    dbt-core. The adapter attribute is the primary interface for the dbt adapter"""
+
+    def __init__(
+        self,
+        target: Optional[str] = None,
+        profiles_dir: Optional[str] = None,
+        project_dir: Optional[str] = None,
+        threads: Optional[int] = 1,
+    ):
+        self.args = ConfigInterface(
+            threads=threads,
+            target=target,
+            profiles_dir=profiles_dir,
+            project_dir=project_dir,
+        )
+
+        self.parse_project()
+
+        # Utilities
+        self._yaml_handler: Optional[YamlHandler] = None
+        self._sql_parser: Optional[SqlBlockParser] = None
+        self._macro_parser: Optional[SqlMacroParser] = None
+        self._sql_runner: Optional[SqlExecuteRunner] = None
+        self._sql_compiler: Optional[SqlCompileRunner] = None
+
+        # Tracks internal state version
+        self._version: int = 1
+        self.mutex = threading.Lock()
+
+    def parse_project(self) -> None:
+        """Parses project on disk from `ConfigInterface` in args attribute, verifies connection
+        to adapters database, mutates config, adapter, and dbt attributes"""
+        set_from_args(self.args, self.args)
+        self.config = RuntimeConfig.from_args(self.args)
+        register_adapter(self.config)
+        self.adapter = self._verify_connection(get_adapter(self.config))
+        self.dbt = ManifestLoader.get_full_manifest(self.config)
+
+    @classmethod
+    def from_args(cls, args: ConfigInterface) -> "DbtProject":
+        """Instatiate the DbtProject directly from a ConfigInterface instance"""
+        return cls(
+            target=args.target,
+            profiles_dir=args.profiles_dir,
+            project_dir=args.project_dir,
+            threads=args.threads,
+        )
+
+    @property
+    def yaml_handler(self) -> SqlBlockParser:
+        """A YAML handler for loading and dumping yaml files on disk"""
+        if self._yaml_handler is None:
+            self._yaml_handler = YamlHandler()
+        return self._yaml_handler
+
+    @property
+    def sql_parser(self) -> SqlBlockParser:
+        """A dbt-core SQL parser capable of parsing and adding nodes to the manifest via `parse_remote` which will
+        also return the added node to the caller. Note that post-parsing this still typically requires calls to
+        `_process_nodes_for_ref` and `_process_sources_for_ref` from `dbt.parser.manifest`"""
+        if self._sql_parser is None:
+            self._sql_parser = SqlBlockParser(self.config, self.dbt, self.config)
+        return self._sql_parser
+
+    @property
+    def macro_parser(self) -> SqlMacroParser:
+        """A dbt-core macro parser"""
+        if self._macro_parser is None:
+            self._macro_parser = SqlMacroParser(self.config, self.dbt)
+        return self._macro_parser
+
+    @property
+    def sql_runner(self) -> SqlExecuteRunner:
+        """A runner which is used internally by the `execute_sql` function of `dbt.lib`.
+        The runners `node` attribute can be updated before calling `compile` or `compile_and_execute`."""
+        if self._sql_runner is None:
+            self._sql_runner = SqlExecuteRunner(
+                self.config, self.adapter, node=None, node_index=1, num_nodes=1
+            )
+        return self._sql_runner
+
+    @property
+    def sql_compiler(self) -> SqlCompileRunner:
+        """A runner which is used internally by the `compile_sql` function of `dbt.lib`.
+        The runners `node` attribute can be updated before calling `compile` or `compile_and_execute`."""
+        if self._sql_compiler is None:
+            self._sql_compiler = SqlCompileRunner(
+                self.config, self.adapter, node=None, node_index=1, num_nodes=1
+            )
+        return self._sql_compiler
+
+    @staticmethod
+    def _verify_connection(adapter: Adapter) -> Adapter:
+        """Verification for adapter + profile. Used as a passthrough,
+        ie: `self.adapter = _verify_connection(get_adapter(...))`"""
+        try:
+            with adapter.connection_named("debug"):
+                adapter.debug_query()
+        except Exception as query_exc:
+            raise RuntimeException("Could not connect to Database") from query_exc
+        else:
+            return adapter
+
+    @property
+    def project_name(self) -> str:
+        """dbt project name"""
+        return self.config.project_name
+
+    @property
+    def project_root(self) -> str:
+        """dbt project root"""
+        return self.config.project_root
+
+    @property
+    def manifest(self) -> ManifestProxy:
+        """dbt manifest dict"""
+        return ManifestProxy(self.dbt.flat_graph)
+
+    def safe_parse_project(self, reset: bool = False) -> None:
+        """This is used to reseed the DbtProject safely post-init. This is
+        intended for use by the osmosis server"""
+        if reset:
+            self.clear_caches()
+        _config_pointer = copy(self.config)
+        try:
+            self.adapter.cleanup_all()
+            FACTORY.adapters.pop(self.config.credentials.type, None)
+            self.parse_project()
+        except Exception as parse_error:
+            self.config = _config_pointer
+            register_adapter(self.config)
+            raise parse_error
+        self.write_manifest_artifact()
+
+    def write_manifest_artifact(self) -> None:
+        """Write a manifest.json to disk"""
+        artifact_path = os.path.join(
+            self.config.project_root, self.config.target_path, MANIFEST_ARTIFACT
+        )
+        self.dbt.write(artifact_path)
+
+    def clear_caches(self) -> None:
+        """Clear least recently used caches and reinstantiable container objects"""
+        self.get_ref_node.cache_clear()
+        self.get_source_node.cache_clear()
+        self.get_macro_function.cache_clear()
+        self.get_columns.cache_clear()
+        self.compile_sql_cached.cache_clear()
+        self._sql_parser = None
+        self._macro_parser = None
+        self._sql_compiler = None
+        self._sql_runner = None
+
+    @lru_cache(maxsize=10)
+    def get_ref_node(self, target_model_name: str) -> MaybeNonSource:
+        """Get a `ManifestNode` from a dbt project model name"""
+        return self.dbt.resolve_ref(
+            target_model_name=target_model_name,
+            target_model_package=None,
+            current_project=self.config.project_name,
+            node_package=self.config.project_name,
+        )
+
+    @lru_cache(maxsize=10)
+    def get_source_node(self, target_source_name: str, target_table_name: str) -> MaybeParsedSource:
+        """Get a `ManifestNode` from a dbt project source name and table name"""
+        return self.dbt.resolve_source(
+            target_source_name=target_source_name,
+            target_table_name=target_table_name,
+            current_project=self.config.project_name,
+            node_package=self.config.project_name,
+        )
+
+    def get_server_node(self, sql: str, node_name="name"):
+        """Get a node for SQL execution against adapter"""
+        self._clear_node(node_name)
+        sql_node = self.sql_parser.parse_remote(sql, node_name)
+        process_node(self.config, self.dbt, sql_node)
+        return sql_node
+
+    @lru_cache(maxsize=100)
+    def get_macro_function(self, macro_name: str) -> Callable[[Dict[str, Any]], Any]:
+        """Get macro as a function which takes a dict via argument named `kwargs`,
+        ie: `kwargs={"relation": ...}`
+
+        make_schema_fn = get_macro_function('make_schema')\n
+        make_schema_fn({'name': '__test_schema_1'})\n
+        make_schema_fn({'name': '__test_schema_2'})"""
+        return partial(self.adapter.execute_macro, macro_name=macro_name, manifest=self.dbt)
+
+    def adapter_execute(
+        self, sql: str, auto_begin: bool = False, fetch: bool = False
+    ) -> Tuple[AdapterResponse, agate.Table]:
+        """Wraps adapter.execute. Execute SQL against database"""
+        return self.adapter.execute(sql, auto_begin, fetch)
+
+    def safe_adapter_execute(
+        self, sql: str, auto_begin: bool = False, fetch: bool = False
+    ) -> Tuple[AdapterResponse, agate.Table]:
+        """Wraps adapter.execute and ensures connection is open. Execute SQL against database"""
+        with self.adapter.connection_named("dbt-osmosis"):
+            return self.adapter_execute(sql, auto_begin, fetch)
+
+    def execute_macro(
+        self,
+        macro: str,
+        kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Wraps adapter execute_macro. Execute a macro like a function."""
+        with self.adapter.connection_named("dbt-osmosis"):
+            return self.get_macro_function(macro)(kwargs=kwargs)
+
+    def execute_sql(self, sql: str) -> RemoteExecutionResult:
+        """Creates a node with a `dbt.parser.sql` class. Execute dbt SQL statement against database"""
+        self.sql_runner.node = self.get_server_node(sql)
+        return self.sql_runner.safe_run(self.dbt)
+
+    def compile_sql(self, sql: str) -> RemoteCompileResult:
+        """Creates a node with a `dbt.parser.sql` class. Compile generated node."""
+        self.sql_compiler.node = self.get_server_node(sql)
+        return self.sql_compiler.safe_run(self.dbt)
+
+    def execute_node(self, node: ManifestNode) -> RemoteExecutionResult:
+        """Creates a node with a `dbt.parser.sql` class. Execute dbt SQL statement against database"""
+        self.sql_runner.node = node
+        return self.sql_runner.safe_run(self.dbt)
+
+    def compile_node(self, node: ManifestNode) -> RemoteCompileResult:
+        """Compiles node."""
+        self.sql_compiler.node = node
+        return self.sql_compiler.safe_run(self.dbt)
+
+    @lru_cache(maxsize=SQL_CACHE_SIZE)
+    def compile_sql_cached(self, sql: str) -> str:
+        """Wrapper for `compile_sql` which leverages lru_cache"""
+        return self.compile_sql(sql).compiled_sql
+
+    def _clear_node(self, name="name"):
+        """Removes the statically named node created by `execute_sql` and `compile_sql` in `dbt.lib`"""
+        self.dbt.nodes.pop(f"{NodeType.SqlOperation}.{self.project_name}.{name}", None)
+
+    def get_relation(self, database: str, schema: str, name: str) -> Optional[BaseRelation]:
+        """Wrapper for `adapter.get_relation`"""
+        return self.adapter.get_relation(database, schema, name)
+
+    def create_relation(self, database: str, schema: str, name: str) -> BaseRelation:
+        """Wrapper for `adapter.Relation.create`"""
+        return self.adapter.Relation.create(database, schema, name)
+
+    def create_relation_from_node(self, node: ManifestNode) -> BaseRelation:
+        """Wrapper for `adapter.Relation.create_from`"""
+        return self.adapter.Relation.create_from(self.config, node)
+
+    def get_columns_in_relation(self, node: ManifestNode) -> List[str]:
+        """Wrapper for `adapter.get_columns_in_relation`"""
+        return self.adapter.get_columns_in_relation(self.create_relation_from_node(node))
+
+    @lru_cache(maxsize=5)
+    def get_columns(self, node: ManifestNode) -> List[ColumnInfo]:
+        """Get a list of columns from a node"""
+        columns = []
+        try:
+            columns.extend(
+                [c.name for c in self.get_columns_in_relation(self.create_relation_from_node(node))]
+            )
+        except CompilationException:
+            original_sql = node.compiled_sql
+            # TODO: account for `TOP` syntax
+            node.compiled_sql = f"select * from ({original_sql}) limit 0"
+            result = self.execute_node(node)
+            columns.extend(result.table.column_names)
+        return columns
+
+    def get_or_create_relation(
+        self, database: str, schema: str, name: str
+    ) -> Tuple[BaseRelation, bool]:
+        """Get relation or create if not exists. Returns tuple of relation and
+        boolean result of whether it existed ie: (relation, did_exist)"""
+        ref = self.get_relation(database, schema, name)
+        return (ref, True) if ref else (self.create_relation(database, schema, name), False)
+
+    def create_schema(self, node: ManifestNode):
+        """Create a schema in the database"""
+        return self.execute_macro(
+            "create_schema",
+            kwargs={"relation": self.create_relation_from_node(node)},
+        )
+
+    def materialize(
+        self, node: ManifestNode, temporary: bool = True
+    ) -> Tuple[AdapterResponse, None]:
+        """Materialize a table in the database"""
+        return self.safe_adapter_execute(
+            # Returns CTAS string so send to adapter.execute
+            self.execute_macro(
+                "create_table_as",
+                kwargs={
+                    "sql": node.compiled_sql,
+                    "relation": self.create_relation_from_node(node),
+                    "temporary": temporary,
+                },
+            ),
+            auto_begin=True,
+        )
+
+
+class DbtProjectContainer:
+    """This class manages multiple DbtProjects which each correspond
+    to a single dbt project on disk. This is mostly for osmosis server use"""
+
+    def __init__(self):
+        self._projects: Dict[str, DbtProject] = OrderedDict()
+        self._default_project: Optional[str] = None
+
+    def get_project(self, project_name: str) -> Optional[DbtProject]:
+        """Primary interface to get a project and execute code"""
+        return self._projects.get(project_name)
+
+    def get_default_project(self) -> Optional[DbtProject]:
+        """Gets the default project which at any given time is the
+        earliest project inserted into the container"""
+        return self._projects.get(self._default_project)
+
+    def add_project(
+        self,
+        target: Optional[str] = None,
+        profiles_dir: Optional[str] = None,
+        project_dir: Optional[str] = None,
+        threads: Optional[int] = 1,
+    ) -> DbtProject:
+        """Add a DbtProject with arguments"""
+        project = DbtProject(target, profiles_dir, project_dir, threads)
+        if self._default_project is None:
+            self._default_project = project.config.project_name
+        self._projects[project.config.project_name] = project
+        return project
+
+    def add_parsed_project(self, project: DbtProject) -> DbtProject:
+        """Add an already instantiated DbtProject"""
+        self._projects.setdefault(project.config.project_name, project)
+        return project
+
+    def add_project_from_args(self, args: ConfigInterface) -> DbtProject:
+        """Add a DbtProject from a ConfigInterface"""
+        project = DbtProject.from_args(args)
+        self._projects.setdefault(project.config.project_name, project)
+        return project
+
+    def drop_project(self, project_name: str) -> None:
+        """Drop a DbtProject"""
+        project = self.get_project(project_name)
+        if project is None:
+            return
+        project.clear_caches()
+        project.adapter.cleanup_all()
+        self._projects.pop(project_name)
+        if self._default_project == project_name:
+            if len(self) > 0:
+                self._default_project = self._projects.keys()[0]
+            else:
+                self._default_project = None
+
+    def drop_all_projects(self) -> None:
+        """Drop all DbtProjectContainers"""
+        self._default_project = None
+        self._projects.clear()
+
+    def reparse_all_projects(self) -> None:
+        """Reparse all projects"""
+        for project in self:
+            project.safe_parse_project()
+
+    def registered_projects(self) -> List[str]:
+        """Convenience to grab all registered project names"""
+        return list(self._projects.keys())
+
+    def __len__(self):
+        """Allows len(DbtProjectContainer)"""
+        return len(self._projects)
+
+    def __getitem__(self, project: str):
+        """Allows DbtProjectContainer['jaffle_shop']"""
+        maybe_project = self.get_project(project)
+        if maybe_project is None:
+            raise KeyError(project)
+        return maybe_project
+
+    def __delitem__(self, project: str):
+        """Allows del DbtProjectContainer['jaffle_shop']"""
+        self.drop_project(project)
+
+    def __iter__(self):
+        """Allows project for project in DbtProjectContainer"""
+        for project in self._projects:
+            yield self.get_project(project)
+
+    def __contains__(self, project):
+        """Allows 'jaffle_shop' in DbtProjectContainer"""
+        return project in self._projects
+
+    def __repr__(self):
+        """Canonical string representation of DbtProjectContainer instance"""
+        return "\n".join(
+            f"Project: {project.project_name}, Dir: {project.project_root}" for project in self
+        )
+
+    def __call__(self) -> "DbtProjectContainer":
+        """This allows the object to be used as a callable, primarily for FastAPI dependency injection
+        ```python
+        dbt_project_container = DbtProjectContainer()
+        def register(x_dbt_project: str = Header(default=None)):
+            dbt_project_container.add_project(...)
+        def compile(x_dbt_project: str = Header(default=None), dbt = Depends(dbt_project_container), request: fastapi.Request):
+            query = request.body()
+            dbt.get_project(x_dbt_project).compile(query)
+        ```
+        """
+        return self
+
+
+class SchemaFileOrganizationPattern(str, Enum):
     SchemaYaml = "schema.yml"
     FolderYaml = "folder.yml"
     ModelYaml = "model.yml"
@@ -149,7 +577,7 @@ class OsmosisConfig(str, Enum):
     SchemaModelYaml = "schema/model.yml"
 
 
-class SchemaFile(BaseModel):
+class SchemaFileLocation(BaseModel):
     target: Path
     current: Optional[Path] = None
 
@@ -158,227 +586,62 @@ class SchemaFile(BaseModel):
         return self.current == self.target
 
 
-class RestructureQuantum(BaseModel):
+class SchemaFileMigration(BaseModel):
     output: Dict[str, Any] = {}
     supersede: Dict[Path, List[str]] = {}
 
 
-class DbtOsmosis:
+class DbtYamlManager(DbtProject):
+    """The DbtYamlManager class handles developer automation tasks surrounding
+    schema yaml files organziation, documentation, and coverage."""
+
+    audit_report = """
+    :white_check_mark: [bold]Audit Report[/bold]
+    -------------------------------
+
+    Database: [bold green]{database}[/bold green]
+    Schema: [bold green]{schema}[/bold green]
+    Table: [bold green]{table}[/bold green]
+
+    Total Columns in Database: {total_columns}
+    Total Documentation Coverage: {coverage}%
+
+    Action Log:
+    Columns Added to dbt: {n_cols_added}
+    Column Knowledge Inherited: {n_cols_doc_inherited}
+    Extra Columns Removed: {n_cols_removed}
+    """
+
+    # TODO: Let user supply a custom arg / config file / csv of strings which we
+    # consider placeholders which are not valid documentation, these are just my own
+    # We may well drop the placeholder concept too
+    placeholders = [
+        "Pending further documentation",
+        "Pending further documentation.",
+        "No description for this column",
+        "No description for this column.",
+        "Not documented",
+        "Not documented.",
+        "Undefined",
+        "Undefined.",
+        "",
+    ]
+
     def __init__(
         self,
-        fqn: Optional[str] = None,
         target: Optional[str] = None,
         profiles_dir: Optional[str] = None,
         project_dir: Optional[str] = None,
         threads: Optional[int] = 1,
+        fqn: Optional[str] = None,
         dry_run: bool = False,
     ):
-        # Build pseudo args
-        args = PseudoArgs(
-            threads=threads,
-            target=target,
-            profiles_dir=profiles_dir,
-            project_dir=project_dir,
-        )
-        self.args = args
-
-        # Load dbt + verify connection to data warehhouse
-        set_from_args(args, args)
-        self.project, self.profile = RuntimeConfig.collect_parts(args)
-        self.config = RuntimeConfig.from_parts(self.project, self.profile, args)
-        reset_adapters()
-        register_adapter(self.config)
-        self.adapter = self._verify_connection(get_adapter(self.config))
-
-        # Parse project
-        self.dbt = ManifestLoader.get_full_manifest(self.config)
-        # TODO: noticed wierd behavior between 1.2.0 -> 1.2.1, perhaps we map this to make it less strict
-        # self.dbt.metadata.dbt_version = dbt_version
-
-        # Selector Passed in From CLI
+        super().__init__(target, profiles_dir, project_dir, threads)
         self.fqn = fqn
-
-        # Utilities
-        self.yaml = self._build_yaml_parser()
         self.dry_run = dry_run
-        self.track_package_install = (
-            lambda *args, **kwargs: None
-        )  # Monkey patching to make self compatible with DepsTask
-        self._cached_exec_nodes = set()
-
-        # Parsers
-        self._sql_parser = None
-        self._macro_parser = None
-
-        self._version: int = 1
-
-    # PARSERS
-
-    @property
-    def sql_parser(self) -> SqlBlockParser:
-        if self._sql_parser is None:
-            self._sql_parser = SqlBlockParser(self.project, self.dbt, self.config)
-        return self._sql_parser
-
-    @property
-    def macro_parser(self) -> SqlMacroParser:
-        if self._macro_parser is None:
-            self._macro_parser = SqlMacroParser(self.project, self.dbt)
-        return self._macro_parser
-
-    def get_execute_runner_for_node(self, node: ManifestNode) -> SqlExecuteRunner:
-        return SqlExecuteRunner(self.config, self.adapter, node, 1, 1)
-
-    def get_compile_runner_for_node(self, node: ManifestNode) -> SqlCompileRunner:
-        return SqlCompileRunner(self.config, self.adapter, node, 1, 1)
-
-    @staticmethod
-    def _build_yaml_parser() -> YAML:
-        yaml = YAML()
-        yaml.indent(mapping=2, sequence=4, offset=2)
-        yaml.width = 800
-        yaml.preserve_quotes = True
-        yaml.default_flow_style = False
-        return yaml
-
-    # RUNTIME VALIDATORS
-
-    @staticmethod
-    def _verify_connection(adapter: Adapter) -> Adapter:
-        try:
-            with adapter.connection_named("debug"):
-                adapter.debug_query()
-        except Exception as exc:
-            raise Exception("Could not connect to Database") from exc
-        else:
-            return adapter
-
-    # HELPERS
-
-    @property
-    def project_name(self) -> str:
-        return self.project.project_name
-
-    @property
-    def project_root(self) -> str:
-        return self.project.project_root
-
-    @property
-    def manifest(self) -> Dict[str, Any]:
-        return self.dbt.flat_graph
-
-    # REPARSE
-
-    def rebuild_dbt_manifest(self, reset: bool = False) -> None:
-        reset_adapters()
-        if reset:
-            # Make this as atomic as possible
-            self.clear_caches()
-            proj, prof, conf = self.project, self.profile, self.config
-            try:
-                self.rebuild_project_and_profile()
-                self.rebuild_config()
-            except Exception as parse_error:
-                self.project, self.profile, self.config = proj, prof, conf
-                register_adapter(self.config)
-                raise parse_error
-        register_adapter(self.config)
-        # Parse project
-        self.dbt = ManifestLoader.get_full_manifest(self.config, reset=reset)
-        self._sql_parser = SqlBlockParser(self.project, self.dbt, self.config)
-        self._macro_parser = SqlMacroParser(self.project, self.dbt)
-        # Write manifest
-        path = os.path.join(self.config.project_root, self.config.target_path, "manifest.json")
-        logger().debug("Rewriting manifest to %s", path)
-        self.dbt.write(path)
-
-    def rebuild_project_and_profile(self):
-        self.project, self.profile = RuntimeConfig.collect_parts(self.args)
-
-    def rebuild_config(self):
-        self.config = RuntimeConfig.from_parts(self.project, self.profile, self.args)
-
-    def clear_caches(self):
-        global CACHE, CACHE_VERSION
-        CACHE.clear()
-        CACHE_VERSION += 1
-        self.compile_sql.cache_clear()
-        self.get_compiled_node.cache_clear()
-
-    # FIND MODEL
-
-    def get_ref_node(self, target_model_name: str):
-        """
-        target_model_name:
-            ie, ref('stg_users') = name -> stg_users
-        """
-        return self.dbt.resolve_ref(
-            target_model_name=target_model_name,
-            target_model_package=None,
-            current_project=self.config.project_name,
-            node_package=self.config.project_name,
-        )
-
-    def get_source_node(self, target_source_name: str, target_table_name: str):
-        """
-        target_table_name:
-            ie, source('jira', 'users') = source_name -> jira, table_name -> users
-        """
-        return self.dbt.resolve_source(
-            target_source_name=target_source_name,
-            target_table_name=target_table_name,
-            current_project=self.config.project_name,
-            node_package=self.config.project_name,
-        )
-
-    # DBT MACRO EXECUTION
-
-    def execute_macro(
-        self,
-        macro: str,
-        kwargs: Optional[Dict[str, Any]] = None,
-        run_compiled_sql: bool = False,
-        fetch: bool = False,
-    ) -> Tuple[
-        str, Optional[AdapterResponse], Optional[agate.Table]
-    ]:  # returns Macro `return` value from Jinja be it string, SQL, or dict
-        """Wraps adapter execute_macro"""
-        with self.adapter.connection_named("dbt-osmosis"):
-            compiled_macro = self.adapter.execute_macro(
-                macro_name=macro, manifest=self.dbt, kwargs=kwargs
-            )
-            if run_compiled_sql:
-                resp, table = self.adapter.execute(compiled_macro, fetch=fetch)
-                return compiled_macro, resp, table
-        return compiled_macro, None, None
-
-    # DBT SQL EXECUTION
-
-    def execute_sql(self, sql: str) -> RemoteExecutionResult:
-        """Wraps adapter execute"""
-        self.clear_node()
-        return execute_sql(self.dbt, self.config.project_root, sql)
-
-    # DBT SQL COMPILATION
-
-    @lru_cache(maxsize=1000)
-    def compile_sql(self, sql: str) -> str:
-        """Compile dbt SQL with [str, str] cache 🔥"""
-        return self.get_compiled_node(sql).compiled_sql
-
-    @lru_cache(maxsize=100)
-    def get_compiled_node(self, sql: str) -> ManifestNode:
-        """Compile dbt SQL into node"""
-        self.clear_node()
-        return compile_sql(self.dbt, self.config.project_root, sql).node
-
-    def clear_node(self, name="name"):
-        self.dbt.nodes.pop(f"{NodeType.SqlOperation}.{self.project_name}.{name}", None)
-
-    # DBT-OSMOSIS SPECIFIC METHODS
 
     def _filter_model(self, node: ManifestNode) -> bool:
-        """Validates a node as being a targetable model. Validates both models and sources."""
+        """Validates a node as being actionable. Validates both models and sources."""
         fqn = self.fqn or ".".join(node.fqn[1:])
         fqn_parts = fqn.split(".")
         logger().debug("%s: %s -> %s", node.resource_type, fqn, node.fqn[1:])
@@ -398,7 +661,7 @@ class DbtOsmosis:
     @staticmethod
     def get_patch_path(node: ManifestNode) -> Optional[Path]:
         if node is not None and node.patch_path:
-            return Path(node.patch_path.split(FILE_ADAPTER_POSTFIX)[-1])
+            return Path(node.patch_path.split("://")[-1])
 
     def filtered_models(
         self, subset: Optional[MutableMapping[str, ManifestNode]] = None
@@ -410,7 +673,7 @@ class DbtOsmosis:
             if self._filter_model(dbt_node):
                 yield unique_id, dbt_node
 
-    def get_osmosis_config(self, node: ManifestNode) -> Optional[OsmosisConfig]:
+    def get_osmosis_config(self, node: ManifestNode) -> Optional[SchemaFileOrganizationPattern]:
         """Validates a config string. If input is a source, we return the resource type str instead"""
         if node.resource_type == NodeType.Source:
             return None
@@ -420,7 +683,7 @@ class DbtOsmosis:
                 f"Config not set for model {node.name}, we recommend setting the config at a directory level through the `dbt_project.yml`"
             )
         try:
-            return OsmosisConfig(osmosis_config)
+            return SchemaFileOrganizationPattern(osmosis_config)
         except ValueError as exc:
             raise InvalidOsmosisConfig(
                 f"Invalid config for model {node.name}: {osmosis_config}"
@@ -430,7 +693,7 @@ class DbtOsmosis:
         """Resolve absolute schema file path for a manifest node"""
         schema_path = None
         if node.resource_type == NodeType.Model and node.patch_path:
-            schema_path: str = node.patch_path.partition(FILE_ADAPTER_POSTFIX)[-1]
+            schema_path: str = node.patch_path.partition("://")[-1]
         elif node.resource_type == NodeType.Source:
             if hasattr(node, "source_name"):
                 schema_path: str = node.path
@@ -443,15 +706,15 @@ class DbtOsmosis:
         if not osmosis_config:
             return Path(node.root_path, node.original_file_path)
         # Here we resolve file migration targets based on the config
-        if osmosis_config == OsmosisConfig.SchemaYaml:
+        if osmosis_config == SchemaFileOrganizationPattern.SchemaYaml:
             schema = "schema"
-        elif osmosis_config == OsmosisConfig.FolderYaml:
+        elif osmosis_config == SchemaFileOrganizationPattern.FolderYaml:
             schema = node.fqn[-2]
-        elif osmosis_config == OsmosisConfig.ModelYaml:
+        elif osmosis_config == SchemaFileOrganizationPattern.ModelYaml:
             schema = node.name
-        elif osmosis_config == OsmosisConfig.SchemaModelYaml:
+        elif osmosis_config == SchemaFileOrganizationPattern.SchemaModelYaml:
             schema = "schema/" + node.name
-        elif osmosis_config == OsmosisConfig.UnderscoreModelYaml:
+        elif osmosis_config == SchemaFileOrganizationPattern.UnderscoreModelYaml:
             schema = "_" + node.name
         else:
             raise InvalidOsmosisConfig(f"Invalid dbt-osmosis config for model: {node.fqn}")
@@ -516,7 +779,7 @@ class DbtOsmosis:
     def build_schema_folder_mapping(
         self,
         target_node_type: Optional[Union[NodeType.Model, NodeType.Source]] = None,
-    ) -> Dict[str, SchemaFile]:
+    ) -> Dict[str, SchemaFileLocation]:
         """Builds a mapping of models or sources to their existing and target schema file paths"""
         if target_node_type == NodeType.Source:
             # Source folder mapping is reserved for source importing
@@ -532,10 +795,12 @@ class DbtOsmosis:
         for unique_id, dbt_node in self.filtered_models(target_nodes):
             schema_path = self.get_schema_path(dbt_node)
             osmosis_schema_path = self.get_target_schema_path(dbt_node)
-            schema_map[unique_id] = SchemaFile(target=osmosis_schema_path, current=schema_path)
+            schema_map[unique_id] = SchemaFileLocation(
+                target=osmosis_schema_path, current=schema_path
+            )
         return schema_map
 
-    def draft_project_structure_update_plan(self) -> Dict[Path, RestructureQuantum]:
+    def draft_project_structure_update_plan(self) -> Dict[Path, SchemaFileMigration]:
         """Build project structure update plan based on `dbt-osmosis:` configs set across dbt_project.yml and model files.
         The update plan includes injection of undocumented models. Unless this plan is constructed and executed by the `commit_project_restructure` function,
         dbt-osmosis will only operate on models it is aware of through the existing documentation.
@@ -546,7 +811,7 @@ class DbtOsmosis:
         """
 
         # Container for output
-        blueprint: Dict[Path, RestructureQuantum] = {}
+        blueprint: Dict[Path, SchemaFileMigration] = {}
         logger().info(
             ":chart_increasing: Searching project stucture for required updates and building action plan"
         )
@@ -557,7 +822,7 @@ class DbtOsmosis:
                 if not schema_file.is_valid:
                     blueprint.setdefault(
                         schema_file.target,
-                        RestructureQuantum(output={"version": 2, "models": []}, supersede={}),
+                        SchemaFileMigration(output={"version": 2, "models": []}, supersede={}),
                     )
                     node = self.dbt.nodes[unique_id]
                     if schema_file.current is None:
@@ -593,13 +858,13 @@ class DbtOsmosis:
         return blueprint
 
     def commit_project_restructure_to_disk(
-        self, blueprint: Optional[Dict[Path, RestructureQuantum]] = None
+        self, blueprint: Optional[Dict[Path, SchemaFileMigration]] = None
     ) -> bool:
         """Given a project restrucure plan of pathlib Paths to a mapping of output and supersedes which is in itself a mapping of Paths to model names,
         commit changes to filesystem to conform project to defined structure as code fully or partially superseding existing models as needed.
 
         Args:
-            blueprint (Dict[Path, RestructureQuantum]): Project restructure plan as typically created by `build_project_structure_update_plan`
+            blueprint (Dict[Path, SchemaFileMigration]): Project restructure plan as typically created by `build_project_structure_update_plan`
 
         Returns:
             bool: True if the project was restructured, False if no action was required
@@ -666,7 +931,7 @@ class DbtOsmosis:
         return True
 
     @staticmethod
-    def pretty_print_restructure_plan(blueprint: Dict[Path, RestructureQuantum]) -> None:
+    def pretty_print_restructure_plan(blueprint: Dict[Path, SchemaFileMigration]) -> None:
         logger().info(
             list(
                 map(
@@ -718,7 +983,7 @@ class DbtOsmosis:
                     # 2. descriptions are overriden
                     # 3. meta is merged
                     # 4. tests are ignored until I am convinced those shouldn't be hand curated with love
-                    if deserialized_info["description"] in PLACEHOLDERS:
+                    if deserialized_info["description"] in self.placeholders:
                         deserialized_info.pop("description", None)
                     deserialized_info["tags"] = list(
                         set(deserialized_info.pop("tags", []) + knowledge[name].get("tags", []))
@@ -771,7 +1036,7 @@ class DbtOsmosis:
             for unique_id, node in track(list(self.filtered_models())):
                 logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
                 # Get schema file path, must exist to propagate documentation
-                schema_path: Optional[SchemaFile] = schema_map.get(unique_id)
+                schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
                 if schema_path is None or schema_path.current is None:
                     logger().info(
                         ":bow: No valid schema file found for model %s", unique_id
@@ -792,7 +1057,7 @@ class DbtOsmosis:
                 documented_columns: Set[str] = set(
                     column
                     for column, info in node.columns.items()
-                    if info.description and info.description not in PLACEHOLDERS
+                    if info.description and info.description not in self.placeholders
                 )
 
                 # Queue
@@ -836,7 +1101,7 @@ class DbtOsmosis:
                     else "Unable to Determine"
                 )
                 logger().info(
-                    AUDIT_REPORT.format(
+                    self.audit_report.format(
                         database=node.database,
                         schema=node.schema,
                         table=node.name,
@@ -953,14 +1218,3 @@ class DbtOsmosis:
                 return n_cols_added, n_cols_doc_inherited, n_cols_removed
         logger().info(":thumbs_up: No actions needed")
         return noop
-
-
-def get_raw_profiles(profiles_dir: Optional[str] = None) -> Dict[str, Any]:
-    import dbt.config.profile as dbt_profile
-
-    return dbt_profile.read_profile(profiles_dir or DEFAULT_PROFILES_DIR)
-
-
-def uncompile_node(node: ManifestNode) -> ManifestNode:
-    """Uncompile a node by removing the compiled_resource_path and compiled_resource_hash"""
-    return ParsedModelNode.from_dict(node.to_dict())

@@ -1,32 +1,3 @@
-"""dbt-osmosis
-
-Primary Objectives
-
-Standardize organization of schema files
-    -- Config is be able to be set per directory if desired utilizing `dbt_project.yml`, all directories require direct or inherited config `+dbt-osmosis:`
-        If even one dir is missing the config, we close gracefully and inform user to update dbt_project.yml. No assumed defaults.
-    - Can be one schema file to one model file sharing the same name and directory 
-        -> +dbt-osmosis: "model.yml"
-    - Can be one schema file per directory wherever model files reside named schema.yml 
-        -> +dbt-osmosis: "schema.yml"
-    - Can be one schema file per directory wherever model files reside named after its containing folder 
-        -> +dbt-osmosis: "folder.yml"
-    - Can be one schema file to one model file sharing the same name nested in a schema subdir wherever model files reside 
-        -> +dbt-osmosis: "schema/model.yml"
-
-Bootstrap Non-documented models
-    - Will automatically conform to above config per directory based on location of model file 
-
-Propagate existing column level documentation downward to children
-    - Build column level knowledge graph accumulated and updated from furthest identifiable origin to immediate parents
-    - Will automatically populate undocumented columns of the same name with passed down knowledge
-    - Will inquire on mutations in definition while resolving progenitors 
-        -- "We have detected X columns with mutated definitions. They can be ignored (default), we can backpopulate parents definitions 
-            with the mutation (ie this definition is true upstream/better), or we can mark this column as a new progenitor aka source of 
-            truth for the column's definition for the models children (the children would've inherited this definition anyway but the column 
-            progenitor would resolve to a further upstream model -- this optimizes how engineers perform impact analysis)."
-"""
-
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -36,7 +7,7 @@ import click
 from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.macros import inject_macros
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtOsmosis
+from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtProject, DbtYamlManager
 from dbt_osmosis.core.server import run_server
 
 CONTEXT = {"max_content_width": 800}
@@ -104,7 +75,7 @@ def run(
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    runner = DbtOsmosis(
+    runner = DbtYamlManager(
         project_dir=project_dir,
         profiles_dir=profiles_dir,
         target=target,
@@ -114,7 +85,7 @@ def run(
 
     # Conform project structure & bootstrap undocumented models injecting columns
     if runner.commit_project_restructure_to_disk():
-        runner.rebuild_dbt_manifest()
+        runner.safe_parse_project()
     runner.propagate_documentation_downstream(force_inheritance=force_inheritance)
 
 
@@ -167,7 +138,7 @@ def compose(
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    runner = DbtOsmosis(
+    runner = DbtYamlManager(
         project_dir=project_dir,
         profiles_dir=profiles_dir,
         target=target,
@@ -232,7 +203,7 @@ def document(
     """Column level documentation inheritance for existing models"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    runner = DbtOsmosis(
+    runner = DbtYamlManager(
         project_dir=project_dir,
         profiles_dir=profiles_dir,
         target=target,
@@ -281,7 +252,7 @@ def server(
     running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    runner = DbtOsmosis(
+    runner = DbtProject(
         project_dir=project_dir,
         profiles_dir=profiles_dir,
         target=target,
@@ -487,7 +458,7 @@ def diff(
 
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    runner = DbtOsmosis(
+    runner = DbtProject(
         project_dir=project_dir,
         profiles_dir=profiles_dir,
         target=target,
