@@ -1,6 +1,8 @@
 import subprocess
+import threading
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 import click
 
@@ -8,7 +10,7 @@ from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.macros import inject_macros
 from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtProject, DbtYamlManager
-from dbt_osmosis.core.server import run_server
+from dbt_osmosis.core.server_v2 import run_server
 
 CONTEXT = {"max_content_width": 800}
 
@@ -252,13 +254,44 @@ def server(
     running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
-    runner = DbtProject(
-        project_dir=project_dir,
-        profiles_dir=profiles_dir,
-        target=target,
-    )
+    def _register_project():
+        """Background job which registers the first project on the server automatically"""
+        import requests
+        import time
 
-    run_server(runner=runner, host=host, port=port)
+        t = 0.25
+        max_t = 5
+        i = 0
+        while True:
+            try:
+                resp = requests.get(f"http://{host}:{port}/health")
+            except Exception:
+                time.sleep(t)
+                i += 1
+                if t * i > max_t:
+                    logger().critical("Server at %s is not healthy", f"http://{host}:{port}/health")
+                else:
+                    continue
+            if resp.ok:
+                break
+            else:
+                logger().critical("Server at %s is not healthy", f"http://{host}:{port}/health")
+        params = {"project_dir": project_dir, "profiles_dir": profiles_dir}
+        if target:
+            params["target"] = target
+        endpoint = f"http://{host}:{port}/register?{urlencode(params)}"
+        logger().info("Registering project: %s", endpoint)
+        res = requests.post(
+            endpoint,
+            headers={"X-dbt-Project": "newProject"},
+        )
+        logger().info(res.json())
+
+    if project_dir and profiles_dir:
+        register_handler = threading.Thread(target=_register_project)
+        register_handler.start()
+
+    run_server(host=host, port=port)
 
 
 @cli.group()

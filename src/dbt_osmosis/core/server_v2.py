@@ -3,6 +3,7 @@ import re
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
+import uvicorn
 from fastapi import FastAPI, Request, Header, BackgroundTasks
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
@@ -322,6 +323,16 @@ async def health_check(
         },
         "dbt-osmosis-server": __name__,
     }
+
+
+def run_server(host="localhost", port=8581):
+    uvicorn.run(
+        "dbt_osmosis.core.server_v2:app",
+        host=host,
+        port=port,
+        log_level="info",
+        reload=False,
+    )
 
 
 def test_server():
