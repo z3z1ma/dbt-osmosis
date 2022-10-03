@@ -62,6 +62,8 @@ CACHE = {}
 CACHE_VERSION = 1
 MANIFEST_ARTIFACT = "manifest.json"
 SQL_CACHE_SIZE = 1024
+DBT_MAJOR_VER, DBT_MINOR_VER, DBT_PATCH_VER = (int(v) for v in dbt_version.split("."))
+COMPILED_ATTR = "compiled_code" if DBT_MAJOR_VER >= 1 and DBT_MINOR_VER >= 3 else "compiled_sql"
 
 
 def memoize_get_rendered(function):
@@ -384,7 +386,7 @@ class DbtProject:
     @lru_cache(maxsize=SQL_CACHE_SIZE)
     def compile_sql_cached(self, sql: str) -> str:
         """Wrapper for `compile_sql` which leverages lru_cache"""
-        return self.compile_sql(sql).compiled_sql
+        return self.compile_sql(sql).__getattribute__(COMPILED_ATTR)
 
     def _clear_node(self, name="name"):
         """Removes the statically named node created by `execute_sql` and `compile_sql` in `dbt.lib`"""
@@ -415,10 +417,11 @@ class DbtProject:
                 [c.name for c in self.get_columns_in_relation(self.create_relation_from_node(node))]
             )
         except CompilationException:
-            original_sql = node.compiled_sql
+            original_sql = str(node.__getattribute__(COMPILED_ATTR))
             # TODO: account for `TOP` syntax
-            node.compiled_sql = f"select * from ({original_sql}) limit 0"
+            node.__setattr__(COMPILED_ATTR, f"select * from ({original_sql}) limit 0")
             result = self.execute_node(node)
+            node.__setattr__(COMPILED_ATTR, original_sql)
             columns.extend(result.table.column_names)
         return columns
 
@@ -446,7 +449,7 @@ class DbtProject:
             self.execute_macro(
                 "create_table_as",
                 kwargs={
-                    "sql": node.compiled_sql,
+                    "sql": node.__getattribute__(COMPILED_ATTR),
                     "relation": self.create_relation_from_node(node),
                     "temporary": temporary,
                 },
