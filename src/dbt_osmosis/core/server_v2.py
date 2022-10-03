@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import uvicorn
 from fastapi import FastAPI, Request, Header, BackgroundTasks
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -65,9 +66,10 @@ class OsmosisErrorContainer(BaseModel):
 @app.post(
     "/run",
     response_model=Union[OsmosisRunResult, OsmosisErrorContainer],
+    responses={404: {"model": OsmosisErrorContainer}},
     openapi_extra={
         "requestBody": {
-            "content": "text/plain",
+            "content": {"text/plain": {"schema": {"type": "string"}}},
             "required": True,
         },
     },
@@ -77,18 +79,22 @@ async def run_sql(
     limit: int = 100,
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> Union[OsmosisRunResult, OsmosisErrorContainer]:
+    """Execute dbt SQL against a registered project as determined by X-dbt-Project header"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     if x_dbt_project == DEFAULT:
         project = dbt.get_default_project()
     else:
         project = dbt.get_project(x_dbt_project)
     if project is None:
-        return OsmosisErrorContainer(
-            error=OsmosisError(
-                code=OsmosisErrorCode.ProjectNotRegistered,
-                message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
-                data={"registered_projects": dbt.registered_projects()},
-            )
+        return JSONResponse(
+            status_code=404,
+            content=OsmosisErrorContainer(
+                error=OsmosisError(
+                    code=OsmosisErrorCode.ProjectNotRegistered,
+                    message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
+                    data={"registered_projects": dbt.registered_projects()},
+                )
+            ).json(),
         )
 
     # Query Construction
@@ -126,7 +132,7 @@ async def run_sql(
     response_model=Union[OsmosisCompileResult, OsmosisErrorContainer],
     openapi_extra={
         "requestBody": {
-            "content": "text/plain",
+            "content": {"text/plain": {"schema": {"type": "string"}}},
             "required": True,
         },
     },
@@ -135,6 +141,7 @@ async def compile_sql(
     request: Request,
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> Union[OsmosisCompileResult, OsmosisErrorContainer]:
+    """Compile dbt SQL against a registered project as determined by X-dbt-Project header"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     if x_dbt_project == DEFAULT:
         project = dbt.get_default_project()
@@ -178,6 +185,8 @@ async def reset(
     target: Optional[str] = None,
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
+    """Reparse a registered project on disk as determined by X-dbt-Project header writing
+    manifest.json to target directory"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     if x_dbt_project == DEFAULT:
         project = dbt.get_default_project()
@@ -214,7 +223,8 @@ async def reset(
 def _reset(
     runner: DbtProject, reset: bool, old_target: str, new_target: str
 ) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
-    """Use a MUTEX to ensure"""
+    """Use a mutex to ensure only a single reset can be running for any
+    given project at any given time synchronously or asynchronously"""
     target_did_change = old_target != new_target
     try:
         runner.args.target = new_target
@@ -249,6 +259,7 @@ async def register(
     target: Optional[str] = None,
     x_dbt_project: str = Header(),
 ) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
+    """Register a new project. This will parse the project on disk and load it into memory"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     if x_dbt_project in dbt:
         # We ask for X-dbt-Project header here to provide early-exit if we registered the project already
@@ -279,6 +290,7 @@ async def register(
 async def unregister(
     x_dbt_project: str = Header(),
 ) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
+    """Unregister a project. This drop a project from memory"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     project = dbt.get_project(x_dbt_project)
     if project is None:
@@ -297,7 +309,9 @@ async def unregister(
 async def health_check(
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> dict:
-    """TODO: We will likely iterate on this, it is mostly for
+    """Checks if the server is running and accepting requests
+
+    TODO: We will likely iterate on this, it is mostly for
     kubernetes liveness probes"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     if x_dbt_project == DEFAULT:
@@ -337,13 +351,22 @@ def run_server(host="localhost", port=8581):
 
 def test_server():
     """Some quick and dirty functional tests for the server"""
+    import random
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
     client = TestClient(app)
+
+    SIMULATED_CLIENTS = 50
+    PROJECTS = ["jaffle_shop_sqlite", "jaffle_shop_duckdb"]
+
+    e = ThreadPoolExecutor(max_workers=SIMULATED_CLIENTS)
     register_response = client.post(
         "/register",
         params={
             "project_dir": "./demo_sqlite",
             "profiles_dir": "./demo_sqlite",
-            "target": "test",
+            "target": "dev",
         },
         headers={"X-dbt-Project": "jaffle_shop_sqlite"},
     )
@@ -353,7 +376,7 @@ def test_server():
         params={
             "project_dir": "./demo_duckdb",
             "profiles_dir": "./demo_duckdb",
-            "target": "test",
+            "target": "dev",
         },
         headers={"X-dbt-Project": "jaffle_shop_duckdb"},
     )
@@ -369,6 +392,111 @@ def test_server():
         )
         assert response.status_code == 200
         print(response.json())
+
+    STATEMENT = f"""
+    {{% set payment_methods = ['credit_card', 'coupon', 'bank_transfer', 'gift_card'] %}}
+
+    with orders as (
+
+        select * from {{{{ ref('stg_orders') }}}}
+
+    ),
+
+    payments as (
+
+        select * from {{{{ ref('stg_payments') }}}}
+
+    ),
+
+    order_payments as (
+
+        select
+            order_id,
+
+            {{% for payment_method in payment_methods -%}}
+            sum(case when payment_method = '{{{{ payment_method }}}}' then amount else 0 end) as {{{{ payment_method }}}}_amount,
+            {{% endfor -%}}
+
+            sum(amount) as total_amount
+
+        from payments
+
+        group by order_id
+
+    ),
+
+    final as (
+
+        select
+            orders.order_id,
+            orders.customer_id,
+            orders.order_date,
+            orders.status,
+
+            {{% for payment_method in payment_methods -%}}
+
+            order_payments.{{{{ payment_method }}}}_amount,
+
+            {{% endfor -%}}
+
+            order_payments.total_amount as amount
+
+        from orders
+
+
+        left join order_payments
+            on orders.order_id = order_payments.order_id
+
+    )
+
+    select * from final
+    """
+    LOAD_TEST_SIZE = 1000
+
+    print("\n", "=" * 20)
+
+    print("TEST COMPILE")
+    t1 = time.perf_counter()
+    futs = e.map(
+        lambda i: client.post(
+            "/compile",
+            data=f"--> select {{{{ 1 + {i} }}}} \n{STATEMENT}",
+            headers={"X-dbt-Project": random.choice(PROJECTS)},
+        ).ok,
+        range(LOAD_TEST_SIZE),
+    )
+    print("All Successful:", all(futs))
+    t2 = time.perf_counter()
+    print(
+        (t2 - t1) / LOAD_TEST_SIZE,
+        f"seconds per `/compile` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated "
+        f"clients randomly distributed between {len(PROJECTS)} different projects with a sql statement of ~{len(STATEMENT)} chars",
+    )
+
+    time.sleep(2.5)
+    print("\n", "=" * 20)
+    print(STATEMENT[:200], "\n...\n", STATEMENT[-200:])
+    print("\n", "=" * 20)
+    time.sleep(2.5)
+
+    print("TEST RUN")
+    t1 = time.perf_counter()
+    futs = e.map(
+        lambda i: client.post(
+            "/run",
+            data=f"-->> select {{{{ 1 + {i} }}}} \n{STATEMENT}",
+            headers={"X-dbt-Project": random.choice(PROJECTS)},
+        ).ok,
+        range(LOAD_TEST_SIZE),
+    )
+    print("All Successful:", all(futs))
+    t2 = time.perf_counter()
+    print(
+        (t2 - t1) / LOAD_TEST_SIZE,
+        f"seconds per `/run` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated "
+        f"clients randomly distributed between {len(PROJECTS)} different projects with a sql statement of ~{len(STATEMENT)} chars",
+    )
+    e.shutdown(wait=True)
 
 
 if __name__ == "__main__":
