@@ -4,8 +4,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import uvicorn
-from fastapi import FastAPI, Request, Header, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, Header, BackgroundTasks, Response, status
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -44,7 +43,7 @@ class OsmosisUnregisterResult(BaseModel):
     projects: List[str]
 
 
-class OsmosisErrorCode(Enum):
+class OsmosisErrorCode(int, Enum):
     FailedToReachServer = -1
     CompileSqlFailure = 1
     ExecuteSqlFailure = 2
@@ -66,7 +65,7 @@ class OsmosisErrorContainer(BaseModel):
 @app.post(
     "/run",
     response_model=Union[OsmosisRunResult, OsmosisErrorContainer],
-    responses={404: {"model": OsmosisErrorContainer}},
+    responses={status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer}},
     openapi_extra={
         "requestBody": {
             "content": {"text/plain": {"schema": {"type": "string"}}},
@@ -76,6 +75,7 @@ class OsmosisErrorContainer(BaseModel):
 )
 async def run_sql(
     request: Request,
+    response: Response,
     limit: int = 100,
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> Union[OsmosisRunResult, OsmosisErrorContainer]:
@@ -86,15 +86,13 @@ async def run_sql(
     else:
         project = dbt.get_project(x_dbt_project)
     if project is None:
-        return JSONResponse(
-            status_code=404,
-            content=OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.ProjectNotRegistered,
-                    message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
-                    data={"registered_projects": dbt.registered_projects()},
-                )
-            ).json(),
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.ProjectNotRegistered,
+                message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
+                data={"registered_projects": dbt.registered_projects()},
+            )
         )
 
     # Query Construction
@@ -130,6 +128,10 @@ async def run_sql(
 @app.post(
     "/compile",
     response_model=Union[OsmosisCompileResult, OsmosisErrorContainer],
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer},
+    },
     openapi_extra={
         "requestBody": {
             "content": {"text/plain": {"schema": {"type": "string"}}},
@@ -139,6 +141,7 @@ async def run_sql(
 )
 async def compile_sql(
     request: Request,
+    response: Response,
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> Union[OsmosisCompileResult, OsmosisErrorContainer]:
     """Compile dbt SQL against a registered project as determined by X-dbt-Project header"""
@@ -148,6 +151,7 @@ async def compile_sql(
     else:
         project = dbt.get_project(x_dbt_project)
     if project is None:
+        response.status_code = status.HTTP_404_NOT_FOUND
         return OsmosisErrorContainer(
             error=OsmosisError(
                 code=OsmosisErrorCode.ProjectNotRegistered,
@@ -162,6 +166,7 @@ async def compile_sql(
         try:
             compiled_query = project.compile_sql_cached(query)
         except Exception as compile_err:
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
             return OsmosisErrorContainer(
                 error=OsmosisError(
                     code=OsmosisErrorCode.CompileSqlFailure,
@@ -178,9 +183,14 @@ async def compile_sql(
 @app.get(
     "/parse",
     response_model=Union[OsmosisResetResult, OsmosisErrorContainer],
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer},
+    },
 )
 async def reset(
     background_tasks: BackgroundTasks,
+    response: Response,
     reset: bool = False,
     target: Optional[str] = None,
     x_dbt_project: str = Header(default=DEFAULT),
@@ -193,6 +203,7 @@ async def reset(
     else:
         project = dbt.get_project(x_dbt_project)
     if project is None:
+        response.status_code = status.HTTP_404_NOT_FOUND
         return OsmosisErrorContainer(
             error=OsmosisError(
                 code=OsmosisErrorCode.ProjectNotRegistered,
@@ -215,7 +226,10 @@ async def reset(
     else:
         # Sync (target changed or reset is true)
         if project.mutex.acquire(blocking=old_target != new_target):
-            return _reset(project, reset, old_target, new_target)
+            rv = _reset(project, reset, old_target, new_target)
+            if isinstance(rv, OsmosisErrorContainer):
+                response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            return rv
         else:
             return OsmosisResetResult(result="Currently reparsing project")
 
@@ -252,8 +266,12 @@ def _reset(
     return rv
 
 
-@app.post("/register")
+@app.post(
+    "/register",
+    responses={status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer}},
+)
 async def register(
+    response: Response,
     project_dir: str,
     profiles_dir: str,
     target: Optional[str] = None,
@@ -273,6 +291,7 @@ async def register(
             target=target,
         )
     except Exception as init_err:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return OsmosisErrorContainer(
             error=OsmosisError(
                 code=OsmosisErrorCode.ProjectParseFailure,
@@ -286,14 +305,19 @@ async def register(
     )
 
 
-@app.post("/unregister")
+@app.post(
+    "/unregister",
+    responses={status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer}},
+)
 async def unregister(
+    response: Response,
     x_dbt_project: str = Header(),
 ) -> Union[OsmosisResetResult, OsmosisErrorContainer]:
     """Unregister a project. This drop a project from memory"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     project = dbt.get_project(x_dbt_project)
     if project is None:
+        response.status_code = status.HTTP_404_NOT_FOUND
         return OsmosisErrorContainer(
             error=OsmosisError(
                 code=OsmosisErrorCode.ProjectNotRegistered,
