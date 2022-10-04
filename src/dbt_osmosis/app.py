@@ -185,7 +185,7 @@ ctx: DbtProject = state[DBT]
 TARGET_PROFILE = "TARGET_PROFILE"
 """Target profile for dbt to execute against"""
 
-state.setdefault(TARGET_PROFILE, ctx.profile.target_name)
+state.setdefault(TARGET_PROFILE, ctx.config.target_name)
 
 
 def toggle_viewer() -> None:
@@ -253,8 +253,8 @@ st.sidebar.write(
     "Select a profile used for materializing, compiling, and testing models. Can be updated at any time."
 )
 state[TARGET_PROFILE] = st.sidebar.radio(
-    f"Loaded profiles from {ctx.project.profile_name}",
-    [target for target in state[RAW_PROFILES][ctx.profile.profile_name].get("outputs", [])],
+    f"Loaded profiles from {ctx.config.profile_name}",
+    [target for target in state[RAW_PROFILES][ctx.config.profile_name].get("outputs", [])],
     key=PROFILE_SELECTOR,
 )
 st.sidebar.markdown(f"Current Target: **{state[TARGET_PROFILE]}**")
@@ -330,10 +330,10 @@ if compile_sql(state[RAW_SQL]) != state[COMPILED_SQL]:
     st.experimental_rerun()  # This eager re-run speeds up the app
 
 
-if ctx.profile.target_name != state[TARGET_PROFILE]:  # or state[DBT_DO_RELOAD]:
+if ctx.config.target_name != state[TARGET_PROFILE]:  # or state[DBT_DO_RELOAD]:
     print("Reloading dbt project...")
     with notificationContainer:
-        ctx.profile.target_name = state[TARGET_PROFILE]
+        ctx.config.target_name = state[TARGET_PROFILE]
         ctx.config.target_name = state[TARGET_PROFILE]
         with st.spinner("Reloading dbt... ⚙️"):
             inject_dbt(state[TARGET_PROFILE])
