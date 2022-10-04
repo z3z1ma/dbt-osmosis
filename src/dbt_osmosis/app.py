@@ -195,7 +195,7 @@ def toggle_viewer() -> None:
 # @st.cache
 def compile_sql(sql: str) -> str:
     try:
-        return ctx.compile_sql_cached(sql)
+        return ctx.compile_sql(sql).compiled_sql
     except CompilationException:
         return None
 
@@ -209,7 +209,7 @@ def run_query(sql: str, limit: int = 2000) -> None:
     else:
         output = [OrderedDict(zip(result.table.column_names, row)) for row in result.table.rows]
         state[SQL_RESULT] = pd.DataFrame(output)
-        state[SQL_ADAPTER_RESP] = result.generated_at
+        state[SQL_ADAPTER_RESP] = result.adapter_response
         state[SQL_QUERY_STATE] = "success"
 
 

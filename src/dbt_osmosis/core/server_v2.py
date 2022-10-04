@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import re
 from enum import Enum
@@ -8,10 +9,9 @@ from fastapi import FastAPI, Request, Header, BackgroundTasks, Response, status
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from dbt_osmosis.core.osmosis import DbtProject, DbtProjectContainer
+from dbt_osmosis.core.osmosis import DbtProject, DbtProjectContainer, has_jinja
 
 DEFAULT = "__default__"
-JINJA_CH = ["{{", "}}", "{%", "%}"]
 
 
 app = FastAPI()
@@ -96,14 +96,19 @@ async def run_sql(
         )
 
     # Query Construction
-    query = f'\n(\n{{# PAD #}}{(await request.body()).decode("utf-8").strip()}{{# PAD #}}\n)\n'
+    query = (await request.body()).decode("utf-8").strip()
+    if has_jinja(query):
+        query = f"\n(\n{{# PAD #}}{query}{{# PAD #}}\n)\n"
     query_with_limit = (
         # we need to support `TOP` too
         f"select * from ({query}) as osmosis_query limit {limit}"
     )
 
     try:
-        result = project.execute_sql(query_with_limit)
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, project.fn_threaded_conn(project.execute_sql, query_with_limit)
+        )
     except Exception as execution_err:
         return OsmosisErrorContainer(
             error=OsmosisError(
@@ -115,7 +120,7 @@ async def run_sql(
 
     # Re-extract compiled query and return data structure
     compiled_query = re.search(
-        r"select \* from \(([\w\W]+)\) as osmosis_query", result.node.compiled_sql
+        r"select \* from \(([\w\W]+)\) as osmosis_query", result.compiled_sql
     ).groups()[0]
     return OsmosisRunResult(
         rows=[list(row) for row in result.table.rows],
@@ -162,9 +167,9 @@ async def compile_sql(
 
     # Query Compilation
     query: str = (await request.body()).decode("utf-8").strip()
-    if any(CH in query for CH in JINJA_CH):
+    if has_jinja(query):
         try:
-            compiled_query = project.compile_sql_cached(query)
+            compiled_query = project.compile_sql(query).compiled_sql
         except Exception as compile_err:
             response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
             return OsmosisErrorContainer(
@@ -285,7 +290,8 @@ async def register(
         return OsmosisRegisterResult(added=x_dbt_project, projects=dbt.registered_projects())
 
     try:
-        project = dbt.add_project(
+        dbt.add_project(
+            name_override=x_dbt_project,
             project_dir=project_dir,
             profiles_dir=profiles_dir,
             target=target,
@@ -300,9 +306,7 @@ async def register(
             )
         )
 
-    return OsmosisRegisterResult(
-        added=project.config.project_name, projects=dbt.registered_projects()
-    )
+    return OsmosisRegisterResult(added=x_dbt_project, projects=dbt.registered_projects())
 
 
 @app.post(
@@ -382,40 +386,56 @@ def test_server():
     client = TestClient(app)
 
     SIMULATED_CLIENTS = 50
-    PROJECTS = ["jaffle_shop_sqlite", "jaffle_shop_duckdb"]
+    DUCKDB_PROJECTS = [
+        "j_shop_1_duckdb",
+        "j_shop_2_duckdb",
+        "h_niceserver_1_duckdb",
+        "h_niceserver_2_duckdb",
+    ]
+    SQLITE_PROJECTS = [
+        "j_shop_1_sqlite",
+        "j_shop_2_sqlite",
+        "j_shop_3_sqlite",
+        "j_shop_4_sqlite",
+        "h_niceserver_1_sqlite",
+    ]
+    PROJECTS = DUCKDB_PROJECTS + SQLITE_PROJECTS
 
     e = ThreadPoolExecutor(max_workers=SIMULATED_CLIENTS)
-    register_response = client.post(
-        "/register",
-        params={
-            "project_dir": "./demo_sqlite",
-            "profiles_dir": "./demo_sqlite",
-            "target": "dev",
-        },
-        headers={"X-dbt-Project": "jaffle_shop_sqlite"},
-    )
-    print(register_response.json())
-    register_response = client.post(
-        "/register",
-        params={
-            "project_dir": "./demo_duckdb",
-            "profiles_dir": "./demo_duckdb",
-            "target": "dev",
-        },
-        headers={"X-dbt-Project": "jaffle_shop_duckdb"},
-    )
-    print(register_response.json())
-    print("SQLITE")
-    response = client.post("/run", data="SELECT 1", headers={"X-dbt-Project": "jaffle_shop_sqlite"})
-    assert response.status_code == 200
-    print(response.json())
-    print("DUCKDB")
-    for i in range(10):
-        response = client.post(
-            "/run", data="SELECT 1", headers={"X-dbt-Project": "jaffle_shop_duckdb"}
+    for proj in SQLITE_PROJECTS:
+        register_response = client.post(
+            "/register",
+            params={
+                "project_dir": "./demo_sqlite",
+                "profiles_dir": "./demo_sqlite",
+                "target": "dev",
+            },
+            headers={"X-dbt-Project": proj},
         )
-        assert response.status_code == 200
-        print(response.json())
+        print(register_response.json())
+    for proj in DUCKDB_PROJECTS:
+        register_response = client.post(
+            "/register",
+            params={
+                "project_dir": "./demo_duckdb",
+                "profiles_dir": "./demo_duckdb",
+                "target": "dev",
+            },
+            headers={"X-dbt-Project": proj},
+        )
+        print(register_response.json())
+
+    # print("SQLITE")
+    # response = client.post("/run", data="SELECT 1", headers={"X-dbt-Project": "jaffle_shop_sqlite"})
+    # assert response.status_code == 200
+    # print(response.json())
+    # print("DUCKDB")
+    # for i in range(10):
+    #     response = client.post(
+    #         "/run", data="SELECT 1", headers={"X-dbt-Project": "jaffle_shop_duckdb"}
+    #     )
+    #     assert response.status_code == 200
+    #     print(response.json())
 
     STATEMENT = f"""
     {{% set payment_methods = ['credit_card', 'coupon', 'bank_transfer', 'gift_card'] %}}

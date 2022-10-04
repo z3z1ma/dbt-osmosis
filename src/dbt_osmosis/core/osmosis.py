@@ -1,3 +1,5 @@
+import atexit
+import datetime
 import os
 from collections import OrderedDict, UserDict
 from copy import copy
@@ -18,13 +20,20 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    TypeVar,
     Union,
 )
 import threading
 
 import agate
 from dbt.adapters.base import BaseRelation
-from dbt.adapters.factory import Adapter, get_adapter, register_adapter, reset_adapters, FACTORY
+from dbt.adapters.factory import (
+    Adapter,
+    get_adapter,
+    register_adapter,
+    reset_adapters,
+    cleanup_connections,
+)
 from dbt.clients import jinja  # monkey-patched for perf
 from dbt.config.runtime import RuntimeConfig
 from dbt.contracts.connection import AdapterResponse
@@ -56,14 +65,22 @@ from dbt_osmosis.core.exceptions import (
 )
 from dbt_osmosis.core.log_controller import logger
 
-__all__ = ["DbtProject", "DbtYamlManager"]
+__all__ = ["DbtProject", "DbtYamlManager", "ConfigInterface", "has_jinja"]
 
 CACHE = {}
 CACHE_VERSION = 1
 MANIFEST_ARTIFACT = "manifest.json"
 SQL_CACHE_SIZE = 1024
 DBT_MAJOR_VER, DBT_MINOR_VER, DBT_PATCH_VER = (int(v) for v in dbt_version.split("."))
+RAW_ATTR = "raw_code" if DBT_MAJOR_VER >= 1 and DBT_MINOR_VER >= 3 else "raw_sql"
 COMPILED_ATTR = "compiled_code" if DBT_MAJOR_VER >= 1 and DBT_MINOR_VER >= 3 else "compiled_sql"
+JINJA_CH = ["{{", "}}", "{%", "%}", "{#", "#}"]
+T = TypeVar("T")
+
+
+def has_jinja(query: str) -> bool:
+    """Utility to check for jinja prior to certain compilation procedures"""
+    return any(sym in query for sym in JINJA_CH)
 
 
 def memoize_get_rendered(function):
@@ -149,6 +166,27 @@ class ManifestProxy(UserDict):
     setdefault = _readonly
 
 
+class DbtAdapterExecutionResult:
+    """Interface for execution results, this keeps us 1 layer removed from dbt interfaces which may change"""
+
+    def __init__(
+        self, adapter_response: AdapterResponse, table: agate.Table, raw_sql: str, compiled_sql: str
+    ) -> None:
+        self.adapter_response = adapter_response
+        self.table = table
+        self.raw_sql = raw_sql
+        self.compiled_sql = compiled_sql
+
+
+class DbtAdapterCompilationResult:
+    """Interface for compilation results, this keeps us 1 layer removed from dbt interfaces which may change"""
+
+    def __init__(self, raw_sql: str, compiled_sql: str, node: ManifestNode) -> None:
+        self.raw_sql = raw_sql
+        self.compiled_sql = compiled_sql
+        self.node = node
+
+
 class DbtProject:
     """Container for a dbt project. The dbt attribute is the primary interface for
     dbt-core. The adapter attribute is the primary interface for the dbt adapter"""
@@ -179,12 +217,14 @@ class DbtProject:
         # Tracks internal state version
         self._version: int = 1
         self.mutex = threading.Lock()
+        atexit.register(cleanup_connections)
 
     def parse_project(self) -> None:
         """Parses project on disk from `ConfigInterface` in args attribute, verifies connection
         to adapters database, mutates config, adapter, and dbt attributes"""
         set_from_args(self.args, self.args)
         self.config = RuntimeConfig.from_args(self.args)
+        reset_adapters()
         register_adapter(self.config)
         self.adapter = self._verify_connection(get_adapter(self.config))
         self.dbt = ManifestLoader.get_full_manifest(self.config)
@@ -242,17 +282,29 @@ class DbtProject:
             )
         return self._sql_compiler
 
-    @staticmethod
-    def _verify_connection(adapter: Adapter) -> Adapter:
+    def _verify_connection(self, adapter: Adapter) -> Adapter:
         """Verification for adapter + profile. Used as a passthrough,
-        ie: `self.adapter = _verify_connection(get_adapter(...))`"""
+        ie: `self.adapter = _verify_connection(get_adapter(...))`
+        This also seeds the master connection"""
         try:
-            with adapter.connection_named("debug"):
-                adapter.debug_query()
+            adapter.connections.set_connection_name()
+            adapter.debug_query()
         except Exception as query_exc:
             raise RuntimeException("Could not connect to Database") from query_exc
         else:
             return adapter
+
+    def fn_threaded_conn(self, fn: Callable[..., T], *args, **kwargs) -> Callable[..., T]:
+        """Used for jobs which are intended to be submitted to a thread pool,
+        the 'master' thread should always have an available connection for the duration of
+        typical program runtime by virtue of the `_verify_connection` method.
+        Threads however require singleton seeding"""
+
+        def _with_conn() -> T:
+            self.adapter.connections.set_connection_name()
+            return fn(*args, **kwargs)
+
+        return _with_conn
 
     @property
     def project_name(self) -> str:
@@ -276,12 +328,9 @@ class DbtProject:
             self.clear_caches()
         _config_pointer = copy(self.config)
         try:
-            self.adapter.cleanup_all()
-            FACTORY.adapters.pop(self.config.credentials.type, None)
             self.parse_project()
         except Exception as parse_error:
             self.config = _config_pointer
-            register_adapter(self.config)
             raise parse_error
         self.write_manifest_artifact()
 
@@ -298,7 +347,7 @@ class DbtProject:
         self.get_source_node.cache_clear()
         self.get_macro_function.cache_clear()
         self.get_columns.cache_clear()
-        self.compile_sql_cached.cache_clear()
+        self.compile_sql.cache_clear()
         self._sql_parser = None
         self._macro_parser = None
         self._sql_compiler = None
@@ -347,46 +396,39 @@ class DbtProject:
         """Wraps adapter.execute. Execute SQL against database"""
         return self.adapter.execute(sql, auto_begin, fetch)
 
-    def safe_adapter_execute(
-        self, sql: str, auto_begin: bool = False, fetch: bool = False
-    ) -> Tuple[AdapterResponse, agate.Table]:
-        """Wraps adapter.execute and ensures connection is open. Execute SQL against database"""
-        with self.adapter.connection_named("dbt-osmosis"):
-            return self.adapter_execute(sql, auto_begin, fetch)
-
     def execute_macro(
         self,
         macro: str,
         kwargs: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Wraps adapter execute_macro. Execute a macro like a function."""
-        with self.adapter.connection_named("dbt-osmosis"):
-            return self.get_macro_function(macro)(kwargs=kwargs)
+        return self.get_macro_function(macro)(kwargs=kwargs)
 
-    def execute_sql(self, sql: str) -> RemoteExecutionResult:
-        """Creates a node with a `dbt.parser.sql` class. Execute dbt SQL statement against database"""
-        self.sql_runner.node = self.get_server_node(sql)
-        return self.sql_runner.safe_run(self.dbt)
+    def execute_sql(self, sql: str) -> DbtAdapterExecutionResult:
+        """Execute dbt SQL statement against database"""
+        compiled_sql = self.compile_sql(sql).compiled_sql if has_jinja(sql) else sql
+        return DbtAdapterExecutionResult(
+            *self.adapter_execute(compiled_sql, fetch=True), sql, compiled_sql
+        )
 
-    def compile_sql(self, sql: str) -> RemoteCompileResult:
-        """Creates a node with a `dbt.parser.sql` class. Compile generated node."""
-        self.sql_compiler.node = self.get_server_node(sql)
-        return self.sql_compiler.safe_run(self.dbt)
-
-    def execute_node(self, node: ManifestNode) -> RemoteExecutionResult:
-        """Creates a node with a `dbt.parser.sql` class. Execute dbt SQL statement against database"""
-        self.sql_runner.node = node
-        return self.sql_runner.safe_run(self.dbt)
-
-    def compile_node(self, node: ManifestNode) -> RemoteCompileResult:
-        """Compiles node."""
-        self.sql_compiler.node = node
-        return self.sql_compiler.safe_run(self.dbt)
+    def execute_node(self, node: ManifestNode) -> DbtAdapterExecutionResult:
+        """Execute dbt SQL statement against database from a ManifestNode"""
+        return self.execute_sql(getattr(node, COMPILED_ATTR, node.__getattribute__(RAW_ATTR)))
 
     @lru_cache(maxsize=SQL_CACHE_SIZE)
-    def compile_sql_cached(self, sql: str) -> str:
-        """Wrapper for `compile_sql` which leverages lru_cache"""
-        return self.compile_sql(sql).__getattribute__(COMPILED_ATTR)
+    def compile_sql(self, sql: str) -> DbtAdapterCompilationResult:
+        """Creates a node with a `dbt.parser.sql` class. Compile generated node."""
+        return self.compile_node(self.get_server_node(sql))
+
+    def compile_node(self, node: ManifestNode) -> DbtAdapterCompilationResult:
+        """Compiles existing node."""
+        self.sql_compiler.node = node
+        compiled_node = self.sql_compiler.compile(self.dbt)
+        return DbtAdapterCompilationResult(
+            compiled_node.__getattribute__(RAW_ATTR),
+            compiled_node.__getattribute__(COMPILED_ATTR),
+            compiled_node,
+        )
 
     def _clear_node(self, name="name"):
         """Removes the statically named node created by `execute_sql` and `compile_sql` in `dbt.lib`"""
@@ -444,7 +486,7 @@ class DbtProject:
         self, node: ManifestNode, temporary: bool = True
     ) -> Tuple[AdapterResponse, None]:
         """Materialize a table in the database"""
-        return self.safe_adapter_execute(
+        return self.adapter_execute(
             # Returns CTAS string so send to adapter.execute
             self.execute_macro(
                 "create_table_as",
@@ -481,12 +523,13 @@ class DbtProjectContainer:
         profiles_dir: Optional[str] = None,
         project_dir: Optional[str] = None,
         threads: Optional[int] = 1,
+        name_override: Optional[str] = "",
     ) -> DbtProject:
         """Add a DbtProject with arguments"""
         project = DbtProject(target, profiles_dir, project_dir, threads)
         if self._default_project is None:
             self._default_project = project.config.project_name
-        self._projects[project.config.project_name] = project
+        self._projects[name_override or project.config.project_name] = project
         return project
 
     def add_parsed_project(self, project: DbtProject) -> DbtProject:

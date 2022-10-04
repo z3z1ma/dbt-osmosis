@@ -44,10 +44,9 @@ from bottle import JSONPlugin, install, request, response, route, run
 from pydantic import BaseModel
 
 from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.core.osmosis import DbtProject
+from dbt_osmosis.core.osmosis import DbtProject, has_jinja
 
 DEFAULT = "__default__"
-JINJA_CH = ["{{", "}}", "{%", "%}"]
 MUTEX = threading.Lock()
 
 
@@ -162,7 +161,7 @@ def run_sql(runners: Dict[str, DbtProject]) -> Union[OsmosisRunResult, OsmosisEr
 
     # Re-extract compiled query and return data structure
     compiled_query = re.search(
-        r"select \* from \(([\w\W]+)\) as osmosis_query", result.node.compiled_sql
+        r"select \* from \(([\w\W]+)\) as osmosis_query", result.compiled_sql
     ).groups()[0]
     return OsmosisRunResult(
         rows=[list(row) for row in result.table.rows],
@@ -192,9 +191,9 @@ def compile_sql(
 
     # Query Compilation
     query: str = request.body.read().decode("utf-8").strip()
-    if any(CH in query for CH in JINJA_CH):
+    if has_jinja(query):
         try:
-            compiled_query = project_runner.compile_sql_cached(query)
+            compiled_query = project_runner.compile_sql(query).compiled_sql
         except Exception as compile_err:
             return OsmosisErrorContainer(
                 error=OsmosisError(

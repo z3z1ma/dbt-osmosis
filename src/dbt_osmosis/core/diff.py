@@ -109,7 +109,7 @@ def diff_tables(
 ) -> agate.Table:
 
     logger().info("Running diff")
-    _, table = runner.safe_adapter_execute(
+    _, table = runner.adapter_execute(
         runner.execute_macro(
             "_dbt_osmosis_compare_relations_agg" if aggregate else "_dbt_osmosis_compare_relations",
             kwargs={
@@ -129,7 +129,7 @@ def diff_queries(
 ) -> agate.Table:
 
     logger().info("Running diff")
-    _, table = runner.safe_adapter_execute(
+    _, table = runner.adapter_execute(
         runner.execute_macro(
             "_dbt_osmosis_compare_queries_agg" if aggregate else "_dbt_osmosis_compare_queries",
             kwargs={
