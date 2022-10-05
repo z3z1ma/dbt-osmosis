@@ -89,3 +89,8 @@ include_trailing_comma = true
 [tool.poetry.scripts]
 dbt-osmosis = 'dbt_osmosis.main:cli'
 dbt-osmosis-proxy = 'dbt_osmosis.server:cli'
+
+[tool.poetry.plugins]
+
+[tool.poetry.plugins."sqlfluff"]
+"dbt_templater" = "dbt_osmosis.dbt_templater"

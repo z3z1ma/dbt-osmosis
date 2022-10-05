@@ -12,13 +12,13 @@ import pytest
 
 from sqlfluff.core import FluffConfig, Lexer, Linter
 from sqlfluff.core.errors import SQLFluffSkipFile
-from sqlfluff_templater_dbt.templater import DBT_VERSION_TUPLE
-from test.fixtures.dbt.templater import (  # noqa: F401
+from dbt_osmosis.dbt_templater.templater import DBT_VERSION_TUPLE
+from tests.sqlfluff_templater.fixtures.dbt.templater import (  # noqa: F401
     DBT_FLUFF_CONFIG,
     dbt_templater,
     project_dir,
 )
-from sqlfluff_templater_dbt.templater import DbtFailedToConnectException
+from dbt_osmosis.dbt_templater.templater import DbtFailedToConnectException
 
 
 def test__templater_dbt_missing(dbt_templater, project_dir):  # noqa: F811
