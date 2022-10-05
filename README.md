@@ -11,24 +11,68 @@
 
 ## Primary Objectives
 
-Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this through providing 3 core features:
+Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this through providing 4 core features:
 
-1. Automated schema YAML management (minimize developers repetitive tasks)
+1. Automated schema YAML management.
+    
+    1a. `dbt-osmosis run --project-dir ... --profiles-dir ...`
 
-2. Workbench for dbt Jinja SQL (maximize developers dbt SQL authoring efficiency + learning + testing)
+    > Automatically generate documentation based on upstream documented columns, organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules, inject columns from data warehouse schema if missing in yaml and remove columns no longer present in data warehouse (compose -> document)
 
-3. Diffs for data model outputs to model outputs across git revisions (optimize developers observability during iteration)
+    1b. `dbt-osmosis compose --project-dir ... --profiles-dir ...`
 
+    > Organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules
 
-When combined with an IDE such as VS Code, developers can work with renewed efficiency, enjoyment, and effectiveness throughout their days. 
+    1c. `dbt-osmosis document --project-dir ... --profiles-dir ...`
 
+    > Automatically generate documentation based on upstream documented columns
 
-[Workbench Reference](#Workbench)
+2. A highly performant dbt server which integrates with tools such as dbt-power-user for VS Code to enable interactive querying + realtime compilation from your IDE
 
-[CLI Reference](#CLI)
+    2a. `dbt-osmosis server --project-dir ... --profiles-dir ...`
+
+    > Spins up a FastAPI server. Can be passed --register-project to automatically register your local project. API documentation is available at /docs endpoint where interestingly enough, you can query your data warehouse or compile SQL via the Try It function
+
+3. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded. 
+
+    3a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
+
+    > Spins up a streamlit app. This workbench offers similar functionality to the osmosis server + power-user combo without a reliance on VS code. Realtime compilation, query execution, pandas profiling all via copying and pasting whatever you are working on into the workbenchat your leisure. Spin it up and down as needed.
+
+4. Diffs for data model outputs to model outputs across git revisions 
+
+    4a. `dbt-osmosis diff -m some_model  --project-dir ... --profiles-dir ...`
+
+    > Run diffs on models dynamically. This pulls the state of the model before changes from your git history, injects it as a node to the dbt manifest, compiles the old and modified nodes, and diffs their query results optionally writing nodes to temp tables before running the diff query for warehouses with performance or query complexity limits (👀 bigquery)
+    
+## References
+
+[Server Reference](#server)
+
+[Workbench Reference](#workbench)
+
+[YAML Reference](#yaml-management)
+
+[Python API Reference](#python-api)
 
 ____
 
+## Server
+
+```sh
+# Command to start server
+dbt-osmosis server --host ... --port ...
+```
+
+The server is self documenting via open API. From the open API docs you can compile SQL or run it to get an idea of the requests and responses. Furthermore the server supports multiple dbt projects out of the box. This means the server can `/register` 10s to 100s of projects and selectively compile or run against a specific one via an `X-dbt-Project` header. It is stress tested at high loads and volumes, higher than its ever likely to be put through as primarily a dev accelerator but it could be used in a production application too and is the focus of much of the development in the repo. It is Apache 2.0 licensed which differentiates it from dbt-core server. Furthermore it is more focused on SQL than "models" as it is not a replacement for the CLI nor does it aspire to be. Instead it is more of a database adapter/interface of sorts which lets it be really good at one thing.
+
+![server-docs](/screenshots/osmosis_server_docs.png)
+
+Starting the server is easy. Its most interesting and impactful integration is through [dbt-power-user](https://github.com/innoverio/vscode-dbt-power-user) which in the near term will hide away the details of starting or managing the server and simply provide a high quality developer experience out-of-the-box.
+
+![server-start](/screenshots/osmosis_server_startup.png)
+
+____
 
 ## Workbench
 
@@ -88,9 +132,9 @@ Some useful links and RSS feeds at the bottom. 🤓
 ____
 
 
-## CLI
+## YAML Management
 
-dbt-osmosis is ready to use as-is. To get familiar, you should run it on a fresh branch and ensure everything is backed in source control. Enjoy!
+dbt-osmosis yaml management is extremely powerful and ready to use as-is. To get familiar, you should run it on a fresh branch and ensure everything is backed in source control. You'll wonder why its not in dbt-core. Enjoy!
 
 You should set a base config in your dbt_project.yml and ensure any models within the scope of your execution plan will inherit a config/preference. Example below.
 
@@ -118,49 +162,13 @@ models:
 
         marts:
 
-            # Underscore prefixed model name as recommended in dbt best practices
+            # Underscore prefixed model name as recommended in dbt best practices for everything in "marts" folder
             +dbt-osmosis: "_model.yml"
 
             +tags: 
                 - "mart"
 
             supply_chain: 
-```
-
-To use dbt-osmosis, simply run the following:
-
-```bash
-# Install
-pip install dbt-osmosis
-# Alternatively
-pipx install dbt-osmosis dbt-<adapter>
-
-
-# This command executes all tasks in preferred order and is usually all you need
-
-dbt-osmosis run --project-dir /path/to/dbt/project --target prod
-
-
-# Inherit documentation in staging/salesforce/ & sync 
-# schema yaml columns with database columns
-
-dbt-osmosis document --project-dir /path/to/dbt/project --target prod --fqn staging.salesforce
-
-
-# Reorganize marts/operations/ & inject undocumented models 
-# into schema files or create new schema files as needed
-
-dbt-osmosis compose --project-dir /path/to/dbt/project --target prod --fqn marts.operations
-
-
-# Open the dbt-osmosis workbench
-
-dbt-osmosis workbench
-
-
-# Diff a model from git HEAD to revision on disk
-
-dbt-osmosis diff -m int_account_events --pk 'concat(account_id, date_day)' --output bar
 ```
 
 ## Features
@@ -250,40 +258,36 @@ In a full run [ `dbt-osmosis run` ] we will:
 
 ## Python API
 
-Though each core function is useful enough to stand as its own package, dbt osmosis sits as a unified interface primarily because all of these functions are built off of the same core API structures in the dbt osmosis package. dbt osmosis provides one of the cleanest interfaces to interacting with dbt if you aren't keen to play with dbt on-the-rails (like me) or you want to extend what osmosis can do.
+Though each core function is useful enough to stand as its own package, dbt osmosis sits as a unified interface primarily because all of these functions are built off of the same core API structures in the dbt osmosis package. dbt osmosis provides one of the cleanest interfaces to interacting with dbt if you aren't keen to play with dbt on-the-rails (like me) or you want to extend what osmosis can do, see below examples for how to interface with it from Python.
 
 ```python
 # Programmatic Examples:
-from dbt_osmosis.core import DbtOsmosis
+from dbt_osmosis.core import DbtProject, DbtYamlManager
 from dbt_osmosis.diff import diff_and_print_to_console
 
-runner = DbtOsmosis(
+# Some dbt osmosis YAML management 📜
+dbt_yaml_manager = DbtYamlManager(
     project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
-    dry_run=True,
     target="prod",
 )
 
-
-# Some dbt osmosis YAML management 📜
-
 # review the generated plan
-runner.pretty_print_restructure_plan(runner.draft_project_structure_update_plan())
+dbt_yaml_manager.pretty_print_restructure_plan(dbt_yaml_manager.draft_project_structure_update_plan())
 
 # organize your dbt project based on declarative config
-runner.commit_project_restructure_to_disk()
+dbt_yaml_manager.commit_project_restructure_to_disk()
 
 # propagate column level documentation down the DAG
-runner.propagate_documentation_downstream()
+dbt_yaml_manager.propagate_documentation_downstream()
 
-
-# Console utilities 📺
-
-# leverage git to diff the OUTPUT of a model from git HEAD 
-# to your revision on disk to safely audit changes as you work
-diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  
 
 
 # Massively simplified dbt interfaces you likely won't find elsewhere 👏
+
+runner = DbtProject(
+    project_dir="/Users/alexanderbutler/Documents/harness/analytics-pipelines/projects/meltano/harness/transform",
+    target="prod",
+)
 
 # execute macros through a simple interface without subprocesses
 runner.execute_macro(
@@ -295,19 +299,18 @@ runner.execute_macro(
 runner.compile_sql("select * from {{ ref('stg_salesforce__users') }}")
 
 # run SQL too
-adapter_resp, table = runner.execute_sql(
-    "select * from {{ ref('stg_salesforce__users') }}", 
-    compile=True, 
-    fetch=True,
-)
+result = runner.execute_sql("select * from {{ ref('stg_salesforce__users') }}")
+result.table.print_csv()
+
+# leverage git to diff the OUTPUT of a model from git HEAD 
+# to your revision on disk to safely audit changes as you work
+diff_and_print_to_console("fct_sales", pk="order_id", runner=runner)  
 ```
 
 ## Roadmap
 
 These features are being actively developed and will be merged into the next few minor releases
 
-1. Extend git diff functionality to pin revisions in the warehouse  
-2. Complete build out of `sources` tools.
-3. Add `--min-cov` flag to audit task and to workbench
-4. Add interactive documentation flag that engages user to documents ONLY progenitors and novel columns for a subset of models (the most optimized path to full documentation coverage feasible)
-5. Add `impact` command that allows us to leverage our resolved column level progenitors for ad hoc impact analysis
+1. Complete high performance dbt server solution for running & compiling dbt SQL statements
+2. Extend git diff functionality to pin revisions of models in dedicated schema(s) in the warehouse  
+3. Complete build out of `sources` tools
