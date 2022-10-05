@@ -79,24 +79,6 @@ class OsmosisErrorContainer(BaseModel):
     error: OsmosisError
 
 
-@contextmanager
-def set_directory(path: Path):
-    """Sets the cwd within the context
-
-    Args:
-        path (Path): The path to the cwd
-
-    Yields:
-        None
-    """
-
-    origin = Path().absolute()
-    try:
-        os.chdir(path)
-        yield
-    finally:
-        os.chdir(origin)
-
 @app.post(
     "/run",
     response_model=Union[OsmosisRunResult, OsmosisErrorContainer],
@@ -230,9 +212,10 @@ async def compile_sql(
 )
 async def lint_sql(
     response: Response,
-    query: str,
+    sql: Optional[str] = None,
+    sql_path: Optional[str] = None,
     # TODO: Should config_path be part of /register instead?
-    config_path: Optional[str],
+    extra_config_path: Optional[str] = None,
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> Union[OsmosisLintResult, OsmosisErrorContainer]:
     """Lint dbt SQL against a registered project as determined by X-dbt-Project header"""
@@ -253,10 +236,10 @@ async def lint_sql(
 
     # Query Linting
     try:
-        with set_directory(Path("/Users/bhart/dev/dbt-osmosis/tests/sqlfluff_templater/fixtures/dbt/dbt_project")):
-            result = lint_command(
-                sql=Path("models/my_new_project/issue_1608.sql"),
-            )["violations"]
+        result = lint_command(
+            sql=Path(sql_path) if sql_path else sql,
+                     extra_config_path=extra_config_path,
+        )["violations"]
     except Exception as lint_err:
         logging.exception("Linting failed")
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR

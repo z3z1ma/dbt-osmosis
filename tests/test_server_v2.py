@@ -9,7 +9,7 @@ from tests.sqlfluff_templater.fixtures.dbt.templater import profiles_dir, projec
 client = TestClient(app)
 
 
-def test_lint(profiles_dir, project_dir, sqlfluff_config_path):
+def test_lint(profiles_dir, project_dir, sqlfluff_config_path, caplog):
     response = client.post(
             "/register",
             params={
@@ -27,10 +27,12 @@ def test_lint(profiles_dir, project_dir, sqlfluff_config_path):
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
         params={
-            #"query": sql_path.read_text(),
-            #"query": "SELECT DISTINCT(a) FROM b",
-            "query": "SELEC",
-            "config_path": sqlfluff_config_path,
+            # This doesn't work. The templater fails when it can't find the
+            # "file" in the dbt project. Revisit this after switching to the
+            # osmosis compile function
+            #"sql": sql_path.read_text(),
+            "sql_path": str(sql_path),
+            "extra_config_path": sqlfluff_config_path,
         }
     )
     assert response.status_code == 200
@@ -45,5 +47,3 @@ def test_lint(profiles_dir, project_dir, sqlfluff_config_path):
                             'clause.',
              'line_no': 7,
              'line_pos': 7}]}
-
-

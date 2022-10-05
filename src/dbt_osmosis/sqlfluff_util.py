@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import closing
 from pathlib import Path
@@ -36,3 +37,22 @@ def lint_command(
     records = result.as_records()
     assert len(records) == 1
     return records[0]
+
+
+def test_lint_command():
+    """Quick and dirty functional test for lint_command().
+
+    Handy for seeing SQLFluff logs if something goes wrong. The FastAPI
+    tests hide those.
+    """
+    logging.basicConfig(level=logging.DEBUG)
+    sql_path = Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project/models/my_new_project/issue_1608.sql")
+    lint_command(
+        sql=sql_path,
+        #sql=sql_path.read_text(),
+        extra_config_path="tests/sqlfluff_templater/fixtures/dbt/dbt_project/.sqlfluff",
+    )
+
+
+if __name__ == "__main__":
+    test_lint_command()
