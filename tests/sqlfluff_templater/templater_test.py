@@ -109,7 +109,7 @@ def _run_templater_and_verify_result(dbt_templater, project_dir, fname):  # noqa
         config=FluffConfig(configs=DBT_FLUFF_CONFIG),
     )
     template_output_folder_path = Path(
-        "plugins/sqlfluff-templater-dbt/test/fixtures/dbt/templated_output/"
+        "tests/sqlfluff_templater/fixtures/dbt/templated_output/"
     )
     fixture_path = _get_fixture_path(template_output_folder_path, fname)
     assert str(templated_file) == fixture_path.read_text()
@@ -359,7 +359,7 @@ def test__templater_dbt_handle_exceptions(
     """Test that exceptions during compilation are returned as violation."""
     from dbt.adapters.factory import get_adapter
 
-    src_fpath = "plugins/sqlfluff-templater-dbt/test/fixtures/dbt/error_models/" + fname
+    src_fpath = "tests/sqlfluff_templater/fixtures/dbt/error_models/" + fname
     target_fpath = os.path.abspath(
         os.path.join(project_dir, "models/my_new_project/", fname)
     )
@@ -393,7 +393,7 @@ def test__templater_dbt_handle_database_connection_failure(
     set_relations_cache.side_effect = DbtFailedToConnectException("dummy error")
 
     src_fpath = (
-        "plugins/sqlfluff-templater-dbt/test/fixtures/dbt/error_models"
+        "tests/sqlfluff_templater/fixtures/dbt/error_models"
         "/exception_connect_database.sql"
     )
     target_fpath = os.path.abspath(
@@ -404,7 +404,7 @@ def test__templater_dbt_handle_database_connection_failure(
     dbt_fluff_config_fail = DBT_FLUFF_CONFIG.copy()
     dbt_fluff_config_fail["templater"]["dbt"][
         "profiles_dir"
-    ] = "plugins/sqlfluff-templater-dbt/test/fixtures/dbt/profiles_yml_fail"
+    ] = "tests/sqlfluff_templater/fixtures/dbt/profiles_yml_fail"
     # We move the file that throws an error in and out of the project directory
     # as dbt throws an error if a node fails to parse while computing the DAG
     os.rename(src_fpath, target_fpath)

@@ -5,7 +5,7 @@ import os
 from sqlfluff.core.config import FluffConfig
 from sqlfluff.utils.testing.rules import assert_rule_raises_violations_in_file
 
-from test.fixtures.dbt.templater import (  # noqa
+from tests.sqlfluff_templater.fixtures.dbt.templater import (  # noqa
     DBT_FLUFF_CONFIG,
     project_dir,
     dbt_templater,

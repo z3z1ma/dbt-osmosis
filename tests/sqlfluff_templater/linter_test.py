@@ -6,7 +6,7 @@ import os.path
 import pytest
 
 from sqlfluff.core import Linter, FluffConfig
-from test.fixtures.dbt.templater import DBT_FLUFF_CONFIG, project_dir  # noqa: F401
+from tests.sqlfluff_templater.fixtures.dbt.templater import DBT_FLUFF_CONFIG, project_dir  # noqa: F401
 
 
 @pytest.mark.parametrize(
