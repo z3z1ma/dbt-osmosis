@@ -23,6 +23,12 @@ DBT_FLUFF_CONFIG = {
 
 
 @pytest.fixture()
+def profiles_dir():
+    """Returns the dbt profile directory."""
+    return DBT_FLUFF_CONFIG["templater"]["dbt"]["profiles_dir"]
+
+
+@pytest.fixture()
 def project_dir():
     """Returns the dbt project directory."""
     return DBT_FLUFF_CONFIG["templater"]["dbt"]["project_dir"]

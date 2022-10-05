@@ -185,6 +185,62 @@ async def compile_sql(
     return OsmosisCompileResult(result=compiled_query)
 
 
+@app.post(
+    "/lint",
+    response_model=Union[OsmosisCompileResult, OsmosisErrorContainer],
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer},
+    },
+    openapi_extra={
+        "requestBody": {
+            "content": {"text/plain": {"schema": {"type": "string"}}},
+            "required": True,
+        },
+    },
+)
+async def lint_sql(
+    request: Request,
+    response: Response,
+    x_dbt_project: str = Header(default=DEFAULT),
+) -> Union[OsmosisCompileResult, OsmosisErrorContainer]:
+    """Lint dbt SQL against a registered project as determined by X-dbt-Project header"""
+    dbt: DbtProjectContainer = app.state.dbt_project_container
+    #import pdb; pdb.set_trace()
+    if x_dbt_project == DEFAULT:
+        project = dbt.get_default_project()
+    else:
+        project = dbt.get_project(x_dbt_project)
+    if project is None:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.ProjectNotRegistered,
+                message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
+                data={"registered_projects": dbt.registered_projects()},
+            )
+        )
+
+    # Query Compilation
+    query: str = (await request.body()).decode("utf-8").strip()
+    if has_jinja(query):
+        try:
+            compiled_query = project.compile_sql(query).compiled_sql
+        except Exception as compile_err:
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            return OsmosisErrorContainer(
+                error=OsmosisError(
+                    code=OsmosisErrorCode.CompileSqlFailure,
+                    message=str(compile_err),
+                    data=compile_err.__dict__,
+                )
+            )
+    else:
+        compiled_query = query
+
+    return OsmosisCompileResult(result=compiled_query)
+
+
 @app.get(
     "/parse",
     response_model=Union[OsmosisResetResult, OsmosisErrorContainer],
