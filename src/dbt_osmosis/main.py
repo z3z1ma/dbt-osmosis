@@ -248,8 +248,18 @@ def document(
     help="The port to serve the server on",
     default=8581,
 )
+@click.option(
+    "--register-project",
+    is_flag=True,
+    help="Try to register a dbt project on init as specified by --project-dir, --profiles-dir or their defaults if not passed explicitly",
+)
 def server(
-    project_dir: str, profiles_dir: str, target: str, host: str = "localhost", port: int = 8581
+    project_dir: str,
+    profiles_dir: str,
+    target: str,
+    host: str = "localhost",
+    port: int = 8581,
+    register_project: bool = False,
 ):
     """Runs a lightweight server compatible with dbt-power-user and convenient for interactively
     running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
@@ -289,7 +299,7 @@ def server(
         )
         logger().info(res.json())
 
-    if project_dir and profiles_dir:
+    if register_project and project_dir and profiles_dir:
         register_handler = threading.Thread(target=_register_project)
         register_handler.start()
 
