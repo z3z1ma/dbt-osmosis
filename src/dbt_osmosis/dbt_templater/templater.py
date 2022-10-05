@@ -37,29 +37,12 @@ DBT_VERSION = get_installed_version()
 DBT_VERSION_STRING = DBT_VERSION.to_version_string()
 DBT_VERSION_TUPLE = (int(DBT_VERSION.major), int(DBT_VERSION.minor))
 
-if DBT_VERSION_TUPLE >= (1, 0):
-    from dbt.flags import PROFILES_DIR
-else:
-    from dbt.config.profile import PROFILES_DIR
-
 if DBT_VERSION_TUPLE >= (1, 3):
     COMPILED_SQL_ATTRIBUTE = "compiled_code"
     RAW_SQL_ATTRIBUTE = "raw_code"
 else:
     COMPILED_SQL_ATTRIBUTE = "compiled_sql"
     RAW_SQL_ATTRIBUTE = "raw_sql"
-
-
-@dataclass
-class DbtConfigArgs:
-    """Arguments to load dbt runtime config."""
-
-    project_dir: Optional[str] = None
-    profiles_dir: Optional[str] = None
-    profile: Optional[str] = None
-    target: Optional[str] = None
-    single_threaded: bool = False
-    vars: str = ""
 
 
 class DbtTemplater(JinjaTemplater):
@@ -72,7 +55,6 @@ class DbtTemplater(JinjaTemplater):
         self.sqlfluff_config = None
         self.formatter = None
         self.project_dir = None
-        self.profiles_dir = None
         self.working_dir = os.getcwd()
         self._sequential_fails = 0
         self.connection_acquired = False
@@ -109,32 +91,6 @@ class DbtTemplater(JinjaTemplater):
         """Returns the dbt manifest."""
         from dbt_osmosis.core.server_v2 import app
         return app.state.dbt_project_container["dbt_project"].dbt
-
-    def _get_profiles_dir(self):
-        """Get the dbt profiles directory from the configuration.
-
-        The default is `~/.dbt` in 0.17 but we use the
-        PROFILES_DIR variable from the dbt library to
-        support a change of default in the future, as well
-        as to support the same overwriting mechanism as
-        dbt (currently an environment variable).
-        """
-        dbt_profiles_dir = os.path.abspath(
-            os.path.expanduser(
-                self.sqlfluff_config.get_section(
-                    (self.templater_selector, self.name, "profiles_dir")
-                )
-                or PROFILES_DIR
-            )
-        )
-
-        if not os.path.exists(dbt_profiles_dir):
-            templater_logger.error(
-                f"dbt_profiles_dir: {dbt_profiles_dir} could not be accessed. "
-                "Check it exists."
-            )
-
-        return dbt_profiles_dir
 
     def _get_project_dir(self):
         """Get the dbt project directory from the configuration.
@@ -190,8 +146,6 @@ class DbtTemplater(JinjaTemplater):
         self.sqlfluff_config = config
         if not self.project_dir:
             self.project_dir = self._get_project_dir()
-        if not self.profiles_dir:
-            self.profiles_dir = self._get_profiles_dir()
 
         # Populate full paths for selected files
         full_paths: Dict[str, str] = {}
@@ -266,11 +220,9 @@ class DbtTemplater(JinjaTemplater):
         self.formatter = formatter
         self.sqlfluff_config = config
         self.project_dir = self._get_project_dir()
-        self.profiles_dir = self._get_profiles_dir()
         fname_absolute_path = os.path.abspath(fname)
 
         try:
-            #os.chdir(self.project_dir)
             processed_result = self._unsafe_process(fname_absolute_path, in_str, config)
             # Reset the fail counter
             self._sequential_fails = 0
@@ -302,9 +254,6 @@ class DbtTemplater(JinjaTemplater):
         # If a SQLFluff error is raised, just pass it through
         except SQLTemplaterError as e:  # pragma: no cover
             return None, [e]
-        finally:
-            #os.chdir(self.working_dir)
-            pass
 
     def _find_node(self, fname, config=None):
         if not config:  # pragma: no cover

@@ -45,13 +45,24 @@ def test_lint_command():
     Handy for seeing SQLFluff logs if something goes wrong. The FastAPI
     tests hide those.
     """
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
+    from dbt_osmosis.core.server_v2 import app
+    dbt = app.state.dbt_project_container
+    dbt.add_project(
+        name_override="dbt_project",
+        project_dir="tests/sqlfluff_templater/fixtures/dbt/dbt_project",
+        profiles_dir="tests/sqlfluff_templater/fixtures/dbt/profiles_yml",
+        target="dev",
+    )
     sql_path = Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project/models/my_new_project/issue_1608.sql")
-    lint_command(
+    result = lint_command(
         sql=sql_path,
         #sql=sql_path.read_text(),
         extra_config_path="tests/sqlfluff_templater/fixtures/dbt/dbt_project/.sqlfluff",
     )
+    print(f"{'*'*40} Lint result {'*'*40}")
+    print(result)
+    print(f"{'*'*40} Lint result {'*'*40}")
 
 
 if __name__ == "__main__":
