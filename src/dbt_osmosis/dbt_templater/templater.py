@@ -14,6 +14,7 @@ from dbt.exceptions import (
     CompilationException as DbtCompilationException,
     FailedToConnectException as DbtFailedToConnectException,
 )
+from dbt.contracts.graph.compiled import CompiledModelNode
 from jinja2 import Environment
 from jinja2_simple_tags import StandaloneTag
 
@@ -176,7 +177,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
         for node in osmosis_dbt_project.dbt.nodes.values():
             # TODO: Scans all nodes. Could be slow for large projects. Is there
             # a better way to do this?
-            if node.original_file_path == str(expected_node_path):
+            if node.original_file_path == expected_node_path:
                 found_node = node
                 break
         if not found_node:
@@ -248,10 +249,11 @@ class OsmosisDbtTemplater(JinjaTemplater):
             )
             local.make_template = None
             try:
-                node = self.dbt_compiler.compile_node(
-                    node=node,
-                    manifest=self.dbt_manifest,
-                )
+                if not isinstance(node, CompiledModelNode):
+                    node = self.dbt_compiler.compile_node(
+                        node=node,
+                        manifest=self.dbt_manifest,
+                    )
             except Exception as err:
                 templater_logger.exception(
                     "Fatal dbt compilation error on %s. This occurs most often "

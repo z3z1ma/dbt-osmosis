@@ -38,29 +38,6 @@ def test__templater_dbt_missing(dbt_templater, project_dir):  # noqa: F811
         )
 
 
-def test__templater_dbt_profiles_dir_expanded(dbt_templater):  # noqa: F811
-    """Check that the profiles_dir is expanded."""
-    dbt_templater.sqlfluff_config = FluffConfig(
-        configs={
-            "core": {"dialect": "ansi"},
-            "templater": {
-                "dbt": {
-                    "profiles_dir": "~/.dbt",
-                    "profile": "default",
-                    "target": "dev",
-                }
-            },
-        },
-    )
-    profiles_dir = dbt_templater._get_profiles_dir()
-    # Normalise paths to control for OS variance
-    assert os.path.normpath(profiles_dir) == os.path.normpath(
-        os.path.expanduser("~/.dbt")
-    )
-    assert dbt_templater._get_profile() == "default"
-    assert dbt_templater._get_target() == "dev"
-
-
 @pytest.mark.parametrize(
     "fname",
     [
@@ -425,51 +402,3 @@ def test__templater_dbt_handle_database_connection_failure(
         .replace("\\", "/")
         .startswith("dbt tried to connect to the database")
     )
-
-
-def test__project_dir_does_not_exist_error(dbt_templater, caplog):  # noqa: F811
-    """Test an error is logged if the given dbt project directory doesn't exist."""
-    dbt_templater.sqlfluff_config = FluffConfig(
-        configs={
-            "core": {"dialect": "ansi"},
-            "templater": {"dbt": {"project_dir": "./non_existing_directory"}},
-        }
-    )
-    logger = logging.getLogger("sqlfluff")
-    original_propagate_value = logger.propagate
-    try:
-        logger.propagate = True
-        with caplog.at_level(logging.ERROR, logger="sqlfluff.templater"):
-            dbt_project_dir = dbt_templater._get_project_dir()
-        assert (
-            f"dbt_project_dir: {dbt_project_dir} could not be accessed. "
-            "Check it exists."
-        ) in caplog.text
-    finally:
-        logger.propagate = original_propagate_value
-
-
-@pytest.mark.parametrize(
-    ("model_path", "var_value"),
-    [
-        ("models/vars_from_cli.sql", "expected_value"),
-        ("models/vars_from_cli.sql", [1]),
-        ("models/vars_from_cli.sql", {"nested": 1}),
-    ],
-)
-def test__context_in_config_is_loaded(
-    project_dir, dbt_templater, model_path, var_value  # noqa: F811
-):
-    """Test that variables inside .sqlfluff are passed to dbt."""
-    context = {"passed_through_cli": var_value} if var_value else {}
-
-    config_dict = deepcopy(DBT_FLUFF_CONFIG)
-    config_dict["templater"]["dbt"]["context"] = context
-    config = FluffConfig(config_dict)
-
-    fname = os.path.abspath(os.path.join(project_dir, model_path))
-
-    processed, violations = dbt_templater.process(in_str="", fname=fname, config=config)
-
-    assert violations == []
-    assert str(var_value) in processed.templated_str
