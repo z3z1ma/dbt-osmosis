@@ -29,6 +29,18 @@ class OsmosisCompileResult(BaseModel):
     result: str
 
 
+class OsmosisLintError(BaseModel):
+    # Based on SQLFluff.lint() result format
+    code: str
+    description: str
+    line_no: int
+    line_pos: int
+
+
+class OsmosisLintResult(BaseModel):
+    result: List[OsmosisLintError]
+
+
 class OsmosisResetResult(BaseModel):
     result: str
 
@@ -206,7 +218,6 @@ async def lint_sql(
 ) -> Union[OsmosisCompileResult, OsmosisErrorContainer]:
     """Lint dbt SQL against a registered project as determined by X-dbt-Project header"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
-    #import pdb; pdb.set_trace()
     if x_dbt_project == DEFAULT:
         project = dbt.get_default_project()
     else:
@@ -223,22 +234,21 @@ async def lint_sql(
 
     # Query Compilation
     query: str = (await request.body()).decode("utf-8").strip()
-    if has_jinja(query):
-        try:
-            compiled_query = project.compile_sql(query).compiled_sql
-        except Exception as compile_err:
-            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-            return OsmosisErrorContainer(
-                error=OsmosisError(
-                    code=OsmosisErrorCode.CompileSqlFailure,
-                    message=str(compile_err),
-                    data=compile_err.__dict__,
-                )
+    import sqlfluff
+    try:
+        result = sqlfluff.lint(query)
+    except Exception as lint_err:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.CompileSqlFailure,
+                message=str(lint_err),
+                data=lint_err.__dict__,
             )
+        )
     else:
-        compiled_query = query
-
-    return OsmosisCompileResult(result=compiled_query)
+        lint_result = [OsmosisLintError(**error) for error in result]
+    return OsmosisLintResult(result=lint_result)
 
 
 @app.get(

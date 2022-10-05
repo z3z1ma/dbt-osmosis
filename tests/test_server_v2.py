@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from dbt_osmosis.core.server_v2 import app
@@ -19,10 +21,11 @@ def test_lint(profiles_dir, project_dir):
         )
     assert response.status_code == 200
     assert response.json() == {'added': 'dbt_project', 'projects': ['dbt_project']}
+    sql_path = Path(project_dir) / "models" / "my_new_project" / "issue_1608.sql"
     response = client.post(
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
-        json={"id": "foobar", "title": "Foo Bar", "description": "The Foo Barters"},
+        data=sql_path.read_bytes(),
     )
     assert response.status_code == 200
     assert response.json() == {
