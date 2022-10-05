@@ -1,24 +1,18 @@
-"""Defines the templaters."""
+"""Defines the dbt_osmosis templater."""
 
-from collections import deque
 from contextlib import contextmanager
 import os
 import os.path
 import logging
-from typing import List, Optional, Iterator, Tuple, Any, Dict, Deque
-
-from dataclasses import dataclass
+from typing import Optional
 
 from dbt.version import get_installed_version
-from dbt.config import read_user_config
-from dbt.config.runtime import RuntimeConfig as DbtRuntimeConfig
-from dbt.adapters.factory import register_adapter, get_adapter
+from dbt.adapters.factory import get_adapter
 from dbt.compilation import Compiler as DbtCompiler
 from dbt.exceptions import (
     CompilationException as DbtCompilationException,
     FailedToConnectException as DbtFailedToConnectException,
 )
-from dbt import flags
 from jinja2 import Environment
 from jinja2_simple_tags import StandaloneTag
 
@@ -45,8 +39,11 @@ else:
     RAW_SQL_ATTRIBUTE = "raw_sql"
 
 
-class DbtTemplater(JinjaTemplater):
-    """A templater using dbt."""
+class OsmosisDbtTemplater(JinjaTemplater):
+    """dbt templater for dbt-osmosis.
+
+    Based on the dbt templater from sqlfluff.
+    """
 
     name = "dbt"
     sequential_fail_limit = 3
@@ -54,7 +51,6 @@ class DbtTemplater(JinjaTemplater):
     def __init__(self, **kwargs):
         self.sqlfluff_config = None
         self.formatter = None
-        self.project_dir = None
         self.working_dir = os.getcwd()
         self._sequential_fails = 0
         self.connection_acquired = False
@@ -92,27 +88,6 @@ class DbtTemplater(JinjaTemplater):
         from dbt_osmosis.core.server_v2 import app
         return app.state.dbt_project_container["dbt_project"].dbt
 
-    def _get_project_dir(self):
-        """Get the dbt project directory from the configuration.
-
-        Defaults to the working directory.
-        """
-        dbt_project_dir = os.path.abspath(
-            os.path.expanduser(
-                self.sqlfluff_config.get_section(
-                    (self.templater_selector, self.name, "project_dir")
-                )
-                or os.getcwd()
-            )
-        )
-        if not os.path.exists(dbt_project_dir):
-            templater_logger.error(
-                f"dbt_project_dir: {dbt_project_dir} could not be accessed. "
-                "Check it exists."
-            )
-
-        return dbt_project_dir
-
     def _get_profile(self):
         """Get a dbt profile name from the configuration."""
         return self.sqlfluff_config.get_section(
@@ -124,86 +99,6 @@ class DbtTemplater(JinjaTemplater):
         return self.sqlfluff_config.get_section(
             (self.templater_selector, self.name, "target")
         )
-
-    def _get_cli_vars(self) -> str:
-        cli_vars = self.sqlfluff_config.get_section(
-            (self.templater_selector, self.name, "context")
-        )
-
-        return str(cli_vars) if cli_vars else "{}"
-
-    def sequence_files(
-        self, fnames: List[str], config=None, formatter=None
-    ) -> Iterator[str]:
-        """Reorder fnames to process dependent files first.
-
-        This avoids errors when an ephemeral model is processed before use.
-        """
-        if formatter:  # pragma: no cover
-            formatter.dispatch_compilation_header("dbt templater", "Sorting Nodes...")
-
-        # Initialise config if not already done
-        self.sqlfluff_config = config
-        if not self.project_dir:
-            self.project_dir = self._get_project_dir()
-
-        # Populate full paths for selected files
-        full_paths: Dict[str, str] = {}
-        selected_files = set()
-        for fname in fnames:
-            fpath = os.path.join(self.working_dir, fname)
-            full_paths[fpath] = fname
-            selected_files.add(fpath)
-
-        ephemeral_nodes: Dict[str, Tuple[str, Any]] = {}
-
-        # Extract the ephemeral models
-        for key, node in self.dbt_manifest.nodes.items():
-            if node.config.materialized == "ephemeral":
-                # The key is the full filepath.
-                # The value tuple, with the filepath and a list of dependent keys
-                ephemeral_nodes[key] = (
-                    os.path.join(self.project_dir, node.original_file_path),
-                    node.depends_on.nodes,
-                )
-
-        # Yield ephemeral nodes first. We use a deque for efficient re-queuing.
-        # We iterate through the deque, yielding any nodes without dependents,
-        # or where those dependents have already yielded, first. The original
-        # mapping is still used to hold the metadata on each key.
-        already_yielded = set()
-        ephemeral_buffer: Deque[str] = deque(ephemeral_nodes.keys())
-        while ephemeral_buffer:
-            key = ephemeral_buffer.popleft()
-            fpath, dependents = ephemeral_nodes[key]
-
-            # If it's not in our selection, skip it
-            if fpath not in selected_files:
-                templater_logger.debug("- Purging unselected ephemeral: %r", fpath)
-            # If there are dependent nodes in the set, don't process it yet.
-            elif any(
-                dependent in ephemeral_buffer for dependent in dependents
-            ):  # pragma: no cover
-                templater_logger.debug(
-                    "- Requeuing ephemeral with dependents: %r", fpath
-                )
-                # Requeue it for later
-                ephemeral_buffer.append(key)
-            # Otherwise yield it.
-            else:
-                templater_logger.debug("- Yielding Ephemeral: %r", fpath)
-                yield full_paths[fpath]
-                already_yielded.add(full_paths[fpath])
-
-        for fname in fnames:
-            if fname not in already_yielded:
-                yield fname
-                # Dedupe here so we don't yield twice
-                already_yielded.add(fname)
-            else:
-                templater_logger.debug(
-                    "- Skipping yield of previously sequenced file: %r", fname
-                )
 
     @large_file_check
     def process(self, *, fname, in_str=None, config=None, formatter=None):
@@ -219,7 +114,6 @@ class DbtTemplater(JinjaTemplater):
         # Stash the formatter if provided to use in cached methods.
         self.formatter = formatter
         self.sqlfluff_config = config
-        self.project_dir = self._get_project_dir()
         fname_absolute_path = os.path.abspath(fname)
 
         try:
