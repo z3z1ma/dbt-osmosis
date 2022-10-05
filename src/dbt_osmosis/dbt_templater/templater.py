@@ -23,8 +23,8 @@ from sqlfluff.core.templaters.base import TemplatedFile, large_file_check
 
 from sqlfluff.core.templaters.jinja import JinjaTemplater
 
-# Instantiate the templater logger
-templater_logger = logging.getLogger("sqlfluff.templater")
+# Instantiate the logger
+templater_logger = logging.getLogger("dbt_osmosis.dbt_templater")
 
 
 DBT_VERSION = get_installed_version()
@@ -150,11 +150,6 @@ class OsmosisDbtTemplater(JinjaTemplater):
             return None, [e]
 
     def _find_node(self, fname, config=None):
-        if not config:  # pragma: no cover
-            raise ValueError(
-                "For the dbt templater, the `process()` method "
-                "requires a config object."
-            )
         if not fname:  # pragma: no cover
             raise ValueError(
                 "For the dbt templater, the `process()` method requires a file name"
@@ -163,10 +158,9 @@ class OsmosisDbtTemplater(JinjaTemplater):
             raise ValueError(
                 "The dbt templater does not support stdin input, provide a path instead"
             )
-        from pathlib import Path
         from dbt_osmosis.core.server_v2 import app
         osmosis_dbt_project = app.state.dbt_project_container["dbt_project"]
-        expected_node_path = Path(fname).resolve().relative_to(Path(osmosis_dbt_project.args.project_dir).resolve())
+        expected_node_path = os.path.relpath(fname, start=os.path.abspath(osmosis_dbt_project.args.project_dir))
         found_node = None
         for node in osmosis_dbt_project.dbt.nodes.values():
             if node.original_file_path == str(expected_node_path):
@@ -191,16 +185,11 @@ class OsmosisDbtTemplater(JinjaTemplater):
             if os.path.abspath(macro.original_file_path) == abspath:
                 return "a macro"
 
-        if DBT_VERSION_TUPLE >= (1, 0):
-            # Scan disabled nodes.
-            for nodes in self.dbt_manifest.disabled.values():
-                for node in nodes:
-                    if os.path.abspath(node.original_file_path) == abspath:
-                        return "disabled"
-        else:
-            model_name = os.path.splitext(os.path.basename(fname))[0]
-            if self.dbt_manifest.find_disabled_by_name(name=model_name):
-                return "disabled"
+        # Scan disabled nodes.
+        for nodes in self.dbt_manifest.disabled.values():
+            for node in nodes:
+                if os.path.abspath(node.original_file_path) == abspath:
+                    return "disabled"
         return None
 
     def _unsafe_process(self, fname, in_str=None, config=None):
