@@ -35,6 +35,11 @@ def project_dir():
 
 
 @pytest.fixture()
+def sqlfluff_config_path():
+    return "tests/sqlfluff_templater/fixtures/dbt/.sqlfluff"
+
+
+@pytest.fixture()
 def dbt_templater():
     """Returns an instance of the DbtTemplater."""
     return FluffConfig(overrides={"dialect": "ansi"}).get_templater("dbt")

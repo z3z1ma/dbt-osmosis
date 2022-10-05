@@ -205,16 +205,12 @@ async def compile_sql(
         status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer},
     },
-    openapi_extra={
-        "requestBody": {
-            "content": {"text/plain": {"schema": {"type": "string"}}},
-            "required": True,
-        },
-    },
 )
 async def lint_sql(
-    request: Request,
     response: Response,
+    query: str,
+    # TODO: Should config_path be part of /register instead?
+    config_path: Optional[str],
     x_dbt_project: str = Header(default=DEFAULT),
 ) -> Union[OsmosisLintResult, OsmosisErrorContainer]:
     """Lint dbt SQL against a registered project as determined by X-dbt-Project header"""
@@ -233,10 +229,9 @@ async def lint_sql(
             )
         )
 
-    # Query Compilation
-    query: str = (await request.body()).decode("utf-8").strip()
+    # Query Linting
     try:
-        result = sqlfluff.lint(query)
+        result = sqlfluff.lint(query, config_path=config_path)
     except Exception as lint_err:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return OsmosisErrorContainer(

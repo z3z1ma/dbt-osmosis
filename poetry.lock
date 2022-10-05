@@ -2011,7 +2011,7 @@ workbench = ["streamlit", "streamlit-ace", "graphviz", "pydot", "streamlit-agrap
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "132651e3befb559c7c5108c414a48b1fb0be00dada29691db2b044989c06bd9d"
+content-hash = "00274a6de136df5c7ecf11ec84ead624d1ee53b8842cca40bb7a9c3ca1cfb729"
 
 [metadata.files]
 agate = [

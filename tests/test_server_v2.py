@@ -4,17 +4,18 @@ from fastapi.testclient import TestClient
 
 from dbt_osmosis.core.server_v2 import app
 
-from tests.sqlfluff_templater.fixtures.dbt.templater import profiles_dir, project_dir  # noqa: F401
+from tests.sqlfluff_templater.fixtures.dbt.templater import profiles_dir, project_dir, sqlfluff_config_path  # noqa: F401
 
 client = TestClient(app)
 
 
-def test_lint(profiles_dir, project_dir):
+def test_lint(profiles_dir, project_dir, sqlfluff_config_path):
     response = client.post(
             "/register",
             params={
                 "project_dir": project_dir,
                 "profiles_dir": profiles_dir,
+                "config_path": sqlfluff_config_path,
                 "target": "dev",
             },
             headers={"X-dbt-Project": "dbt_project"},
@@ -25,7 +26,10 @@ def test_lint(profiles_dir, project_dir):
     response = client.post(
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
-        data=sql_path.read_bytes(),
+        params={
+            "query": sql_path.read_text(),
+            "config_path": sqlfluff_config_path,
+        }
     )
     assert response.status_code == 200
     response_json = response.json()
