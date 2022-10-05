@@ -1,6 +1,6 @@
 import atexit
-import datetime
 import os
+import threading
 from collections import OrderedDict, UserDict
 from copy import copy
 from enum import Enum
@@ -23,28 +23,21 @@ from typing import (
     TypeVar,
     Union,
 )
-import threading
 
 import agate
 from dbt.adapters.base import BaseRelation
 from dbt.adapters.factory import (
     Adapter,
+    cleanup_connections,
     get_adapter,
     register_adapter,
     reset_adapters,
-    cleanup_connections,
 )
 from dbt.clients import jinja  # monkey-patched for perf
 from dbt.config.runtime import RuntimeConfig
 from dbt.contracts.connection import AdapterResponse
 from dbt.contracts.graph.manifest import ManifestNode, MaybeNonSource, MaybeParsedSource, NodeType
-from dbt.contracts.graph.parsed import ColumnInfo, ParsedModelNode
-from dbt.contracts.sql import (
-    RemoteCompileResult,
-    RemoteExecutionResult,
-    RemoteRunResult,
-    ResultTable,
-)
+from dbt.contracts.graph.parsed import ColumnInfo
 from dbt.events.functions import fire_event  # monkey-patched for perf
 from dbt.exceptions import CompilationException, InternalException, RuntimeException
 from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
@@ -65,22 +58,31 @@ from dbt_osmosis.core.exceptions import (
 )
 from dbt_osmosis.core.log_controller import logger
 
-__all__ = ["DbtProject", "DbtYamlManager", "ConfigInterface", "has_jinja"]
+__all__ = [
+    "DbtProject",
+    "DbtProjectContainer",
+    "DbtYamlManager",
+    "ConfigInterface",
+    "has_jinja",
+]
 
 CACHE = {}
 CACHE_VERSION = 1
-MANIFEST_ARTIFACT = "manifest.json"
 SQL_CACHE_SIZE = 1024
+
+MANIFEST_ARTIFACT = "manifest.json"
 DBT_MAJOR_VER, DBT_MINOR_VER, DBT_PATCH_VER = (int(v) for v in dbt_version.split("."))
-RAW_ATTR = "raw_code" if DBT_MAJOR_VER >= 1 and DBT_MINOR_VER >= 3 else "raw_sql"
-COMPILED_ATTR = "compiled_code" if DBT_MAJOR_VER >= 1 and DBT_MINOR_VER >= 3 else "compiled_sql"
-JINJA_CH = ["{{", "}}", "{%", "%}", "{#", "#}"]
+RAW_CODE = "raw_code" if DBT_MAJOR_VER >= 1 and DBT_MINOR_VER >= 3 else "raw_sql"
+COMPILED_CODE = "compiled_code" if DBT_MAJOR_VER >= 1 and DBT_MINOR_VER >= 3 else "compiled_sql"
+
+JINJA_CONTROL_SEQS = ["{{", "}}", "{%", "%}", "{#", "#}"]
+
 T = TypeVar("T")
 
 
 def has_jinja(query: str) -> bool:
     """Utility to check for jinja prior to certain compilation procedures"""
-    return any(sym in query for sym in JINJA_CH)
+    return any(seq in query for seq in JINJA_CONTROL_SEQS)
 
 
 def memoize_get_rendered(function):
@@ -404,29 +406,46 @@ class DbtProject:
         """Wraps adapter execute_macro. Execute a macro like a function."""
         return self.get_macro_function(macro)(kwargs=kwargs)
 
-    def execute_sql(self, sql: str) -> DbtAdapterExecutionResult:
+    def execute_sql(self, raw_sql: str) -> DbtAdapterExecutionResult:
         """Execute dbt SQL statement against database"""
-        compiled_sql = self.compile_sql(sql).compiled_sql if has_jinja(sql) else sql
+        # if no jinja chars then these are synonymous
+        compiled_sql = raw_sql
+        if has_jinja(raw_sql):
+            # jinja found, compile it
+            compiled_sql = self.compile_sql(raw_sql).compiled_sql
         return DbtAdapterExecutionResult(
-            *self.adapter_execute(compiled_sql, fetch=True), sql, compiled_sql
+            *self.adapter_execute(compiled_sql, fetch=True),
+            raw_sql,
+            compiled_sql,
         )
 
     def execute_node(self, node: ManifestNode) -> DbtAdapterExecutionResult:
         """Execute dbt SQL statement against database from a ManifestNode"""
-        return self.execute_sql(getattr(node, COMPILED_ATTR, node.__getattribute__(RAW_ATTR)))
+        raw_sql: str = getattr(node, RAW_CODE)
+        compiled_sql: Optional[str] = getattr(node, COMPILED_CODE, None)
+        if compiled_sql:
+            # node is compiled, execute the SQL
+            return self.execute_sql(compiled_sql)
+        # node not compiled
+        if has_jinja(raw_sql):
+            # node has jinja in its SQL, compile it
+            compiled_sql = self.compile_node(node).compiled_sql
+        # execute the SQL
+        return self.execute_sql(compiled_sql or raw_sql)
 
     @lru_cache(maxsize=SQL_CACHE_SIZE)
-    def compile_sql(self, sql: str) -> DbtAdapterCompilationResult:
+    def compile_sql(self, raw_sql: str) -> DbtAdapterCompilationResult:
         """Creates a node with a `dbt.parser.sql` class. Compile generated node."""
-        return self.compile_node(self.get_server_node(sql))
+        return self.compile_node(self.get_server_node(raw_sql))
 
     def compile_node(self, node: ManifestNode) -> DbtAdapterCompilationResult:
         """Compiles existing node."""
         self.sql_compiler.node = node
+        # this is essentially a convenient wrapper to adapter.get_compiler
         compiled_node = self.sql_compiler.compile(self.dbt)
         return DbtAdapterCompilationResult(
-            compiled_node.__getattribute__(RAW_ATTR),
-            compiled_node.__getattribute__(COMPILED_ATTR),
+            getattr(compiled_node, RAW_CODE),
+            getattr(compiled_node, COMPILED_CODE),
             compiled_node,
         )
 
@@ -452,18 +471,19 @@ class DbtProject:
 
     @lru_cache(maxsize=5)
     def get_columns(self, node: ManifestNode) -> List[ColumnInfo]:
-        """Get a list of columns from a node"""
+        """Get a list of columns from a compiled node"""
         columns = []
         try:
             columns.extend(
                 [c.name for c in self.get_columns_in_relation(self.create_relation_from_node(node))]
             )
         except CompilationException:
-            original_sql = str(node.__getattribute__(COMPILED_ATTR))
+            original_sql = str(getattr(node, RAW_CODE))
             # TODO: account for `TOP` syntax
-            node.__setattr__(COMPILED_ATTR, f"select * from ({original_sql}) limit 0")
+            setattr(node, RAW_CODE, f"select * from ({original_sql}) limit 0")
             result = self.execute_node(node)
-            node.__setattr__(COMPILED_ATTR, original_sql)
+            setattr(node, RAW_CODE, original_sql)
+            delattr(node, COMPILED_CODE)
             columns.extend(result.table.column_names)
         return columns
 
@@ -491,7 +511,7 @@ class DbtProject:
             self.execute_macro(
                 "create_table_as",
                 kwargs={
-                    "sql": node.__getattribute__(COMPILED_ATTR),
+                    "sql": getattr(node, COMPILED_CODE),
                     "relation": self.create_relation_from_node(node),
                     "temporary": temporary,
                 },
@@ -527,9 +547,10 @@ class DbtProjectContainer:
     ) -> DbtProject:
         """Add a DbtProject with arguments"""
         project = DbtProject(target, profiles_dir, project_dir, threads)
+        project_name = name_override or project.config.project_name
         if self._default_project is None:
-            self._default_project = project.config.project_name
-        self._projects[name_override or project.config.project_name] = project
+            self._default_project = project_name
+        self._projects[project_name] = project
         return project
 
     def add_parsed_project(self, project: DbtProject) -> DbtProject:
