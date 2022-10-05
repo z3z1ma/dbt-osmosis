@@ -221,6 +221,7 @@ def document(
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    default=str(Path.cwd().absolute()),
     help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
 )
 @click.option(
@@ -256,8 +257,9 @@ def server(
 
     def _register_project():
         """Background job which registers the first project on the server automatically"""
-        import requests
         import time
+
+        import requests
 
         t = 0.25
         max_t = 5
@@ -283,7 +285,7 @@ def server(
         logger().info("Registering project: %s", endpoint)
         res = requests.post(
             endpoint,
-            headers={"X-dbt-Project": "newProject"},
+            headers={"X-dbt-Project": project_dir},
         )
         logger().info(res.json())
 
