@@ -27,20 +27,23 @@ def test_lint(profiles_dir, project_dir, sqlfluff_config_path):
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
         params={
-            "query": sql_path.read_text(),
+            #"query": sql_path.read_text(),
+            #"query": "SELECT DISTINCT(a) FROM b",
+            "query": "SELEC",
             "config_path": sqlfluff_config_path,
         }
     )
     assert response.status_code == 200
     response_json = response.json()
-    assert len(response_json["result"]) == 1
-    del response_json["result"][0]["description"]
-    assert response_json == {'result': [{'code': 'TMP',
-             # 'description': 'Unrecoverable failure in Jinja templating: '
-             #                '<sqlfluff.core.templaters.jinja.JinjaTemplater.process.<locals>.UndefinedRecorder '
-             #                'object at 0x10d084400> is not safely callable. '
-             #                'Have you configured your variables? '
-             #                'https://docs.sqlfluff.com/en/latest/configuration.html',
-             'line_no': 1,
-             'line_pos': 1}]}
+    assert response_json == {'result': [{'code': 'L003',
+             'description': 'Expected 2 indentations, found less than 2 '
+                            '[compared to line 03]',
+             'line_no': 4,
+             'line_pos': 6},
+            {'code': 'L023',
+             'description': "Single whitespace expected after 'AS' in 'WITH' "
+                            'clause.',
+             'line_no': 7,
+             'line_pos': 7}]}
+
 

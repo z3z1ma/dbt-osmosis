@@ -36,7 +36,7 @@ def project_dir():
 
 @pytest.fixture()
 def sqlfluff_config_path():
-    return "tests/sqlfluff_templater/fixtures/dbt/.sqlfluff"
+    return "tests/sqlfluff_templater/fixtures/dbt/dbt_project/.sqlfluff"
 
 
 @pytest.fixture()

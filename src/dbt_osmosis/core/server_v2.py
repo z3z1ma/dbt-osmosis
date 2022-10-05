@@ -1,14 +1,26 @@
 import asyncio
 import datetime
+import json
+import logging
+import os
 import re
+import sys
+from contextlib import contextmanager
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from pathlib import Path
+from typing import Any, cast, Dict, List, Optional, Tuple, Union
 
-import sqlfluff
+import click
+import sqlfluff.core
+import sqlfluff.cli.commands
 import uvicorn
+import yaml
 from fastapi import BackgroundTasks, FastAPI, Header, Request, Response, status
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from sqlfluff.cli import EXIT_SUCCESS
+from sqlfluff.cli.commands import dump_file_payload, get_config, make_output_stream, get_linter_and_formatter, progress_bar_configuration, set_logging_level, format_linting_result_header, PathAndUserErrorHandler
+from sqlfluff.core.enums import FormatType, Color
 
 from dbt_osmosis.core.osmosis import DbtProject, DbtProjectContainer, has_jinja
 
@@ -74,6 +86,24 @@ class OsmosisError(BaseModel):
 class OsmosisErrorContainer(BaseModel):
     error: OsmosisError
 
+
+@contextmanager
+def set_directory(path: Path):
+    """Sets the cwd within the context
+
+    Args:
+        path (Path): The path to the cwd
+
+    Yields:
+        None
+    """
+
+    origin = Path().absolute()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(origin)
 
 @app.post(
     "/run",
@@ -198,6 +228,151 @@ async def compile_sql(
     return OsmosisCompileResult(result=compiled_query)
 
 
+def lint_command(
+    paths: Tuple[str],
+    format: str,
+    write_output: Optional[str],
+    annotation_level: str,
+    nofail: bool,
+    disregard_sqlfluffignores: bool,
+    logger: Optional[logging.Logger] = None,
+    bench: bool = False,
+    processes: Optional[int] = None,
+    disable_progress_bar: Optional[bool] = False,
+    extra_config_path: Optional[str] = None,
+    ignore_local_config: bool = False,
+    **kwargs,
+) -> int:
+    """Lint SQL files via passing a list of files or using stdin.
+
+    PATH is the path to a sql file or directory to lint. This can be either a
+    file ('path/to/file.sql'), a path ('directory/of/sql/files'), a single ('-')
+    character to indicate reading from *stdin* or a dot/blank ('.'/' ') which will
+    be interpreted like passing the current working directory as a path argument.
+
+    Linting SQL files:
+
+        sqlfluff lint path/to/file.sql
+        sqlfluff lint directory/of/sql/files
+
+    Linting a file via stdin (note the lone '-' character):
+
+        cat path/to/file.sql | sqlfluff lint -
+        echo 'select col from tbl' | sqlfluff lint -
+
+    """
+    config = get_config(
+        extra_config_path, ignore_local_config, require_dialect=False, **kwargs
+    )
+    non_human_output = (format != FormatType.human.value) or (write_output is not None)
+    file_output = None
+    output_stream = make_output_stream(config, format, write_output)
+    lnt, formatter = get_linter_and_formatter(config, output_stream)
+
+    verbose = config.get("verbose")
+    progress_bar_configuration.disable_progress_bar = disable_progress_bar
+
+    formatter.dispatch_config(lnt)
+
+    # Set up logging.
+    set_logging_level(
+        verbosity=verbose,
+        formatter=formatter,
+        logger=logger,
+        stderr_output=non_human_output,
+    )
+
+    # Output the results as we go
+    if verbose >= 1:
+        click.echo(format_linting_result_header())
+
+    with PathAndUserErrorHandler(formatter, paths):
+        # add stdin if specified via lone '-'
+        if ("-",) == paths:
+            result = lnt.lint_string_wrapped(sys.stdin.read(), fname="stdin")
+        else:
+            result = lnt.lint_paths(
+                paths,
+                ignore_non_existent_files=False,
+                ignore_files=not disregard_sqlfluffignores,
+                processes=processes,
+            )
+
+    # Output the final stats
+    if verbose >= 1:
+        click.echo(formatter.format_linting_stats(result, verbose=verbose))
+
+    if format == FormatType.json.value:
+        file_output = json.dumps(result.as_records())
+    elif format == FormatType.yaml.value:
+        file_output = yaml.dump(result.as_records(), sort_keys=False)
+    elif format == FormatType.github_annotation.value:
+        if annotation_level == "error":
+            annotation_level = "failure"
+
+        github_result = []
+        for record in result.as_records():
+            filepath = record["filepath"]
+            for violation in record["violations"]:
+                # NOTE: The output format is designed for this GitHub action:
+                # https://github.com/yuzutech/annotations-action
+                # It is similar, but not identical, to the native GitHub format:
+                # https://docs.github.com/en/rest/reference/checks#annotations-items
+                github_result.append(
+                    {
+                        "file": filepath,
+                        "line": violation["line_no"],
+                        "start_column": violation["line_pos"],
+                        "end_column": violation["line_pos"],
+                        "title": "SQLFluff",
+                        "message": f"{violation['code']}: {violation['description']}",
+                        "annotation_level": annotation_level,
+                    }
+                )
+        file_output = json.dumps(github_result)
+    elif format == FormatType.github_annotation_native.value:
+        if annotation_level == "failure":
+            annotation_level = "error"
+
+        github_result_native = []
+        for record in result.as_records():
+            filepath = record["filepath"]
+            for violation in record["violations"]:
+                # NOTE: The output format is designed for GitHub action:
+                # https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-notice-message
+                line = f"::{annotation_level} "
+                line += "title=SQLFluff,"
+                line += f"file={filepath},"
+                line += f"line={violation['line_no']},"
+                line += f"col={violation['line_pos']}"
+                line += "::"
+                line += f"{violation['code']}: {violation['description']}"
+
+                github_result_native.append(line)
+
+        file_output = "\n".join(github_result_native)
+
+    if file_output:
+        dump_file_payload(write_output, cast(str, file_output))
+
+    output_stream.close()
+    if bench:
+        click.echo("==== overall timings ====")
+        click.echo(formatter.cli_table([("Clock time", result.total_time)]))
+        timing_summary = result.timing_summary()
+        for step in timing_summary:
+            click.echo(f"=== {step} ===")
+            click.echo(formatter.cli_table(timing_summary[step].items()))
+
+    if not nofail:
+        if not non_human_output:
+            formatter.completion_message()
+        #sys.exit(result.stats()["exit code"])
+        return result.stats()["exit code"]
+    else:
+        #sys.exit(EXIT_SUCCESS)
+        return EXIT_SUCCESS
+
 @app.post(
     "/lint",
     response_model=Union[OsmosisLintResult, OsmosisErrorContainer],
@@ -231,8 +406,22 @@ async def lint_sql(
 
     # Query Linting
     try:
-        result = sqlfluff.lint(query, config_path=config_path)
+        with set_directory(Path("/Users/bhart/dev/dbt-osmosis/tests/sqlfluff_templater/fixtures/dbt/dbt_project")):
+            #result = sqlfluff.lint(query, config_path=config_path)
+            #result = sqlfluff.lint(query)
+            exit_code = lint_command(
+                paths=("models/my_new_project/issue_1608.sql",),
+                format="json",
+                write_output="/tmp/lint_result.json",
+                annotation_level="notice",
+                nofail=False,
+                disregard_sqlfluffignores=False,
+                nocolor=False,
+            )
+            entire_result = json.load(open("/tmp/lint_result.json"))
+            result = entire_result[0]["violations"]
     except Exception as lint_err:
+        logging.exception("Linting failed")
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return OsmosisErrorContainer(
             error=OsmosisError(
