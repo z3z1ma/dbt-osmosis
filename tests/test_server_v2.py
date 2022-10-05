@@ -28,8 +28,15 @@ def test_lint(profiles_dir, project_dir):
         data=sql_path.read_bytes(),
     )
     assert response.status_code == 200
-    assert response.json() == {
-        "id": "foobar",
-        "title": "Foo Bar",
-        "description": "The Foo Barters",
-    }
+    response_json = response.json()
+    assert len(response_json["result"]) == 1
+    del response_json["result"][0]["description"]
+    assert response_json == {'result': [{'code': 'TMP',
+             # 'description': 'Unrecoverable failure in Jinja templating: '
+             #                '<sqlfluff.core.templaters.jinja.JinjaTemplater.process.<locals>.UndefinedRecorder '
+             #                'object at 0x10d084400> is not safely callable. '
+             #                'Have you configured your variables? '
+             #                'https://docs.sqlfluff.com/en/latest/configuration.html',
+             'line_no': 1,
+             'line_pos': 1}]}
+

@@ -4,6 +4,7 @@ import re
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
+import sqlfluff
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, Header, Request, Response, status
 from fastapi.testclient import TestClient
@@ -199,7 +200,7 @@ async def compile_sql(
 
 @app.post(
     "/lint",
-    response_model=Union[OsmosisCompileResult, OsmosisErrorContainer],
+    response_model=Union[OsmosisLintResult, OsmosisErrorContainer],
     responses={
         status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer},
@@ -215,7 +216,7 @@ async def lint_sql(
     request: Request,
     response: Response,
     x_dbt_project: str = Header(default=DEFAULT),
-) -> Union[OsmosisCompileResult, OsmosisErrorContainer]:
+) -> Union[OsmosisLintResult, OsmosisErrorContainer]:
     """Lint dbt SQL against a registered project as determined by X-dbt-Project header"""
     dbt: DbtProjectContainer = app.state.dbt_project_container
     if x_dbt_project == DEFAULT:
@@ -234,7 +235,6 @@ async def lint_sql(
 
     # Query Compilation
     query: str = (await request.body()).decode("utf-8").strip()
-    import sqlfluff
     try:
         result = sqlfluff.lint(query)
     except Exception as lint_err:
@@ -247,8 +247,8 @@ async def lint_sql(
             )
         )
     else:
-        lint_result = [OsmosisLintError(**error) for error in result]
-    return OsmosisLintResult(result=lint_result)
+        lint_result = OsmosisLintResult(result=[OsmosisLintError(**error) for error in result])
+    return lint_result
 
 
 @app.get(
