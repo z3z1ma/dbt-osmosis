@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import uvicorn
-from fastapi import FastAPI, Request, Header, BackgroundTasks, Response, status
+from fastapi import BackgroundTasks, FastAPI, Header, Request, Response, status
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
