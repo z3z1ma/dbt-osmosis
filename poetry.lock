@@ -686,6 +686,17 @@ MarkupSafe = ">=0.23"
 i18n = ["Babel (>=0.8)"]
 
 [[package]]
+name = "jinja2-simple-tags"
+version = "0.4.0"
+description = "Base classes for quick-and-easy template tag development"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[package.dependencies]
+Jinja2 = ">=2.10"
+
+[[package]]
 name = "joblib"
 version = "1.0.1"
 description = "Lightweight pipelining with Python functions"
@@ -1980,7 +1991,7 @@ workbench = ["streamlit", "streamlit-ace", "graphviz", "pydot", "streamlit-agrap
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "973f3fec119dadd2dbb00de9bd5c84e88806dc275460a679af769031ee452866"
+content-hash = "2c5c9243372910114dbeb861dde2f0f8101432953098e6f7aabd981a4e1b0af6"
 
 [metadata.files]
 agate = [
@@ -2504,6 +2515,10 @@ isort = [
 Jinja2 = [
     {file = "Jinja2-2.11.3-py2.py3-none-any.whl", hash = "sha256:03e47ad063331dd6a3f04a43eddca8a966a26ba0c5b7207a9a9e4e08f1b29419"},
     {file = "Jinja2-2.11.3.tar.gz", hash = "sha256:a6d58433de0ae800347cab1fa3043cebbabe8baa9d29e668f1c768cb87a333c6"},
+]
+jinja2-simple-tags = [
+    {file = "jinja2-simple-tags-0.4.0.tar.gz", hash = "sha256:cdebf4ed86dc2f8cfe832734817c5a7c6eb75761a9325e12184a93f8da5040aa"},
+    {file = "jinja2_simple_tags-0.4.0-py2.py3-none-any.whl", hash = "sha256:53b1a0a4095958f6874cfe0a4df74e15587d85a0248be588009e23aa0fdba3bd"},
 ]
 joblib = [
     {file = "joblib-1.0.1-py3-none-any.whl", hash = "sha256:feeb1ec69c4d45129954f1b7034954241eedfd6ba39b5e9e4b6883be3332d5e5"},
