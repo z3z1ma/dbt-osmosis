@@ -95,34 +95,8 @@ class DbtTemplater(JinjaTemplater):
     @cached_property
     def dbt_config(self):
         """Loads the dbt config."""
-        if self.dbt_version_tuple >= (1, 0):
-            # Here, we read flags.PROFILE_DIR directly, prior to calling
-            # set_from_args(). Apparently, set_from_args() sets PROFILES_DIR
-            # to a lowercase version of the value, and the profile wouldn't be
-            # found if the directory name contained uppercase letters. This fix
-            # was suggested and described here:
-            # https://github.com/sqlfluff/sqlfluff/issues/2253#issuecomment-1018722979
-            user_config = read_user_config(flags.PROFILES_DIR)
-            flags.set_from_args(
-                DbtConfigArgs(
-                    project_dir=self.project_dir,
-                    profiles_dir=self.profiles_dir,
-                    profile=self._get_profile(),
-                    vars=self._get_cli_vars(),
-                ),
-                user_config,
-            )
-        self.dbt_config = DbtRuntimeConfig.from_args(
-            DbtConfigArgs(
-                project_dir=self.project_dir,
-                profiles_dir=self.profiles_dir,
-                profile=self._get_profile(),
-                target=self._get_target(),
-                vars=self._get_cli_vars(),
-            )
-        )
-        register_adapter(self.dbt_config)
-        return self.dbt_config
+        from dbt_osmosis.core.server_v2 import app
+        return app.state.dbt_project_container["dbt_project"].config
 
     @cached_property
     def dbt_compiler(self):
@@ -135,33 +109,6 @@ class DbtTemplater(JinjaTemplater):
         """Returns the dbt manifest."""
         from dbt_osmosis.core.server_v2 import app
         return app.state.dbt_project_container["dbt_project"].dbt
-
-    @cached_property
-    def dbt_selector_method(self):
-        """Loads the dbt selector method."""
-        if self.formatter:  # pragma: no cover TODO?
-            self.formatter.dispatch_compilation_header(
-                "dbt templater", "Compiling dbt project..."
-            )
-
-        from dbt.graph.selector_methods import (
-            MethodManager as DbtSelectorMethodManager,
-            MethodName as DbtMethodName,
-        )
-
-        selector_methods_manager = DbtSelectorMethodManager(
-            self.dbt_manifest, previous_state=None
-        )
-        self.dbt_selector_method = selector_methods_manager.get_method(
-            DbtMethodName.Path, method_arguments=[]
-        )
-
-        if self.formatter:  # pragma: no cover TODO?
-            self.formatter.dispatch_compilation_header(
-                "dbt templater", "Project Compiled."
-            )
-
-        return self.dbt_selector_method
 
     def _get_profiles_dir(self):
         """Get the dbt profiles directory from the configuration.
@@ -589,18 +536,16 @@ class DbtTemplater(JinjaTemplater):
         # We have to register the connection in dbt >= 1.0.0 ourselves
         # In previous versions, we relied on the functionality removed in
         # https://github.com/dbt-labs/dbt-core/pull/4062.
-        if DBT_VERSION_TUPLE >= (1, 0):
-            if not self.connection_acquired:
-                adapter = get_adapter(self.dbt_config)
-                adapter.acquire_connection("master")
-                adapter.set_relations_cache(self.dbt_manifest)
-                self.connection_acquired = True
-            yield
-            # :TRICKY: Once connected, we never disconnect. Making multiple
-            # connections during linting has proven to cause major performance
-            # issues.
-        else:
-            yield
+        if not self.connection_acquired:
+            from dbt_osmosis.core.server_v2 import app
+            adapter = get_adapter(self.dbt_config)
+            adapter.acquire_connection("master")
+            adapter.set_relations_cache(self.dbt_manifest)
+            self.connection_acquired = True
+        yield
+        # :TRICKY: Once connected, we never disconnect. Making multiple
+        # connections during linting has proven to cause major performance
+        # issues.
 
 
 class SnapshotExtension(StandaloneTag):
