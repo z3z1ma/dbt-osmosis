@@ -132,26 +132,9 @@ class DbtTemplater(JinjaTemplater):
 
     @cached_property
     def dbt_manifest(self):
-        """Loads the dbt manifest."""
-        # Identity function used for macro hooks
-        def identity(x):
-            return x
-
-        # Set dbt not to run tracking. We don't load
-        # a full project and so some tracking routines
-        # may fail.
-        from dbt.tracking import do_not_track
-
-        do_not_track()
-
-        # dbt 0.20.* and onward
-        from dbt.parser.manifest import ManifestLoader
-
-        projects = self.dbt_config.load_dependencies()
-        loader = ManifestLoader(self.dbt_config, projects, macro_hook=identity)
-        self.dbt_manifest = loader.load()
-
-        return self.dbt_manifest
+        """Returns the dbt manifest."""
+        from dbt_osmosis.core.server_v2 import app
+        return app.state.dbt_project_container["dbt_project"].dbt
 
     @cached_property
     def dbt_selector_method(self):
@@ -340,7 +323,7 @@ class DbtTemplater(JinjaTemplater):
         fname_absolute_path = os.path.abspath(fname)
 
         try:
-            os.chdir(self.project_dir)
+            #os.chdir(self.project_dir)
             processed_result = self._unsafe_process(fname_absolute_path, in_str, config)
             # Reset the fail counter
             self._sequential_fails = 0
@@ -373,7 +356,8 @@ class DbtTemplater(JinjaTemplater):
         except SQLTemplaterError as e:  # pragma: no cover
             return None, [e]
         finally:
-            os.chdir(self.working_dir)
+            #os.chdir(self.working_dir)
+            pass
 
     def _find_node(self, fname, config=None):
         if not config:  # pragma: no cover
@@ -389,14 +373,16 @@ class DbtTemplater(JinjaTemplater):
             raise ValueError(
                 "The dbt templater does not support stdin input, provide a path instead"
             )
-        selected = self.dbt_selector_method.search(
-            included_nodes=self.dbt_manifest.nodes,
-            # Selector needs to be a relative path
-            selector=os.path.relpath(fname, start=os.getcwd()),
-        )
-        results = [self.dbt_manifest.expect(uid) for uid in selected]
-
-        if not results:
+        from pathlib import Path
+        from dbt_osmosis.core.server_v2 import app
+        osmosis_dbt_project = app.state.dbt_project_container["dbt_project"]
+        expected_node_path = Path(fname).resolve().relative_to(Path(osmosis_dbt_project.args.project_dir).resolve())
+        found_node = None
+        for node in osmosis_dbt_project.dbt.nodes.values():
+            if node.original_file_path == str(expected_node_path):
+                found_node = node
+                break
+        if not found_node:
             skip_reason = self._find_skip_reason(fname)
             if skip_reason:
                 raise SQLFluffSkipFile(
@@ -405,7 +391,7 @@ class DbtTemplater(JinjaTemplater):
             raise SQLFluffSkipFile(
                 "File %s was not found in dbt project" % fname
             )  # pragma: no cover
-        return results[0]
+        return found_node
 
     def _find_skip_reason(self, fname) -> Optional[str]:
         """Return string reason if model okay to skip, otherwise None."""
@@ -428,7 +414,9 @@ class DbtTemplater(JinjaTemplater):
         return None
 
     def _unsafe_process(self, fname, in_str=None, config=None):
-        original_file_path = os.path.relpath(fname, start=os.getcwd())
+        from dbt_osmosis.core.server_v2 import app
+        osmosis_dbt_project = app.state.dbt_project_container["dbt_project"]
+        original_file_path = os.path.relpath(fname, start=osmosis_dbt_project.args.project_dir)
 
         # Below, we monkeypatch Environment.from_string() to intercept when dbt
         # compiles (i.e. runs Jinja) to expand the "node" corresponding to fname.
