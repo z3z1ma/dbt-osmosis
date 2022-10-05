@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import os
 import os.path
 import logging
+import threading
 from typing import Optional
 
 from dbt.version import get_installed_version
@@ -26,7 +27,6 @@ from sqlfluff.core.templaters.jinja import JinjaTemplater
 # Instantiate the logger
 templater_logger = logging.getLogger("dbt_osmosis.dbt_templater")
 
-
 DBT_VERSION = get_installed_version()
 DBT_VERSION_STRING = DBT_VERSION.to_version_string()
 DBT_VERSION_TUPLE = (int(DBT_VERSION.major), int(DBT_VERSION.minor))
@@ -38,11 +38,24 @@ else:
     COMPILED_SQL_ATTRIBUTE = "compiled_sql"
     RAW_SQL_ATTRIBUTE = "raw_sql"
 
+local = threading.local()
+
+# Below, we monkeypatch Environment.from_string() to intercept when dbt
+# compiles (i.e. runs Jinja) to expand the "node" corresponding to fname.
+# We do this to capture the Jinja context at the time of compilation, i.e.:
+# - Jinja Environment object
+# - Jinja "globals" dictionary
+#
+# This info is captured by the "make_template()" function, which in
+# turn is used by our parent class' (JinjaTemplater) slice_file()
+# function.
+old_from_string = Environment.from_string
+
 
 class OsmosisDbtTemplater(JinjaTemplater):
     """dbt templater for dbt-osmosis.
 
-    Based on the dbt templater from sqlfluff.
+    Based on sqlfluff-templater-dbt.
     """
 
     name = "dbt"
@@ -74,6 +87,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
     def dbt_config(self):
         """Loads the dbt config."""
         from dbt_osmosis.core.server_v2 import app
+
         return app.state.dbt_project_container["dbt_project"].config
 
     @cached_property
@@ -86,19 +100,16 @@ class OsmosisDbtTemplater(JinjaTemplater):
     def dbt_manifest(self):
         """Returns the dbt manifest."""
         from dbt_osmosis.core.server_v2 import app
+
         return app.state.dbt_project_container["dbt_project"].dbt
 
     def _get_profile(self):
         """Get a dbt profile name from the configuration."""
-        return self.sqlfluff_config.get_section(
-            (self.templater_selector, self.name, "profile")
-        )
+        return self.sqlfluff_config.get_section((self.templater_selector, self.name, "profile"))
 
     def _get_target(self):
         """Get a dbt target name from the configuration."""
-        return self.sqlfluff_config.get_section(
-            (self.templater_selector, self.name, "target")
-        )
+        return self.sqlfluff_config.get_section((self.templater_selector, self.name, "target"))
 
     @large_file_check
     def process(self, *, fname, in_str=None, config=None, formatter=None):
@@ -127,8 +138,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
             if e.node:
                 return None, [
                     SQLTemplaterError(
-                        f"dbt compilation error on file '{e.node.original_file_path}', "
-                        f"{e.msg}",
+                        f"dbt compilation error on file '{e.node.original_file_path}', " f"{e.msg}",
                         # It's fatal if we're over the limit
                         fatal=self._sequential_fails > self.sequential_fail_limit,
                     )
@@ -151,27 +161,28 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
     def _find_node(self, fname, config=None):
         if not fname:  # pragma: no cover
-            raise ValueError(
-                "For the dbt templater, the `process()` method requires a file name"
-            )
+            raise ValueError("For the dbt templater, the `process()` method requires a file name")
         elif fname == "stdin":  # pragma: no cover
             raise ValueError(
                 "The dbt templater does not support stdin input, provide a path instead"
             )
         from dbt_osmosis.core.server_v2 import app
+
         osmosis_dbt_project = app.state.dbt_project_container["dbt_project"]
-        expected_node_path = os.path.relpath(fname, start=os.path.abspath(osmosis_dbt_project.args.project_dir))
+        expected_node_path = os.path.relpath(
+            fname, start=os.path.abspath(osmosis_dbt_project.args.project_dir)
+        )
         found_node = None
         for node in osmosis_dbt_project.dbt.nodes.values():
+            # TODO: Scans all nodes. Could be slow for large projects. Is there
+            # a better way to do this?
             if node.original_file_path == str(expected_node_path):
                 found_node = node
                 break
         if not found_node:
             skip_reason = self._find_skip_reason(fname)
             if skip_reason:
-                raise SQLFluffSkipFile(
-                    f"Skipped file {fname} because it is {skip_reason}"
-                )
+                raise SQLFluffSkipFile(f"Skipped file {fname} because it is {skip_reason}")
             raise SQLFluffSkipFile(
                 "File %s was not found in dbt project" % fname
             )  # pragma: no cover
@@ -192,43 +203,35 @@ class OsmosisDbtTemplater(JinjaTemplater):
                     return "disabled"
         return None
 
+    def from_string(*args, **kwargs):
+        """Replaces (via monkeypatch) the jinja2.Environment function."""
+        globals = kwargs.get("globals")
+        if globals and hasattr(local, "original_file_path"):
+            model = globals.get("model")
+            if model:
+                # Is it processing the node we're interested in?
+                if model.get("original_file_path") == local.original_file_path:
+                    # Yes. Capture the important arguments and create
+                    # a make_template() function.
+                    env = args[0]
+                    globals = args[2] if len(args) >= 3 else kwargs["globals"]
+
+                    def make_template(in_str):
+                        env.add_extension(SnapshotExtension)
+                        return env.from_string(in_str, globals=globals)
+
+                    local.make_template = make_template
+
+        return old_from_string(*args, **kwargs)
+
+    # Apply the monkeypatch. To avoid issues with multiple threads, we never
+    # remove the patch.
+    Environment.from_string = from_string
+
     def _unsafe_process(self, fname, in_str=None, config=None):
         from dbt_osmosis.core.server_v2 import app
+
         osmosis_dbt_project = app.state.dbt_project_container["dbt_project"]
-        original_file_path = os.path.relpath(fname, start=osmosis_dbt_project.args.project_dir)
-
-        # Below, we monkeypatch Environment.from_string() to intercept when dbt
-        # compiles (i.e. runs Jinja) to expand the "node" corresponding to fname.
-        # We do this to capture the Jinja context at the time of compilation, i.e.:
-        # - Jinja Environment object
-        # - Jinja "globals" dictionary
-        #
-        # This info is captured by the "make_template()" function, which in
-        # turn is used by our parent class' (JinjaTemplater) slice_file()
-        # function.
-        old_from_string = Environment.from_string
-        make_template = None
-
-        def from_string(*args, **kwargs):
-            """Replaces (via monkeypatch) the jinja2.Environment function."""
-            nonlocal make_template
-            # Is it processing the node corresponding to fname?
-            globals = kwargs.get("globals")
-            if globals:
-                model = globals.get("model")
-                if model:
-                    if model.get("original_file_path") == original_file_path:
-                        # Yes. Capture the important arguments and create
-                        # a make_template() function.
-                        env = args[0]
-                        globals = args[2] if len(args) >= 3 else kwargs["globals"]
-
-                        def make_template(in_str):
-                            env.add_extension(SnapshotExtension)
-                            return env.from_string(in_str, globals=globals)
-
-            return old_from_string(*args, **kwargs)
-
         node = self._find_node(fname, config)
         templater_logger.debug(
             "_find_node for path %r returned object of type %s.", fname, type(node)
@@ -237,12 +240,13 @@ class OsmosisDbtTemplater(JinjaTemplater):
         save_ephemeral_nodes = dict(
             (k, v)
             for k, v in self.dbt_manifest.nodes.items()
-            if v.config.materialized == "ephemeral"
-            and not getattr(v, "compiled", False)
+            if v.config.materialized == "ephemeral" and not getattr(v, "compiled", False)
         )
         with self.connection():
-            # Apply the monkeypatch.
-            Environment.from_string = from_string
+            local.original_file_path = os.path.relpath(
+                fname, start=osmosis_dbt_project.args.project_dir
+            )
+            local.make_template = None
             try:
                 node = self.dbt_compiler.compile_node(
                     node=node,
@@ -263,8 +267,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
                     f"exception during compilation: {err!s}"
                 ) from err
             finally:
-                # Undo the monkeypatch.
-                Environment.from_string = old_from_string
+                local.original_file_path = None
 
             if hasattr(node, "injected_sql"):
                 # If injected SQL is present, it contains a better picture
@@ -286,9 +289,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
                 source_dbt_sql = source_dbt_model.read()
 
             if not source_dbt_sql.rstrip().endswith("-%}"):
-                n_trailing_newlines = len(source_dbt_sql) - len(
-                    source_dbt_sql.rstrip("\n")
-                )
+                n_trailing_newlines = len(source_dbt_sql) - len(source_dbt_sql.rstrip("\n"))
             else:
                 # Source file ends with right whitespace stripping, so there's
                 # no need to preserve/restore trailing newlines, as they would
@@ -338,7 +339,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
                 source_dbt_sql,
                 compiled_sql,
                 config=config,
-                make_template=make_template,
+                make_template=local.make_template,
                 append_to_templated="\n" if n_trailing_newlines else "",
             )
         # :HACK: If calling compile_node() compiled any ephemeral nodes,
@@ -370,6 +371,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
         # https://github.com/dbt-labs/dbt-core/pull/4062.
         if not self.connection_acquired:
             from dbt_osmosis.core.server_v2 import app
+
             adapter = get_adapter(self.dbt_config)
             adapter.acquire_connection("master")
             adapter.set_relations_cache(self.dbt_manifest)
