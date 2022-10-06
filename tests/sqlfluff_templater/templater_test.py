@@ -5,7 +5,6 @@ import os
 import logging
 import shutil
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -17,7 +16,6 @@ from tests.sqlfluff_templater.fixtures.dbt.templater import (  # noqa: F401
     dbt_templater,
     project_dir,
 )
-from dbt_osmosis.dbt_templater.templater import DbtFailedToConnectException
 
 
 def test__templater_dbt_missing(dbt_templater, project_dir):  # noqa: F811
@@ -244,51 +242,3 @@ def test__templater_dbt_templating_absolute_path(
     except Exception as e:
         pytest.fail(f"Unexpected RuntimeError: {e}")
 
-
-@pytest.mark.skipif(
-    DBT_VERSION_TUPLE < (1, 0), reason="mocks a function that's only used in dbt >= 1.0"
-)
-@mock.patch("dbt.adapters.postgres.impl.PostgresAdapter.set_relations_cache")
-def test__templater_dbt_handle_database_connection_failure(
-    set_relations_cache, project_dir, dbt_templater  # noqa: F811
-):
-    """Test the result of a failed database connection."""
-    from dbt.adapters.factory import get_adapter
-
-    set_relations_cache.side_effect = DbtFailedToConnectException("dummy error")
-
-    src_fpath = (
-        "tests/sqlfluff_templater/fixtures/dbt/error_models"
-        "/exception_connect_database.sql"
-    )
-    target_fpath = os.path.abspath(
-        os.path.join(
-            project_dir, "models/my_new_project/exception_connect_database.sql"
-        )
-    )
-    dbt_fluff_config_fail = DBT_FLUFF_CONFIG.copy()
-    dbt_fluff_config_fail["templater"]["dbt"][
-        "profiles_dir"
-    ] = "tests/sqlfluff_templater/fixtures/dbt/profiles_yml_fail"
-    # We move the file that throws an error in and out of the project directory
-    # as dbt throws an error if a node fails to parse while computing the DAG
-    os.rename(src_fpath, target_fpath)
-    import dbt_osmosis.core.server_v2
-    dbt_osmosis.core.server_v2.app.state.dbt_project_container.reparse_all_projects()
-    try:
-        _, violations = dbt_templater.process(
-            in_str="",
-            fname=target_fpath,
-            config=FluffConfig(configs=DBT_FLUFF_CONFIG),
-        )
-    finally:
-        get_adapter(dbt_templater.dbt_config).connections.release()
-        os.rename(target_fpath, src_fpath)
-    assert violations
-    # NB: Replace slashes to deal with different plaform paths being returned.
-    assert (
-        violations[0]
-        .desc()
-        .replace("\\", "/")
-        .startswith("dbt tried to connect to the database")
-    )
