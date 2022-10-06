@@ -21,7 +21,6 @@ from dbt_osmosis.core.osmosis import DbtAdapterCompilationResult, DbtProject
 templater_logger = logging.getLogger(__name__)
 
 DBT_VERSION = get_installed_version()
-DBT_VERSION_STRING = DBT_VERSION.to_version_string()
 DBT_VERSION_TUPLE = (int(DBT_VERSION.major), int(DBT_VERSION.minor))
 
 if DBT_VERSION_TUPLE >= (1, 3):
@@ -52,7 +51,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
     def config_pairs(self):  # pragma: no cover
         """Returns info about the given templater for output by the cli."""
-        return [("templater", self.name), ("dbt", DBT_VERSION_STRING)]
+        return [("templater", self.name), ("dbt", DBT_VERSION.to_version_string())]
 
     @large_file_check
     def process(self, *, fname: str, config, **kwargs):
@@ -97,6 +96,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
                     return "disabled"
         return None
 
+    @staticmethod
     def from_string(*args, **kwargs):
         """Replaces (via monkeypatch) the jinja2.Environment function."""
         globals = kwargs.get("globals")
@@ -168,9 +168,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
             n_trailing_newlines = len(source_dbt_sql) - len(source_dbt_sql.rstrip("\n"))
         else:
             # Source file ends with right whitespace stripping, so there's
-            # no need to preserve/restore trailing newlines, as they would
-            # have been removed regardless of dbt'skeep_trailing_newlines=False
-            # behavior.
+            # no need to preserve/restore trailing newlines.
             n_trailing_newlines = 0
 
         templater_logger.debug(
