@@ -229,29 +229,6 @@ def _clean_path(glob_expression):
         os.remove(fsp)
 
 
-@pytest.mark.parametrize(
-    "path", ["models/my_new_project/issue_1608.sql", "snapshots/issue_1771.sql"]
-)
-def test__dbt_templated_models_fix_does_not_corrupt_file(
-    project_dir, path, caplog  # noqa: F811
-):
-    """Test issues where previously "sqlfluff fix" corrupted the file."""
-    test_glob = os.path.join(project_dir, os.path.dirname(path), "*FIXED.sql")
-    _clean_path(test_glob)
-    lntr = Linter(config=FluffConfig(configs=DBT_FLUFF_CONFIG))
-    with caplog.at_level(logging.INFO, logger="sqlfluff.linter"):
-        lnt = lntr.lint_path(os.path.join(project_dir, path), fix=True)
-    try:
-        lnt.persist_changes(fixed_file_suffix="FIXED")
-        with open(os.path.join(project_dir, path + ".after")) as f:
-            comp_buff = f.read()
-        with open(os.path.join(project_dir, path.replace(".sql", "FIXED.sql"))) as f:
-            fixed_buff = f.read()
-        assert fixed_buff == comp_buff
-    finally:
-        _clean_path(test_glob)
-
-
 def test__templater_dbt_templating_absolute_path(
     project_dir, dbt_templater  # noqa: F811
 ):
