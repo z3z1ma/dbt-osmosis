@@ -1,0 +1,11 @@
+FROM python:3.9-slim-bullseye
+
+# Set separate working directory for easier debugging.
+WORKDIR /app
+
+RUN pip install 'poetry==1.2.1'
+#COPY pyproject.toml poetry.lock ./
+#RUN poetry install
+
+# Copy everything. (Note: If needed, we can use .dockerignore to limit what's copied.)
+COPY . .
