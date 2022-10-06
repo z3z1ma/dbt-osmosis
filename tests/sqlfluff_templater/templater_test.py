@@ -343,6 +343,8 @@ def test__templater_dbt_handle_exceptions(
     # We move the file that throws an error in and out of the project directory
     # as dbt throws an error if a node fails to parse while computing the DAG
     os.rename(src_fpath, target_fpath)
+    import dbt_osmosis.core.server_v2
+    dbt_osmosis.core.server_v2.app.state.dbt_project_container.reparse_all_projects()
     try:
         _, violations = dbt_templater.process(
             in_str="",
@@ -385,6 +387,8 @@ def test__templater_dbt_handle_database_connection_failure(
     # We move the file that throws an error in and out of the project directory
     # as dbt throws an error if a node fails to parse while computing the DAG
     os.rename(src_fpath, target_fpath)
+    import dbt_osmosis.core.server_v2
+    dbt_osmosis.core.server_v2.app.state.dbt_project_container.reparse_all_projects()
     try:
         _, violations = dbt_templater.process(
             in_str="",

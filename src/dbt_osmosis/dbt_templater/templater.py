@@ -181,7 +181,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
                 found_node = node
                 break
         if not found_node:
-            skip_reason = self._find_skip_reason(fname)
+            skip_reason = self._find_skip_reason(expected_node_path)
             if skip_reason:
                 raise SQLFluffSkipFile(f"Skipped file {fname} because it is {skip_reason}")
             raise SQLFluffSkipFile(
@@ -189,18 +189,17 @@ class OsmosisDbtTemplater(JinjaTemplater):
             )  # pragma: no cover
         return found_node
 
-    def _find_skip_reason(self, fname) -> Optional[str]:
+    def _find_skip_reason(self, expected_node_path) -> Optional[str]:
         """Return string reason if model okay to skip, otherwise None."""
         # Scan macros.
-        abspath = os.path.abspath(fname)
         for macro in self.dbt_manifest.macros.values():
-            if os.path.abspath(macro.original_file_path) == abspath:
+            if macro.original_file_path == expected_node_path:
                 return "a macro"
 
         # Scan disabled nodes.
         for nodes in self.dbt_manifest.disabled.values():
             for node in nodes:
-                if os.path.abspath(node.original_file_path) == abspath:
+                if node.original_file_path == expected_node_path:
                     return "disabled"
         return None
 
