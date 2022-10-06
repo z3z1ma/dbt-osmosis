@@ -383,6 +383,14 @@ class DbtProject:
         process_node(self.config, self.dbt, sql_node)
         return sql_node
 
+    @lru_cache(maxsize=10)
+    def get_node_by_path(self, path: str):
+        """Find an existing node given relative file path."""
+        for node in self.dbt.nodes.values():
+            if node.original_file_path == path:
+                return node
+        return None
+
     @lru_cache(maxsize=100)
     def get_macro_function(self, macro_name: str) -> Callable[[Dict[str, Any]], Any]:
         """Get macro as a function which takes a dict via argument named `kwargs`,
@@ -532,6 +540,15 @@ class DbtProjectContainer:
     def get_project(self, project_name: str) -> Optional[DbtProject]:
         """Primary interface to get a project and execute code"""
         return self._projects.get(project_name)
+
+    @lru_cache(maxsize=10)
+    def get_project_by_root_dir(self, root_dir: str) -> Optional[DbtProject]:
+        """Get a project by its root directory."""
+        root_dir = os.path.abspath(os.path.normpath(root_dir))
+        for project in self._projects.values():
+            if os.path.abspath(project.project_root) == root_dir:
+                return project
+        return None
 
     def get_default_project(self) -> Optional[DbtProject]:
         """Gets the default project which at any given time is the

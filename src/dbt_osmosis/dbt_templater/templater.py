@@ -1,6 +1,5 @@
 """Defines the dbt_osmosis templater."""
 
-import os
 import os.path
 import logging
 import threading
@@ -17,10 +16,9 @@ from sqlfluff.core.errors import SQLTemplaterError, SQLFluffSkipFile
 from sqlfluff.core.templaters.base import TemplatedFile, large_file_check
 from sqlfluff.core.templaters.jinja import JinjaTemplater
 
-from dbt_osmosis.core.osmosis import DbtAdapterCompilationResult
+from dbt_osmosis.core.osmosis import DbtAdapterCompilationResult, DbtProject
 
-# Instantiate the logger
-templater_logger = logging.getLogger("dbt_osmosis.dbt_templater")
+templater_logger = logging.getLogger(__name__)
 
 DBT_VERSION = get_installed_version()
 DBT_VERSION_STRING = DBT_VERSION.to_version_string()
@@ -37,92 +35,35 @@ local = threading.local()
 
 
 def dbt_project_container():
-    """Returns the dbt project container from server_v2.
-
-    This is a little hacky, because it assumes that's the only place state is
-    stored.
-    """
+    """Returns the dbt project container from server_v2."""
     # Import here to avoid circular import.
     from dbt_osmosis.core.server_v2 import app
+
     return app.state.dbt_project_container
 
 
-# Below, we monkeypatch Environment.from_string() to intercept when dbt
-# compiles (i.e. runs Jinja) to expand the "node" corresponding to fname.
-# We do this to capture the Jinja context at the time of compilation, i.e.:
-# - Jinja Environment object
-# - Jinja "globals" dictionary
-#
-# This info is captured by the "make_template()" function, which in
-# turn is used by our parent class' (JinjaTemplater) slice_file()
-# function.
-old_from_string = Environment.from_string
-
-
 class OsmosisDbtTemplater(JinjaTemplater):
-    """dbt templater for dbt-osmosis.
+    """dbt templater for dbt-osmosis, based on sqlfluff-templater-dbt."""
 
-    Based on sqlfluff-templater-dbt.
-    """
-
+    # Same templater name as sqlfluff-templater-dbt. It is functionally
+    # equivalent to that templater, but optimized for dbt-osmosis. The two
+    # templaters cannot be installed in the same virtualenv.
     name = "dbt"
-    sequential_fail_limit = 3
 
-    def __init__(self, **kwargs):
-        self.sqlfluff_config = None
-        self.formatter = None
-        self.working_dir = os.getcwd()
-        self._sequential_fails = 0
-        super().__init__(**kwargs)
-
-    def config_pairs(self):  # pragma: no cover TODO?
+    def config_pairs(self):  # pragma: no cover
         """Returns info about the given templater for output by the cli."""
         return [("templater", self.name), ("dbt", DBT_VERSION_STRING)]
 
-    @property
-    def dbt_config(self):
-        """Returns the dbt config."""
-        return dbt_project_container()["dbt_project"].config
-
-    @property
-    def dbt_manifest(self):
-        """Returns the dbt manifest."""
-        return dbt_project_container()["dbt_project"].dbt
-
-    def _get_profile(self):
-        """Get a dbt profile name from the configuration."""
-        return self.sqlfluff_config.get_section((self.templater_selector, self.name, "profile"))
-
     @large_file_check
-    def process(self, *, fname, in_str=None, config=None, formatter=None):
-        """Compile a dbt model and return the compiled SQL.
-
-        Args:
-            fname (:obj:`str`): Path to dbt model(s)
-            in_str (:obj:`str`, optional): This is ignored for dbt
-            config (:obj:`FluffConfig`, optional): A specific config to use for this
-                templating operation. Only necessary for some templaters.
-            formatter (:obj:`CallbackFormatter`): Optional object for output.
-        """
-        # Stash the formatter if provided to use in cached methods.
-        self.formatter = formatter
-        self.sqlfluff_config = config
-        fname_absolute_path = os.path.abspath(fname)
-
+    def process(self, *, fname: str, config, **kwargs):
+        """Compile a dbt model and return the compiled SQL."""
         try:
-            processed_result = self._unsafe_process(fname_absolute_path, in_str, config)
-            # Reset the fail counter
-            self._sequential_fails = 0
-            return processed_result
+            return self._unsafe_process(os.path.abspath(fname), config)
         except DbtCompilationException as e:
-            # Increment the counter
-            self._sequential_fails += 1
             if e.node:
                 return None, [
                     SQLTemplaterError(
-                        f"dbt compilation error on file '{e.node.original_file_path}', " f"{e.msg}",
-                        # It's fatal if we're over the limit
-                        fatal=self._sequential_fails > self.sequential_fail_limit,
+                        f"dbt compilation error on file '{e.node.original_file_path}', " f"{e.msg}"
                     )
                 ]
             else:
@@ -131,42 +72,26 @@ class OsmosisDbtTemplater(JinjaTemplater):
         except SQLTemplaterError as e:  # pragma: no cover
             return None, [e]
 
-    def _find_node(self, fname, config=None):
-        if not fname:  # pragma: no cover
-            raise ValueError("For the dbt templater, the `process()` method requires a file name")
-        elif fname == "stdin":  # pragma: no cover
-            raise ValueError(
-                "The dbt templater does not support stdin input, provide a path instead"
-            )
-        osmosis_dbt_project = dbt_project_container()["dbt_project"]
-        expected_node_path = os.path.relpath(
-            fname, start=os.path.abspath(osmosis_dbt_project.args.project_dir)
-        )
-        found_node = None
-        for node in osmosis_dbt_project.dbt.nodes.values():
-            # TODO: Scans all nodes. Could be slow for large projects. Is there
-            # a better way to do this?
-            if node.original_file_path == expected_node_path:
-                found_node = node
-                break
-        if not found_node:
-            skip_reason = self._find_skip_reason(expected_node_path)
-            if skip_reason:
-                raise SQLFluffSkipFile(f"Skipped file {fname} because it is {skip_reason}")
-            raise SQLFluffSkipFile(
-                "File %s was not found in dbt project" % fname
-            )  # pragma: no cover
-        return found_node
+    def _find_node(self, fname: str, project: DbtProject):
+        expected_node_path = os.path.relpath(fname, start=os.path.abspath(project.args.project_dir))
+        node = project.get_node_by_path(expected_node_path)
+        if node:
+            return node
+        skip_reason = self._find_skip_reason(project, expected_node_path)
+        if skip_reason:
+            raise SQLFluffSkipFile(f"Skipped file {fname} because it is {skip_reason}")
+        raise SQLFluffSkipFile(f"File {fname} was not found in dbt project")  # pragma: no cover
 
-    def _find_skip_reason(self, expected_node_path) -> Optional[str]:
+    @staticmethod
+    def _find_skip_reason(project, expected_node_path) -> Optional[str]:
         """Return string reason if model okay to skip, otherwise None."""
         # Scan macros.
-        for macro in self.dbt_manifest.macros.values():
+        for macro in project.dbt.macros.values():
             if macro.original_file_path == expected_node_path:
                 return "a macro"
 
         # Scan disabled nodes.
-        for nodes in self.dbt_manifest.disabled.values():
+        for nodes in project.dbt.disabled.values():
             for node in nodes:
                 if node.original_file_path == expected_node_path:
                     return "disabled"
@@ -193,22 +118,11 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
         return old_from_string(*args, **kwargs)
 
-    # Apply the monkeypatch. To avoid issues with multiple threads, we never
-    # remove the patch.
-    Environment.from_string = from_string
-
-    def _unsafe_process(self, fname, in_str=None, config=None):
-        osmosis_dbt_project = dbt_project_container()["dbt_project"]
-        node = self._find_node(fname, config)
-        templater_logger.debug(
-            "_find_node for path %r returned object of type %s.", fname, type(node)
+    def _unsafe_process(self, fname, config=None):
+        osmosis_dbt_project = dbt_project_container().get_project_by_root_dir(
+            config.get_section((self.templater_selector, self.name, "project_dir"))
         )
-
-        save_ephemeral_nodes = dict(
-            (k, v)
-            for k, v in self.dbt_manifest.nodes.items()
-            if v.config.materialized == "ephemeral" and not getattr(v, "compiled", False)
-        )
+        node = self._find_node(fname, osmosis_dbt_project)
         local.original_file_path = os.path.relpath(
             fname, start=osmosis_dbt_project.args.project_dir
         )
@@ -224,15 +138,6 @@ class OsmosisDbtTemplater(JinjaTemplater):
                     injected_sql=getattr(node, "injected_sql", None),
                 )
         except Exception as err:
-            templater_logger.exception(
-                "Fatal dbt compilation error on %s. This occurs most often "
-                "during incorrect sorting of ephemeral models before linting. "
-                "Please report this error on github at "
-                "https://github.com/sqlfluff/sqlfluff/issues, including "
-                "both the raw and compiled sql for the model affected.",
-                fname,
-            )
-            # Additional error logging in case we get a fatal dbt error.
             raise SQLFluffSkipFile(  # pragma: no cover
                 f"Skipped file {fname} because dbt raised a fatal "
                 f"exception during compilation: {err!s}"
@@ -264,8 +169,8 @@ class OsmosisDbtTemplater(JinjaTemplater):
         else:
             # Source file ends with right whitespace stripping, so there's
             # no need to preserve/restore trailing newlines, as they would
-            # have been removed regardless of dbt's
-            # keep_trailing_newlines=False behavior.
+            # have been removed regardless of dbt'skeep_trailing_newlines=False
+            # behavior.
             n_trailing_newlines = 0
 
         templater_logger.debug(
@@ -276,36 +181,10 @@ class OsmosisDbtTemplater(JinjaTemplater):
         templater_logger.debug("    Node raw SQL: %r", raw_sql)
         templater_logger.debug("    Node compiled SQL: %r", compiled_sql)
 
-        # When using dbt-templater, trailing newlines are ALWAYS REMOVED during
-        # compiling. Unless fixed (like below), this will cause:
-        #    1. Assertion errors in TemplatedFile, when it sanity checks the
-        #       contents of the sliced_file array.
-        #    2. L009 linting errors when running "sqlfluff lint foo_bar.sql"
-        #       since the linter will use the compiled code with the newlines
-        #       removed.
-        #    3. "No newline at end of file" warnings in Git/GitHub since
-        #       sqlfluff uses the compiled SQL to write fixes back to the
-        #       source SQL in the dbt model.
-        #
-        # The solution is (note that both the raw and compiled files have
-        # had trailing newline(s) removed by the dbt-templater.
-        #    1. Check for trailing newlines before compiling by looking at the
-        #       raw SQL in the source dbt file. Remember the count of trailing
-        #       newlines.
-        #    2. Set node.raw_sql/node.raw_code to the original source file contents.
-        #    3. Append the count from #1 above to compiled_sql. (In
-        #       production, slice_file() does not usually use this string,
-        #       but some test scenarios do.
+        # Adjust for dbt Jinja removing trailing newlines. For more details on
+        # this, see the similar code in sqlfluff-templater.dbt.
         compiled_node.raw_sql = source_dbt_sql
         compiled_sql = compiled_sql + "\n" * n_trailing_newlines
-
-        # TRICKY: dbt configures Jinja2 with keep_trailing_newline=False.
-        # As documented (https://jinja.palletsprojects.com/en/3.0.x/api/),
-        # this flag's behavior is: "Preserve the trailing newline when
-        # rendering templates. The default is False, which causes a single
-        # newline, if present, to be stripped from the end of the template."
-        #
-        # Below, we use "append_to_templated" to effectively "undo" this.
         raw_sliced, sliced_file, templated_sql = self.slice_file(
             source_dbt_sql,
             compiled_sql,
@@ -313,15 +192,6 @@ class OsmosisDbtTemplater(JinjaTemplater):
             make_template=local.make_template,
             append_to_templated="\n" if n_trailing_newlines else "",
         )
-        # :HACK: If calling compile_node() compiled any ephemeral nodes,
-        # restore them to their earlier state. This prevents a runtime error
-        # in the dbt "_inject_ctes_into_sql()" function that occurs with
-        # 2nd-level ephemeral model dependencies (e.g. A -> B -> C, where
-        # both B and C are ephemeral). Perhaps there is a better way to do
-        # this, but this seems good enough for now.
-        for k, v in save_ephemeral_nodes.items():
-            if getattr(self.dbt_manifest.nodes[k], "compiled", False):
-                self.dbt_manifest.nodes[k] = v
         return (
             TemplatedFile(
                 source_str=source_dbt_sql,
@@ -335,16 +205,16 @@ class OsmosisDbtTemplater(JinjaTemplater):
         )
 
 
+# Monkeypatch Environment.from_string(). OsmosisDbtTemplater uses this to
+# intercept Jinja compilation and capture a template trace.
+old_from_string = Environment.from_string
+Environment.from_string = OsmosisDbtTemplater.from_string
+
+
 class SnapshotExtension(StandaloneTag):
     """Dummy "snapshot" tags so raw dbt templates will parse.
 
-    Context: dbt snapshots
-    (https://docs.getdbt.com/docs/building-a-dbt-project/snapshots/#example)
-    use custom Jinja "snapshot" and "endsnapshot" tags. However, dbt does not
-    actually register those tags with Jinja. Instead, it finds and removes these
-    tags during a preprocessing step. However, DbtTemplater needs those tags to
-    actually parse, because JinjaTracer creates and uses Jinja to process
-    another template similar to the original one.
+    For more context, see sqlfluff-templater-dbt.
     """
 
     tags = {"snapshot", "endsnapshot"}
