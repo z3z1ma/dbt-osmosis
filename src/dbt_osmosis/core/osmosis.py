@@ -14,6 +14,7 @@ dbt.adapters.factory.get_adapter = lambda config: config.adapter
 import atexit
 import os
 import threading
+import uuid
 from collections import OrderedDict, UserDict
 from copy import copy
 from enum import Enum
@@ -252,6 +253,10 @@ class DbtProject:
         self.dbt = project_parser.load()
         self.dbt.build_flat_graph()
         project_parser.save_macros_to_adapter(self.adapter)
+        self._sql_parser = None
+        self._macro_parser = None
+        self._sql_compiler = None
+        self._sql_runner = None
 
     @classmethod
     def from_args(cls, args: ConfigInterface) -> "DbtProject":
@@ -264,7 +269,7 @@ class DbtProject:
         )
 
     @property
-    def yaml_handler(self) -> SqlBlockParser:
+    def yaml_handler(self) -> YamlHandler:
         """A YAML handler for loading and dumping yaml files on disk"""
         if self._yaml_handler is None:
             self._yaml_handler = YamlHandler()
@@ -372,10 +377,6 @@ class DbtProject:
         self.get_macro_function.cache_clear()
         self.get_columns.cache_clear()
         self.compile_sql.cache_clear()
-        self._sql_parser = None
-        self._macro_parser = None
-        self._sql_compiler = None
-        self._sql_runner = None
 
     @lru_cache(maxsize=10)
     def get_ref_node(self, target_model_name: str) -> MaybeNonSource:
@@ -458,7 +459,10 @@ class DbtProject:
     @lru_cache(maxsize=SQL_CACHE_SIZE)
     def compile_sql(self, raw_sql: str) -> DbtAdapterCompilationResult:
         """Creates a node with a `dbt.parser.sql` class. Compile generated node."""
-        return self.compile_node(self.get_server_node(raw_sql))
+        temp_node_id = str(uuid.uuid4())
+        node = self.compile_node(self.get_server_node(raw_sql, temp_node_id))
+        self._clear_node(temp_node_id)
+        return node
 
     def compile_node(self, node: ManifestNode) -> DbtAdapterCompilationResult:
         """Compiles existing node."""
@@ -928,7 +932,7 @@ class DbtYamlManager(DbtProject):
                             continue
                         # TODO: We avoid sources for complexity reasons but if we are opinionated, we don't have to
                         schema = self.assert_schema_has_no_sources(
-                            self.yaml.load(schema_file.current)
+                            self.yaml_handler.load(schema_file.current)
                         )
                         models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
                         for documented_model in models_in_file:
@@ -984,22 +988,22 @@ class DbtYamlManager(DbtProject):
                 if not self.dry_run:
                     target.parent.mkdir(exist_ok=True, parents=True)
                     target.touch()
-                    self.yaml.dump(structure.output, target)
+                    self.yaml_handler.dump(structure.output, target)
 
             else:
                 # Update File
                 logger().info(":toolbox: Updating schema file %s", target.name)
-                target_schema: Dict[str, Any] = self.yaml.load(target)
+                target_schema: Dict[str, Any] = self.yaml_handler.load(target)
                 if "version" not in target_schema:
                     target_schema["version"] = 2
                 target_schema.setdefault("models", []).extend(structure.output["models"])
                 if not self.dry_run:
-                    self.yaml.dump(target_schema, target)
+                    self.yaml_handler.dump(target_schema, target)
 
             # Clean superseded schema files
             for dir, models in structure.supersede.items():
                 preserved_models = []
-                raw_schema: Dict[str, Any] = self.yaml.load(dir)
+                raw_schema: Dict[str, Any] = self.yaml_handler.load(dir)
                 models_marked_for_superseding = set(models)
                 models_in_schema = set(map(lambda mdl: mdl["name"], raw_schema.get("models", [])))
                 non_superseded_models = models_in_schema - models_marked_for_superseding
@@ -1013,7 +1017,7 @@ class DbtYamlManager(DbtProject):
                             preserved_models.append(model)
                     raw_schema["models"] = preserved_models
                     if not self.dry_run:
-                        self.yaml.dump(raw_schema, dir)
+                        self.yaml_handler.dump(raw_schema, dir)
                     logger().info(
                         ":satellite: Model documentation migrated from %s to %s",
                         dir.name,
@@ -1166,7 +1170,7 @@ class DbtYamlManager(DbtProject):
                 n_cols_doc_inherited = 0
                 n_cols_removed = 0
                 if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
-                    schema_file = self.yaml.load(schema_path.current)
+                    schema_file = self.yaml_handler.load(schema_path.current)
                     (
                         n_cols_added,
                         n_cols_doc_inherited,
@@ -1181,7 +1185,7 @@ class DbtYamlManager(DbtProject):
                     if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
                         # Dump the mutated schema file back to the disk
                         if not self.dry_run:
-                            self.yaml.dump(schema_file, schema_path.current)
+                            self.yaml_handler.dump(schema_file, schema_path.current)
                         logger().info(":sparkles: Schema file updated")
 
                 # Print Audit Report
