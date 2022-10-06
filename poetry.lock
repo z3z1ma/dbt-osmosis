@@ -369,7 +369,7 @@ name = "dbt-postgres"
 version = "1.2.1"
 description = "The postgres adapter plugin for dbt (data build tool)"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -1115,7 +1115,7 @@ name = "psycopg2-binary"
 version = "2.9.3"
 description = "psycopg2 - Python-PostgreSQL Database Adapter"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -1252,7 +1252,7 @@ python-versions = ">=3.7"
 name = "pytest"
 version = "7.1.3"
 description = "pytest: simple powerful testing with Python"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 
@@ -2005,6 +2005,7 @@ testing = ["func-timeout", "jaraco.itertools", "pytest (>=6)", "pytest-black (>=
 
 [extras]
 duckdb = ["dbt-duckdb", "duckcli"]
+postgres = ["dbt-postgres", "psycopg2-binary"]
 sqlite = ["dbt-sqlite"]
 workbench = ["streamlit", "streamlit-ace", "graphviz", "pydot", "streamlit-agraph", "streamlit-pandas-profiling", "streamlit-aggrid", "scipy", "feedparser"]
 

@@ -17,6 +17,16 @@ def lint_command(
 
     This is essentially a streamlined version of the SQLFluff command-line lint
     function, sqlfluff.cli.commands.lint().
+
+    This function uses a few SQLFluff internals, but it should be relatively
+    stable. The initial plan was to use the public API, but that was not
+    behaving well initially. Small details about how SQLFluff handles .sqlfluff
+    and dbt_project.yaml file locations and overrides generate lots of support
+    questions, so it seems better to use this approach for now.
+
+    Eventually, we can look at using SQLFluff's public, high-level APIs,
+    but for now this should provide maximum compatibility with the command-line
+    tool. We can also propose changes to SQLFluff to make this easier.
     """
     # TODO: Should get_config() be a one-time thing in /register?
     config = get_config(extra_config_path, ignore_local_config, require_dialect=False, nocolor=True)
@@ -47,6 +57,7 @@ def test_lint_command():
     """
     logging.basicConfig(level=logging.INFO)
     from dbt_osmosis.core.server_v2 import app
+
     dbt = app.state.dbt_project_container
     dbt.add_project(
         name_override="dbt_project",
@@ -54,10 +65,12 @@ def test_lint_command():
         profiles_dir="tests/sqlfluff_templater/fixtures/dbt/profiles_yml",
         target="dev",
     )
-    sql_path = Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project/models/my_new_project/issue_1608.sql")
+    sql_path = Path(
+        "tests/sqlfluff_templater/fixtures/dbt/dbt_project/models/my_new_project/issue_1608.sql"
+    )
     result = lint_command(
         sql=sql_path,
-        #sql=sql_path.read_text(),
+        # sql=sql_path.read_text(),
         extra_config_path="tests/sqlfluff_templater/fixtures/dbt/dbt_project/.sqlfluff",
     )
     print(f"{'*'*40} Lint result {'*'*40}")
