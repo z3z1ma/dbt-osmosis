@@ -210,7 +210,6 @@ async def compile_sql(
 )
 async def lint_sql(
     response: Response,
-    sql: Optional[str] = None,
     sql_path: Optional[str] = None,
     # TODO: Should config_path be part of /register instead?
     extra_config_path: Optional[str] = None,
@@ -235,7 +234,7 @@ async def lint_sql(
     # Query Linting
     try:
         result = lint_command(
-            sql=Path(sql_path) if sql_path else sql,
+            sql=Path(sql_path),
                      extra_config_path=extra_config_path,
         )["violations"]
     except Exception as lint_err:

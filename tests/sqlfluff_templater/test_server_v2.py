@@ -15,10 +15,6 @@ def test_lint(profiles_dir, project_dir, sqlfluff_config_path, caplog):
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
         params={
-            # This doesn't work. The templater fails when it can't find the
-            # "file" in the dbt project. Revisit this after switching to the
-            # osmosis compile function
-            #"sql": sql_path.read_text(),
             "sql_path": str(sql_path),
             "extra_config_path": sqlfluff_config_path,
         }
