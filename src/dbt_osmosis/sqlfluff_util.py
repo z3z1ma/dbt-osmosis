@@ -4,13 +4,44 @@ from contextlib import closing
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from sqlfluff.cli.commands import get_config, get_linter_and_formatter
+from sqlfluff.cli.commands import get_linter_and_formatter
 from sqlfluff.cli.outputstream import FileOutput
+from sqlfluff.core.config import ConfigLoader, FluffConfig
+
+
+def get_config(
+    dbt_project_root: Path,
+    extra_config_path: Optional[Path] = None,
+    ignore_local_config: bool = False,
+    require_dialect: bool = True,
+    **kwargs,
+) -> FluffConfig:
+    """Similar to the get_config() function used by SQLFluff command line.
+
+    The main difference (an important one!) is that it loads configuration
+    starting from the dbt_project_root, rather than the current working
+    directory.
+    """
+    overrides = {k: kwargs[k] for k in kwargs if kwargs[k] is not None}
+    loader = ConfigLoader.get_global()
+    c = loader.load_config_up_to_path(
+        path=str(dbt_project_root),
+        extra_config_path=str(extra_config_path) if extra_config_path else None,
+        ignore_local_config=ignore_local_config,
+    )
+    return FluffConfig(
+        configs=c,
+        extra_config_path=str(extra_config_path) if extra_config_path else None,
+        ignore_local_config=ignore_local_config,
+        overrides=overrides,
+        require_dialect=require_dialect,
+    )
 
 
 def lint_command(
+    project_root: Path,
     sql: Union[Path, str],
-    extra_config_path: Optional[str] = None,
+    extra_config_path: Optional[Path] = None,
     ignore_local_config: bool = False,
 ) -> Dict:
     """Lint specified file or SQL string.
@@ -28,8 +59,11 @@ def lint_command(
     but for now this should provide maximum compatibility with the command-line
     tool. We can also propose changes to SQLFluff to make this easier.
     """
-    # TODO: Should get_config() be a one-time thing in /register?
-    config = get_config(extra_config_path, ignore_local_config, require_dialect=False, nocolor=True)
+    # TODO: Should get_config() be called one time only, when the dbt project
+    # is registered?
+    config = get_config(
+        project_root, extra_config_path, ignore_local_config, require_dialect=False, nocolor=True
+    )
     with closing(FileOutput(config, os.devnull)) as output_stream:
         lnt, formatter = get_linter_and_formatter(config, output_stream)
 

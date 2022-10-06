@@ -210,7 +210,7 @@ async def compile_sql(
 )
 async def lint_sql(
     response: Response,
-    sql_path: Optional[str] = None,
+    sql_path: str,
     # TODO: Should config_path be part of /register instead?
     extra_config_path: Optional[str] = None,
     x_dbt_project: str = Header(default=DEFAULT),
@@ -234,8 +234,9 @@ async def lint_sql(
     # Query Linting
     try:
         result = lint_command(
+            Path(project.project_root),
             sql=Path(sql_path),
-                     extra_config_path=extra_config_path,
+            extra_config_path=Path(extra_config_path) if extra_config_path else None,
         )["violations"]
     except Exception as lint_err:
         logging.exception("Linting failed")
