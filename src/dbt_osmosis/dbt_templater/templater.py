@@ -71,7 +71,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
         except SQLTemplaterError as e:  # pragma: no cover
             return None, [e]
 
-    def _find_node(self, fname: str, project: DbtProject):
+    def _find_node(self, project: DbtProject, fname: str):
         expected_node_path = os.path.relpath(fname, start=os.path.abspath(project.args.project_dir))
         node = project.get_node_by_path(expected_node_path)
         if node:
@@ -82,7 +82,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
         raise SQLFluffSkipFile(f"File {fname} was not found in dbt project")  # pragma: no cover
 
     @staticmethod
-    def _find_skip_reason(project, expected_node_path) -> Optional[str]:
+    def _find_skip_reason(project: DbtProject, expected_node_path: str) -> Optional[str]:
         """Return string reason if model okay to skip, otherwise None."""
         # Scan macros.
         for macro in project.dbt.macros.values():
@@ -122,7 +122,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
         osmosis_dbt_project = dbt_project_container().get_project_by_root_dir(
             config.get_section((self.templater_selector, self.name, "project_dir"))
         )
-        node = self._find_node(fname, osmosis_dbt_project)
+        node = self._find_node(osmosis_dbt_project, fname)
         local.original_file_path = os.path.relpath(
             fname, start=osmosis_dbt_project.args.project_dir
         )
