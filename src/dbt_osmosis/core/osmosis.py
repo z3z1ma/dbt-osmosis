@@ -1,3 +1,16 @@
+import dbt.adapters.factory
+
+# This is critical because `get_adapter` is all over dbt-core
+# as they expect a singleton adapter instance per plugin,
+# so dbt-niceDatabase will have one adapter instance named niceDatabase.
+# This makes sense in dbt-land where we have a single Project/Profile
+# combination executed in process from start to finish or a single tenant RPC
+# This doesn't fit our paradigm of one adapter per DbtProject in a multitenant server,
+# so we create an adapter instance **independent** of the FACTORY cache
+# and attach it directly to our RuntimeConfig which is passed through
+# anywhere dbt-core needs config including in all `get_adapter` calls
+dbt.adapters.factory.get_adapter = lambda config: config.adapter
+
 import atexit
 import os
 import threading
@@ -26,13 +39,7 @@ from typing import (
 
 import agate
 from dbt.adapters.base import BaseRelation
-from dbt.adapters.factory import (
-    Adapter,
-    cleanup_connections,
-    get_adapter,
-    register_adapter,
-    reset_adapters,
-)
+from dbt.adapters.factory import Adapter, get_adapter_class_by_name
 from dbt.clients import jinja  # monkey-patched for perf
 from dbt.config.runtime import RuntimeConfig
 from dbt.contracts.connection import AdapterResponse
@@ -64,6 +71,7 @@ __all__ = [
     "DbtYamlManager",
     "ConfigInterface",
     "has_jinja",
+    "DbtOsmosis",  # for compat
 ]
 
 CACHE = {}
@@ -207,7 +215,7 @@ class DbtProject:
             project_dir=project_dir,
         )
 
-        self.parse_project()
+        self.parse_project(init=True)
 
         # Utilities
         self._yaml_handler: Optional[YamlHandler] = None
@@ -219,17 +227,31 @@ class DbtProject:
         # Tracks internal state version
         self._version: int = 1
         self.mutex = threading.Lock()
-        atexit.register(cleanup_connections)
+        # atexit.register(lambda dbt_project: dbt_project.adapter.connections.cleanup_all, self)
 
-    def parse_project(self) -> None:
+    def get_adapter(self):
+        """This inits a new Adapter which is fundamentally different than
+        the singleton approach in the core lib"""
+        adapter_name = self.config.credentials.type
+        return get_adapter_class_by_name(adapter_name)(self.config)
+
+    def parse_project(self, init: bool = False) -> None:
         """Parses project on disk from `ConfigInterface` in args attribute, verifies connection
         to adapters database, mutates config, adapter, and dbt attributes"""
-        set_from_args(self.args, self.args)
-        self.config = RuntimeConfig.from_args(self.args)
-        reset_adapters()
-        register_adapter(self.config)
-        self.adapter = self._verify_connection(get_adapter(self.config))
-        self.dbt = ManifestLoader.get_full_manifest(self.config)
+        if init:
+            set_from_args(self.args, self.args)
+            self.config = RuntimeConfig.from_args(self.args)
+            if hasattr(self, "adapter"):
+                self.adapter.cleanup_all()
+            self.adapter = self._verify_connection(self.get_adapter())
+            self.config.adapter = self.adapter
+
+        project_parser = ManifestLoader(
+            self.config, self.config.load_dependencies(), self.adapter.connections.set_query_header
+        )
+        self.dbt = project_parser.load()
+        self.dbt.build_flat_graph()
+        project_parser.save_macros_to_adapter(self.adapter)
 
     @classmethod
     def from_args(cls, args: ConfigInterface) -> "DbtProject":
@@ -323,14 +345,14 @@ class DbtProject:
         """dbt manifest dict"""
         return ManifestProxy(self.dbt.flat_graph)
 
-    def safe_parse_project(self, reset: bool = False) -> None:
+    def safe_parse_project(self, reinit: bool = False) -> None:
         """This is used to reseed the DbtProject safely post-init. This is
         intended for use by the osmosis server"""
-        if reset:
+        if reinit:
             self.clear_caches()
         _config_pointer = copy(self.config)
         try:
-            self.parse_project()
+            self.parse_project(init=reinit)
         except Exception as parse_error:
             self.config = _config_pointer
             raise parse_error
@@ -634,6 +656,9 @@ class DbtProjectContainer:
         ```
         """
         return self
+
+
+DbtOsmosis = DbtProject
 
 
 class SchemaFileOrganizationPattern(str, Enum):
