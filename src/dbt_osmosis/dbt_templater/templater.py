@@ -9,7 +9,6 @@ from typing import Optional
 
 from dbt.version import get_installed_version
 from dbt.adapters.factory import get_adapter
-from dbt.compilation import Compiler as DbtCompiler
 from dbt.exceptions import (
     CompilationException as DbtCompilationException,
     FailedToConnectException as DbtFailedToConnectException,
@@ -20,10 +19,10 @@ from jinja2_simple_tags import StandaloneTag
 
 from sqlfluff.core.cached_property import cached_property
 from sqlfluff.core.errors import SQLTemplaterError, SQLFluffSkipFile
-
 from sqlfluff.core.templaters.base import TemplatedFile, large_file_check
-
 from sqlfluff.core.templaters.jinja import JinjaTemplater
+
+from dbt_osmosis.core.osmosis import DbtAdapterCompilationResult
 
 # Instantiate the logger
 templater_logger = logging.getLogger("dbt_osmosis.dbt_templater")
@@ -84,20 +83,14 @@ class OsmosisDbtTemplater(JinjaTemplater):
         """Gets the dbt version as a tuple on (major, minor)."""
         return DBT_VERSION_TUPLE
 
-    @cached_property
+    @property
     def dbt_config(self):
         """Loads the dbt config."""
         from dbt_osmosis.core.server_v2 import app
 
         return app.state.dbt_project_container["dbt_project"].config
 
-    @cached_property
-    def dbt_compiler(self):
-        """Loads the dbt compiler."""
-        self.dbt_compiler = DbtCompiler(self.dbt_config)
-        return self.dbt_compiler
-
-    @cached_property
+    @property
     def dbt_manifest(self):
         """Returns the dbt manifest."""
         from dbt_osmosis.core.server_v2 import app
@@ -249,9 +242,13 @@ class OsmosisDbtTemplater(JinjaTemplater):
             local.make_template = None
             try:
                 if not isinstance(node, CompiledModelNode):
-                    node = self.dbt_compiler.compile_node(
+                    compiled_node = osmosis_dbt_project.compile_node(node)
+                else:
+                    compiled_node = DbtAdapterCompilationResult(
+                        raw_sql=getattr(node, RAW_SQL_ATTRIBUTE),
+                        compiled_sql=node.compiled_sql,
                         node=node,
-                        manifest=self.dbt_manifest,
+                        injected_sql=getattr(node, "injected_sql", None),
                     )
             except Exception as err:
                 templater_logger.exception(
@@ -270,15 +267,15 @@ class OsmosisDbtTemplater(JinjaTemplater):
             finally:
                 local.original_file_path = None
 
-            if hasattr(node, "injected_sql"):
+            if compiled_node.injected_sql:
                 # If injected SQL is present, it contains a better picture
                 # of what will actually hit the database (e.g. with tests).
                 # However it's not always present.
-                compiled_sql = node.injected_sql
+                compiled_sql = compiled_node.injected_sql
             else:
-                compiled_sql = getattr(node, COMPILED_SQL_ATTRIBUTE)
+                compiled_sql = compiled_node.compiled_sql
 
-            raw_sql = getattr(node, RAW_SQL_ATTRIBUTE)
+            raw_sql = compiled_node.raw_sql
 
             if not compiled_sql:  # pragma: no cover
                 raise SQLTemplaterError(
@@ -326,7 +323,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
             #    3. Append the count from #1 above to compiled_sql. (In
             #       production, slice_file() does not usually use this string,
             #       but some test scenarios do.
-            setattr(node, RAW_SQL_ATTRIBUTE, source_dbt_sql)
+            compiled_node.raw_sql = source_dbt_sql
             compiled_sql = compiled_sql + "\n" * n_trailing_newlines
 
             # TRICKY: dbt configures Jinja2 with keep_trailing_newline=False.

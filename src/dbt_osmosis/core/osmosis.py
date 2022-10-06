@@ -183,10 +183,11 @@ class DbtAdapterExecutionResult:
 class DbtAdapterCompilationResult:
     """Interface for compilation results, this keeps us 1 layer removed from dbt interfaces which may change"""
 
-    def __init__(self, raw_sql: str, compiled_sql: str, node: ManifestNode) -> None:
+    def __init__(self, raw_sql: str, compiled_sql: str, node: ManifestNode, injected_sql: Optional[str] = None) -> None:
         self.raw_sql = raw_sql
         self.compiled_sql = compiled_sql
         self.node = node
+        self.injected_sql = injected_sql
 
 
 class DbtProject:
