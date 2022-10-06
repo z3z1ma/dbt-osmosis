@@ -314,7 +314,7 @@ def _reset(
     target_did_change = old_target != new_target
     try:
         runner.args.target = new_target
-        runner.safe_parse_project(reset=reset or target_did_change)
+        runner.safe_parse_project(reinit=reset or target_did_change)
     except Exception as reparse_err:
         runner.args.target = old_target
         rv = OsmosisErrorContainer(
