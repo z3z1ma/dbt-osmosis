@@ -1,6 +1,5 @@
 """Tests for the dbt templater."""
 
-from copy import deepcopy
 import glob
 import os
 import logging
@@ -111,56 +110,6 @@ def _get_fixture_path(template_output_folder_path, fname):
             # Ok, it exists. Use this path instead.
             fixture_path = version_specific_path
     return fixture_path
-
-
-@pytest.mark.parametrize(
-    "fnames_input, fnames_expected_sequence",
-    [
-        [
-            (
-                Path("models") / "depends_on_ephemeral" / "a.sql",
-                Path("models") / "depends_on_ephemeral" / "b.sql",
-                Path("models") / "depends_on_ephemeral" / "d.sql",
-            ),
-            # c.sql is not present in the original list and should not appear here,
-            # even though b.sql depends on it. This test ensures that "out of scope"
-            # files, e.g. those ignored using ".sqlfluffignore" or in directories
-            # outside what was specified, are not inadvertently processed.
-            (
-                Path("models") / "depends_on_ephemeral" / "a.sql",
-                Path("models") / "depends_on_ephemeral" / "b.sql",
-                Path("models") / "depends_on_ephemeral" / "d.sql",
-            ),
-        ],
-        [
-            (
-                Path("models") / "depends_on_ephemeral" / "a.sql",
-                Path("models") / "depends_on_ephemeral" / "b.sql",
-                Path("models") / "depends_on_ephemeral" / "c.sql",
-                Path("models") / "depends_on_ephemeral" / "d.sql",
-            ),
-            # c.sql should come before b.sql because b.sql depends on c.sql.
-            # It also comes first overall because ephemeral models come first.
-            (
-                Path("models") / "depends_on_ephemeral" / "c.sql",
-                Path("models") / "depends_on_ephemeral" / "a.sql",
-                Path("models") / "depends_on_ephemeral" / "b.sql",
-                Path("models") / "depends_on_ephemeral" / "d.sql",
-            ),
-        ],
-    ],
-)
-def test__templater_dbt_sequence_files_ephemeral_dependency(
-    project_dir, dbt_templater, fnames_input, fnames_expected_sequence  # noqa: F811
-):
-    """Test that dbt templater sequences files based on dependencies."""
-    result = dbt_templater.sequence_files(
-        [str(Path(project_dir) / fn) for fn in fnames_input],
-        config=FluffConfig(configs=DBT_FLUFF_CONFIG),
-    )
-    pd = Path(project_dir)
-    expected = [str(pd / fn) for fn in fnames_expected_sequence]
-    assert list(result) == expected
 
 
 @pytest.mark.parametrize(
@@ -317,46 +266,6 @@ def test__templater_dbt_templating_absolute_path(
         )
     except Exception as e:
         pytest.fail(f"Unexpected RuntimeError: {e}")
-
-
-@pytest.mark.parametrize(
-    "fname,exception_msg",
-    [
-        (
-            "compiler_error.sql",
-            "dbt compilation error on file 'models/my_new_project/compiler_error.sql', "
-            "Unexpected end of template. "
-            "Jinja was looking for the following tags: 'endfor'",
-        ),
-    ],
-)
-def test__templater_dbt_handle_exceptions(
-    project_dir, dbt_templater, fname, exception_msg  # noqa: F811
-):
-    """Test that exceptions during compilation are returned as violation."""
-    from dbt.adapters.factory import get_adapter
-
-    src_fpath = "tests/sqlfluff_templater/fixtures/dbt/error_models/" + fname
-    target_fpath = os.path.abspath(
-        os.path.join(project_dir, "models/my_new_project/", fname)
-    )
-    # We move the file that throws an error in and out of the project directory
-    # as dbt throws an error if a node fails to parse while computing the DAG
-    os.rename(src_fpath, target_fpath)
-    import dbt_osmosis.core.server_v2
-    dbt_osmosis.core.server_v2.app.state.dbt_project_container.reparse_all_projects()
-    try:
-        _, violations = dbt_templater.process(
-            in_str="",
-            fname=target_fpath,
-            config=FluffConfig(configs=DBT_FLUFF_CONFIG, overrides={"dialect": "ansi"}),
-        )
-    finally:
-        get_adapter(dbt_templater.dbt_config).connections.release()
-        os.rename(target_fpath, src_fpath)
-    assert violations
-    # NB: Replace slashes to deal with different plaform paths being returned.
-    assert violations[0].desc().replace("\\", "/").startswith(exception_msg)
 
 
 @pytest.mark.skipif(
