@@ -16,8 +16,6 @@ from dbt.exceptions import (
 from dbt.contracts.graph.compiled import CompiledModelNode
 from jinja2 import Environment
 from jinja2_simple_tags import StandaloneTag
-
-from sqlfluff.core.cached_property import cached_property
 from sqlfluff.core.errors import SQLTemplaterError, SQLFluffSkipFile
 from sqlfluff.core.templaters.base import TemplatedFile, large_file_check
 from sqlfluff.core.templaters.jinja import JinjaTemplater
@@ -39,6 +37,18 @@ else:
     RAW_SQL_ATTRIBUTE = "raw_sql"
 
 local = threading.local()
+
+
+def dbt_project_container():
+    """Returns the dbt project container from server_v2.
+
+    This is a little hacky, because it assumes that's the only place state is
+    stored.
+    """
+    # Import here to avoid circular import.
+    from dbt_osmosis.core.server_v2 import app
+    return app.state.dbt_project_container
+
 
 # Below, we monkeypatch Environment.from_string() to intercept when dbt
 # compiles (i.e. runs Jinja) to expand the "node" corresponding to fname.
@@ -71,39 +81,21 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
     def config_pairs(self):  # pragma: no cover TODO?
         """Returns info about the given templater for output by the cli."""
-        return [("templater", self.name), ("dbt", self.dbt_version)]
-
-    @property
-    def dbt_version(self):
-        """Gets the dbt version."""
-        return DBT_VERSION_STRING
-
-    @property
-    def dbt_version_tuple(self):
-        """Gets the dbt version as a tuple on (major, minor)."""
-        return DBT_VERSION_TUPLE
+        return [("templater", self.name), ("dbt", DBT_VERSION_STRING)]
 
     @property
     def dbt_config(self):
-        """Loads the dbt config."""
-        from dbt_osmosis.core.server_v2 import app
-
-        return app.state.dbt_project_container["dbt_project"].config
+        """Returns the dbt config."""
+        return dbt_project_container()["dbt_project"].config
 
     @property
     def dbt_manifest(self):
         """Returns the dbt manifest."""
-        from dbt_osmosis.core.server_v2 import app
-
-        return app.state.dbt_project_container["dbt_project"].dbt
+        return dbt_project_container()["dbt_project"].dbt
 
     def _get_profile(self):
         """Get a dbt profile name from the configuration."""
         return self.sqlfluff_config.get_section((self.templater_selector, self.name, "profile"))
-
-    def _get_target(self):
-        """Get a dbt target name from the configuration."""
-        return self.sqlfluff_config.get_section((self.templater_selector, self.name, "target"))
 
     @large_file_check
     def process(self, *, fname, in_str=None, config=None, formatter=None):
@@ -160,9 +152,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
             raise ValueError(
                 "The dbt templater does not support stdin input, provide a path instead"
             )
-        from dbt_osmosis.core.server_v2 import app
-
-        osmosis_dbt_project = app.state.dbt_project_container["dbt_project"]
+        osmosis_dbt_project = dbt_project_container()["dbt_project"]
         expected_node_path = os.path.relpath(
             fname, start=os.path.abspath(osmosis_dbt_project.args.project_dir)
         )
@@ -222,9 +212,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
     Environment.from_string = from_string
 
     def _unsafe_process(self, fname, in_str=None, config=None):
-        from dbt_osmosis.core.server_v2 import app
-
-        osmosis_dbt_project = app.state.dbt_project_container["dbt_project"]
+        osmosis_dbt_project = dbt_project_container()["dbt_project"]
         node = self._find_node(fname, config)
         templater_logger.debug(
             "_find_node for path %r returned object of type %s.", fname, type(node)
@@ -368,8 +356,6 @@ class OsmosisDbtTemplater(JinjaTemplater):
         # In previous versions, we relied on the functionality removed in
         # https://github.com/dbt-labs/dbt-core/pull/4062.
         if not self.connection_acquired:
-            from dbt_osmosis.core.server_v2 import app
-
             adapter = get_adapter(self.dbt_config)
             adapter.acquire_connection("master")
             adapter.set_relations_cache(self.dbt_manifest)
