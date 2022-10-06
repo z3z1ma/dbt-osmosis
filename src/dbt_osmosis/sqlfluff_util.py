@@ -42,8 +42,6 @@ def lint_command(
                 tuple([str(sql)]),
                 ignore_files=False,
             )
-    # TODO: Exit code may be useful somehow?
-    # return result.stats()["exit code"]
     records = result.as_records()
     assert len(records) == 1
     return records[0]
@@ -52,8 +50,8 @@ def lint_command(
 def test_lint_command():
     """Quick and dirty functional test for lint_command().
 
-    Handy for seeing SQLFluff logs if something goes wrong. The FastAPI
-    tests hide those.
+    Handy for seeing SQLFluff logs if something goes wrong. The automated tests
+    make it difficult to see the logs.
     """
     logging.basicConfig(level=logging.INFO)
     from dbt_osmosis.core.server_v2 import app
