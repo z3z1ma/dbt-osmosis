@@ -5,8 +5,12 @@ WORKDIR /app
 
 RUN pip install 'poetry==1.2.1'
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --with test
-RUN poetry install --extras postgres
+# Install the dependencies first, so that we can cache them.
+RUN poetry install --with test --extras postgres
 
 # Copy everything. (Note: If needed, we can use .dockerignore to limit what's copied.)
 COPY . .
+
+# Install again, now that we've copied the dbt-osmosis package files. Otherwise,
+# dbt-osmosis itself won't be installed.
+RUN poetry install --with test --extras postgres
