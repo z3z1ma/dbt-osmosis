@@ -1,11 +1,19 @@
-FROM python:3.9-slim-bullseye
+FROM python:3.10-slim-bullseye
 
 # Set separate working directory for easier debugging.
 WORKDIR /app
 
 RUN pip install 'poetry==1.2.1'
-#COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml poetry.lock ./
 #RUN poetry install
+
+#RUN --mount=type=cache,target=/root/.cache/pypoetry poetry install
+#RUN --mount=type=cache,target=/root/.cache/pypoetry poetry install --with test
+#RUN --mount=type=cache,target=/root/.cache/pypoetry poetry install --extras postgres
+RUN poetry install --with test --extras postgres
+#RUN poetry install
+#RUN poetry install --with test
+#RUN poetry install --extras postgres
 
 # Copy everything. (Note: If needed, we can use .dockerignore to limit what's copied.)
 COPY . .
