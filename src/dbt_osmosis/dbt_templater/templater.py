@@ -3,6 +3,7 @@
 import os.path
 import logging
 import threading
+from pathlib import Path
 from typing import Optional
 
 from dbt.version import get_installed_version
@@ -54,10 +55,12 @@ class OsmosisDbtTemplater(JinjaTemplater):
         return [("templater", self.name), ("dbt", DBT_VERSION.to_version_string())]
 
     @large_file_check
-    def process(self, *, fname: str, config, **kwargs):
+    def process(self, *, fname: str, in_str=None, config, **kwargs):
         """Compile a dbt model and return the compiled SQL."""
         try:
-            return self._unsafe_process(os.path.abspath(fname), config)
+            return self._unsafe_process(
+                os.path.abspath(fname) if in_str is None else None, in_str, config
+            )
         except DbtCompilationException as e:
             if e.node:
                 return None, [
@@ -100,11 +103,15 @@ class OsmosisDbtTemplater(JinjaTemplater):
     def from_string(*args, **kwargs):
         """Replaces (via monkeypatch) the jinja2.Environment function."""
         globals = kwargs.get("globals")
-        if globals and hasattr(local, "original_file_path"):
+        if globals and hasattr(local, "target_sql"):
             model = globals.get("model")
             if model:
                 # Is it processing the node we're interested in?
-                if model.get("original_file_path") == local.original_file_path:
+                if isinstance(local.target_sql, Path):
+                    the_one = str(local.target_sql) == model.get("original_file_path")
+                else:
+                    the_one = local.target_sql == args[1]
+                if the_one:
                     # Yes. Capture the important arguments and create
                     # a make_template() function.
                     env = args[0]
@@ -118,24 +125,25 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
         return old_from_string(*args, **kwargs)
 
-    def _unsafe_process(self, fname, config=None):
+    def _unsafe_process(self, fname, in_str, config=None):
         osmosis_dbt_project = dbt_project_container().get_project_by_root_dir(
             config.get_section((self.templater_selector, self.name, "project_dir"))
         )
-        node = self._find_node(osmosis_dbt_project, fname)
-        local.original_file_path = os.path.relpath(
-            fname, start=osmosis_dbt_project.args.project_dir
-        )
         local.make_template = None
         try:
-            if not isinstance(node, CompiledModelNode):
+            if fname:
+                node = self._find_node(osmosis_dbt_project, fname)
+                local.target_sql = Path(
+                    os.path.relpath(fname, start=osmosis_dbt_project.args.project_dir)
+                )
                 compiled_node = osmosis_dbt_project.compile_node(node)
             else:
-                compiled_node = DbtAdapterCompilationResult(
-                    raw_sql=getattr(node, RAW_SQL_ATTRIBUTE),
-                    compiled_sql=node.compiled_sql,
-                    node=node,
-                    injected_sql=getattr(node, "injected_sql", None),
+                local.target_sql = in_str
+                # TRICKY: Use __wrapped__ to bypass the cache. We *must*
+                # recompile each time, because that's how we get the
+                # make_template() function.
+                compiled_node = osmosis_dbt_project.compile_sql.__wrapped__(
+                    osmosis_dbt_project, in_str
                 )
         except Exception as err:
             raise SQLFluffSkipFile(  # pragma: no cover
@@ -143,7 +151,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
                 f"exception during compilation: {err!s}"
             ) from err
         finally:
-            local.original_file_path = None
+            local.target_sql = None
 
         if compiled_node.injected_sql:
             # If injected SQL is present, it contains a better picture
@@ -161,8 +169,11 @@ class OsmosisDbtTemplater(JinjaTemplater):
                 "configuration by running `dbt compile` directly."
             )
 
-        with open(fname) as source_dbt_model:
-            source_dbt_sql = source_dbt_model.read()
+        if fname:
+            with open(fname) as source_dbt_model:
+                source_dbt_sql = source_dbt_model.read()
+        else:
+            source_dbt_sql = in_str
 
         if not source_dbt_sql.rstrip().endswith("-%}"):
             n_trailing_newlines = len(source_dbt_sql) - len(source_dbt_sql.rstrip("\n"))

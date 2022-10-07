@@ -57,9 +57,7 @@ def test__templater_dbt_missing(dbt_templater, project_dir):  # noqa: F811
         "ends_with_whitespace_stripping.sql",
     ],
 )
-def test__templater_dbt_templating_result(
-    project_dir, dbt_templater, fname  # noqa: F811
-):
+def test__templater_dbt_templating_result(project_dir, dbt_templater, fname):  # noqa: F811
     """Test that input sql file gets templated into output sql file."""
     _run_templater_and_verify_result(dbt_templater, project_dir, fname)
 
@@ -70,21 +68,17 @@ def test_dbt_profiles_dir_env_var_uppercase(
     """Tests specifying the dbt profile dir with env var."""
     profiles_dir = tmpdir.mkdir("SUBDIR")  # Use uppercase to test issue 2253
     monkeypatch.setenv("DBT_PROFILES_DIR", str(profiles_dir))
-    shutil.copy(
-        os.path.join(project_dir, "../profiles_yml/profiles.yml"), str(profiles_dir)
-    )
+    shutil.copy(os.path.join(project_dir, "../profiles_yml/profiles.yml"), str(profiles_dir))
     _run_templater_and_verify_result(dbt_templater, project_dir, "use_dbt_utils.sql")
 
 
 def _run_templater_and_verify_result(dbt_templater, project_dir, fname):  # noqa: F811
     templated_file, _ = dbt_templater.process(
-        in_str="",
+        in_str=None,
         fname=os.path.join(project_dir, "models/my_new_project/", fname),
         config=FluffConfig(configs=DBT_FLUFF_CONFIG),
     )
-    template_output_folder_path = Path(
-        "tests/sqlfluff_templater/fixtures/dbt/templated_output/"
-    )
+    template_output_folder_path = Path("tests/sqlfluff_templater/fixtures/dbt/templated_output/")
     fixture_path = _get_fixture_path(template_output_folder_path, fname)
     assert str(templated_file) == fixture_path.read_text()
 
@@ -100,9 +94,7 @@ def _get_fixture_path(template_output_folder_path, fname):
     if dbt_version_specific_fixture_folder:
         # Maybe. Determine where it would exist.
         version_specific_path = (
-            Path(template_output_folder_path)
-            / dbt_version_specific_fixture_folder
-            / fname
+            Path(template_output_folder_path) / dbt_version_specific_fixture_folder / fname
         )
         if version_specific_path.is_file():
             # Ok, it exists. Use this path instead.
@@ -147,9 +139,7 @@ def test__templater_dbt_slice_file_wrapped_test(
         "models/my_new_project/multiple_trailing_newline.sql",
     ],
 )
-def test__templater_dbt_templating_test_lex(
-    project_dir, dbt_templater, fname  # noqa: F811
-):
+def test__templater_dbt_templating_test_lex(project_dir, dbt_templater, fname):  # noqa: F811
     """Demonstrate the lexer works on both dbt models and dbt tests.
 
     Handle any number of newlines.
@@ -160,19 +150,13 @@ def test__templater_dbt_templating_test_lex(
     n_trailing_newlines = len(source_dbt_sql) - len(source_dbt_sql.rstrip("\n"))
     lexer = Lexer(config=FluffConfig(configs=DBT_FLUFF_CONFIG))
     templated_file, _ = dbt_templater.process(
-        in_str="",
+        in_str=None,
         fname=os.path.join(project_dir, fname),
         config=FluffConfig(configs=DBT_FLUFF_CONFIG),
     )
     tokens, lex_vs = lexer.lex(templated_file)
-    assert (
-        templated_file.source_str
-        == "select a\nfrom table_a" + "\n" * n_trailing_newlines
-    )
-    assert (
-        templated_file.templated_str
-        == "select a\nfrom table_a" + "\n" * n_trailing_newlines
-    )
+    assert templated_file.source_str == "select a\nfrom table_a" + "\n" * n_trailing_newlines
+    assert templated_file.templated_str == "select a\nfrom table_a" + "\n" * n_trailing_newlines
 
 
 @pytest.mark.parametrize(
@@ -188,13 +172,11 @@ def test__templater_dbt_templating_test_lex(
         ),
     ],
 )
-def test__templater_dbt_skips_file(
-    path, reason, dbt_templater, project_dir  # noqa: F811
-):
+def test__templater_dbt_skips_file(path, reason, dbt_templater, project_dir):  # noqa: F811
     """A disabled dbt model should be skipped."""
     with pytest.raises(SQLFluffSkipFile, match=reason):
         dbt_templater.process(
-            in_str="",
+            in_str=None,
             fname=os.path.join(project_dir, path),
             config=FluffConfig(configs=DBT_FLUFF_CONFIG),
         )
@@ -209,14 +191,10 @@ def test__templater_dbt_skips_file(
         "L034_test.sql",
     ],
 )
-def test__dbt_templated_models_do_not_raise_lint_error(
-    project_dir, fname  # noqa: F811
-):
+def test__dbt_templated_models_do_not_raise_lint_error(project_dir, fname):  # noqa: F811
     """Test that templated dbt models do not raise a linting error."""
     lntr = Linter(config=FluffConfig(configs=DBT_FLUFF_CONFIG))
-    lnt = lntr.lint_path(
-        path=os.path.join(project_dir, "models/my_new_project/", fname)
-    )
+    lnt = lntr.lint_path(path=os.path.join(project_dir, "models/my_new_project/", fname))
     violations = lnt.check_tuples()
     assert len(violations) == 0
 
@@ -227,18 +205,13 @@ def _clean_path(glob_expression):
         os.remove(fsp)
 
 
-def test__templater_dbt_templating_absolute_path(
-    project_dir, dbt_templater  # noqa: F811
-):
+def test__templater_dbt_templating_absolute_path(project_dir, dbt_templater):  # noqa: F811
     """Test that absolute path of input path does not cause RuntimeError."""
     try:
         dbt_templater.process(
             in_str="",
-            fname=os.path.abspath(
-                os.path.join(project_dir, "models/my_new_project/use_var.sql")
-            ),
+            fname=os.path.abspath(os.path.join(project_dir, "models/my_new_project/use_var.sql")),
             config=FluffConfig(configs=DBT_FLUFF_CONFIG),
         )
     except Exception as e:
         pytest.fail(f"Unexpected RuntimeError: {e}")
-

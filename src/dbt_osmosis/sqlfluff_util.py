@@ -87,7 +87,7 @@ def test_lint_command():
     Handy for seeing SQLFluff logs if something goes wrong. The automated tests
     make it difficult to see the logs.
     """
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     from dbt_osmosis.core.server_v2 import app
 
     dbt = app.state.dbt_project_container
@@ -101,9 +101,15 @@ def test_lint_command():
         "tests/sqlfluff_templater/fixtures/dbt/dbt_project/models/my_new_project/issue_1608.sql"
     )
     result = lint_command(
+        Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
         sql=sql_path,
-        # sql=sql_path.read_text(),
-        extra_config_path="tests/sqlfluff_templater/fixtures/dbt/dbt_project/.sqlfluff",
+    )
+    print(f"{'*'*40} Lint result {'*'*40}")
+    print(result)
+    print(f"{'*'*40} Lint result {'*'*40}")
+    result = lint_command(
+        Path("tests/sqlfluff_templater/fixtures/dbt/dbt_project"),
+        sql=sql_path.read_text(),
     )
     print(f"{'*'*40} Lint result {'*'*40}")
     print(result)
