@@ -993,8 +993,10 @@ class DbtYamlManager(DbtProject):
             else:
                 # Update File
                 logger().info(":toolbox: Updating schema file %s", target.name)
-                target_schema: Dict[str, Any] = self.yaml_handler.load(target)
-                if "version" not in target_schema:
+                target_schema: Optional[Dict[str, Any]] = self.yaml_handler.load(target)
+                if not target_schema:
+                    target_schema = {"version": 2}
+                elif "version" not in target_schema:
                     target_schema["version"] = 2
                 target_schema.setdefault("models", []).extend(structure.output["models"])
                 if not self.dry_run:
