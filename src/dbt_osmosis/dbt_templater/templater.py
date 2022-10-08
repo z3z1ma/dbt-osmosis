@@ -10,14 +10,13 @@ from dbt.version import get_installed_version
 from dbt.exceptions import (
     CompilationException as DbtCompilationException,
 )
-from dbt.contracts.graph.compiled import CompiledModelNode
 from jinja2 import Environment
 from jinja2_simple_tags import StandaloneTag
 from sqlfluff.core.errors import SQLTemplaterError, SQLFluffSkipFile
 from sqlfluff.core.templaters.base import TemplatedFile, large_file_check
 from sqlfluff.core.templaters.jinja import JinjaTemplater
 
-from dbt_osmosis.core.osmosis import DbtAdapterCompilationResult, DbtProject
+from dbt_osmosis.core.osmosis import DbtProject
 
 templater_logger = logging.getLogger(__name__)
 
@@ -34,14 +33,6 @@ else:
 local = threading.local()
 
 
-def dbt_project_container():
-    """Returns the dbt project container from server_v2."""
-    # Import here to avoid circular import.
-    from dbt_osmosis.core.server_v2 import app
-
-    return app.state.dbt_project_container
-
-
 class OsmosisDbtTemplater(JinjaTemplater):
     """dbt templater for dbt-osmosis, based on sqlfluff-templater-dbt."""
 
@@ -49,6 +40,10 @@ class OsmosisDbtTemplater(JinjaTemplater):
     # equivalent to that templater, but optimized for dbt-osmosis. The two
     # templaters cannot be installed in the same virtualenv.
     name = "dbt"
+
+    def __init__(self, **kwargs):
+        self.dbt_project_container = kwargs.pop("dbt_project_container")
+        super().__init__(**kwargs)
 
     def config_pairs(self):  # pragma: no cover
         """Returns info about the given templater for output by the cli."""
@@ -126,7 +121,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
         return old_from_string(*args, **kwargs)
 
     def _unsafe_process(self, fname, in_str, config=None):
-        osmosis_dbt_project = dbt_project_container().get_project_by_root_dir(
+        osmosis_dbt_project = self.dbt_project_container().get_project_by_root_dir(
             config.get_section((self.templater_selector, self.name, "project_dir"))
         )
         local.make_template = None
