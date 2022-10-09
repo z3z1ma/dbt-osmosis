@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import os
 import re
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
@@ -169,7 +170,10 @@ async def compile_sql(
     query: str = (await request.body()).decode("utf-8").strip()
     if has_jinja(query):
         try:
-            compiled_query = project.compile_sql(query).compiled_sql
+            loop = asyncio.get_running_loop()
+            compiled_query = await loop.run_in_executor(
+                None, project.fn_threaded_conn(project.compile_sql, query)
+            ).compiled_sql
         except Exception as compile_err:
             response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
             return OsmosisErrorContainer(
@@ -290,7 +294,7 @@ async def register(
         return OsmosisRegisterResult(added=x_dbt_project, projects=dbt.registered_projects())
 
     try:
-        dbt.add_project(
+        project = dbt.add_project(
             name_override=x_dbt_project,
             project_dir=project_dir,
             profiles_dir=profiles_dir,
@@ -306,6 +310,8 @@ async def register(
             )
         )
 
+    loop = asyncio.get_running_loop()
+    loop.create_task(_adapter_heartbeat(project))
     return OsmosisRegisterResult(added=x_dbt_project, projects=dbt.registered_projects())
 
 
@@ -353,9 +359,10 @@ async def health_check(
                 {
                     "project_name": project.config.project_name,
                     "target_name": project.config.target_name,
-                    "profile_name": project.config.project_name,
+                    "profile_name": project.config.profile_name,
                     "logs": project.config.log_path,
                     "runner_parse_iteration": project._version,
+                    "adapter_ready": project.adapter_heartbeat(),
                 }
                 if project is not None
                 else {}
@@ -367,13 +374,22 @@ async def health_check(
     }
 
 
+async def _adapter_heartbeat(runner: DbtProject):
+    """Equivalent of a keepalive for adapters such as Snowflake"""
+    await asyncio.sleep(60 * 60)
+    while runner.adapter_heartbeat():
+        await asyncio.sleep(60 * 60)
+
+
 def run_server(host="localhost", port=8581):
+    cpus = os.cpu_count()
     uvicorn.run(
         "dbt_osmosis.core.server_v2:app",
         host=host,
         port=port,
         log_level="info",
         reload=False,
+        workers=(cpus - 1) if cpus and cpus > 1 else 1,
     )
 
 

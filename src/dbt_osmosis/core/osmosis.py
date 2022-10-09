@@ -257,7 +257,7 @@ class DbtProject:
             set_from_args(self.args, self.args)
             self.config = RuntimeConfig.from_args(self.args)
             if hasattr(self, "adapter"):
-                self.adapter.cleanup_all()
+                self.adapter.connections.cleanup_all()
             self.adapter = self._verify_connection(self.get_adapter())
             self.config.adapter = self.adapter
 
@@ -336,6 +336,18 @@ class DbtProject:
             raise RuntimeException("Could not connect to Database") from query_exc
         else:
             return adapter
+
+    def adapter_heartbeat(self) -> bool:
+        """Check adapter connection, useful for long running processes such as the server or workbench"""
+        if self.adapter is None:
+            return False
+        try:
+            with self.adapter.connection_named("osmosis-heartbeat"):
+                self.adapter.debug_query()
+        except Exception:
+            return False
+        logger().info("Heartbeat received for %s", self.project_name)
+        return True
 
     def fn_threaded_conn(self, fn: Callable[..., T], *args, **kwargs) -> Callable[..., T]:
         """Used for jobs which are intended to be submitted to a thread pool,
@@ -471,12 +483,21 @@ class DbtProject:
         return self.execute_sql(compiled_sql or raw_sql)
 
     @lru_cache(maxsize=SQL_CACHE_SIZE)
-    def compile_sql(self, raw_sql: str) -> DbtAdapterCompilationResult:
-        """Creates a node with a `dbt.parser.sql` class. Compile generated node."""
+    def compile_sql(self, raw_sql: str, retry: int = 3) -> DbtAdapterCompilationResult:
+        """Creates a node with `get_server_node` method. Compile generated node.
+        Has a retry built in because even uuidv4 cannot gaurantee uniqueness at the speed
+        in which we can call this function concurrently. A retry significantly increases the stability"""
         temp_node_id = str(uuid.uuid4())
-        node = self.compile_node(self.get_server_node(raw_sql, temp_node_id))
-        self._clear_node(temp_node_id)
-        return node
+        try:
+            node = self.compile_node(self.get_server_node(raw_sql, temp_node_id))
+        except Exception as exc:
+            if retry > 0:
+                return self.compile_sql(raw_sql, retry - 1)
+            raise exc
+        else:
+            return node
+        finally:
+            self._clear_node(temp_node_id)
 
     def compile_node(self, node: ManifestNode) -> DbtAdapterCompilationResult:
         """Compiles existing node."""
@@ -610,7 +631,8 @@ class DbtProjectContainer:
         if project is None:
             return
         project.clear_caches()
-        project.adapter.cleanup_all()
+        project.adapter.connections.cleanup_all()
+        project.adapter = None  # important: this will kill background task in starlette
         self._projects.pop(project_name)
         if self._default_project == project_name:
             if len(self) > 0:
@@ -621,7 +643,8 @@ class DbtProjectContainer:
     def drop_all_projects(self) -> None:
         """Drop all DbtProjectContainers"""
         self._default_project = None
-        self._projects.clear()
+        for project in self._projects:
+            self.drop_project(project)
 
     def reparse_all_projects(self) -> None:
         """Reparse all projects"""
