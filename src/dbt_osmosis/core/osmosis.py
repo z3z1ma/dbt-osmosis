@@ -337,14 +337,15 @@ class DbtProject:
         else:
             return adapter
 
-    def adapter_heartbeat(self) -> bool:
+    def adapter_probe(self) -> bool:
         """Check adapter connection, useful for long running processes such as the server or workbench"""
-        if self.adapter is None:
+        if not hasattr(self, "adapter") or self.adapter is None:
             return False
         try:
             with self.adapter.connection_named("osmosis-heartbeat"):
                 self.adapter.debug_query()
         except Exception:
+            # TODO: we can decide to reinit the Adapter here
             return False
         logger().info("Heartbeat received for %s", self.project_name)
         return True
@@ -632,7 +633,6 @@ class DbtProjectContainer:
             return
         project.clear_caches()
         project.adapter.connections.cleanup_all()
-        project.adapter = None  # important: this will kill background task in starlette
         self._projects.pop(project_name)
         if self._default_project == project_name:
             if len(self) > 0:

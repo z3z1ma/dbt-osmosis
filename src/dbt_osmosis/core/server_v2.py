@@ -311,7 +311,7 @@ async def register(
         )
 
     loop = asyncio.get_running_loop()
-    loop.create_task(_adapter_heartbeat(project))
+    project.heartbeat = loop.create_task(_adapter_heartbeat(project))
     return OsmosisRegisterResult(added=x_dbt_project, projects=dbt.registered_projects())
 
 
@@ -335,6 +335,7 @@ async def unregister(
                 data={"registered_projects": dbt.registered_projects()},
             )
         )
+    project.heartbeat.cancel()
     dbt.drop_project(project)
     return OsmosisUnregisterResult(removed=project, projects=dbt.registered_projects())
 
@@ -376,9 +377,9 @@ async def health_check(
 
 async def _adapter_heartbeat(runner: DbtProject):
     """Equivalent of a keepalive for adapters such as Snowflake"""
-    await asyncio.sleep(60 * 60)
-    while runner.adapter_heartbeat():
-        await asyncio.sleep(60 * 60)
+    await asyncio.sleep(60 * 30)
+    while runner.adapter_probe():
+        await asyncio.sleep(60 * 30)
 
 
 def run_server(host="localhost", port=8581):
