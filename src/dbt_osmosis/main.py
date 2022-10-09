@@ -1,7 +1,12 @@
+import functools
+import multiprocessing
+import requests
 import subprocess
+import sys
+import time
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional, Union
 from urllib.parse import urlencode
 
 import click
@@ -21,23 +26,56 @@ def cli():
     pass
 
 
-@cli.command(context_settings=CONTEXT)
-@click.option(
-    "--project-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
-)
-@click.option(
-    "--profiles-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=DEFAULT_PROFILES_DIR,
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
-)
-@click.option(
-    "--target",
-    type=click.STRING,
-    help="Which profile to load. Overrides setting in dbt_project.yml.",
-)
+@cli.group()
+def yaml():
+    """Manage, document, and organize dbt YAML files"""
+
+
+@cli.group()
+def sql():
+    """Execute and compile dbt SQL statements"""
+
+
+@cli.group()
+def server():
+    """Manage dbt osmosis server"""
+
+
+def shared_opts(func: Callable) -> Callable:
+    """Here we define the options shared across subcommands
+    Args:
+        func (Callable): Wraps a subcommand
+    Returns:
+        Callable: Subcommand with added options
+    """
+
+    @click.option(
+        "--project-dir",
+        type=click.Path(exists=True, dir_okay=True, file_okay=False),
+        default=str(Path.cwd()),
+        help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
+    )
+    @click.option(
+        "--profiles-dir",
+        type=click.Path(exists=True, dir_okay=True, file_okay=False),
+        default=DEFAULT_PROFILES_DIR,
+        help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
+    )
+    @click.option(
+        "-t",
+        "--target",
+        type=click.STRING,
+        help="Which profile to load. Overrides setting in dbt_project.yml.",
+    )
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+@yaml.command(context_settings=CONTEXT)
+@shared_opts
 @click.option(
     "-f",
     "--fqn",
@@ -56,7 +94,7 @@ def cli():
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
-def run(
+def refactor(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
@@ -64,11 +102,12 @@ def run(
     force_inheritance: bool = False,
     dry_run: bool = False,
 ):
-    """Compose -> Document -> Audit
+    """Executes organize which syncs yaml files with database schema and organizes the dbt models directory,
+    reparses the project, then executes document which passes down inheritable documentation
 
     \f
     This command will conform your project as outlined in `dbt_project.yml`, bootstrap undocumented dbt models,
-    and propagate column level documentation downwards
+    and propagate column level documentation downwards once all yamls are accounted for
 
     Args:
         target (Optional[str]): Profile target. Defaults to default target set in profile yml
@@ -91,24 +130,8 @@ def run(
     runner.propagate_documentation_downstream(force_inheritance=force_inheritance)
 
 
-@cli.command(context_settings=CONTEXT)
-@click.option(
-    "--project-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
-)
-@click.option(
-    "--profiles-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=DEFAULT_PROFILES_DIR,
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
-)
-@click.option(
-    "-t",
-    "--target",
-    type=click.STRING,
-    help="Which profile to load. Overrides setting in dbt_project.yml.",
-)
+@yaml.command(context_settings=CONTEXT)
+@shared_opts
 @click.option(
     "-f",
     "--fqn",
@@ -121,7 +144,7 @@ def run(
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
-def compose(
+def organize(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
@@ -152,30 +175,8 @@ def compose(
     runner.commit_project_restructure_to_disk()
 
 
-@cli.command()
-def audit():
-    """Audits documentation for coverage with actionable artifact or interactive prompt driving user to document progenitors"""
-    click.echo("Executing Audit")
-
-
-@cli.command(context_settings=CONTEXT)
-@click.option(
-    "--project-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
-)
-@click.option(
-    "--profiles-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=DEFAULT_PROFILES_DIR,
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
-)
-@click.option(
-    "-t",
-    "--target",
-    type=click.STRING,
-    help="Which profile to load. Overrides setting in dbt_project.yml.",
-)
+@yaml.command(context_settings=CONTEXT)
+@shared_opts
 @click.option(
     "-f",
     "--fqn",
@@ -202,7 +203,16 @@ def document(
     force_inheritance: bool = False,
     dry_run: bool = False,
 ):
-    """Column level documentation inheritance for existing models"""
+    """Column level documentation inheritance for existing models
+
+    \f
+    This command will conform schema ymls in your project as outlined in `dbt_project.yml` & bootstrap undocumented dbt models
+
+    Args:
+        target (Optional[str]): Profile target. Defaults to default target set in profile yml
+        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
+    """
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
     runner = DbtYamlManager(
@@ -217,25 +227,46 @@ def document(
     runner.propagate_documentation_downstream(force_inheritance)
 
 
-@cli.command(context_settings=CONTEXT)
-@click.option(
-    "--project-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=str(Path.cwd().absolute()),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
-)
-@click.option(
-    "--profiles-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=DEFAULT_PROFILES_DIR,
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
-)
-@click.option(
-    "-t",
-    "--target",
-    type=click.STRING,
-    help="Which profile to load. Overrides setting in dbt_project.yml.",
-)
+class ServerRegisterThread(threading.Thread):
+    """Thin container to capture errors in project registration"""
+
+    def run(self):
+        try:
+            threading.Thread.run(self)
+        except Exception as err:
+            self.err = err
+            pass
+        else:
+            self.err = None
+
+
+def _health_check(host: str, port: int):
+    """Performs health check on server,
+    raises ConnectionError otherwise returns result"""
+    t, max_t, i = 0.25, 10, 0
+    address = f"http://{host}:{port}/health"
+    error_msg = f"Server at {address} is not healthy"
+    while True:
+        try:
+            resp = requests.get(address)
+        except Exception:
+            time.sleep(t)
+            i += 1
+            if t * i > max_t:
+                logger().critical(error_msg, address)
+                raise ConnectionError(error_msg)
+            else:
+                continue
+        if resp.ok:
+            break
+        else:
+            logger().critical(error_msg, address)
+            raise ConnectionError(error_msg)
+    return resp.json()
+
+
+@server.command(context_settings=CONTEXT)
+@shared_opts
 @click.option(
     "--host",
     type=click.STRING,
@@ -253,13 +284,19 @@ def document(
     is_flag=True,
     help="Try to register a dbt project on init as specified by --project-dir, --profiles-dir or their defaults if not passed explicitly",
 )
-def server(
+@click.option(
+    "--exit-on-error",
+    is_flag=True,
+    help="A flag which indicates the program should terminate on registration failure if --register-project was unsuccessful",
+)
+def serve(
     project_dir: str,
     profiles_dir: str,
     target: str,
     host: str = "localhost",
     port: int = 8581,
     register_project: bool = False,
+    exit_on_error: bool = False,
 ):
     """Runs a lightweight server compatible with dbt-power-user and convenient for interactively
     running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
@@ -267,27 +304,11 @@ def server(
 
     def _register_project():
         """Background job which registers the first project on the server automatically"""
-        import time
 
-        import requests
+        # Wait
+        _health_check(host, port)
 
-        t = 0.25
-        max_t = 5
-        i = 0
-        while True:
-            try:
-                resp = requests.get(f"http://{host}:{port}/health")
-            except Exception:
-                time.sleep(t)
-                i += 1
-                if t * i > max_t:
-                    logger().critical("Server at %s is not healthy", f"http://{host}:{port}/health")
-                else:
-                    continue
-            if resp.ok:
-                break
-            else:
-                logger().critical("Server at %s is not healthy", f"http://{host}:{port}/health")
+        # Register
         params = {"project_dir": project_dir, "profiles_dir": profiles_dir}
         if target:
             params["target"] = target
@@ -296,66 +317,119 @@ def server(
         res = requests.post(
             endpoint,
             headers={"X-dbt-Project": project_dir},
-        )
-        logger().info(res.json())
+        ).json()
 
+        # Log
+        logger().info(res)
+        if "error" in res:
+            raise ConnectionError(res["error"]["message"])
+
+    register_handler: Optional[ServerRegisterThread] = None
     if register_project and project_dir and profiles_dir:
-        register_handler = threading.Thread(target=_register_project)
+        register_handler = ServerRegisterThread(target=_register_project)
         register_handler.start()
 
-    run_server(host=host, port=port)
+    server = multiprocessing.Process(target=run_server, args=(host, port))
+    server.start()
+
+    register_exit = None
+    if register_handler is not None:
+        register_handler.join()
+        if register_handler.err is not None and exit_on_error:
+            register_exit = 1
+            server.kill()
+
+    server.join()
+    sys.exit(register_exit or server.exitcode)
 
 
-@cli.group()
-def sources():
-    """Synchronize schema file sources with database or create/update a source based on pattern"""
-    ...
-
-
-@sources.command(context_settings=CONTEXT)
+@server.command(context_settings=CONTEXT)
+@shared_opts
 @click.option(
-    "--project-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
-)
-@click.option(
-    "--profiles-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=DEFAULT_PROFILES_DIR,
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
-)
-@click.option(
-    "--t",
-    "--target",
+    "--host",
     type=click.STRING,
-    help="Which profile to load. Overrides setting in dbt_project.yml.",
+    help="The host to serve the server on",
+    default="localhost",
 )
 @click.option(
-    "--schema",
-    type=click.STRING,
-    help="the schema to search for tables in",
+    "--port",
+    type=click.INT,
+    help="The port to serve the server on",
+    default=8581,
 )
-def extract(
-    target: Optional[str] = None,
-    project_dir: Optional[str] = None,
-    profiles_dir: Optional[str] = None,
-    **kwargs,
+@click.option(
+    "--project-name",
+    type=click.STRING,
+    help="The name to register the project with. By default, it is a string value representing the absolute directory of the project on disk",
+)
+def register_project(
+    project_dir: str,
+    profiles_dir: str,
+    target: str,
+    host: str = "localhost",
+    port: int = 8581,
+    project_name: Optional[str] = None,
 ):
-    """Extract tables from database based on a pattern and load into source file
-
-    \f
-    This command will take a source, query the database for columns, and inject it into either existing yaml or create one if needed
-
-    Args:
-        target (Optional[str]): Profile target. Defaults to default target set in profile yml
-        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
-        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
-    """
-
-    logger().warning(":stop: Not implemented yet")
-    raise NotImplementedError("This command is not yet implemented")
-
+    """Convenience method to allow user to register project on the running server from the CLI"""
     logger().info(":water_wave: Executing dbt-osmosis\n")
+
+    # Wait
+    _health_check(host, port)
+
+    # Register
+    params = {"project_dir": project_dir, "profiles_dir": profiles_dir}
+    if target:
+        params["target"] = target
+    endpoint = f"http://{host}:{port}/register?{urlencode(params)}"
+    logger().info("Registering project: %s", endpoint)
+    res = requests.post(
+        endpoint,
+        headers={"X-dbt-Project": project_name or project_dir},
+    )
+
+    # Log
+    logger().info(res.json())
+
+
+@server.command(context_settings=CONTEXT)
+@click.option(
+    "--project-name",
+    type=click.STRING,
+    help="The name of the registered project to remove.",
+)
+@click.option(
+    "--host",
+    type=click.STRING,
+    help="The host to serve the server on",
+    default="localhost",
+)
+@click.option(
+    "--port",
+    type=click.INT,
+    help="The port to serve the server on",
+    default=8581,
+)
+def unregister_project(
+    project_name: str,
+    host: str = "localhost",
+    port: int = 8581,
+):
+    """Convenience method to allow user to unregister project on the running server from the CLI"""
+    logger().info(":water_wave: Executing dbt-osmosis\n")
+
+    # Wait
+    _health_check(host, port)
+
+    # Unregister
+    endpoint = f"http://{host}:{port}/unregister"
+    logger().info("Unregistering project: %s", endpoint)
+    res = requests.post(
+        endpoint,
+        headers={"X-dbt-Project": project_name},
+    )
+
+    # Log
+    logger().info(res.json())
 
 
 @cli.command(
@@ -395,8 +469,7 @@ def workbench(
     host: str = "localhost",
     port: int = 8501,
 ):
-    """Instantiate the dbt-osmosis workbench and begin architecting a model.
-        --model argument is required
+    """Start the dbt-osmosis workbench
 
     \f
     Pass the --options command to see streamlit specific options that can be passed to the app,
@@ -444,23 +517,7 @@ def workbench(
 
 
 @cli.command(context_settings=CONTEXT)
-@click.option(
-    "--project-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
-)
-@click.option(
-    "--profiles-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    default=DEFAULT_PROFILES_DIR,
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
-)
-@click.option(
-    "-t",
-    "--target",
-    type=click.STRING,
-    help="Which profile to load. Overrides setting in dbt_project.yml.",
-)
+@shared_opts
 @click.option(
     "-m",
     "--model",
@@ -499,7 +556,7 @@ def diff(
     agg: bool = True,
     output: str = "table",
 ):
-    """Diff a model based on git HEAD to working copy on disk"""
+    """Diff dbt models at different git revisions"""
 
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
@@ -510,6 +567,121 @@ def diff(
     )
     inject_macros(runner)
     diff_and_print_to_console(model, pk, runner, temp_table, agg, output)
+
+
+@sql.command(context_settings=CONTEXT)
+@shared_opts
+@click.argument("sql")
+def run(
+    sql: str = "",
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+    target: Optional[str] = None,
+):
+    """Executes a dbt SQL statement writing an OsmosisRunResult | OsmosisErrorContainer to stdout"""
+    from dbt_osmosis.core.server_v2 import (
+        OsmosisError,
+        OsmosisErrorCode,
+        OsmosisErrorContainer,
+        OsmosisRunResult,
+    )
+
+    rv: Union[OsmosisRunResult, OsmosisErrorContainer] = None
+
+    try:
+        runner = DbtProject(
+            project_dir=project_dir,
+            profiles_dir=profiles_dir,
+            target=target,
+        )
+    except Exception as init_err:
+        rv = OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.ProjectParseFailure,
+                message=str(init_err),
+                data=init_err.__dict__,
+            )
+        )
+
+    if rv is not None:
+        print(rv.json())
+        return rv
+
+    try:
+        result = runner.execute_sql("\n".join(sys.stdin.readlines()) if sql == "-" else sql)
+    except Exception as execution_err:
+        rv = OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.ExecuteSqlFailure,
+                message=str(execution_err),
+                data=execution_err.__dict__,
+            )
+        )
+    else:
+        rv = OsmosisRunResult(
+            rows=[list(row) for row in result.table.rows],
+            column_names=result.table.column_names,
+            compiled_sql=result.compiled_sql,
+            raw_sql=result.raw_sql,
+        )
+
+    print(rv.json())
+    return rv
+
+
+@sql.command(context_settings=CONTEXT)
+@shared_opts
+@click.argument("sql")
+def compile(
+    sql: str,
+    project_dir: Optional[str] = None,
+    profiles_dir: Optional[str] = None,
+    target: Optional[str] = None,
+):
+    """Compiles a dbt SQL statement writing an OsmosisCompileResult | OsmosisErrorContainer to stdout"""
+    from dbt_osmosis.core.server_v2 import (
+        OsmosisCompileResult,
+        OsmosisError,
+        OsmosisErrorCode,
+        OsmosisErrorContainer,
+    )
+
+    rv: Union[OsmosisCompileResult, OsmosisErrorContainer] = None
+
+    try:
+        runner = DbtProject(
+            project_dir=project_dir,
+            profiles_dir=profiles_dir,
+            target=target,
+        )
+    except Exception as init_err:
+        rv = OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.ProjectParseFailure,
+                message=str(init_err),
+                data=init_err.__dict__,
+            )
+        )
+
+    if rv is not None:
+        print(rv.json())
+        return rv
+
+    try:
+        result = runner.compile_sql("\n".join(sys.stdin.readlines()) if sql == "-" else sql)
+    except Exception as compilation_err:
+        rv = OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.CompileSqlFailure,
+                message=str(compilation_err),
+                data=compilation_err.__dict__,
+            )
+        )
+    else:
+        rv = OsmosisCompileResult(result=result.compiled_sql)
+
+    print(rv.json())
+    return rv
 
 
 if __name__ == "__main__":

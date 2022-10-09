@@ -15,21 +15,21 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
 1. Automated schema YAML management.
     
-    1a. `dbt-osmosis run --project-dir ... --profiles-dir ...`
+    1a. `dbt-osmosis yaml refactor --project-dir ... --profiles-dir ...`
 
-    > Automatically generate documentation based on upstream documented columns, organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules, inject columns from data warehouse schema if missing in yaml and remove columns no longer present in data warehouse (compose -> document)
+    > Automatically generate documentation based on upstream documented columns, organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules, inject columns from data warehouse schema if missing in yaml and remove columns no longer present in data warehouse (organize -> document)
 
-    1b. `dbt-osmosis compose --project-dir ... --profiles-dir ...`
+    1b. `dbt-osmosis yaml organize --project-dir ... --profiles-dir ...`
 
     > Organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules
 
-    1c. `dbt-osmosis document --project-dir ... --profiles-dir ...`
+    1c. `dbt-osmosis yaml document --project-dir ... --profiles-dir ...`
 
     > Automatically generate documentation based on upstream documented columns
 
 2. A highly performant dbt server which integrates with tools such as dbt-power-user for VS Code to enable interactive querying + realtime compilation from your IDE
 
-    2a. `dbt-osmosis server --project-dir ... --profiles-dir ...`
+    2a. `dbt-osmosis server serve --project-dir ... --profiles-dir ...`
 
     > Spins up a FastAPI server. Can be passed --register-project to automatically register your local project. API documentation is available at /docs endpoint where interestingly enough, you can query your data warehouse or compile SQL via the Try It function
 
@@ -61,7 +61,7 @@ ____
 
 ```sh
 # Command to start server
-dbt-osmosis server --host ... --port ...
+dbt-osmosis server serve --host ... --port ...
 ```
 
 The server is self documenting via open API. From the open API docs you can compile SQL or run it to get an idea of the requests and responses. Furthermore the server supports multiple dbt projects out of the box. This means the server can `/register` 10s to 100s of projects and selectively compile or run against a specific one via an `X-dbt-Project` header. It is stress tested at high loads and volumes, higher than its ever likely to be put through as primarily a dev accelerator but it could be used in a production application too and is the focus of much of the development in the repo. It is Apache 2.0 licensed which differentiates it from dbt-core server. Furthermore it is more focused on SQL than "models" as it is not a replacement for the CLI nor does it aspire to be. Instead it is more of a database adapter/interface of sorts which lets it be really good at one thing.
@@ -246,7 +246,7 @@ models:
 
 ### Order Matters
 
-In a full run [ `dbt-osmosis run` ] we will:
+In a full run [ `dbt-osmosis yaml refactor` ] we will:
 
 1. Conform dbt project
     - Configuration lives in `dbt_project.yml` --> we require our config to run, can be at root level of `models:` to apply a default convention to a project 

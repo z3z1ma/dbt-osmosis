@@ -149,6 +149,20 @@ class ConfigInterface:
         self.single_threaded = threads == 1
         self.quiet = True
 
+    @classmethod
+    def from_str(cls, arguments: str) -> "ConfigInterface":
+        import argparse
+        import shlex
+
+        parser = argparse.ArgumentParser()
+        args = parser.parse_args(shlex.split(arguments))
+        return cls(
+            threads=args.threads,
+            target=args.target,
+            profiles_dir=args.profiles_dir,
+            project_dir=args.project_dir,
+        )
+
 
 class YamlHandler(YAML):
     """A `ruamel.yaml` wrapper to handle dbt YAML files with sane defaults"""
