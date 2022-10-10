@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import os
 import re
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
@@ -171,8 +170,10 @@ async def compile_sql(
     if has_jinja(query):
         try:
             loop = asyncio.get_running_loop()
-            compiled_query = await loop.run_in_executor(
-                None, project.fn_threaded_conn(project.compile_sql, query)
+            compiled_query = (
+                await loop.run_in_executor(
+                    None, project.fn_threaded_conn(project.compile_sql, query)
+                )
             ).compiled_sql
         except Exception as compile_err:
             response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -383,14 +384,13 @@ async def _adapter_heartbeat(runner: DbtProject):
 
 
 def run_server(host="localhost", port=8581):
-    cpus = os.cpu_count()
     uvicorn.run(
         "dbt_osmosis.core.server_v2:app",
         host=host,
         port=port,
         log_level="info",
         reload=False,
-        workers=(cpus - 1) if cpus and cpus > 1 else 1,
+        workers=1,
     )
 
 
