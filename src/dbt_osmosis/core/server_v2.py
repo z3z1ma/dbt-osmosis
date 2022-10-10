@@ -364,7 +364,7 @@ async def health_check(
                     "profile_name": project.config.profile_name,
                     "logs": project.config.log_path,
                     "runner_parse_iteration": project._version,
-                    "adapter_ready": project.adapter_heartbeat(),
+                    "adapter_ready": project.adapter_probe(),
                 }
                 if project is not None
                 else {}
