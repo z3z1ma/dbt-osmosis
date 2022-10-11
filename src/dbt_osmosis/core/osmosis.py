@@ -42,6 +42,7 @@ from dbt.adapters.base import BaseRelation
 from dbt.adapters.factory import Adapter, get_adapter_class_by_name
 from dbt.clients import jinja  # monkey-patched for perf
 from dbt.config.runtime import RuntimeConfig
+from dbt.context.providers import generate_runtime_model_context
 from dbt.contracts.connection import AdapterResponse
 from dbt.contracts.graph.manifest import ManifestNode, MaybeNonSource, MaybeParsedSource, NodeType
 from dbt.contracts.graph.parsed import ColumnInfo
@@ -191,7 +192,13 @@ class DbtAdapterExecutionResult:
 class DbtAdapterCompilationResult:
     """Interface for compilation results, this keeps us 1 layer removed from dbt interfaces which may change"""
 
-    def __init__(self, raw_sql: str, compiled_sql: str, node: ManifestNode, injected_sql: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        raw_sql: str,
+        compiled_sql: str,
+        node: ManifestNode,
+        injected_sql: Optional[str] = None,
+    ) -> None:
         self.raw_sql = raw_sql
         self.compiled_sql = compiled_sql
         self.node = node
@@ -330,6 +337,10 @@ class DbtProject:
             return fn(*args, **kwargs)
 
         return _with_conn
+
+    def generate_runtime_model_context(self, node: ManifestNode):
+        """Wraps dbt context provider"""
+        return generate_runtime_model_context(node, self.config, self.dbt)
 
     @property
     def project_name(self) -> str:
