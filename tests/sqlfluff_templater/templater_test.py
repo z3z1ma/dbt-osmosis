@@ -10,7 +10,7 @@ import pytest
 
 from sqlfluff.core import FluffConfig, Lexer, Linter
 from sqlfluff.core.errors import SQLFluffSkipFile
-from dbt_osmosis.dbt_templater.templater import DBT_VERSION_TUPLE
+from dbt_osmosis.core.osmosis import DBT_MAJOR_VER, DBT_MINOR_VER
 from tests.sqlfluff_templater.fixtures.dbt.templater import (  # noqa: F401
     DBT_FLUFF_CONFIG,
     dbt_templater,
@@ -86,7 +86,7 @@ def _run_templater_and_verify_result(dbt_templater, project_dir, fname):  # noqa
 def _get_fixture_path(template_output_folder_path, fname):
     fixture_path: Path = template_output_folder_path / fname  # Default fixture location
     # Is there a version-specific version of the fixture file?
-    if DBT_VERSION_TUPLE >= (1, 0):
+    if (DBT_MAJOR_VER, DBT_MINOR_VER) >= (1, 0):
         dbt_version_specific_fixture_folder = "dbt_utils_0.8.0"
     else:
         dbt_version_specific_fixture_folder = None
@@ -171,6 +171,9 @@ def test__templater_dbt_templating_test_lex(project_dir, dbt_templater, fname): 
             "it is a macro",
         ),
     ],
+)
+@pytest.mark.skip(
+    reason="We don't need to exclude disabled models since models aren't relevant in our implementation, we lint SQL strings"
 )
 def test__templater_dbt_skips_file(path, reason, dbt_templater, project_dir):  # noqa: F811
     """A disabled dbt model should be skipped."""
