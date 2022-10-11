@@ -6,6 +6,7 @@ from typing import Optional
 
 from dbt.clients import jinja
 from dbt.exceptions import CompilationException as DbtCompilationException
+from dbt.version import get_installed_version
 from jinja2_simple_tags import StandaloneTag
 from sqlfluff.core.config import FluffConfig
 from sqlfluff.core.errors import SQLTemplaterError
@@ -31,7 +32,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
     def config_pairs(self):  # pragma: no cover
         """Returns info about the given templater for output by the cli."""
-        return [("templater", self.name), ("dbt", DBT_VERSION.to_version_string())]
+        return [("templater", self.name), ("dbt", get_installed_version().to_version_string())]
 
     @large_file_check
     def process(
