@@ -172,6 +172,7 @@ def test__templater_dbt_templating_test_lex(project_dir, dbt_templater, fname): 
         ),
     ],
 )
+@pytest.mark.skip("We don't have the restriction of needing to limit linting to project files")
 def test__templater_dbt_skips_file(path, reason, dbt_templater, project_dir):  # noqa: F811
     """A disabled dbt model should be skipped."""
     with pytest.raises(SQLFluffSkipFile, match=reason):

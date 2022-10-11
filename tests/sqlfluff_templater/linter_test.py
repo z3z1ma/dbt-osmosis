@@ -6,12 +6,14 @@ import os.path
 import pytest
 
 from sqlfluff.core import Linter, FluffConfig
-from tests.sqlfluff_templater.fixtures.dbt.templater import DBT_FLUFF_CONFIG, project_dir  # noqa: F401
+from tests.sqlfluff_templater.fixtures.dbt.templater import (
+    DBT_FLUFF_CONFIG,
+    project_dir,
+)  # noqa: F401
 
 
-@pytest.mark.parametrize(
-    "path", ["models/my_new_project/disabled_model.sql", "macros/echo.sql"]
-)
+@pytest.mark.parametrize("path", ["models/my_new_project/disabled_model.sql", "macros/echo.sql"])
+@pytest.mark.skip("We don't have the restriction of needing to limit linting to project files")
 def test__linter__skip_file(path, project_dir):  # noqa
     """Test that the linter skips disabled dbt models and macros."""
     conf = FluffConfig(configs=DBT_FLUFF_CONFIG)
