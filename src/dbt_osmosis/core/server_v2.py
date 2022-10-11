@@ -1,7 +1,9 @@
 import asyncio
 import datetime
+import logging
 import re
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import uvicorn
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from dbt_osmosis.core.osmosis import DbtProject, DbtProjectContainer, has_jinja
+from dbt_osmosis.sqlfluff_util import lint_command
 
 DEFAULT = "__default__"
 
@@ -27,6 +30,18 @@ class OsmosisRunResult(BaseModel):
 
 class OsmosisCompileResult(BaseModel):
     result: str
+
+
+class OsmosisLintError(BaseModel):
+    # Based on SQLFluff.lint() result format
+    code: str
+    description: str
+    line_no: int
+    line_pos: int
+
+
+class OsmosisLintResult(BaseModel):
+    result: List[OsmosisLintError]
 
 
 class OsmosisResetResult(BaseModel):
@@ -188,6 +203,60 @@ async def compile_sql(
         compiled_query = query
 
     return OsmosisCompileResult(result=compiled_query)
+
+
+@app.post(
+    "/lint",
+    response_model=Union[OsmosisLintResult, OsmosisErrorContainer],
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": OsmosisErrorContainer},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": OsmosisErrorContainer},
+    },
+)
+async def lint_sql(
+    response: Response,
+    sql: Optional[str] = None,
+    sql_path: Optional[str] = None,
+    # TODO: Should config_path be part of /register instead?
+    extra_config_path: Optional[str] = None,
+    x_dbt_project: str = Header(default=DEFAULT),
+) -> Union[OsmosisLintResult, OsmosisErrorContainer]:
+    """Lint dbt SQL against a registered project as determined by X-dbt-Project header"""
+    dbt: DbtProjectContainer = app.state.dbt_project_container
+    if x_dbt_project == DEFAULT:
+        project = dbt.get_default_project()
+    else:
+        project = dbt.get_project(x_dbt_project)
+    if project is None:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.ProjectNotRegistered,
+                message="Project is not registered. Make a POST request to the /register endpoint first to register a runner",
+                data={"registered_projects": dbt.registered_projects()},
+            )
+        )
+
+    # Query Linting
+    try:
+        result = lint_command(
+            Path(project.project_root),
+            sql=Path(sql_path) if sql_path else sql,
+            extra_config_path=Path(extra_config_path) if extra_config_path else None,
+        )["violations"]
+    except Exception as lint_err:
+        logging.exception("Linting failed")
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return OsmosisErrorContainer(
+            error=OsmosisError(
+                code=OsmosisErrorCode.CompileSqlFailure,
+                message=str(lint_err),
+                data=lint_err.__dict__,
+            )
+        )
+    else:
+        lint_result = OsmosisLintResult(result=[OsmosisLintError(**error) for error in result])
+    return lint_result
 
 
 @app.get(

@@ -46,6 +46,9 @@ feedparser = { version = "^6.0.10", optional = true }
 duckcli = { version = "^0.2.1", optional = true }
 dbt-duckdb = { version = "^1.2.0", optional = true }
 dbt-sqlite = { version = "^1.1.3", optional = true }
+sqlfluff = "^1.3.2"
+jinja2-simple-tags = "^0.4.0"
+dbt-postgres = "1.2.1"
 
 [tool.poetry.dev-dependencies]
 black = ">=21.9b0"
@@ -87,3 +90,8 @@ include_trailing_comma = true
 [tool.poetry.scripts]
 dbt-osmosis = 'dbt_osmosis.main:cli'
 dbt-osmosis-proxy = 'dbt_osmosis.server:cli'
+
+[tool.poetry.plugins]
+
+[tool.poetry.plugins."sqlfluff"]
+"dbt_templater" = "dbt_osmosis.dbt_templater"
