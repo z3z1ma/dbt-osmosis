@@ -13,7 +13,7 @@ from sqlfluff.core.errors import SQLTemplaterError
 from sqlfluff.core.templaters.base import TemplatedFile, large_file_check
 from sqlfluff.core.templaters.jinja import JinjaTemplater
 
-from dbt_osmosis.core.osmosis import DbtProjectContainer
+from dbt_osmosis.core.osmosis import DbtProjectContainerContainer
 
 templater_logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
     name = "dbt"
 
     def __init__(self, **kwargs):
-        self.dbt_project_container: DbtProjectContainer = kwargs.pop("dbt_project_container")
+        self.dbt_project_container: DbtProjectContainer: DbtProjectContainer = kwargs.pop("dbt_project_container")
         super().__init__(**kwargs)
 
     def config_pairs(self):  # pragma: no cover
@@ -85,6 +85,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
         make_template = lambda _in_str: env.from_string(_in_str, globals=ctx)
 
         # Need compiled
+        # Need compiled
         if not compiled_sql:  # pragma: no cover
             raise SQLTemplaterError(
                 "dbt templater compilation failed silently, check your "
@@ -100,6 +101,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
             n_trailing_newlines = 0
 
         # LOG
+        # LOG
         templater_logger.debug(
             "    Trailing newline count in source dbt model: %r",
             n_trailing_newlines,
@@ -110,12 +112,13 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
         # SLICE
         raw_sliced, sliced_file, templated_sql = self.slice_file(
-            raw_str=source_dbt_sql,
-            templated_str=compiled_sql + "\n" * n_trailing_newlines,
+            raw_str=raw_str=source_dbt_sql,
+            templated_str=templated_str=compiled_sql + "\n" * n_trailing_newlines + "\n" * n_trailing_newlines,
             config=config,
             make_template=make_template,
             append_to_templated="\n" if n_trailing_newlines else "",
         )
+
 
         return (
             TemplatedFile(
