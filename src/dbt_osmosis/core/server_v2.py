@@ -65,6 +65,7 @@ class OsmosisErrorCode(int, Enum):
     ProjectParseFailure = 3
     ProjectNotRegistered = 4
     ProjectHeaderNotSupplied = 5
+    SqlNotSupplied = 6
 
 
 class OsmosisError(BaseModel):
@@ -214,8 +215,8 @@ async def compile_sql(
     },
 )
 async def lint_sql(
+    request: Request,
     response: Response,
-    sql: Optional[str] = None,
     sql_path: Optional[str] = None,
     # TODO: Should config_path be part of /register instead?
     extra_config_path: Optional[str] = None,
@@ -238,10 +239,26 @@ async def lint_sql(
         )
 
     # Query Linting
+    if sql_path is not None:
+        # Lint a file
+        sql = Path(sql_path)
+    else:
+        # Lint a string
+        sql = (await request.body()).decode("utf-8")
+        if not sql:
+            # No SQL provided -- error.
+            response.status_code = status.HTTP_400_BAD_REQUEST
+            return OsmosisErrorContainer(
+                error=OsmosisError(
+                    code=OsmosisErrorCode.SqlNotSupplied,
+                    message="No SQL provided. Either provide a SQL file path or a SQL string to lint.",
+                    data={},
+                )
+            )
     try:
         result = lint_command(
             Path(project.project_root),
-            sql=Path(sql_path) if sql_path else sql,
+            sql=sql,
             extra_config_path=Path(extra_config_path) if extra_config_path else None,
         )["violations"]
     except Exception as lint_err:
