@@ -256,11 +256,12 @@ async def lint_sql(
                 )
             )
     try:
-        result = lint_command(
+        temp_result = lint_command(
             Path(project.project_root),
             sql=sql,
             extra_config_path=Path(extra_config_path) if extra_config_path else None,
-        )["violations"]
+        )
+        result = temp_result["violations"] if temp_result is not None else []
     except Exception as lint_err:
         logging.exception("Linting failed")
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR

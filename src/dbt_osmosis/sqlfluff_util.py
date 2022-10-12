@@ -43,7 +43,7 @@ def lint_command(
     sql: Union[Path, str],
     extra_config_path: Optional[Path] = None,
     ignore_local_config: bool = False,
-) -> Dict:
+) -> Optional[Dict]:
     """Lint specified file or SQL string.
 
     This is essentially a streamlined version of the SQLFluff command-line lint
@@ -77,8 +77,7 @@ def lint_command(
                 ignore_files=False,
             )
     records = result.as_records()
-    assert len(records) == 1
-    return records[0]
+    return records[0] if records else None
 
 
 def test_lint_command():

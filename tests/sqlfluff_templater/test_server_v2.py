@@ -72,3 +72,17 @@ def test_lint_error_no_sql_provided(profiles_dir, project_dir, sqlfluff_config_p
             "message": "No SQL provided. Either provide a SQL file path or a SQL string to lint.",
         }
     }
+
+
+def test_lint_parse_failure(profiles_dir, project_dir, sqlfluff_config_path, caplog):
+    response = client.post(
+        "/lint",
+        headers={"X-dbt-Project": "dbt_project"},
+        data="""select
+    {{ dbt_utils.star(ref("base_cases")) }}
+from {{ ref("base_cases") }}
+li""",
+    )
+    assert response.status_code == 200
+    response_json = response.json()
+    assert response_json == {"result": []}
