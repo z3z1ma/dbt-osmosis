@@ -160,32 +160,6 @@ def test__templater_dbt_templating_test_lex(project_dir, dbt_templater, fname): 
 
 
 @pytest.mark.parametrize(
-    "path,reason",
-    [
-        (
-            "models/my_new_project/disabled_model.sql",
-            "it is disabled",
-        ),
-        (
-            "macros/echo.sql",
-            "it is a macro",
-        ),
-    ],
-)
-@pytest.mark.skip(
-    reason="We don't need to exclude disabled models since models aren't relevant in our implementation, we lint SQL strings"
-)
-def test__templater_dbt_skips_file(path, reason, dbt_templater, project_dir):  # noqa: F811
-    """A disabled dbt model should be skipped."""
-    with pytest.raises(SQLFluffSkipFile, match=reason):
-        dbt_templater.process(
-            in_str=None,
-            fname=os.path.join(project_dir, path),
-            config=FluffConfig(configs=DBT_FLUFF_CONFIG),
-        )
-
-
-@pytest.mark.parametrize(
     "fname",
     [
         "use_var.sql",
