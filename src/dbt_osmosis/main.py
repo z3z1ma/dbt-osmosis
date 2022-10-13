@@ -1,4 +1,5 @@
 import functools
+import importlib.util
 import multiprocessing
 import subprocess
 import sys
@@ -300,6 +301,10 @@ def serve(
 ):
     """Runs a lightweight server compatible with dbt-power-user and convenient for interactively
     running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
+    if importlib.util.find_spec('sqlfluff_templater_dbt'):
+        raise ValueError("sqlfluff-templater-dbt is not compatible with dbt-osmosis server. "
+                         "Please uninstall it to continue.")
+
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
     def _register_project():
