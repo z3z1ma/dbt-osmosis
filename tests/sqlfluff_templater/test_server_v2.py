@@ -17,17 +17,25 @@ client = TestClient(app)
 SQL_PATH = Path(DBT_FLUFF_CONFIG["templater"]["dbt"]["project_dir"]) / "models/my_new_project/issue_1608.sql"
 
 
-@pytest.mark.parametrize("param_name, param_value", [
-    ("sql_path", SQL_PATH),
-    ("sql", SQL_PATH.read_text()),
-])
+@pytest.mark.parametrize(
+    "param_name, param_value",
+    [
+        ("sql_path", SQL_PATH),
+        (None, SQL_PATH.read_text()),
+    ],
+)
 def test_lint(param_name, param_value, profiles_dir, project_dir, sqlfluff_config_path, caplog):
+    params = {}
+    kwargs = {}
+    if param_name:
+        params[param_name] = param_value
+    else:
+        kwargs["data"] = param_value
     response = client.post(
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
-        params={
-            param_name: param_value,
-        },
+        params=params,
+        **kwargs,
     )
     assert response.status_code == 200
     response_json = response.json()
@@ -48,3 +56,33 @@ def test_lint(param_name, param_value, profiles_dir, project_dir, sqlfluff_confi
             },
         ]
     }
+
+
+def test_lint_error_no_sql_provided(profiles_dir, project_dir, sqlfluff_config_path, caplog):
+    response = client.post(
+        "/lint",
+        headers={"X-dbt-Project": "dbt_project"},
+    )
+    assert response.status_code == 400
+    response_json = response.json()
+    assert response_json == {
+        "error": {
+            "code": 6,
+            "data": {},
+            "message": "No SQL provided. Either provide a SQL file path or a SQL string to lint.",
+        }
+    }
+
+
+def test_lint_parse_failure(profiles_dir, project_dir, sqlfluff_config_path, caplog):
+    response = client.post(
+        "/lint",
+        headers={"X-dbt-Project": "dbt_project"},
+        data="""select
+    {{ dbt_utils.star(ref("base_cases")) }}
+from {{ ref("base_cases") }}
+li""",
+    )
+    assert response.status_code == 200
+    response_json = response.json()
+    assert response_json == {"result": []}

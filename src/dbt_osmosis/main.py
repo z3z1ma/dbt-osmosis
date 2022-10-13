@@ -1,15 +1,15 @@
 import functools
 import multiprocessing
-import requests
 import subprocess
 import sys
-import time
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional, Union
 from urllib.parse import urlencode
 
 import click
+import requests
 
 from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.log_controller import logger
@@ -324,13 +324,13 @@ def serve(
         if "error" in res:
             raise ConnectionError(res["error"]["message"])
 
+    server = multiprocessing.Process(target=run_server, args=(host, port))
+    server.start()
+
     register_handler: Optional[ServerRegisterThread] = None
     if register_project and project_dir and profiles_dir:
         register_handler = ServerRegisterThread(target=_register_project)
         register_handler.start()
-
-    server = multiprocessing.Process(target=run_server, args=(host, port))
-    server.start()
 
     register_exit = None
     if register_handler is not None:
