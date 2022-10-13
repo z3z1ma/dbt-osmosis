@@ -1,6 +1,7 @@
 """Defines the dbt_osmosis templater."""
 import logging
 import os.path
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -72,8 +73,21 @@ class OsmosisDbtTemplater(JinjaTemplater):
             in_str = fpath.read_text()
 
         # Generate node
-        mock_node = osmosis_dbt_project.get_server_node(in_str, fname)
-        resp = osmosis_dbt_project.compile_node(mock_node)
+        retry = 3
+        while retry > 0:
+            # In massive parallel requests, referring to higher loads than we will ever see in all likelihood,
+            # this cheap retry increases reliability to ~100% in test cases of up to 50 clients across 1K reqs
+            # without requiring the overhead of a synchronization primitive such as a mutex
+            temp_node_id = str(uuid.uuid4())
+            try:
+                mock_node = osmosis_dbt_project.get_server_node(in_str, temp_node_id)
+                resp = osmosis_dbt_project.compile_node(mock_node)
+            except:
+                retry -= 1
+            else:
+                break
+            finally:
+                osmosis_dbt_project._clear_node(temp_node_id)
 
         # Generate context
         ctx = osmosis_dbt_project.generate_runtime_model_context(resp.node)

@@ -256,10 +256,15 @@ async def lint_sql(
                 )
             )
     try:
-        temp_result = lint_command(
-            Path(project.project_root),
-            sql=sql,
-            extra_config_path=Path(extra_config_path) if extra_config_path else None,
+        loop = asyncio.get_running_loop()
+        temp_result = await loop.run_in_executor(
+            None,
+            project.fn_threaded_conn(
+                lint_command,
+                Path(project.project_root),
+                sql=sql,
+                extra_config_path=Path(extra_config_path) if extra_config_path else None,
+            ),
         )
         result = temp_result["violations"] if temp_result is not None else []
     except Exception as lint_err:

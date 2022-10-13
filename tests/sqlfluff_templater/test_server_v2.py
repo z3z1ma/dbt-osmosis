@@ -14,7 +14,10 @@ from tests.sqlfluff_templater.fixtures.dbt.templater import (
 
 client = TestClient(app)
 
-SQL_PATH = Path(DBT_FLUFF_CONFIG["templater"]["dbt"]["project_dir"]) / "models/my_new_project/issue_1608.sql"
+SQL_PATH = (
+    Path(DBT_FLUFF_CONFIG["templater"]["dbt"]["project_dir"])
+    / "models/my_new_project/issue_1608.sql"
+)
 
 
 @pytest.mark.parametrize(
@@ -79,10 +82,94 @@ def test_lint_parse_failure(profiles_dir, project_dir, sqlfluff_config_path, cap
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
         data="""select
-    {{ dbt_utils.star(ref("base_cases")) }}
-from {{ ref("base_cases") }}
+    {{ dbt_utils.star(ref("issue_1608")) }}
+from {{ ref("issue_1608") }}
 li""",
     )
     assert response.status_code == 200
     response_json = response.json()
-    assert response_json == {"result": []}
+    print(response_json)
+    assert response_json == {
+        "result": [
+            {
+                "code": "L001",
+                "description": "Unnecessary trailing whitespace.",
+                "line_no": 2,
+                "line_pos": 1,
+            },
+            {
+                "code": "L003",
+                "description": "Expected 1 indentation, found 0 [compared to line 03]",
+                "line_no": 4,
+                "line_pos": 1,
+            },
+            {
+                "code": "L011",
+                "description": "Implicit/explicit aliasing of table.",
+                "line_no": 4,
+                "line_pos": 1,
+            },
+            {
+                "code": "L025",
+                "description": "Alias 'li' is never used in SELECT statement.",
+                "line_no": 4,
+                "line_pos": 1,
+            },
+            {
+                "code": "L031",
+                "description": "Avoid aliases in from clauses and join conditions.",
+                "line_no": 4,
+                "line_pos": 1,
+            },
+            {
+                "code": "L009",
+                "description": "Files must end with a single trailing newline.",
+                "line_no": 4,
+                "line_pos": 3,
+            },
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    "param_name, param_value, clients, sample",
+    [
+        ("sql_path", SQL_PATH, 10, 50),
+        (None, SQL_PATH.read_text(), 40, 80),
+    ],
+)
+def test_massive_parallel_linting(param_name, param_value, clients, sample):
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    SIMULATED_CLIENTS = clients
+    LOAD_TEST_SIZE = sample
+
+    e = ThreadPoolExecutor(max_workers=SIMULATED_CLIENTS)
+
+    params = {}
+    kwargs = {}
+    if param_name:
+        params[param_name] = param_value
+    else:
+        kwargs["data"] = param_value
+    print(params)
+
+    t1 = time.perf_counter()
+    resps = e.map(
+        lambda i: client.post(
+            "/lint",
+            headers={"X-dbt-Project": "dbt_project"},
+            params=params,
+            **kwargs,
+        ),
+        range(LOAD_TEST_SIZE),
+    )
+    t2 = time.perf_counter()
+    print(
+        (t2 - t1) / LOAD_TEST_SIZE,
+        f"seconds per `/lint` across {LOAD_TEST_SIZE} calls from {SIMULATED_CLIENTS} simulated clients",
+    )
+    e.shutdown(wait=True)
+    for resp in resps:
+        assert resp.status_code == 200
