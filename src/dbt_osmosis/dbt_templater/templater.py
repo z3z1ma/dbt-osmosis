@@ -67,11 +67,9 @@ class OsmosisDbtTemplater(JinjaTemplater):
         )
 
         # Use path if valid, prioritize it as the in_str
-        source_dbt_sql = str(in_str)
         fpath = Path(fname)
-        if fpath.exists():
-            source_dbt_sql = fpath.read_text()
-        in_str = str(source_dbt_sql or in_str)
+        if fpath.exists() and not in_str:
+            in_str = fpath.read_text()
 
         # Generate node
         mock_node = osmosis_dbt_project.get_server_node(in_str, fname)
@@ -92,8 +90,8 @@ class OsmosisDbtTemplater(JinjaTemplater):
             )
 
         # Whitespace
-        if not source_dbt_sql.rstrip().endswith("-%}"):
-            n_trailing_newlines = len(source_dbt_sql) - len(source_dbt_sql.rstrip("\n"))
+        if not in_str.rstrip().endswith("-%}"):
+            n_trailing_newlines = len(in_str) - len(in_str.rstrip("\n"))
         else:
             # Source file ends with right whitespace stripping, so there's
             # no need to preserve/restore trailing newlines.
@@ -104,13 +102,13 @@ class OsmosisDbtTemplater(JinjaTemplater):
             "    Trailing newline count in source dbt model: %r",
             n_trailing_newlines,
         )
-        templater_logger.debug("    Raw SQL before compile: %r", source_dbt_sql)
+        templater_logger.debug("    Raw SQL before compile: %r", in_str)
         templater_logger.debug("    Node raw SQL: %r", in_str)
         templater_logger.debug("    Node compiled SQL: %r", compiled_sql)
 
         # SLICE
         raw_sliced, sliced_file, templated_sql = self.slice_file(
-            raw_str=source_dbt_sql,
+            raw_str=in_str,
             templated_str=compiled_sql + "\n" * n_trailing_newlines,
             config=config,
             make_template=make_template,
@@ -119,7 +117,7 @@ class OsmosisDbtTemplater(JinjaTemplater):
 
         return (
             TemplatedFile(
-                source_str=source_dbt_sql,
+                source_str=in_str,
                 templated_str=templated_sql,
                 fname=fname,
                 sliced_file=sliced_file,
