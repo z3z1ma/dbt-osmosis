@@ -11,9 +11,9 @@ import dbt.adapters.factory
 # anywhere dbt-core needs config including in all `get_adapter` calls
 dbt.adapters.factory.get_adapter = lambda config: config.adapter
 
-import atexit
 import os
 import threading
+import time
 import uuid
 from collections import OrderedDict, UserDict
 from copy import copy
@@ -66,6 +66,7 @@ from dbt_osmosis.core.exceptions import (
     SanitizationRequired,
 )
 from dbt_osmosis.core.log_controller import logger
+from dbt_osmosis.core.patch import write_manifest_for_partial_parse
 
 __all__ = [
     "DbtProject",
@@ -224,6 +225,8 @@ class DbtProject:
     """Container for a dbt project. The dbt attribute is the primary interface for
     dbt-core. The adapter attribute is the primary interface for the dbt adapter"""
 
+    ADAPTER_TTL = 3600
+
     def __init__(
         self,
         target: Optional[str] = None,
@@ -258,20 +261,44 @@ class DbtProject:
         adapter_name = self.config.credentials.type
         return get_adapter_class_by_name(adapter_name)(self.config)
 
+    def init_adapter(self):
+        """Initialize a dbt adapter."""
+        if hasattr(self, "_adapter"):
+            self._adapter.connections.cleanup_all()
+        # The setter verifies connection, resets TTL, and updates adapter ref on config
+        self.adapter = self.get_adapter()
+
+    @property
+    def adapter(self):
+        """dbt-core adapter with TTL and automatic reinstantiation"""
+        if time.time() - self._adapter_ttl > self.ADAPTER_TTL:
+            logger().info("TTL expired, reinitializing adapter!")
+            self.init_adapter()
+        return self._adapter
+
+    @adapter.setter
+    def adapter(self, adapter: Adapter):
+        """Verify connection and reset TTL on adapter set, update adapter prop ref on config"""
+        self._adapter = self._verify_connection(adapter)
+        self._adapter_ttl = time.time()
+        self.config.adapter = self.adapter
+
     def parse_project(self, init: bool = False) -> None:
         """Parses project on disk from `ConfigInterface` in args attribute, verifies connection
         to adapters database, mutates config, adapter, and dbt attributes"""
         if init:
             set_from_args(self.args, self.args)
             self.config = RuntimeConfig.from_args(self.args)
-            if hasattr(self, "adapter"):
-                self.adapter.connections.cleanup_all()
-            self.adapter = self._verify_connection(self.get_adapter())
-            self.config.adapter = self.adapter
+            self.init_adapter()
 
         project_parser = ManifestLoader(
             self.config, self.config.load_dependencies(), self.adapter.connections.set_query_header
         )
+        # temporarily patched so we write partial parse to correct directory until its fixed in dbt core
+        project_parser.write_manifest_for_partial_parse = partial(
+            write_manifest_for_partial_parse, project_parser
+        )
+        # endpatched (https://github.com/dbt-labs/dbt-core/blob/main/core/dbt/parser/manifest.py#L545)
         self.dbt = project_parser.load()
         self.dbt.build_flat_graph()
         project_parser.save_macros_to_adapter(self.adapter)

@@ -387,7 +387,7 @@ async def register(
         return OsmosisRegisterResult(added=x_dbt_project, projects=dbt.registered_projects())
 
     try:
-        project = dbt.add_project(
+        dbt.add_project(
             name_override=x_dbt_project,
             project_dir=project_dir,
             profiles_dir=profiles_dir,
@@ -403,8 +403,10 @@ async def register(
             )
         )
 
-    loop = asyncio.get_running_loop()
-    project.heartbeat = loop.create_task(_adapter_heartbeat(project))
+    # We use ambient reinitialization based on TTL now
+    # loop = asyncio.get_running_loop()
+    # project.heartbeat = loop.create_task(_adapter_heartbeat(project))
+
     return OsmosisRegisterResult(added=x_dbt_project, projects=dbt.registered_projects())
 
 
@@ -428,7 +430,7 @@ async def unregister(
                 data={"registered_projects": dbt.registered_projects()},
             )
         )
-    project.heartbeat.cancel()
+    # project.heartbeat.cancel()
     dbt.drop_project(project)
     return OsmosisUnregisterResult(removed=project, projects=dbt.registered_projects())
 
