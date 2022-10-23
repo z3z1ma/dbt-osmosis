@@ -301,9 +301,11 @@ def serve(
 ):
     """Runs a lightweight server compatible with dbt-power-user and convenient for interactively
     running or compile dbt SQL queries with two simple endpoints accepting POST messages"""
-    if importlib.util.find_spec('sqlfluff_templater_dbt'):
-        logger().error("sqlfluff-templater-dbt is not compatible with dbt-osmosis server. "
-                       "Please uninstall it to continue.")
+    if importlib.util.find_spec("sqlfluff_templater_dbt"):
+        logger().error(
+            "sqlfluff-templater-dbt is not compatible with dbt-osmosis server. "
+            "Please uninstall it to continue."
+        )
         sys.exit(1)
 
     logger().info(":water_wave: Executing dbt-osmosis\n")
@@ -322,7 +324,7 @@ def serve(
         logger().info("Registering project: %s", endpoint)
         res = requests.post(
             endpoint,
-            headers={"X-dbt-Project": project_dir},
+            headers={"X-dbt-Project": str(Path(project_dir).absolute())},
         ).json()
 
         # Log
@@ -332,6 +334,10 @@ def serve(
 
     server = multiprocessing.Process(target=run_server, args=(host, port))
     server.start()
+
+    import atexit
+
+    atexit.register(lambda: server.terminate())
 
     register_handler: Optional[ServerRegisterThread] = None
     if register_project and project_dir and profiles_dir:
@@ -383,14 +389,14 @@ def register_project(
     _health_check(host, port)
 
     # Register
-    params = {"project_dir": project_dir, "profiles_dir": profiles_dir}
+    params = {"project_dir": project_dir, "profiles_dir": profiles_dir, "force": True}
     if target:
         params["target"] = target
     endpoint = f"http://{host}:{port}/register?{urlencode(params)}"
     logger().info("Registering project: %s", endpoint)
     res = requests.post(
         endpoint,
-        headers={"X-dbt-Project": project_name or project_dir},
+        headers={"X-dbt-Project": project_name or str(Path(project_dir).absolute())},
     )
 
     # Log
