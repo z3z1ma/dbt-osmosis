@@ -88,6 +88,8 @@ class OsmosisDbtTemplater(JinjaTemplater):
                 break
             finally:
                 osmosis_dbt_project._clear_node(temp_node_id)
+        else:
+            raise DbtCompilationException("Could not compile the SQL statement")
 
         # Generate context
         ctx = osmosis_dbt_project.generate_runtime_model_context(resp.node)
