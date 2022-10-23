@@ -82,53 +82,14 @@ def test_lint_parse_failure(profiles_dir, project_dir, sqlfluff_config_path, cap
         "/lint",
         headers={"X-dbt-Project": "dbt_project"},
         data="""select
-    {{ dbt_utils.star(ref("issue_1608")) }}
-from {{ ref("issue_1608") }}
+    {{ dbt_utils.star(ref("i_dont_exists")) }}
+from {{ ref("me_either") }}
 li""",
     )
     assert response.status_code == 200
     response_json = response.json()
     print(response_json)
-    assert response_json == {
-        "result": [
-            {
-                "code": "L001",
-                "description": "Unnecessary trailing whitespace.",
-                "line_no": 2,
-                "line_pos": 1,
-            },
-            {
-                "code": "L003",
-                "description": "Expected 1 indentation, found 0 [compared to line 03]",
-                "line_no": 4,
-                "line_pos": 1,
-            },
-            {
-                "code": "L011",
-                "description": "Implicit/explicit aliasing of table.",
-                "line_no": 4,
-                "line_pos": 1,
-            },
-            {
-                "code": "L025",
-                "description": "Alias 'li' is never used in SELECT statement.",
-                "line_no": 4,
-                "line_pos": 1,
-            },
-            {
-                "code": "L031",
-                "description": "Avoid aliases in from clauses and join conditions.",
-                "line_no": 4,
-                "line_pos": 1,
-            },
-            {
-                "code": "L009",
-                "description": "Files must end with a single trailing newline.",
-                "line_no": 4,
-                "line_pos": 3,
-            },
-        ]
-    }
+    assert response_json == {"result": []}
 
 
 @pytest.mark.parametrize(
