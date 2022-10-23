@@ -1,6 +1,7 @@
+import atexit
 import logging
 import os
-from contextlib import closing
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Union
 
@@ -8,7 +9,11 @@ from sqlfluff.cli.commands import get_linter_and_formatter
 from sqlfluff.cli.outputstream import FileOutput
 from sqlfluff.core.config import ConfigLoader, FluffConfig
 
+# Cache linters (up to 50 though its arbitrary)
+get_linter = lru_cache(maxsize=50)(lambda cfg, stream: get_linter_and_formatter(cfg, stream)[0])
 
+# Cache config to prevent wasted frames
+@lru_cache(maxsize=50)
 def get_config(
     dbt_project_root: Path,
     extra_config_path: Optional[Path] = None,
@@ -24,18 +29,28 @@ def get_config(
     """
     overrides = {k: kwargs[k] for k in kwargs if kwargs[k] is not None}
     loader = ConfigLoader.get_global()
-    c = loader.load_config_up_to_path(
+
+    # Load config at project root
+    base_config = loader.load_config_up_to_path(
         path=str(dbt_project_root),
         extra_config_path=str(extra_config_path) if extra_config_path else None,
         ignore_local_config=ignore_local_config,
     )
-    return FluffConfig(
-        configs=c,
+
+    # Main config with overrides
+    config = FluffConfig(
+        configs=base_config,
         extra_config_path=str(extra_config_path) if extra_config_path else None,
         ignore_local_config=ignore_local_config,
         overrides=overrides,
         require_dialect=require_dialect,
     )
+
+    # Silence output
+    stream = FileOutput(config, os.devnull)
+    atexit.register(stream.close)
+
+    return config, stream
 
 
 def lint_command(
@@ -59,23 +74,25 @@ def lint_command(
     but for now this should provide maximum compatibility with the command-line
     tool. We can also propose changes to SQLFluff to make this easier.
     """
-    # TODO: Should get_config() be called one time only, when the dbt project
-    # is registered?
-    config = get_config(
-        project_root, extra_config_path, ignore_local_config, require_dialect=False, nocolor=True
+    lnt = get_linter(
+        *get_config(
+            project_root,
+            extra_config_path,
+            ignore_local_config,
+            require_dialect=False,
+            nocolor=True,
+        )
     )
-    with closing(FileOutput(config, os.devnull)) as output_stream:
-        lnt, formatter = get_linter_and_formatter(config, output_stream)
 
-        if isinstance(sql, str):
-            # Lint SQL passed in as a string
-            result = lnt.lint_string_wrapped(sql)
-        else:
-            # Lint a SQL file
-            result = lnt.lint_paths(
-                tuple([str(sql)]),
-                ignore_files=False,
-            )
+    if isinstance(sql, str):
+        # Lint SQL passed in as a string
+        result = lnt.lint_string_wrapped(sql)
+    else:
+        # Lint a SQL file
+        result = lnt.lint_paths(
+            tuple([str(sql)]),
+            ignore_files=False,
+        )
     records = result.as_records()
     return records[0] if records else None
 
