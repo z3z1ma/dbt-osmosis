@@ -9,8 +9,6 @@
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-4y67qs.streamlitapp.com/)
 
 
-![graph](https://repobeats.axiom.co/api/embed/df37714aa5780fc79871c60e6fc623f8f8e45c35.svg "Repobeats analytics image")
-
 ## Primary Objectives
 
 Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this through providing 4 core features:
@@ -317,3 +315,5 @@ These features are being actively developed and will be merged into the next few
 1. Complete high performance dbt server solution for running & compiling dbt SQL statements
 2. Extend git diff functionality to pin revisions of models in dedicated schema(s) in the warehouse  
 3. Complete build out of `sources` tools
+
+![graph](https://repobeats.axiom.co/api/embed/df37714aa5780fc79871c60e6fc623f8f8e45c35.svg "Repobeats analytics image")
