@@ -233,12 +233,14 @@ class DbtProject:
         profiles_dir: Optional[str] = None,
         project_dir: Optional[str] = None,
         threads: Optional[int] = 1,
+        vars: Optional[str] = "{}",
     ):
         self.args = ConfigInterface(
             threads=threads,
             target=target,
             profiles_dir=profiles_dir,
             project_dir=project_dir,
+            vars=vars,
         )
 
         self.parse_project(init=True)
@@ -662,9 +664,10 @@ class DbtProjectContainer:
         project_dir: Optional[str] = None,
         threads: Optional[int] = 1,
         name_override: Optional[str] = "",
+        vars: Optional[str] = "{}",
     ) -> DbtProject:
         """Add a DbtProject with arguments"""
-        project = DbtProject(target, profiles_dir, project_dir, threads)
+        project = DbtProject(target, profiles_dir, project_dir, threads, vars)
         project_name = name_override or project.config.project_name
         if self._default_project is None:
             self._default_project = project_name
