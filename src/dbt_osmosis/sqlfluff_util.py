@@ -10,10 +10,13 @@ from sqlfluff.cli.outputstream import FileOutput
 from sqlfluff.core.config import ConfigLoader, FluffConfig
 
 # Cache linters (up to 50 though its arbitrary)
-get_linter = lru_cache(maxsize=50)(lambda cfg, stream: get_linter_and_formatter(cfg, stream)[0])
+# DISABLING CACHE until tests prove it valuable
+# get_linter = lru_cache(maxsize=50)(lambda cfg, stream: get_linter_and_formatter(cfg, stream)[0])
+get_linter = lambda cfg, stream: get_linter_and_formatter(cfg, stream)[0]
 
-# Cache config to prevent wasted frames
-@lru_cache(maxsize=50)
+# Cache config to prevent wasted frames / disk seeks in high concurrency
+# DISABLING CACHE until tests prove it valuable
+# @lru_cache(maxsize=50)
 def get_config(
     dbt_project_root: Path,
     extra_config_path: Optional[Path] = None,
