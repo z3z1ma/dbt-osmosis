@@ -942,22 +942,32 @@ class DbtYamlManager(DbtProject):
         """Get all columns in a list for a model"""
         parts = self.get_database_parts(node)
         table = self.adapter.get_relation(*parts)
-        columns = []
+        column_names = []
         if not table:
             logger().info(
                 ":cross_mark: Relation %s.%s.%s does not exist in target database, cannot resolve columns",
                 *parts,
             )
-            return columns
+            return column_names
         try:
-            columns = [c.name for c in self.adapter.get_columns_in_relation(table)]
+            columns = self.adapter.get_columns_in_relation(table)
         except CompilationException as error:
             logger().info(
                 ":cross_mark: Could not resolve relation %s.%s.%s against database active tables during introspective query: %s",
                 *parts,
                 str(error),
             )
-        return columns
+            return column_names
+        try:
+            columns[0].flatten
+        except AttributeError:
+            column_names = [c.name for c in columns]
+        else:
+            for column in columns:
+                column_names.append(column.name)
+                if len(column.flatten()) > 1:
+                    column_names.extend([c.name for c in column.flatten()])
+        return column_names
 
     @staticmethod
     def assert_schema_has_no_sources(schema: Mapping) -> Mapping:
