@@ -147,7 +147,10 @@ class DbtYamlManager(DbtProject):
                 yield unique_id, dbt_node
 
     def get_osmosis_config(self, node: ManifestNode) -> Optional[SchemaFileOrganizationPattern]:
-        """Validates a config string. If input is a source, we return the resource type str instead"""
+        """Validates a config string.
+
+        If input is a source, we return the resource type str instead
+        """
         if node.resource_type == NodeType.Source:
             return None
         osmosis_config = node.config.get("dbt-osmosis")
@@ -534,89 +537,104 @@ class DbtYamlManager(DbtProject):
         ]
         return missing_columns, undocumented_columns, extra_columns
 
+    def _run(self, unique_id, node, schema_map, lock, force_inheritance=False):
+        with lock:
+            logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
+        # Get schema file path, must exist to propagate documentation
+        schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
+        if schema_path is None or schema_path.current is None:
+            with lock:
+                logger().info(
+                    ":bow: No valid schema file found for model %s", unique_id
+                )  # We can't take action
+                return
+
+        # Build Sets
+        database_columns: Set[str] = set(self.get_columns(node))
+        yaml_columns: Set[str] = set(column for column in node.columns)
+
+        if not database_columns:
+            with lock:
+                logger().info(
+                    ":safety_vest: Unable to resolve columns in database, falling back to using"
+                    " yaml columns as base column set\n"
+                )
+            database_columns = yaml_columns
+
+        # Get documentated columns
+        documented_columns: Set[str] = set(
+            column
+            for column, info in node.columns.items()
+            if info.description and info.description not in self.placeholders
+        )
+
+        # Queue
+        missing_columns, undocumented_columns, extra_columns = self.get_column_sets(
+            database_columns, yaml_columns, documented_columns
+        )
+
+        if force_inheritance:
+            # Consider all columns "undocumented" so that inheritance is not selective
+            undocumented_columns = database_columns
+
+        # Engage
+        n_cols_added = 0
+        n_cols_doc_inherited = 0
+        n_cols_removed = 0
+        if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
+            schema_file = self.yaml_handler.load(schema_path.current)
+            (
+                n_cols_added,
+                n_cols_doc_inherited,
+                n_cols_removed,
+            ) = self.update_schema_file_and_node(
+                missing_columns,
+                undocumented_columns,
+                extra_columns,
+                node,
+                schema_file,
+            )
+            if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
+                # Dump the mutated schema file back to the disk
+                if not self.dry_run:
+                    self.yaml_handler.dump(schema_file, schema_path.current)
+                with lock:
+                    logger().info(":sparkles: Schema file updated")
+
+        # Print Audit Report
+        n_cols = float(len(database_columns))
+        n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
+        perc_coverage = (
+            min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
+            if n_cols > 0
+            else "Unable to Determine"
+        )
+        with lock:
+            logger().info(
+                self.audit_report.format(
+                    database=node.database,
+                    schema=node.schema,
+                    table=node.name,
+                    total_columns=n_cols,
+                    n_cols_added=n_cols_added,
+                    n_cols_doc_inherited=n_cols_doc_inherited,
+                    n_cols_removed=n_cols_removed,
+                    coverage=perc_coverage,
+                )
+            )
+
     def propagate_documentation_downstream(self, force_inheritance: bool = False) -> None:
+        import os
+        from threading import Lock
+        from concurrent.futures import ThreadPoolExecutor
+
+        lock = Lock()  # Prevent interleaving of log messages
+        tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
         schema_map = self.build_schema_folder_mapping()
         with self.adapter.connection_named("dbt-osmosis"):
             for unique_id, node in track(list(self.filtered_models())):
-                logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
-                # Get schema file path, must exist to propagate documentation
-                schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
-                if schema_path is None or schema_path.current is None:
-                    logger().info(
-                        ":bow: No valid schema file found for model %s", unique_id
-                    )  # We can't take action
-                    continue
-
-                # Build Sets
-                database_columns: Set[str] = set(self.get_columns(node))
-                yaml_columns: Set[str] = set(column for column in node.columns)
-
-                if not database_columns:
-                    logger().info(
-                        ":safety_vest: Unable to resolve columns in database, falling back to using"
-                        " yaml columns as base column set\n"
-                    )
-                    database_columns = yaml_columns
-
-                # Get documentated columns
-                documented_columns: Set[str] = set(
-                    column
-                    for column, info in node.columns.items()
-                    if info.description and info.description not in self.placeholders
-                )
-
-                # Queue
-                missing_columns, undocumented_columns, extra_columns = self.get_column_sets(
-                    database_columns, yaml_columns, documented_columns
-                )
-
-                if force_inheritance:
-                    # Consider all columns "undocumented" so that inheritance is not selective
-                    undocumented_columns = database_columns
-
-                # Engage
-                n_cols_added = 0
-                n_cols_doc_inherited = 0
-                n_cols_removed = 0
-                if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
-                    schema_file = self.yaml_handler.load(schema_path.current)
-                    (
-                        n_cols_added,
-                        n_cols_doc_inherited,
-                        n_cols_removed,
-                    ) = self.update_schema_file_and_node(
-                        missing_columns,
-                        undocumented_columns,
-                        extra_columns,
-                        node,
-                        schema_file,
-                    )
-                    if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
-                        # Dump the mutated schema file back to the disk
-                        if not self.dry_run:
-                            self.yaml_handler.dump(schema_file, schema_path.current)
-                        logger().info(":sparkles: Schema file updated")
-
-                # Print Audit Report
-                n_cols = float(len(database_columns))
-                n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
-                perc_coverage = (
-                    min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
-                    if n_cols > 0
-                    else "Unable to Determine"
-                )
-                logger().info(
-                    self.audit_report.format(
-                        database=node.database,
-                        schema=node.schema,
-                        table=node.name,
-                        total_columns=n_cols,
-                        n_cols_added=n_cols_added,
-                        n_cols_doc_inherited=n_cols_doc_inherited,
-                        n_cols_removed=n_cols_removed,
-                        coverage=perc_coverage,
-                    )
-                )
+                tpe.submit(self._run, unique_id, node, schema_map, lock, force_inheritance)
+        tpe.shutdown(wait=True)
 
     @staticmethod
     def remove_columns_not_in_database(
