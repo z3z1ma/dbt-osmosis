@@ -20,6 +20,7 @@ clean-targets:
 require-dbt-version: [">=1.0.0", "<2.0.0"]
 
 models:
+  +dbt-osmosis: model.yml
   jaffle_shop:
     materialized: table
     staging:

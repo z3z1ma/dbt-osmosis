@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Union
 from urllib.parse import urlencode
+from dataclasses import asdict
 
 import click
 import requests
@@ -15,8 +16,8 @@ import requests
 from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.macros import inject_macros
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtProject, DbtYamlManager
-from dbt_osmosis.core.server_v2 import run_server
+from dbt_osmosis.core.osmosis import DbtYamlManager
+from dbt_osmosis.vendored.dbt_core_interface import DEFAULT_PROFILES_DIR, DbtProject, run_server
 
 CONTEXT = {"max_content_width": 800}
 
@@ -54,7 +55,10 @@ def shared_opts(func: Callable) -> Callable:
         "--project-dir",
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
         default=str(Path.cwd()),
-        help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
+        help=(
+            "Which directory to look in for the dbt_project.yml file. Default is the current"
+            " working directory and its parents."
+        ),
     )
     @click.option(
         "--profiles-dir",
@@ -81,13 +85,19 @@ def shared_opts(func: Callable) -> Callable:
     "-f",
     "--fqn",
     type=click.STRING,
-    help="Specify models based on dbt's FQN. Looks like folder.folder, folder.folder.model, or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
+    help=(
+        "Specify models based on dbt's FQN. Looks like folder.folder, folder.folder.model, or"
+        " folder.folder.source.table. Use list command to see the scope of an FQN filter."
+    ),
 )
 @click.option(
     "-F",
     "--force-inheritance",
     is_flag=True,
-    help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
+    help=(
+        "If specified, forces documentation to be inherited overriding existing column level"
+        " documentation where applicable."
+    ),
 )
 @click.option(
     "-d",
@@ -103,16 +113,16 @@ def refactor(
     force_inheritance: bool = False,
     dry_run: bool = False,
 ):
-    """Executes organize which syncs yaml files with database schema and organizes the dbt models directory,
-    reparses the project, then executes document which passes down inheritable documentation
+    """Executes organize which syncs yaml files with database schema and organizes the dbt models
+    directory, reparses the project, then executes document passing down inheritable documentation
 
     \f
-    This command will conform your project as outlined in `dbt_project.yml`, bootstrap undocumented dbt models,
-    and propagate column level documentation downwards once all yamls are accounted for
+    This command will conform your project as outlined in `dbt_project.yml`, bootstrap undocumented
+    dbt models, and propagate column level documentation downwards once all yamls are accounted for
 
     Args:
         target (Optional[str]): Profile target. Defaults to default target set in profile yml
-        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        project_dir (Optional[str], optional): Dbt project directory. Defaults to working directory.
         profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
@@ -137,7 +147,10 @@ def refactor(
     "-f",
     "--fqn",
     type=click.STRING,
-    help="Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
+    help=(
+        "Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or"
+        " folder.folder.source.table. Use list command to see the scope of an FQN filter."
+    ),
 )
 @click.option(
     "-d",
@@ -155,11 +168,12 @@ def organize(
     """Organizes schema ymls based on config and injects undocumented models
 
     \f
-    This command will conform schema ymls in your project as outlined in `dbt_project.yml` & bootstrap undocumented dbt models
+    This command will conform schema ymls in your project as outlined in `dbt_project.yml` &
+    bootstrap undocumented dbt models
 
     Args:
         target (Optional[str]): Profile target. Defaults to default target set in profile yml
-        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        project_dir (Optional[str], optional): Dbt project directory. Defaults to working directory.
         profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
@@ -182,13 +196,19 @@ def organize(
     "-f",
     "--fqn",
     type=click.STRING,
-    help="Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or folder.folder.source.table. Use list command to see the scope of an FQN filter.",
+    help=(
+        "Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or"
+        " folder.folder.source.table. Use list command to see the scope of an FQN filter."
+    ),
 )
 @click.option(
     "-F",
     "--force-inheritance",
     is_flag=True,
-    help="If specified, forces documentation to be inherited overriding existing column level documentation where applicable.",
+    help=(
+        "If specified, forces documentation to be inherited overriding existing column level"
+        " documentation where applicable."
+    ),
 )
 @click.option(
     "-d",
@@ -207,11 +227,12 @@ def document(
     """Column level documentation inheritance for existing models
 
     \f
-    This command will conform schema ymls in your project as outlined in `dbt_project.yml` & bootstrap undocumented dbt models
+    This command will conform schema ymls in your project as outlined in `dbt_project.yml` &
+    bootstrap undocumented dbt models
 
     Args:
         target (Optional[str]): Profile target. Defaults to default target set in profile yml
-        project_dir (Optional[str], optional): Dbt project directory. Defaults to current working directory.
+        project_dir (Optional[str], optional): Dbt project directory. Defaults to working directory.
         profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
     """
     logger().info(":water_wave: Executing dbt-osmosis\n")
@@ -283,12 +304,18 @@ def _health_check(host: str, port: int):
 @click.option(
     "--register-project",
     is_flag=True,
-    help="Try to register a dbt project on init as specified by --project-dir, --profiles-dir or their defaults if not passed explicitly",
+    help=(
+        "Try to register a dbt project on init as specified by --project-dir, --profiles-dir or"
+        " their defaults if not passed explicitly"
+    ),
 )
 @click.option(
     "--exit-on-error",
     is_flag=True,
-    help="A flag which indicates the program should terminate on registration failure if --register-project was unsuccessful",
+    help=(
+        "A flag which indicates the program should terminate on registration failure if"
+        " --register-project was unsuccessful"
+    ),
 )
 def serve(
     project_dir: str,
@@ -332,7 +359,7 @@ def serve(
         if "error" in res:
             raise ConnectionError(res["error"]["message"])
 
-    server = multiprocessing.Process(target=run_server, args=(host, port))
+    server = multiprocessing.Process(target=run_server, args=(None, host, port))
     server.start()
 
     import atexit
@@ -372,7 +399,10 @@ def serve(
 @click.option(
     "--project-name",
     type=click.STRING,
-    help="The name to register the project with. By default, it is a string value representing the absolute directory of the project on disk",
+    help=(
+        "The name to register the project with. By default, it is a string value representing the"
+        " absolute directory of the project on disk"
+    ),
 )
 def register_project(
     project_dir: str,
@@ -453,7 +483,10 @@ def unregister_project(
 @click.option(
     "--project-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
+    help=(
+        "Which directory to look in for the dbt_project.yml file. Default is the current working"
+        " directory and its parents."
+    ),
 )
 @click.option(
     "--profiles-dir",
@@ -487,7 +520,7 @@ def workbench(
     Pass the --options command to see streamlit specific options that can be passed to the app,
     pass --config to see the output of streamlit config show
     """
-
+    raise NotImplementedError("Workbench is not yet implemented for new dbt-osmosis")
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
     if "--options" in ctx.args:
@@ -556,7 +589,10 @@ def workbench(
     "-o",
     "--output",
     default="table",
-    help="Output format can be one of table, chart/bar, or csv. CSV is saved to a file named dbt-osmosis-diff in working dir",
+    help=(
+        "Output format can be one of table, chart/bar, or csv. CSV is saved to a file named"
+        " dbt-osmosis-diff in working dir"
+    ),
 )
 def diff(
     model: str,
@@ -591,14 +627,14 @@ def run(
     target: Optional[str] = None,
 ):
     """Executes a dbt SQL statement writing an OsmosisRunResult | OsmosisErrorContainer to stdout"""
-    from dbt_osmosis.core.server_v2 import (
-        OsmosisError,
-        OsmosisErrorCode,
-        OsmosisErrorContainer,
-        OsmosisRunResult,
+    from dbt_osmosis.vendored.dbt_core_interface.project import (
+        ServerError,
+        ServerErrorCode,
+        ServerErrorContainer,
+        ServerRunResult,
     )
 
-    rv: Union[OsmosisRunResult, OsmosisErrorContainer] = None
+    rv: Union[ServerRunResult, ServerErrorContainer] = None
 
     try:
         runner = DbtProject(
@@ -607,37 +643,37 @@ def run(
             target=target,
         )
     except Exception as init_err:
-        rv = OsmosisErrorContainer(
-            error=OsmosisError(
-                code=OsmosisErrorCode.ProjectParseFailure,
+        rv = ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
                 message=str(init_err),
                 data=init_err.__dict__,
             )
         )
 
     if rv is not None:
-        print(rv.json())
+        print(asdict(rv))
         return rv
 
     try:
-        result = runner.execute_sql("\n".join(sys.stdin.readlines()) if sql == "-" else sql)
+        result = runner.execute_code("\n".join(sys.stdin.readlines()) if sql == "-" else sql)
     except Exception as execution_err:
-        rv = OsmosisErrorContainer(
-            error=OsmosisError(
-                code=OsmosisErrorCode.ExecuteSqlFailure,
+        rv = ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ExecuteSqlFailure,
                 message=str(execution_err),
                 data=execution_err.__dict__,
             )
         )
     else:
-        rv = OsmosisRunResult(
+        rv = ServerRunResult(
             rows=[list(row) for row in result.table.rows],
             column_names=result.table.column_names,
-            compiled_sql=result.compiled_sql,
-            raw_sql=result.raw_sql,
+            executed_code=result.compiled_code,
+            raw_code=result.raw_code,
         )
 
-    print(rv.json())
+    print(asdict(rv))
     return rv
 
 
@@ -650,15 +686,15 @@ def compile(
     profiles_dir: Optional[str] = None,
     target: Optional[str] = None,
 ):
-    """Compiles a dbt SQL statement writing an OsmosisCompileResult | OsmosisErrorContainer to stdout"""
-    from dbt_osmosis.core.server_v2 import (
-        OsmosisCompileResult,
-        OsmosisError,
-        OsmosisErrorCode,
-        OsmosisErrorContainer,
+    """Compiles dbt SQL statement writing an OsmosisCompileResult | OsmosisErrorContainer to stdout"""
+    from dbt_osmosis.vendored.dbt_core_interface.project import (
+        ServerCompileResult,
+        ServerError,
+        ServerErrorCode,
+        ServerErrorContainer,
     )
 
-    rv: Union[OsmosisCompileResult, OsmosisErrorContainer] = None
+    rv: Union[ServerCompileResult, ServerErrorContainer] = None
 
     try:
         runner = DbtProject(
@@ -667,32 +703,32 @@ def compile(
             target=target,
         )
     except Exception as init_err:
-        rv = OsmosisErrorContainer(
-            error=OsmosisError(
-                code=OsmosisErrorCode.ProjectParseFailure,
+        rv = ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.ProjectParseFailure,
                 message=str(init_err),
                 data=init_err.__dict__,
             )
         )
 
     if rv is not None:
-        print(rv.json())
+        print(asdict(rv))
         return rv
 
     try:
-        result = runner.compile_sql("\n".join(sys.stdin.readlines()) if sql == "-" else sql)
+        result = runner.compile_code("\n".join(sys.stdin.readlines()) if sql == "-" else sql)
     except Exception as compilation_err:
-        rv = OsmosisErrorContainer(
-            error=OsmosisError(
-                code=OsmosisErrorCode.CompileSqlFailure,
+        rv = ServerErrorContainer(
+            error=ServerError(
+                code=ServerErrorCode.CompileSqlFailure,
                 message=str(compilation_err),
                 data=compilation_err.__dict__,
             )
         )
     else:
-        rv = OsmosisCompileResult(result=result.compiled_sql)
+        rv = ServerCompileResult(result=result.compiled_code)
 
-    print(rv.json())
+    print(asdict(rv))
     return rv
 
 

@@ -10,7 +10,7 @@ import feedparser
 import pandas as pd
 import pandas_profiling
 import streamlit as st
-from dbt.exceptions import CompilationException, DatabaseException, RuntimeException
+from dbt.exceptions import CompilationException, RuntimeException
 from streamlit_ace import THEMES, st_ace
 from streamlit_pandas_profiling import st_profile_report
 
@@ -250,7 +250,8 @@ st.title("dbt-osmosis 🌊")
 
 st.sidebar.header("Profiles")
 st.sidebar.write(
-    "Select a profile used for materializing, compiling, and testing models. Can be updated at any time."
+    "Select a profile used for materializing, compiling, and testing models. Can be updated at any"
+    " time."
 )
 state[TARGET_PROFILE] = st.sidebar.radio(
     f"Loaded profiles from {ctx.config.profile_name}",
@@ -262,8 +263,9 @@ st.sidebar.write("")
 st.sidebar.write("Utility")
 # st.sidebar.button("Reload dbt project", key=DBT_DO_RELOAD)
 st.sidebar.caption(
-    "Refresh the page to reparse dbt. This is useful if any updated models or macros in your physical project \
-    on disk have changed and are not yet reflected in the workbench as refable or updated."
+    "Refresh the page to reparse dbt. This is useful if any updated models or macros in your"
+    " physical project     on disk have changed and are not yet reflected in the workbench as"
+    " refable or updated."
 )
 st.sidebar.write("")
 st.sidebar.selectbox("Editor Theme", THEMES, index=8, key=THEME_PICKER)
@@ -319,9 +321,11 @@ with idePart1:
 with idePart2:
     with st.expander("📝 Compiled SQL", expanded=True):
         st.code(
-            state[COMPILED_SQL]
-            if state[COMPILED_SQL]
-            else " --> Invalid Jinja, awaiting model to become valid",
+            (
+                state[COMPILED_SQL]
+                if state[COMPILED_SQL]
+                else " --> Invalid Jinja, awaiting model to become valid"
+            ),
             language="sql",
         )
 
@@ -391,7 +395,8 @@ with testContainerViewer:
     else:
         st.write("")
         st.markdown(
-            "> The results of your workbench query will show up here. Click `Test Compiled Query` to see the results. "
+            "> The results of your workbench query will show up here. Click `Test Compiled Query`"
+            " to see the results. "
         )
         st.write("")
     st.write("")
@@ -475,5 +480,6 @@ for i, item in enumerate(d["entries"]):
         break
 footer2.write("")
 footer2.write(
-    "Catch up on any news! Staying up-to-date is important to keeping sharp in an always evolving world."
+    "Catch up on any news! Staying up-to-date is important to keeping sharp in an always evolving"
+    " world."
 )

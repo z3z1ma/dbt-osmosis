@@ -1,5 +1,5 @@
 jaffle_shop:
-  target: dev
+  target: test
   outputs:
     dev:
       type: sqlite

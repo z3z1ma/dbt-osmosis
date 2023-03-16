@@ -7,11 +7,13 @@ from dbt.adapters.base.relation import BaseRelation
 from git import Repo
 
 from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.core.osmosis import DbtProject
+from dbt_osmosis.vendored.dbt_core_interface.project import DbtProject
 
 
 def build_diff_queries(model: str, runner: DbtProject) -> Tuple[str, str]:
-    """Leverage git to build two temporary tables for diffing the results of a query throughout a change"""
+    """Leverage git to build two temporary tables for diffing the results of a query
+    throughout a change
+    """
     # Resolve git node
     node = runner.get_ref_node(model)
     dbt_path = Path(node.root_path)
@@ -107,7 +109,6 @@ def diff_tables(
     runner: DbtProject,
     aggregate: bool = True,
 ) -> agate.Table:
-
     logger().info("Running diff")
     _, table = runner.adapter_execute(
         runner.execute_macro(
@@ -127,7 +128,6 @@ def diff_tables(
 def diff_queries(
     sql_A: str, sql_B: str, pk: str, runner: DbtProject, aggregate: bool = True
 ) -> agate.Table:
-
     logger().info("Running diff")
     _, table = runner.adapter_execute(
         runner.execute_macro(
