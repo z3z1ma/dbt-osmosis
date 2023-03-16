@@ -1,6 +1,9 @@
+import os
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from itertools import chain
 from pathlib import Path
+from threading import Lock
 from typing import (
     Any,
     Dict,
@@ -20,6 +23,7 @@ try:
 except ModuleNotFoundError:
     from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode
 
+import ruamel.yaml
 from pydantic import BaseModel
 from rich.progress import track
 
@@ -30,6 +34,17 @@ from dbt_osmosis.core.exceptions import (
 )
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.vendored.dbt_core_interface.project import DbtProject, NodeType
+
+
+class YamlHandler(ruamel.yaml.YAML):
+    """A `ruamel.yaml` wrapper to handle dbt YAML files with sane defaults"""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.indent(mapping=2, sequence=4, offset=2)
+        self.width = 800
+        self.preserve_quotes = True
+        self.default_flow_style = False
 
 
 class SchemaFileOrganizationPattern(str, Enum):
@@ -106,9 +121,7 @@ class DbtYamlManager(DbtProject):
     @property
     def yaml_handler(self):
         if not hasattr(self, "_yaml_handler"):
-            import ruamel.yaml
-
-            self._yaml_handler = ruamel.yaml.YAML()
+            self._yaml_handler = YamlHandler()
         return self._yaml_handler
 
     def _filter_model(self, node: ManifestNode) -> bool:
@@ -289,6 +302,39 @@ class DbtYamlManager(DbtProject):
             )
         return schema_map
 
+    def _draft(
+        self, schema_file: SchemaFileLocation, unique_id: str, blueprint: dict, lock
+    ) -> None:
+        with lock:
+            blueprint.setdefault(
+                schema_file.target,
+                SchemaFileMigration(output={"version": 2, "models": []}, supersede={}),
+            )
+        node = self.manifest.nodes[unique_id]
+        if schema_file.current is None:
+            # Bootstrapping Undocumented Model
+            with lock:
+                blueprint[schema_file.target].output["models"].append(self.get_base_model(node))
+        else:
+            # Model Is Documented but Must be Migrated
+            if not schema_file.current.exists():
+                return None
+            # TODO: We avoid sources for complexity reasons but if we are opinionated,
+            # we don't have to
+            schema = self.assert_schema_has_no_sources(self.yaml_handler.load(schema_file.current))
+            models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
+            for documented_model in models_in_file:
+                if documented_model["name"] == node.name:
+                    # Bootstrapping Documented Model
+                    rv = self.bootstrap_existing_model(documented_model, node)
+                    with lock:
+                        blueprint[schema_file.target].output["models"].append(rv)
+                        # Target to supersede current
+                        blueprint[schema_file.target].supersede.setdefault(
+                            schema_file.current, []
+                        ).append(documented_model["name"])
+                    break
+
     def draft_project_structure_update_plan(self) -> Dict[Path, SchemaFileMigration]:
         """Build project structure update plan based on `dbt-osmosis:` configs set across
         dbt_project.yml and model files. The update plan includes injection of undocumented models.
@@ -307,49 +353,15 @@ class DbtYamlManager(DbtProject):
             ":chart_increasing: Searching project stucture for required updates and building action"
             " plan"
         )
+        lock = Lock()
+        tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
         with self.adapter.connection_named("dbt-osmosis"):
             for unique_id, schema_file in self.build_schema_folder_mapping(
                 target_node_type=NodeType.Model
             ).items():
                 if not schema_file.is_valid:
-                    blueprint.setdefault(
-                        schema_file.target,
-                        SchemaFileMigration(output={"version": 2, "models": []}, supersede={}),
-                    )
-                    node = self.manifest.nodes[unique_id]
-                    if schema_file.current is None:
-                        # Bootstrapping Undocumented Model
-                        blueprint[schema_file.target].output["models"].append(
-                            self.get_base_model(node)
-                        )
-                    else:
-                        # Model Is Documented but Must be Migrated
-                        if not schema_file.current.exists():
-                            continue
-                        # TODO: We avoid sources for complexity reasons but if we are opinionated,
-                        # we don't have to
-                        schema = self.assert_schema_has_no_sources(
-                            self.yaml_handler.load(schema_file.current)
-                        )
-                        models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
-                        for documented_model in models_in_file:
-                            if documented_model["name"] == node.name:
-                                # Bootstrapping Documented Model
-                                blueprint[schema_file.target].output["models"].append(
-                                    self.bootstrap_existing_model(documented_model, node)
-                                )
-                                # Target to supersede current
-                                blueprint[schema_file.target].supersede.setdefault(
-                                    schema_file.current, []
-                                ).append(documented_model["name"])
-                                break
-                        else:
-                            ...  # Model not found at patch path -- We should pass on this for now
-                else:
-                    # Valid schema file found for model
-                    # We will update the columns in the `Document` task
-                    ...
-
+                    tpe.submit(self._draft, schema_file, unique_id, blueprint, lock)
+            tpe.shutdown(wait=True)
         return blueprint
 
     def commit_project_restructure_to_disk(
@@ -624,10 +636,6 @@ class DbtYamlManager(DbtProject):
             )
 
     def propagate_documentation_downstream(self, force_inheritance: bool = False) -> None:
-        import os
-        from threading import Lock
-        from concurrent.futures import ThreadPoolExecutor
-
         lock = Lock()  # Prevent interleaving of log messages
         tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
         schema_map = self.build_schema_folder_mapping()

@@ -21,8 +21,7 @@ def rotating_log_handler(
     path: Path,
     formatter: str,
 ) -> RotatingFileHandler:
-    """This handler writes warning and higher level outputs to logs in a home .dbt-osmosis directory rotating them as needed
-    """
+    """This handler writes warning and higher level outputs to logs in a home .dbt-osmosis directory rotating them as needed"""
     path.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
         str(path / "{log_name}.log".format(log_name=name)),

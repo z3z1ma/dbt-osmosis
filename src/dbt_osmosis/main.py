@@ -1,14 +1,13 @@
 import functools
-import importlib.util
 import multiprocessing
 import subprocess
 import sys
 import threading
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Optional, Union
 from urllib.parse import urlencode
-from dataclasses import asdict
 
 import click
 import requests
