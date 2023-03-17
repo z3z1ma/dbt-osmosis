@@ -18,10 +18,15 @@ from typing import (
     Union,
 )
 
+# brute force import for dbt 1.3 back-compat
+# we should move the ugly stuff to dbt-core-interface
 try:
-    from dbt.contracts.graph.parsed import ColumnInfo, ManifestNode  # type: ignore
-except (ModuleNotFoundError, ImportError):
-    from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode
+    # dbt <= 1.3
+    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
+    from dbt.contracts.graph.compiled import ManifestNode  # type: ignore
+except Exception:
+    # dbt > 1.3
+    from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode  # type: ignore
 
 import ruamel.yaml
 from pydantic import BaseModel
