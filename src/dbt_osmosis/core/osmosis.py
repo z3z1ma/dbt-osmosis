@@ -20,7 +20,7 @@ from typing import (
 
 try:
     from dbt.contracts.graph.parsed import ColumnInfo, ManifestNode  # type: ignore
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode
 
 import ruamel.yaml
