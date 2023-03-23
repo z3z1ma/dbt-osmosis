@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.10.5"
+version = "0.10.6"
 description = "A dbt server and suite of optional developer tools to make developing with dbt delightful."
 authors = ["z3z1ma <butler.alex2010@gmail.com>"]
 license = "Apache 2.0"
@@ -92,9 +92,3 @@ line-length = 100
 
 [tool.poetry.scripts]
 dbt-osmosis = 'dbt_osmosis.main:cli'
-dbt-osmosis-proxy = 'dbt_osmosis.server:cli'
-
-[tool.poetry.plugins]
-
-[tool.poetry.plugins."sqlfluff"]
-"dbt_templater" = "dbt_osmosis.dbt_templater"
