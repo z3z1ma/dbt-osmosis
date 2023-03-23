@@ -164,7 +164,7 @@ class DbtYamlManager(DbtProject):
             if self._filter_model(dbt_node):
                 yield unique_id, dbt_node
 
-    def get_osmosis_config(self, node: ManifestNode) -> Optional[SchemaFileOrganizationPattern]:
+    def get_osmosis_config(self, node: ManifestNode) -> Optional[str]:
         """Validates a config string.
 
         If input is a source, we return the resource type str instead
@@ -178,7 +178,7 @@ class DbtYamlManager(DbtProject):
                 " directory level through the `dbt_project.yml`"
             )
         try:
-            return SchemaFileOrganizationPattern(osmosis_config)
+            return osmosis_config
         except ValueError as exc:
             raise InvalidOsmosisConfig(
                 f"Invalid config for model {node.name}: {osmosis_config}"
@@ -202,7 +202,7 @@ class DbtYamlManager(DbtProject):
         osmosis_config = self.get_osmosis_config(node)
         if not osmosis_config:
             return Path(self.config.project_root, node.original_file_path)
-        # Here we resolve file migration targets based on the config
+        # Backwards compat
         if osmosis_config == SchemaFileOrganizationPattern.SchemaYaml:
             schema = "schema"
         elif osmosis_config == SchemaFileOrganizationPattern.FolderYaml:
@@ -214,9 +214,10 @@ class DbtYamlManager(DbtProject):
         elif osmosis_config == SchemaFileOrganizationPattern.UnderscoreModelYaml:
             schema = "_" + node.name
         else:
-            raise InvalidOsmosisConfig(f"Invalid dbt-osmosis config for model: {node.fqn}")
+            # Here we resolve file migration targets based on the config
+            schema = osmosis_config.format(node=node, model=node.name, parent=node.fqn[-2])
         return Path(self.config.project_root, node.original_file_path).parent / Path(
-            f"{schema}.yml"
+            schema if schema.endswith((".yml", ".yaml")) else f"{schema}.yml"
         )
 
     @staticmethod
@@ -433,6 +434,8 @@ class DbtYamlManager(DbtProject):
                     logger().info(":rocket: Superseded schema file %s", dir.name)
                     if not self.dry_run:
                         dir.unlink(missing_ok=True)
+                        if len(list(dir.parent.iterdir())) == 0:
+                            dir.parent.rmdir()
                 else:
                     for model in raw_schema["models"]:
                         if model["name"] in non_superseded_models:
