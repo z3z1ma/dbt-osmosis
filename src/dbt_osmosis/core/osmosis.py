@@ -545,9 +545,13 @@ class DbtYamlManager(DbtProject):
             for dir, nodes in structure.supersede.items():
                 raw_schema: Dict[str, Any] = self.yaml_handler.load(dir)
                 # Gather models and sources marked for superseding
-                models_marked_for_superseding = set(node.name for node in nodes)
+                models_marked_for_superseding = set(
+                    node.name for node in nodes if node.resource_type == NodeType.Model
+                )
                 sources_marked_for_superseding = set(
-                    (node.source_name, node.name) for node in nodes
+                    (node.source_name, node.name)
+                    for node in nodes
+                    if node.resource_type == NodeType.Source
                 )
                 # Gather models and sources in schema file
                 models_in_schema = set(m["name"] for m in raw_schema.get("models", []))
