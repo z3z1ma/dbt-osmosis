@@ -637,7 +637,7 @@ class DbtProject:
         """Get macro as a function which behaves like a Python function."""
 
         def _macro_fn(**kwargs: Any) -> Any:
-            return self.adapter.execute_macro(macro_name, self.manifest, **kwargs)
+            return self.adapter.execute_macro(macro_name, self.manifest, kwargs=kwargs)
 
         return _macro_fn
 

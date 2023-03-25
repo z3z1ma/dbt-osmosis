@@ -1,5 +1,5 @@
 import os
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from enum import Enum
 from itertools import chain
 from pathlib import Path
@@ -10,12 +10,10 @@ from typing import (
     Iterable,
     Iterator,
     List,
-    Mapping,
     MutableMapping,
     Optional,
     Set,
     Tuple,
-    Union,
 )
 
 # brute force import for dbt 1.3 back-compat
@@ -30,15 +28,15 @@ except Exception:
 
 import ruamel.yaml
 from pydantic import BaseModel
-from rich.progress import track
 
 from dbt_osmosis.core.exceptions import (
     InvalidOsmosisConfig,
     MissingOsmosisConfig,
-    SanitizationRequired,
 )
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.vendored.dbt_core_interface.project import DbtProject, NodeType
+
+as_path = Path
 
 
 class YamlHandler(ruamel.yaml.YAML):
@@ -63,6 +61,7 @@ class SchemaFileOrganizationPattern(str, Enum):
 class SchemaFileLocation(BaseModel):
     target: Path
     current: Optional[Path] = None
+    node_type: NodeType = NodeType.Model
 
     @property
     def is_valid(self) -> bool:
@@ -122,12 +121,20 @@ class DbtYamlManager(DbtProject):
         super().__init__(target, profiles_dir, project_dir, threads)
         self.fqn = fqn
         self.dry_run = dry_run
+        self.mutex = Lock()
+        self.tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
 
     @property
     def yaml_handler(self):
         if not hasattr(self, "_yaml_handler"):
             self._yaml_handler = YamlHandler()
         return self._yaml_handler
+
+    def column_casing(self, column: str) -> str:
+        """Converts a column name to the correct casing for the target database."""
+        if self.config.credentials.type == "snowflake":
+            return column.upper()
+        return column
 
     def _filter_model(self, node: ManifestNode) -> bool:
         """Validates a node as being actionable. Validates both models and sources."""
@@ -140,7 +147,9 @@ class DbtYamlManager(DbtProject):
             # Verify Package == Current Project
             and node.package_name == self.project_name
             # Verify Materialized is Not Ephemeral if NodeType is Model [via short-circuit]
-            and (node.resource_type != NodeType.Model or node.config.materialized != "ephemeral")
+            and not (
+                node.resource_type == NodeType.Model and node.config.materialized == "ephemeral"
+            )
             # Verify FQN Length [Always true if no fqn was supplied]
             and len(node.fqn[1:]) >= len(fqn_parts)
             # Verify FQN Matches Parts [Always true if no fqn was supplied]
@@ -150,7 +159,7 @@ class DbtYamlManager(DbtProject):
     @staticmethod
     def get_patch_path(node: ManifestNode) -> Optional[Path]:
         if node is not None and node.patch_path:
-            return Path(node.patch_path.split("://")[-1])
+            return as_path(node.patch_path.split("://")[-1])
 
     def filtered_models(
         self, subset: Optional[MutableMapping[str, ManifestNode]] = None
@@ -164,24 +173,25 @@ class DbtYamlManager(DbtProject):
             if self._filter_model(dbt_node):
                 yield unique_id, dbt_node
 
-    def get_osmosis_config(self, node: ManifestNode) -> Optional[str]:
+    def get_osmosis_path_spec(self, node: ManifestNode) -> Optional[str]:
         """Validates a config string.
 
         If input is a source, we return the resource type str instead
         """
         if node.resource_type == NodeType.Source:
-            return None
-        osmosis_config = node.config.get("dbt-osmosis")
-        if not osmosis_config:
+            source_specs = self.config.vars.vars.get("dbt-osmosis", {})
+            return source_specs.get(node.source_name)
+        osmosis_spec = node.config.get("dbt-osmosis")
+        if not osmosis_spec:
             raise MissingOsmosisConfig(
                 f"Config not set for model {node.name}, we recommend setting the config at a"
                 " directory level through the `dbt_project.yml`"
             )
         try:
-            return osmosis_config
+            return osmosis_spec
         except ValueError as exc:
             raise InvalidOsmosisConfig(
-                f"Invalid config for model {node.name}: {osmosis_config}"
+                f"Invalid config for model {node.name}: {osmosis_spec}"
             ) from exc
 
     def get_schema_path(self, node: ManifestNode) -> Optional[Path]:
@@ -193,35 +203,34 @@ class DbtYamlManager(DbtProject):
             if hasattr(node, "source_name"):
                 schema_path: str = node.path
         if schema_path:
-            return Path(self.project_root).joinpath(schema_path)
+            return as_path(self.project_root).joinpath(schema_path)
 
     def get_target_schema_path(self, node: ManifestNode) -> Path:
         """Resolve the correct schema yml target based on the dbt-osmosis
         config for the model / directory
         """
-        osmosis_config = self.get_osmosis_config(node)
-        if not osmosis_config:
-            return Path(self.config.project_root, node.original_file_path)
-        # Backwards compat
-        if osmosis_config == SchemaFileOrganizationPattern.SchemaYaml:
-            schema = "schema"
-        elif osmosis_config == SchemaFileOrganizationPattern.FolderYaml:
-            schema = node.fqn[-2]
-        elif osmosis_config == SchemaFileOrganizationPattern.ModelYaml:
-            schema = node.name
-        elif osmosis_config == SchemaFileOrganizationPattern.SchemaModelYaml:
-            schema = "schema/" + node.name
-        elif osmosis_config == SchemaFileOrganizationPattern.UnderscoreModelYaml:
-            schema = "_" + node.name
+        osmosis_path_spec = self.get_osmosis_path_spec(node)
+        if not osmosis_path_spec:
+            # If no config is set, it is a no-op essentially
+            return as_path(self.config.project_root, node.original_file_path)
+        schema = osmosis_path_spec.format(node=node, model=node.name, parent=node.fqn[-2])
+        parts = []
+
+        # Part 1: path from project root to base model directory
+        if node.resource_type == NodeType.Source:
+            parts += [self.config.model_paths[0]]
         else:
-            # Here we resolve file migration targets based on the config
-            schema = osmosis_config.format(node=node, model=node.name, parent=node.fqn[-2])
-        return Path(self.config.project_root, node.original_file_path).parent / Path(
-            schema if schema.endswith((".yml", ".yaml")) else f"{schema}.yml"
-        )
+            parts += [as_path(node.original_file_path).parent]
+
+        # Part 2: path from base model directory to file
+        parts += [schema if schema.endswith((".yml", ".yaml")) else f"{schema}.yml"]
+
+        # Part 3: join parts relative to project root
+        return as_path(self.config.project_root).joinpath(*parts)
 
     @staticmethod
     def get_database_parts(node: ManifestNode) -> Tuple[str, str, str]:
+        """Returns a tuple of database, schema, and alias for a given node."""
         return node.database, node.schema, getattr(node, "alias", node.name)
 
     def get_base_model(self, node: ManifestNode) -> Dict[str, Any]:
@@ -232,19 +241,27 @@ class DbtYamlManager(DbtProject):
             "columns": [{"name": column_name} for column_name in columns],
         }
 
-    def bootstrap_existing_model(
-        self, model_documentation: Dict[str, Any], node: ManifestNode
+    def augment_existing_model(
+        self, documentation: Dict[str, Any], node: ManifestNode
     ) -> Dict[str, Any]:
         """Injects columns from database into existing model if not found"""
-        model_columns: List[str] = [
-            c["name"].lower() for c in model_documentation.get("columns", [])
-        ]
+        model_columns: List[str] = [c["name"] for c in documentation.get("columns", [])]
         database_columns = self.get_columns(node)
-        for column in database_columns:
-            if column.lower() not in model_columns:
-                logger().info(":syringe: Injecting column %s into dbt schema", column)
-                model_documentation.setdefault("columns", []).append({"name": column})
-        return model_documentation
+        for column in (
+            c for c in database_columns if not any(c.lower() == m.lower() for m in model_columns)
+        ):
+            logger().info(
+                ":syringe: Injecting column %s into dbt schema for %s",
+                self.column_casing(column),
+                node.unique_id,
+            )
+            documentation.setdefault("columns", []).append(
+                {
+                    "name": self.column_casing(column),
+                    "description": getattr(column, "description", ""),
+                }
+            )
+        return documentation
 
     def get_columns(self, node: ManifestNode) -> List[str]:
         """Get all columns in a list for a model"""
@@ -262,7 +279,9 @@ class DbtYamlManager(DbtProject):
                 )
                 return columns
             try:
-                columns = [c.name for c in self.adapter.get_columns_in_relation(table)]
+                columns = [
+                    self.column_casing(c.name) for c in self.adapter.get_columns_in_relation(table)
+                ]
             except Exception as error:
                 logger().info(
                     (
@@ -274,72 +293,169 @@ class DbtYamlManager(DbtProject):
                 )
             return columns
 
-    @staticmethod
-    def assert_schema_has_no_sources(schema: Mapping) -> Mapping:
-        """Inline assertion ensuring that a schema does not have a source key"""
-        if schema.get("sources"):
-            raise SanitizationRequired(
-                "Found `sources:` block in a models schema file. We require you separate sources in"
-                " order to organize your project."
-            )
-        return schema
+    def bootstrap_sources(self) -> None:
+        """Bootstrap sources from the dbt-osmosis vars config"""
+        performed_disk_mutation = False
+        for source, spec in self.config.vars.vars.get("dbt-osmosis", {}).items():
+            # Parse source config
+            if isinstance(spec, str):
+                schema = source
+                path = spec
+            elif isinstance(spec, dict):
+                schema = spec.get("schema", source)
+                path = spec["path"]
+            else:
+                raise TypeError(
+                    f"Invalid dbt-osmosis var config for source {source}, must be a string or dict"
+                )
 
-    def build_schema_folder_mapping(
-        self,
-        target_node_type: Optional[Union[NodeType.Model, NodeType.Source]] = None,
-    ) -> Dict[str, SchemaFileLocation]:
+            # Check if source exists in manifest
+            dbt_node = next(
+                (s for s in self.manifest.sources.values() if s.source_name == source), None
+            )
+
+            if not dbt_node:
+                # Create a source file if it doesn't exist
+                osmosis_schema_path = as_path(self.config.project_root).joinpath(
+                    self.config.model_paths[0], path.lstrip(os.sep)
+                )
+                relations = self.adapter.list_relations(
+                    database=self.config.credentials.database,
+                    schema=schema,
+                )
+                tables = [
+                    {
+                        "name": relation.identifier,
+                        "description": "",
+                        "columns": [
+                            {
+                                "name": self.column_casing(column.name),
+                                "description": getattr(column, "description", ""),
+                            }
+                            for column in self.adapter.get_columns_in_relation(relation)
+                        ],
+                    }
+                    for relation in relations
+                ]
+                with open(osmosis_schema_path, "w") as schema_file:
+                    logger().info(
+                        ":syringe: Injecting source %s into dbt project",
+                        source,
+                    )
+                    self.yaml_handler.dump(
+                        {
+                            "version": 2,
+                            "sources": [
+                                {
+                                    "name": source,
+                                    "schema": schema,
+                                    "tables": tables,
+                                }
+                            ],
+                        },
+                        schema_file,
+                    )
+                performed_disk_mutation = True
+
+        if performed_disk_mutation:
+            # Reload project to pick up new sources
+            logger().info("...reloading project to pick up new sources")
+            self.safe_parse_project(reinit=True)
+
+    def build_schema_folder_mapping(self) -> Dict[str, SchemaFileLocation]:
         """Builds a mapping of models or sources to their existing and target schema file paths"""
-        if target_node_type == NodeType.Source:
-            # Source folder mapping is reserved for source importing
-            target_nodes = self.manifest.sources
-        elif target_node_type == NodeType.Model:
-            target_nodes = self.manifest.nodes
-        else:
-            target_nodes = {**self.manifest.nodes, **self.manifest.sources}
+
+        # Resolve target nodes
+        self.bootstrap_sources()
+
         # Container for output
         schema_map = {}
         logger().info("...building project structure mapping in memory")
+
         # Iterate over models and resolve current path vs declarative target path
-        for unique_id, dbt_node in self.filtered_models(target_nodes):
+        for unique_id, dbt_node in self.filtered_models():
             schema_path = self.get_schema_path(dbt_node)
             osmosis_schema_path = self.get_target_schema_path(dbt_node)
             schema_map[unique_id] = SchemaFileLocation(
-                target=osmosis_schema_path, current=schema_path
+                target=osmosis_schema_path.resolve(),
+                current=schema_path.resolve(),
+                node_type=dbt_node.resource_type,
             )
+
         return schema_map
 
-    def _draft(
-        self, schema_file: SchemaFileLocation, unique_id: str, blueprint: dict, lock
-    ) -> None:
-        with lock:
+    def _draft(self, schema_file: SchemaFileLocation, unique_id: str, blueprint: dict) -> None:
+        with self.mutex:
             blueprint.setdefault(
                 schema_file.target,
-                SchemaFileMigration(output={"version": 2, "models": []}, supersede={}),
+                SchemaFileMigration(
+                    output={"version": 2, "models": [], "sources": []}, supersede={}
+                ),
             )
-        node = self.manifest.nodes[unique_id]
+        if schema_file.node_type == NodeType.Model:
+            node = self.manifest.nodes[unique_id]
+        else:
+            node = self.manifest.sources[unique_id]
         if schema_file.current is None:
-            # Bootstrapping Undocumented Model
-            with lock:
+            # Bootstrapping undocumented NodeType.Model
+            # NodeType.Source files are guaranteed to exist by this point
+            with self.mutex:
+                assert schema_file.node_type == NodeType.Model
                 blueprint[schema_file.target].output["models"].append(self.get_base_model(node))
         else:
-            # Model Is Documented but Must be Migrated
-            if not schema_file.current.exists():
-                return None
-            # TODO: We avoid sources for complexity reasons but if we are opinionated,
-            # we don't have to
-            schema = self.assert_schema_has_no_sources(self.yaml_handler.load(schema_file.current))
+            # Sanity check that the file exists before we try to load it, this should never be false
+            assert schema_file.current.exists(), f"File {schema_file.current} does not exist"
+            # Model/Source Is Documented but Must be Migrated
+            with self.mutex:
+                schema = self.yaml_handler.load(schema_file.current)
             models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
-            for documented_model in models_in_file:
-                if documented_model["name"] == node.name:
-                    # Bootstrapping Documented Model
-                    rv = self.bootstrap_existing_model(documented_model, node)
-                    with lock:
-                        blueprint[schema_file.target].output["models"].append(rv)
-                        # Target to supersede current
-                        blueprint[schema_file.target].supersede.setdefault(
-                            schema_file.current, []
-                        ).append(documented_model["name"])
-                    break
+            sources_in_file: Iterable[Dict[str, Any]] = schema.get("sources", [])
+            for documented_model in (
+                model for model in models_in_file if model["name"] == node.name
+            ):
+                # Augment Documented Model
+                augmented_model = self.augment_existing_model(documented_model, node)
+                with self.mutex:
+                    blueprint[schema_file.target].output["models"].append(augmented_model)
+                    # Target to supersede current
+                    blueprint[schema_file.target].supersede.setdefault(
+                        schema_file.current, []
+                    ).append(node)
+                break
+            for documented_model, i in (
+                (table, j)
+                for j, source in enumerate(sources_in_file)
+                if source["name"] == node.source_name
+                for table in source["tables"]
+                if table["name"] == node.name
+            ):
+                # Augment Documented Source
+                augmented_model = self.augment_existing_model(documented_model, node)
+                with self.mutex:
+                    if not any(
+                        s["name"] == node.source_name
+                        for s in blueprint[schema_file.target].output["sources"]
+                    ):
+                        # Add the source if it doesn't exist in the blueprint
+                        blueprint[schema_file.target].output["sources"].append(sources_in_file[i])
+                    # Find source in blueprint
+                    for src in blueprint[schema_file.target].output["sources"]:
+                        if src["name"] == node.source_name:
+                            # Find table in blueprint
+                            for tbl in src["tables"]:
+                                if tbl["name"] == node.name:
+                                    # Augment table
+                                    tbl = augmented_model
+                                    break
+                            break
+                    else:
+                        # This should never happen
+                        raise RuntimeError(f"Source {node.source_name} not found in blueprint?")
+                    # Target to supersede current
+                    blueprint[schema_file.target].supersede.setdefault(
+                        schema_file.current, []
+                    ).append(node)
+                break
 
     def draft_project_structure_update_plan(self) -> Dict[Path, SchemaFileMigration]:
         """Build project structure update plan based on `dbt-osmosis:` configs set across
@@ -359,15 +475,12 @@ class DbtYamlManager(DbtProject):
             ":chart_increasing: Searching project stucture for required updates and building action"
             " plan"
         )
-        lock = Lock()
-        tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
+        futs = []
         with self.adapter.connection_named("dbt-osmosis"):
-            for unique_id, schema_file in self.build_schema_folder_mapping(
-                target_node_type=NodeType.Model
-            ).items():
+            for unique_id, schema_file in self.build_schema_folder_mapping().items():
                 if not schema_file.is_valid:
-                    tpe.submit(self._draft, schema_file, unique_id, blueprint, lock)
-            tpe.shutdown(wait=True)
+                    futs.append(self.tpe.submit(self._draft, schema_file, unique_id, blueprint))
+            wait(futs)
         return blueprint
 
     def commit_project_restructure_to_disk(
@@ -415,32 +528,65 @@ class DbtYamlManager(DbtProject):
                 # Update File
                 logger().info(":toolbox: Updating schema file %s", target.name)
                 target_schema: Optional[Dict[str, Any]] = self.yaml_handler.load(target)
+                # Add version if not present
                 if not target_schema:
                     target_schema = {"version": 2}
                 elif "version" not in target_schema:
                     target_schema["version"] = 2
-                target_schema.setdefault("models", []).extend(structure.output["models"])
+                # Add models and sources to target schema
+                if structure.output["models"]:
+                    target_schema.setdefault("models", []).extend(structure.output["models"])
+                if structure.output["sources"]:
+                    target_schema.setdefault("sources", []).extend(structure.output["sources"])
                 if not self.dry_run:
                     self.yaml_handler.dump(target_schema, target)
 
             # Clean superseded schema files
-            for dir, models in structure.supersede.items():
-                preserved_models = []
+            for dir, nodes in structure.supersede.items():
                 raw_schema: Dict[str, Any] = self.yaml_handler.load(dir)
-                models_marked_for_superseding = set(models)
-                models_in_schema = set(map(lambda mdl: mdl["name"], raw_schema.get("models", [])))
+                # Gather models and sources marked for superseding
+                models_marked_for_superseding = set(node.name for node in nodes)
+                sources_marked_for_superseding = set(
+                    (node.source_name, node.name) for node in nodes
+                )
+                # Gather models and sources in schema file
+                models_in_schema = set(m["name"] for m in raw_schema.get("models", []))
+                sources_in_schema = set(
+                    (s["name"], t["name"])
+                    for s in raw_schema.get("sources", [])
+                    for t in s.get("tables", [])
+                )
+                # Set difference to determine non-superseded models and sources
                 non_superseded_models = models_in_schema - models_marked_for_superseding
-                if len(non_superseded_models) == 0:
+                non_superseded_sources = sources_in_schema - sources_marked_for_superseding
+                if len(non_superseded_models) + len(non_superseded_sources) == 0:
                     logger().info(":rocket: Superseded schema file %s", dir.name)
                     if not self.dry_run:
                         dir.unlink(missing_ok=True)
                         if len(list(dir.parent.iterdir())) == 0:
                             dir.parent.rmdir()
                 else:
-                    for model in raw_schema["models"]:
+                    # Preserve non-superseded models
+                    preserved_models = []
+                    for model in raw_schema.get("models", []):
                         if model["name"] in non_superseded_models:
                             preserved_models.append(model)
                     raw_schema["models"] = preserved_models
+                    # Preserve non-superseded sources
+                    ix = []
+                    for i, source in enumerate(raw_schema.get("sources", [])):
+                        for j, table in enumerate(source.get("tables", [])):
+                            if (source["name"], table["name"]) not in non_superseded_sources:
+                                ix.append((i, j))
+                    for i, j in reversed(ix):
+                        raw_schema["sources"][i]["tables"].pop(j)
+                    ix = []
+                    for i, source in enumerate(raw_schema.get("sources", [])):
+                        if not source["tables"]:
+                            ix.append(i)
+                    for i in reversed(ix):
+                        if not raw_schema["sources"][i]["tables"]:
+                            raw_schema["sources"].pop(i)
                     if not self.dry_run:
                         self.yaml_handler.dump(raw_schema, dir)
                     logger().info(
@@ -448,7 +594,6 @@ class DbtYamlManager(DbtProject):
                         dir.name,
                         target.name,
                     )
-
         return True
 
     @staticmethod
@@ -456,7 +601,11 @@ class DbtYamlManager(DbtProject):
         logger().info(
             list(
                 map(
-                    lambda plan: (blueprint[plan].supersede or "CREATE", "->", plan),
+                    lambda plan: (
+                        [s.name for s in blueprint[plan].supersede] or "CREATE",
+                        "->",
+                        plan,
+                    ),
                     blueprint.keys(),
                 )
             )
@@ -557,13 +706,13 @@ class DbtYamlManager(DbtProject):
         ]
         return missing_columns, undocumented_columns, extra_columns
 
-    def _run(self, unique_id, node, schema_map, lock, force_inheritance=False):
-        with lock:
-            logger().info("\n:point_right: Processing model: [bold]%s[/bold] \n", unique_id)
+    def _run(self, unique_id, node, schema_map, force_inheritance=False):
+        with self.mutex:
+            logger().info(":point_right: Processing model: [bold]%s[/bold]", unique_id)
         # Get schema file path, must exist to propagate documentation
         schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
         if schema_path is None or schema_path.current is None:
-            with lock:
+            with self.mutex:
                 logger().info(
                     ":bow: No valid schema file found for model %s", unique_id
                 )  # We can't take action
@@ -574,10 +723,13 @@ class DbtYamlManager(DbtProject):
         yaml_columns: Set[str] = set(column for column in node.columns)
 
         if not database_columns:
-            with lock:
+            with self.mutex:
                 logger().info(
-                    ":safety_vest: Unable to resolve columns in database, falling back to using"
-                    " yaml columns as base column set\n"
+                    (
+                        ":safety_vest: Unable to resolve columns in database, falling back to"
+                        " using yaml columns as base column set for model %s"
+                    ),
+                    unique_id,
                 )
             database_columns = yaml_columns
 
@@ -601,25 +753,30 @@ class DbtYamlManager(DbtProject):
         n_cols_added = 0
         n_cols_doc_inherited = 0
         n_cols_removed = 0
-        if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
-            schema_file = self.yaml_handler.load(schema_path.current)
-            (
-                n_cols_added,
-                n_cols_doc_inherited,
-                n_cols_removed,
-            ) = self.update_schema_file_and_node(
-                missing_columns,
-                undocumented_columns,
-                extra_columns,
-                node,
-                schema_file,
-            )
-            if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
-                # Dump the mutated schema file back to the disk
-                if not self.dry_run:
-                    self.yaml_handler.dump(schema_file, schema_path.current)
-                with lock:
-                    logger().info(":sparkles: Schema file updated")
+        with self.mutex:
+            if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
+                schema_file = self.yaml_handler.load(schema_path.current)
+                (
+                    n_cols_added,
+                    n_cols_doc_inherited,
+                    n_cols_removed,
+                ) = self.update_schema_file_and_node(
+                    missing_columns,
+                    undocumented_columns,
+                    extra_columns,
+                    node,
+                    schema_file,
+                )
+                if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
+                    # Dump the mutated schema file back to the disk
+                    if not self.dry_run:
+                        self.yaml_handler.dump(schema_file, schema_path.current)
+                    logger().info(
+                        ":sparkles: Schema file %s updated",
+                        schema_path.current,
+                    )
+            else:
+                logger().info(":sparkles: Schema file is up to date for model %s", unique_id)
 
         # Print Audit Report
         n_cols = float(len(database_columns))
@@ -629,28 +786,30 @@ class DbtYamlManager(DbtProject):
             if n_cols > 0
             else "Unable to Determine"
         )
-        with lock:
-            logger().info(
-                self.audit_report.format(
-                    database=node.database,
-                    schema=node.schema,
-                    table=node.name,
-                    total_columns=n_cols,
-                    n_cols_added=n_cols_added,
-                    n_cols_doc_inherited=n_cols_doc_inherited,
-                    n_cols_removed=n_cols_removed,
-                    coverage=perc_coverage,
+        if logger().level <= 10:
+            with self.mutex:
+                logger().debug(
+                    self.audit_report.format(
+                        database=node.database,
+                        schema=node.schema,
+                        table=node.name,
+                        total_columns=n_cols,
+                        n_cols_added=n_cols_added,
+                        n_cols_doc_inherited=n_cols_doc_inherited,
+                        n_cols_removed=n_cols_removed,
+                        coverage=perc_coverage,
+                    )
                 )
-            )
 
     def propagate_documentation_downstream(self, force_inheritance: bool = False) -> None:
-        lock = Lock()  # Prevent interleaving of log messages
-        tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
         schema_map = self.build_schema_folder_mapping()
+        futs = []
         with self.adapter.connection_named("dbt-osmosis"):
-            for unique_id, node in track(list(self.filtered_models())):
-                tpe.submit(self._run, unique_id, node, schema_map, lock, force_inheritance)
-        tpe.shutdown(wait=True)
+            for unique_id, node in self.filtered_models():
+                futs.append(
+                    self.tpe.submit(self._run, unique_id, node, schema_map, force_inheritance)
+                )
+            wait(futs)
 
     @staticmethod
     def remove_columns_not_in_database(
@@ -668,7 +827,9 @@ class DbtYamlManager(DbtProject):
                 c for c in yaml_file_model_section["columns"] if c["name"] != column
             ]
             changes_committed += 1
-            logger().info(":wrench: Removing column %s from dbt schema", column)
+            logger().info(
+                ":wrench: Removing column %s from dbt schema for model %s", column, node.unique_id
+            )
         return changes_committed
 
     def update_undocumented_columns_with_prior_knowledge(
@@ -699,10 +860,11 @@ class DbtYamlManager(DbtProject):
             logger().info(
                 (
                     ":light_bulb: Column %s is inheriting knowledge from the lineage of progenitor"
-                    " (%s)"
+                    " (%s) for model %s"
                 ),
                 column,
                 progenitor,
+                node.unique_id,
             )
             logger().info(prior_knowledge)
         return changes_committed
@@ -717,10 +879,14 @@ class DbtYamlManager(DbtProject):
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
         changes_committed = 0
         for column in missing_columns:
-            node.columns[column] = ColumnInfo.from_dict({"name": column})
-            yaml_file_model_section.setdefault("columns", []).append({"name": column})
+            node.columns[column] = ColumnInfo.from_dict({"name": column, "description": ""})
+            yaml_file_model_section.setdefault("columns", []).append(
+                {"name": column, "description": ""}
+            )
             changes_committed += 1
-            logger().info(":syringe: Injecting column %s into dbt schema", column)
+            logger().info(
+                ":syringe: Injecting column %s into dbt schema for model %s", column, node.unique_id
+            )
         return changes_committed
 
     def update_schema_file_and_node(
@@ -735,29 +901,29 @@ class DbtYamlManager(DbtProject):
         # We can extrapolate this to a general func
         noop = 0, 0, 0
         if node.resource_type == NodeType.Source:
-            KEY = "tables"
-            yaml_file_models = None
-            for src in yaml_file.get("sources", []):
-                if src["name"] == node.source_name:
-                    # Scope our pointer to a specific portion of the object
-                    yaml_file_models = src
+            section = next(
+                (
+                    table
+                    for source in yaml_file["sources"]
+                    if node.source_name == source["name"]
+                    for table in source["tables"]
+                    if table["name"] == node.name
+                ),
+                None,
+            )
+
         else:
-            KEY = "models"
-            yaml_file_models = yaml_file
-        if yaml_file_models is None:
+            section = next(
+                (s for s in yaml_file["models"] if s["name"] == node.name),
+                None,
+            )
+        if section is None:
+            logger().info(":thumbs_up: No actions needed for %s", node.unique_id)
             return noop
-        for yaml_file_model_section in yaml_file_models[KEY]:
-            if yaml_file_model_section["name"] == node.name:
-                logger().info(":microscope: Looking for actions")
-                n_cols_added = self.add_missing_cols_to_node_and_model(
-                    missing_columns, node, yaml_file_model_section
-                )
-                n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
-                    undocumented_columns, node, yaml_file_model_section
-                )
-                n_cols_removed = self.remove_columns_not_in_database(
-                    extra_columns, node, yaml_file_model_section
-                )
-                return n_cols_added, n_cols_doc_inherited, n_cols_removed
-        logger().info(":thumbs_up: No actions needed")
-        return noop
+        logger().info(":microscope: Looking for actions for %s", node.unique_id)
+        n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section)
+        n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
+            undocumented_columns, node, section
+        )
+        n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
+        return n_cols_added, n_cols_doc_inherited, n_cols_removed
