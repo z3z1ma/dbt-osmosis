@@ -3125,6 +3125,21 @@ files = [
 streamlit = ">=0.63"
 
 [[package]]
+name = "streamlit-elements"
+version = "0.1.0"
+description = "React Components for Streamlit."
+category = "main"
+optional = true
+python-versions = ">=3.6"
+files = [
+    {file = "streamlit-elements-0.1.0.tar.gz", hash = "sha256:5f9f116f22df3ce4a8636b1dee7c2fd3dc3cb0c66267fd28c3e0314aa1d303a7"},
+    {file = "streamlit_elements-0.1.0-py3-none-any.whl", hash = "sha256:593c4b88c399c55879aa76f7f42970f30106f66acaa4baada6338ae5571790df"},
+]
+
+[package.dependencies]
+streamlit = ">=1.4.0"
+
+[[package]]
 name = "stringcase"
 version = "1.2.0"
 description = "String case converter."
@@ -3644,9 +3659,9 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 duckdb = ["dbt-duckdb"]
 postgres = ["dbt-postgres"]
 sqlite = ["dbt-sqlite"]
-workbench = ["streamlit", "streamlit-ace", "ydata-profiling", "feedparser"]
+workbench = ["streamlit", "streamlit-ace", "ydata-profiling", "feedparser", "streamlit-elements"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.11"
-content-hash = "f4bc08502d94d85847281ecbbd16a16804ae67f96ae38e72df3ac504e1afac5c"
+content-hash = "c8c29346ddc880d61224d8df6df284cadb6d4ab72baf88a7ed1aa73343ad26c1"

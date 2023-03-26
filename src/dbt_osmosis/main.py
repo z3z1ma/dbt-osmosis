@@ -16,7 +16,12 @@ from dbt_osmosis.core.diff import diff_and_print_to_console
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.macros import inject_macros
 from dbt_osmosis.core.osmosis import DbtYamlManager
-from dbt_osmosis.vendored.dbt_core_interface import DEFAULT_PROFILES_DIR, DbtProject, run_server
+from dbt_osmosis.vendored.dbt_core_interface import (
+    DEFAULT_PROFILES_DIR,
+    DEFAULT_PROJECT_DIR,
+    DbtProject,
+    run_server,
+)
 
 CONTEXT = {"max_content_width": 800}
 
@@ -53,7 +58,7 @@ def shared_opts(func: Callable) -> Callable:
     @click.option(
         "--project-dir",
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
-        default=str(Path.cwd()),
+        default=DEFAULT_PROJECT_DIR,
         help=(
             "Which directory to look in for the dbt_project.yml file. Default is the current"
             " working directory and its parents."

@@ -55,6 +55,7 @@ from inspect import getfullargspec
 from io import BytesIO
 from json import dumps as json_dumps
 from json import loads as json_lds
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from traceback import format_exc, print_exc
 from types import FunctionType
@@ -85,23 +86,28 @@ import dbt.version
 from dbt.adapters.factory import get_adapter_class_by_name
 from dbt.clients.system import make_directory
 from dbt.config.runtime import RuntimeConfig
-from dbt.flags import DEFAULT_PROFILES_DIR, set_from_args
 from dbt.node_types import NodeType
 from dbt.parser.manifest import PARTIAL_PARSE_FILE_NAME, ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.sql import SqlCompileRunner
 from dbt.tracking import disable_tracking
+from dbt.flags import set_from_args
+
+# brute force import for dbt 1.3 back-compat
+# these are here for consumers of dbt-core-interface
+try:
+    # dbt <= 1.3
+    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
+    from dbt.contracts.graph.compiled import ManifestNode  # type: ignore
+except Exception:
+    # dbt > 1.3
+    from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode  # type: ignore
 
 if TYPE_CHECKING:
     # These imports are only used for type checking
     from agate import Table  # type: ignore  # No stubs for agate
     from dbt.adapters.base import BaseAdapter, BaseRelation  # type: ignore
     from dbt.contracts.connection import AdapterResponse
-    from dbt.contracts.graph.manifest import (  # type: ignore
-        ManifestNode,
-        MaybeNonSource,
-        MaybeParsedSource,
-    )
     from dbt.contracts.results import ExecutionResult, RunExecutionResult
     from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
@@ -128,6 +134,24 @@ if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) < (1, 5
     # I expect a change in dbt 1.5.0 that may make this monkey patch unnecessary
     # but we can reduce the codepath since dbt is **loaded** with telemetry calls...
     dbt.events.functions.fire_event = lambda *args, **kwargs: None
+
+
+def default_project_dir() -> Path:
+    if "DBT_PROJECT_DIR" in os.environ:
+        return Path(os.environ["DBT_PROJECT_DIR"]).resolve()
+    paths = list(Path.cwd().parents)
+    paths.insert(0, Path.cwd())
+    return next((x for x in paths if (x / "dbt_project.yml").exists()), Path.cwd())
+
+
+def default_profiles_dir() -> Path:
+    if "DBT_PROFILES_DIR" in os.environ:
+        return Path(os.environ["DBT_PROFILES_DIR"]).resolve()
+    return Path.cwd() if (Path.cwd() / "profiles.yml").exists() else Path.home() / ".dbt"
+
+
+DEFAULT_PROFILES_DIR = str(default_profiles_dir())
+DEFAULT_PROJECT_DIR = str(default_project_dir())
 
 
 def write_manifest_for_partial_parse(self: ManifestLoader):
@@ -165,6 +189,7 @@ __all__ = [
     "__dbt_minor_version__",
     "__dbt_patch_version__",
     "DEFAULT_PROFILES_DIR",
+    "DEFAULT_PROJECT_DIR",
     "ServerRunResult",
     "ServerCompileResult",
     "ServerResetResult",
@@ -175,6 +200,10 @@ __all__ = [
     "ServerErrorContainer",
     "ServerPlugin",
     "run_server",
+    "default_project_dir",
+    "default_profiles_dir",
+    "ColumnInfo",
+    "ManifestNode",
 ]
 
 T = TypeVar("T")
@@ -205,7 +234,7 @@ class DbtCommand(str, Enum):
 class DbtConfiguration:
     """The configuration for dbt-core."""
 
-    project_dir: str
+    project_dir: str = DEFAULT_PROJECT_DIR
     profiles_dir: str = DEFAULT_PROFILES_DIR
     target: Optional[str] = None
     threads: int = 1
@@ -238,8 +267,12 @@ class DbtConfiguration:
 
         If dict then it will be converted to a string which is what dbt expects.
         """
-        if isinstance(v, dict):
-            v = json.dumps(v)
+        if (__dbt_major_version__, __dbt_minor_version__) >= (1, 5):
+            if isinstance(v, str):
+                v = json.loads(v)
+        else:
+            if isinstance(v, dict):
+                v = json.dumps(v)
         self._vars = v
 
 
@@ -354,19 +387,16 @@ class DbtProject:
         self,
         target: Optional[str] = None,
         profiles_dir: str = DEFAULT_PROFILES_DIR,
-        project_dir: Optional[str] = None,
+        project_dir: str = DEFAULT_PROJECT_DIR,
         threads: int = 1,
         vars: str = "{}",
     ) -> None:
         """Initialize the DbtProject."""
-        env_project_dir = None
-        if "DBT_PROJECT_DIR" in os.environ:
-            env_project_dir = os.path.expanduser(os.environ["DBT_PROJECT_DIR"])
         self.base_config = DbtConfiguration(
             threads=threads,
             target=target,
-            profiles_dir=profiles_dir,
-            project_dir=project_dir or env_project_dir or os.getcwd(),
+            profiles_dir=profiles_dir or DEFAULT_PROFILES_DIR,
+            project_dir=project_dir or DEFAULT_PROJECT_DIR,
         )
         self.base_config.vars = vars
 
@@ -552,13 +582,13 @@ class DbtProject:
         self.compile_code.cache_clear()
         self.unsafe_compile_code.cache_clear()
 
-    def get_ref_node(self, target_model_name: str) -> "MaybeNonSource":
+    def get_ref_node(self, target_model_name: str) -> "ManifestNode":
         """Get a `ManifestNode` from a dbt project model name.
 
         This is the same as one would in a {{ ref(...) }} macro call.
         """
         return cast(
-            "MaybeNonSource",
+            "ManifestNode",
             self.manifest.resolve_ref(
                 target_model_name=target_model_name,
                 target_model_package=None,
@@ -569,13 +599,13 @@ class DbtProject:
 
     def get_source_node(
         self, target_source_name: str, target_table_name: str
-    ) -> "MaybeParsedSource":
+    ) -> "ManifestNode":
         """Get a `ManifestNode` from a dbt project source name and table name.
 
         This is the same as one would in a {{ source(...) }} macro call.
         """
         return cast(
-            "MaybeParsedSource",
+            "ManifestNode",
             self.manifest.resolve_source(
                 target_source_name=target_source_name,
                 target_table_name=target_table_name,

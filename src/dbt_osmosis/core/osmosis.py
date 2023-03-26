@@ -16,16 +16,6 @@ from typing import (
     Tuple,
 )
 
-# brute force import for dbt 1.3 back-compat
-# we should move the ugly stuff to dbt-core-interface
-try:
-    # dbt <= 1.3
-    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
-    from dbt.contracts.graph.compiled import ManifestNode  # type: ignore
-except Exception:
-    # dbt > 1.3
-    from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode  # type: ignore
-
 import ruamel.yaml
 from pydantic import BaseModel
 
@@ -34,7 +24,12 @@ from dbt_osmosis.core.exceptions import (
     MissingOsmosisConfig,
 )
 from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.vendored.dbt_core_interface.project import DbtProject, NodeType
+from dbt_osmosis.vendored.dbt_core_interface.project import (
+    ColumnInfo,
+    DbtProject,
+    ManifestNode,
+    NodeType,
+)
 
 as_path = Path
 
