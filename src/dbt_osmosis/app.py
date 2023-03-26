@@ -8,23 +8,23 @@ from typing import Optional
 import dbt.config.profile as dbt_profile
 import feedparser
 import pandas as pd
-import pandas_profiling
+import ydata_profiling
 import streamlit as st
-from dbt.exceptions import CompilationException, RuntimeException
 from streamlit_ace import THEMES, st_ace
-from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.core.osmosis import DEFAULT_PROFILES_DIR, DbtProject
+# from streamlit_pandas_profiling import st_profile_report
+
+from dbt_osmosis.vendored.dbt_core_interface import DEFAULT_PROFILES_DIR, DbtProject
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 state = st.session_state
 
-try:
+try:  # hack in arguments for streamlit run
     parser = argparse.ArgumentParser(description="dbt osmosis workbench")
     parser.add_argument("--profiles-dir", help="dbt profile directory")
     parser.add_argument("--project-dir", help="dbt project directory")
     args = vars(parser.parse_args(sys.argv[1:]))
-except:
+except Exception:
     args = {}
 
 root_path = Path(__file__).parent
@@ -189,21 +189,29 @@ state.setdefault(TARGET_PROFILE, ctx.config.target_name)
 
 
 def toggle_viewer() -> None:
+    """Toggle the layout of the editor"""
     state[PIVOT_LAYOUT] = not state[PIVOT_LAYOUT]
 
 
-# @st.cache
 def compile_sql(sql: str) -> str:
+    """Compile SQL using dbt context.
+
+    Mostly a wrapper for dbt-core-interface compile_code
+    """
     try:
-        return ctx.compile_sql(sql).compiled_sql
-    except CompilationException:
+        with ctx.adapter.connection_named("__sql_workbench__"):
+            return ctx.compile_code(sql).compiled_code
+    except Exception:
+        # TODO: make this more specific
         return None
 
 
 def run_query(sql: str, limit: int = 2000) -> None:
     try:
-        result = ctx.execute_sql(f"select * from ({sql}) as __all_data limit {limit}")
-    except DatabaseException as error:
+        # TODO: expose this as a config option
+        with ctx.adapter.connection_named("__sql_workbench__"):
+            result = ctx.execute_code(f"select * from ({sql}) as __all_data limit {limit}")
+    except Exception as error:
         state[SQL_QUERY_STATE] = "error"
         state[SQL_ADAPTER_RESP] = str(error)
     else:
@@ -220,29 +228,25 @@ def convert_df_to_csv(dataframe: pd.DataFrame):
 
 @st.cache(
     hash_funcs={
-        pandas_profiling.report.presentation.core.container.Container: lambda _: state[
-            COMPILED_SQL
-        ],
-        pandas_profiling.report.presentation.core.html.HTML: lambda _: state[COMPILED_SQL],
+        ydata_profiling.report.presentation.core.container.Container: lambda _: state[COMPILED_SQL],
+        ydata_profiling.report.presentation.core.html.HTML: lambda _: state[COMPILED_SQL],
     },
     allow_output_mutation=True,
 )
 def build_profile_report(
     dataframe: pd.DataFrame, minimal: bool = True
-) -> pandas_profiling.ProfileReport:
+) -> ydata_profiling.ProfileReport:
     return dataframe.profile_report(minimal=minimal)
 
 
 @st.cache(
     hash_funcs={
-        pandas_profiling.report.presentation.core.container.Container: lambda _: state[
-            COMPILED_SQL
-        ],
-        pandas_profiling.report.presentation.core.html.HTML: lambda _: state[COMPILED_SQL],
+        ydata_profiling.report.presentation.core.container.Container: lambda _: state[COMPILED_SQL],
+        ydata_profiling.report.presentation.core.html.HTML: lambda _: state[COMPILED_SQL],
     },
     allow_output_mutation=True,
 )
-def convert_profile_report_to_html(profile: pandas_profiling.ProfileReport) -> str:
+def convert_profile_report_to_html(profile: ydata_profiling.ProfileReport) -> str:
     return profile.to_html()
 
 
@@ -312,7 +316,7 @@ with idePart1:
         theme=state[THEME_PICKER],
         language=state[DIALECT_PICKER],
         auto_update=auto_update,
-        key=f"AceEditor",
+        key="AceEditor",
         max_lines=35,
         min_lines=20,
         height=500,
@@ -406,7 +410,7 @@ with downloadBtnContainer:
     st.download_button(
         label="Download data as CSV",
         data=convert_df_to_csv(state[SQL_RESULT]),
-        file_name=f"dbt_osmosis_workbench.csv",
+        file_name="dbt_osmosis_workbench.csv",
         mime="text/csv",
     )
 
@@ -421,12 +425,13 @@ with profileOptContainer:
 
 if state[RUN_PROFILER]:
     pr = build_profile_report(state[SQL_RESULT], state[BASIC_PROFILE_OPT])
+    pr_html = convert_profile_report_to_html(pr)
     with profilerContainer:
-        st_profile_report(pr, height=650)
+        st.components.v1.html(pr_html, height=650, scrolling=True)
         st.download_button(
             label="Download profile report",
-            data=convert_profile_report_to_html(pr),
-            file_name=f"dbt_osmosis_workbench_profile.html",
+            data=pr_html,
+            file_name="dbt_osmosis_workbench_profile.html",
             mime="text/html",
             key=PROFILE_DOWNLOADER,
         )

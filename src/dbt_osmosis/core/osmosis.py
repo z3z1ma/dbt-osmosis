@@ -237,8 +237,8 @@ class DbtYamlManager(DbtProject):
         """Construct a base model object with model name, column names populated from database"""
         columns = self.get_columns(node)
         return {
-            "name": node.alias or node.name,
-            "columns": [{"name": column_name} for column_name in columns],
+            "name": node.name,
+            "columns": [{"name": column_name, "description": ""} for column_name in columns],
         }
 
     def augment_existing_model(

@@ -517,7 +517,6 @@ def workbench(
     Pass the --options command to see streamlit specific options that can be passed to the app,
     pass --config to see the output of streamlit config show
     """
-    raise NotImplementedError("Workbench is not yet implemented for new dbt-osmosis")
     logger().info(":water_wave: Executing dbt-osmosis\n")
 
     if "--options" in ctx.args:
