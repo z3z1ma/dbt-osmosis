@@ -1,6 +1,7 @@
 import os
 from concurrent.futures import ThreadPoolExecutor, wait
 from enum import Enum
+from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from threading import Lock
@@ -113,7 +114,9 @@ class DbtYamlManager(DbtProject):
         fqn: Optional[str] = None,
         dry_run: bool = False,
     ):
-        super().__init__(target, profiles_dir, project_dir, threads)
+        super().__init__(  # partial parse messes up our f strings, so force a full parse on init
+            target, profiles_dir, project_dir, threads, {"_reparse_seed": os.urandom(8).hex()}
+        )
         self.fqn = fqn
         self.dry_run = dry_run
         self.mutex = Lock()
@@ -176,7 +179,7 @@ class DbtYamlManager(DbtProject):
         if node.resource_type == NodeType.Source:
             source_specs = self.config.vars.vars.get("dbt-osmosis", {})
             return source_specs.get(node.source_name)
-        osmosis_spec = node.config.get("dbt-osmosis")
+        osmosis_spec = node.unrendered_config.get("dbt-osmosis")
         if not osmosis_spec:
             raise MissingOsmosisConfig(
                 f"Config not set for model {node.name}, we recommend setting the config at a"
@@ -230,7 +233,7 @@ class DbtYamlManager(DbtProject):
 
     def get_base_model(self, node: ManifestNode) -> Dict[str, Any]:
         """Construct a base model object with model name, column names populated from database"""
-        columns = self.get_columns(node)
+        columns = self.get_columns(self.get_database_parts(node))
         return {
             "name": node.name,
             "columns": [{"name": column_name, "description": ""} for column_name in columns],
@@ -241,7 +244,7 @@ class DbtYamlManager(DbtProject):
     ) -> Dict[str, Any]:
         """Injects columns from database into existing model if not found"""
         model_columns: List[str] = [c["name"] for c in documentation.get("columns", [])]
-        database_columns = self.get_columns(node)
+        database_columns = self.get_columns(self.get_database_parts(node))
         for column in (
             c for c in database_columns if not any(c.lower() == m.lower() for m in model_columns)
         ):
@@ -258,9 +261,9 @@ class DbtYamlManager(DbtProject):
             )
         return documentation
 
-    def get_columns(self, node: ManifestNode) -> List[str]:
+    @lru_cache(maxsize=5000)
+    def get_columns(self, parts: Tuple[str, str, str]) -> List[str]:
         """Get all columns in a list for a model"""
-        parts = self.get_database_parts(node)
         with self.adapter.connection_named("dbt-osmosis"):
             table = self.adapter.get_relation(*parts)
             columns = []
@@ -395,8 +398,10 @@ class DbtYamlManager(DbtProject):
             )
         if schema_file.node_type == NodeType.Model:
             node = self.manifest.nodes[unique_id]
-        else:
+        elif schema_file.node_type == NodeType.Source:
             node = self.manifest.sources[unique_id]
+        else:
+            return
         if schema_file.current is None:
             # Bootstrapping undocumented NodeType.Model
             # NodeType.Source files are guaranteed to exist by this point
@@ -712,99 +717,128 @@ class DbtYamlManager(DbtProject):
         return missing_columns, undocumented_columns, extra_columns
 
     def _run(self, unique_id, node, schema_map, force_inheritance=False):
-        with self.mutex:
-            logger().info(":point_right: Processing model: [bold]%s[/bold]", unique_id)
-        # Get schema file path, must exist to propagate documentation
-        schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
-        if schema_path is None or schema_path.current is None:
+        try:
             with self.mutex:
-                logger().info(
-                    ":bow: No valid schema file found for model %s", unique_id
-                )  # We can't take action
-                return
+                logger().info(":point_right: Processing model: [bold]%s[/bold]", unique_id)
+            # Get schema file path, must exist to propagate documentation
+            schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
+            if schema_path is None or schema_path.current is None:
+                with self.mutex:
+                    logger().info(
+                        ":bow: No valid schema file found for model %s", unique_id
+                    )  # We can't take action
+                    return
 
-        # Build Sets
-        database_columns: Set[str] = set(self.get_columns(node))
-        yaml_columns: Set[str] = set(column for column in node.columns)
+            # Build Sets
+            logger().info(":mag: Resolving columns in database")
+            database_columns_ordered = self.get_columns(self.get_database_parts(node))
+            database_columns: Set[str] = set(database_columns_ordered)
+            yaml_columns_ordered = [column for column in node.columns]
+            yaml_columns: Set[str] = set(yaml_columns_ordered)
 
-        if not database_columns:
+            if not database_columns:
+                with self.mutex:
+                    logger().info(
+                        (
+                            ":safety_vest: Unable to resolve columns in database, falling back to"
+                            " using yaml columns as base column set for model %s"
+                        ),
+                        unique_id,
+                    )
+                database_columns_ordered = yaml_columns_ordered
+                database_columns = yaml_columns
+
+            # Get documentated columns
+            documented_columns: Set[str] = set(
+                column
+                for column, info in node.columns.items()
+                if info.description and info.description not in self.placeholders
+            )
+
+            # Queue
+            missing_columns, undocumented_columns, extra_columns = self.get_column_sets(
+                database_columns, yaml_columns, documented_columns
+            )
+
+            if force_inheritance:
+                # Consider all columns "undocumented" so that inheritance is not selective
+                undocumented_columns = database_columns
+
+            # Engage
+            n_cols_added = 0
+            n_cols_doc_inherited = 0
+            n_cols_removed = 0
+
             with self.mutex:
-                logger().info(
-                    (
-                        ":safety_vest: Unable to resolve columns in database, falling back to"
-                        " using yaml columns as base column set for model %s"
-                    ),
-                    unique_id,
-                )
-            database_columns = yaml_columns
-
-        # Get documentated columns
-        documented_columns: Set[str] = set(
-            column
-            for column, info in node.columns.items()
-            if info.description and info.description not in self.placeholders
-        )
-
-        # Queue
-        missing_columns, undocumented_columns, extra_columns = self.get_column_sets(
-            database_columns, yaml_columns, documented_columns
-        )
-
-        if force_inheritance:
-            # Consider all columns "undocumented" so that inheritance is not selective
-            undocumented_columns = database_columns
-
-        # Engage
-        n_cols_added = 0
-        n_cols_doc_inherited = 0
-        n_cols_removed = 0
-        with self.mutex:
-            if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
                 schema_file = self.yaml_handler.load(schema_path.current)
-                (
-                    n_cols_added,
-                    n_cols_doc_inherited,
-                    n_cols_removed,
-                ) = self.update_schema_file_and_node(
-                    missing_columns,
-                    undocumented_columns,
-                    extra_columns,
-                    node,
-                    schema_file,
-                )
+                section = self.maybe_get_section_from_schema_file(schema_file, node)
+                if section is None:  # If we can't find the section, we can't take action
+                    logger().info(":thumbs_up: No actions needed for %s", node.unique_id)
+                    return
+            
+                should_dump = False
+                n_cols_added, n_cols_doc_inherited, n_cols_removed = 0, 0, 0
+                if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
+                    # Update schema file
+                    (
+                        n_cols_added,
+                        n_cols_doc_inherited,
+                        n_cols_removed,
+                    ) = self.update_schema_file_and_node(
+                        missing_columns,
+                        undocumented_columns,
+                        extra_columns,
+                        node,
+                        section,
+                    )
                 if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
+                    should_dump = True
+                if tuple(database_columns_ordered) != tuple(yaml_columns_ordered):
+                    # Sort columns in schema file to match database
+                    logger().info(
+                        ":wrench: Reordering columns in schema file for model %s", unique_id
+                    )
+                    section["columns"].sort(key=lambda x: database_columns_ordered.index(x["name"]))
+                    should_dump = True
+                if should_dump and not self.dry_run:
                     # Dump the mutated schema file back to the disk
-                    if not self.dry_run:
-                        self.yaml_handler.dump(schema_file, schema_path.current)
+                    self.yaml_handler.dump(schema_file, schema_path.current)
                     logger().info(
                         ":sparkles: Schema file %s updated",
                         schema_path.current,
                     )
-            else:
-                logger().info(":sparkles: Schema file is up to date for model %s", unique_id)
-
-        # Print Audit Report
-        n_cols = float(len(database_columns))
-        n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
-        perc_coverage = (
-            min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
-            if n_cols > 0
-            else "Unable to Determine"
-        )
-        if logger().level <= 10:
-            with self.mutex:
-                logger().debug(
-                    self.audit_report.format(
-                        database=node.database,
-                        schema=node.schema,
-                        table=node.name,
-                        total_columns=n_cols,
-                        n_cols_added=n_cols_added,
-                        n_cols_doc_inherited=n_cols_doc_inherited,
-                        n_cols_removed=n_cols_removed,
-                        coverage=perc_coverage,
+                else:
+                    logger().info(
+                        ":sparkles: Schema file is up to date for model %s",
+                        unique_id,
                     )
-                )
+
+            # Print Audit Report
+            n_cols = float(len(database_columns))
+            n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
+            perc_coverage = (
+                min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
+                if n_cols > 0
+                else "Unable to Determine"
+            )
+            if logger().level <= 10:
+                with self.mutex:
+                    logger().debug(
+                        self.audit_report.format(
+                            database=node.database,
+                            schema=node.schema,
+                            table=node.name,
+                            total_columns=n_cols,
+                            n_cols_added=n_cols_added,
+                            n_cols_doc_inherited=n_cols_doc_inherited,
+                            n_cols_removed=n_cols_removed,
+                            coverage=perc_coverage,
+                        )
+                    )
+        except Exception as e:
+            with self.mutex:
+                logger().error("Error occurred while processing model %s: %s", unique_id, e)
+                raise e
 
     def propagate_documentation_downstream(self, force_inheritance: bool = False) -> None:
         schema_map = self.build_schema_folder_mapping()
@@ -900,11 +934,22 @@ class DbtYamlManager(DbtProject):
         undocumented_columns: Iterable[str],
         extra_columns: Iterable[str],
         node: ManifestNode,
-        yaml_file: Dict[str, Any],
+        section: Dict[str, Any],
     ) -> Tuple[int, int, int]:
         """Take action on a schema file mirroring changes in the node."""
-        # We can extrapolate this to a general func
-        noop = 0, 0, 0
+        logger().info(":microscope: Looking for actions for %s", node.unique_id)
+        n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section)
+        n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
+            undocumented_columns, node, section
+        )
+        n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
+        return n_cols_added, n_cols_doc_inherited, n_cols_removed
+
+    @staticmethod
+    def maybe_get_section_from_schema_file(
+        yaml_file: Dict[str, Any], node: ManifestNode
+    ) -> Optional[Dict[str, Any]]:
+        """Get the section of a schema file that corresponds to a node."""
         if node.resource_type == NodeType.Source:
             section = next(
                 (
@@ -916,19 +961,9 @@ class DbtYamlManager(DbtProject):
                 ),
                 None,
             )
-
         else:
             section = next(
                 (s for s in yaml_file["models"] if s["name"] == node.name),
                 None,
             )
-        if section is None:
-            logger().info(":thumbs_up: No actions needed for %s", node.unique_id)
-            return noop
-        logger().info(":microscope: Looking for actions for %s", node.unique_id)
-        n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section)
-        n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
-            undocumented_columns, node, section
-        )
-        n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
-        return n_cols_added, n_cols_doc_inherited, n_cols_removed
+        return section
