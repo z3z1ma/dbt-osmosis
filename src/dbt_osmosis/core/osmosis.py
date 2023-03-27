@@ -275,7 +275,9 @@ class DbtYamlManager(DbtProject):
                 return columns
             try:
                 columns = [
-                    self.column_casing(c.name) for c in self.adapter.get_columns_in_relation(table)
+                    self.column_casing(exp.name)
+                    for c in self.adapter.get_columns_in_relation(table)
+                    for exp in getattr(c, "flatten", lambda: [c])()
                 ]
             except Exception as error:
                 logger().info(
@@ -324,14 +326,18 @@ class DbtYamlManager(DbtProject):
                         "description": "",
                         "columns": [
                             {
-                                "name": self.column_casing(column.name),
-                                "description": getattr(column, "description", ""),
+                                "name": self.column_casing(exp.name),
+                                "description": getattr(
+                                    exp, "description", getattr(c, "description", "")
+                                ),
                             }
-                            for column in self.adapter.get_columns_in_relation(relation)
+                            for c in self.adapter.get_columns_in_relation(relation)
+                            for exp in getattr(c, "flatten", lambda: [c])()
                         ],
                     }
                     for relation in relations
                 ]
+                osmosis_schema_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(osmosis_schema_path, "w") as schema_file:
                     logger().info(
                         ":syringe: Injecting source %s into dbt project",
