@@ -141,7 +141,7 @@ def refactor(
 
     # Conform project structure & bootstrap undocumented models injecting columns
     if runner.commit_project_restructure_to_disk():
-        runner.safe_parse_project()
+        runner.safe_parse_project(reinit=True)
     runner.propagate_documentation_downstream(force_inheritance=force_inheritance)
 
 
