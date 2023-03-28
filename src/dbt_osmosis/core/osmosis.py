@@ -382,7 +382,7 @@ class DbtYamlManager(DbtProject):
             osmosis_schema_path = self.get_target_schema_path(dbt_node)
             schema_map[unique_id] = SchemaFileLocation(
                 target=osmosis_schema_path.resolve(),
-                current=schema_path.resolve(),
+                current=schema_path.resolve() if schema_path else None,
                 node_type=dbt_node.resource_type,
             )
 
