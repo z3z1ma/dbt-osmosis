@@ -26,4 +26,8 @@ categories:
 template: |
   ## Changes
 
+  See the [CHANGELOG](https://github.com/z3z1ma/dbt-osmosis/blob/main/CHANGELOG.md) for a full list of changes.
+
+  Automatically detected changes:
+
   $CHANGES
