@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 ---
 # Workflow
 
@@ -52,24 +52,33 @@ I will step through 3 ways to run dbt-osmosis. These are not mutually exclusive.
 
 The easiest way to take advantage of dbt-osmosis is to run it periodically. This simply takes aligment from the development team on the configuration / rules and then a single developer can run it and commit the changes if they like them. This can be done weekly, monthly, quarterly, etc. It is up to the team to decide how often they want to run it. This is by far the simplest as a single execution provides significant value. (this is what I do today)
 
-### Pre-commit
+### Pre-commit hook ⭐️⭐️
 
-You can use a `language: system` pre-commit hook to run dbt-osmosis if installed globally via something like `pipx`. This is the recommended approach until we set up a built in [pre-commit](https://pre-commit.com/) hook. This should be coming soon, but in the meantime, you can use the following configuration to get started. Until we support filenames as positional arguments, for larger projects I would recommend using the CI/CD or ad-hoc approach.
+We now include a pre-commit hook for dbt-osmosis! This is a great way to keep documentation up to date. It will only run on models that have changed.
 
 ```yaml title=".pre-commit-config.yaml"
 repos:
-  - repo:
-      type: system
-      language: system
-      name: dbt-osmosis
-      entry: dbt-osmosis yaml refactor
-      files: ^models/
-      # we will support specific files in the future
-      # making this resource efficient, for now it is a
-      # bit of a blunt instrument
-      pass_filenames: false
+  - repo: https://github.com/z3z1ma/dbt-osmosis
+    rev: v0.11.10 # verify the latest version
+    hooks:
+      - id: dbt-osmosis
+        files: ^models/
+        # you'd normally run this against your prod target, you can use any target though
+        args: [--target=prod]
 ```
 
-### CI/CD
+### CI/CD ⭐️⭐️⭐️
 
-You can also run dbt-osmosis as part of your CI/CD pipeline. The best way to do this is to simply clone the repo, run dbt-osmosis, and then commit the changes. Preferably, you would do this in a separate branch and then open a PR. This is the most robust approach since it ensures that the changes are reviewed and approved by a human before they are merged into the main branch whilst taking the load off of developer machines. This is pending more documentation.
+You can also run dbt-osmosis as part of your CI/CD pipeline. The best way to do this is to simply clone the repo, run dbt-osmosis, and then commit the changes. Preferably, you would do this in a separate branch and then open a PR. This is the most robust approach since it ensures that the changes are reviewed and approved by a human before they are merged into the main branch whilst taking the load off of developer machines. 
+
+```bash title="example.sh"
+# this only exists to provide color, in the future we may add a preconfigured GHA to do this
+git clone https://github.com/my-org/my-dbt-project.git
+git checkout -b dbt-osmosis-refactor
+
+dbt-osmosis yaml refactor --target=prod
+
+git commit -am “✨ Refactor yaml files”
+git push origin -f
+gh pr create
+```

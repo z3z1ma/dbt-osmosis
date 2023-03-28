@@ -1,0 +1,7 @@
+- id: dbt-osmosis
+  name: dbt-osmosis
+  entry: dbt-osmosis yaml refactor
+  description: "Run dbt-osmosis on a dbt project."
+  language: python
+  require_serial: true
+  types_or: [yaml, sql]

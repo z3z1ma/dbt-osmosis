@@ -92,7 +92,7 @@ class DbtYamlManager(DbtProject):
 
     # TODO: Let user supply a custom arg / config file / csv of strings which we
     # consider placeholders which are not valid documentation, these are just my own
-    # We may well drop the placeholder concept too
+    # We may well drop the placeholder concept too. It is just a convenience for refactors
     placeholders = [
         "Pending further documentation",
         "Pending further documentation.",
@@ -102,7 +102,7 @@ class DbtYamlManager(DbtProject):
         "Not documented.",
         "Undefined",
         "Undefined.",
-        "",
+        "",  # This is the important one
     ]
 
     def __init__(
@@ -113,17 +113,34 @@ class DbtYamlManager(DbtProject):
         threads: Optional[int] = 1,
         fqn: Optional[str] = None,
         dry_run: bool = False,
+        models: Optional[List[str]] = None,
     ):
+        """Initializes the DbtYamlManager class."""
         super().__init__(  # partial parse messes up our f strings, so force a full parse on init
             target, profiles_dir, project_dir, threads, {"_reparse_seed": os.urandom(8).hex()}
         )
         self.fqn = fqn
+        self.models = models or []
         self.dry_run = dry_run
+
+        if len(list(self.filtered_models())) == 0:
+            logger().warning(
+                "No models found to process. Check your filters: --fqn='%s', pos args %s",
+                fqn,
+                models,
+            )
+            logger().info(
+                "Please supply a valid fqn segment if using --fqn or a valid model name, path, or"
+                " subpath if using positional arguments"
+            )
+            exit(0)
+
         self.mutex = Lock()
         self.tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
 
     @property
     def yaml_handler(self):
+        """Returns a cached instance of the YAML handler."""
         if not hasattr(self, "_yaml_handler"):
             self._yaml_handler = YamlHandler()
         return self._yaml_handler
@@ -134,28 +151,66 @@ class DbtYamlManager(DbtProject):
             return column.upper()
         return column
 
-    def _filter_model(self, node: ManifestNode) -> bool:
-        """Validates a node as being actionable. Validates both models and sources."""
+    def _filter_model_by_fqn(self, node: ManifestNode) -> bool:
+        """Validates a node as being selected.
+
+        Check FQN length
+        Check FQN matches parts
+        """
+        if not self.fqn:
+            return True
         fqn = self.fqn or ".".join(node.fqn[1:])
         fqn_parts = fqn.split(".")
-        logger().debug("%s: %s -> %s", node.resource_type, fqn, node.fqn[1:])
+        return len(node.fqn[1:]) >= len(fqn_parts) and all(
+            left == right for left, right in zip(fqn_parts, node.fqn[1:])
+        )
+
+    def _filter_model_by_models(self, node: ManifestNode) -> bool:
+        """Validates a node as being selected.
+
+        Check if the node name matches a model name
+        Check if the node path matches a model path
+        Check if the node path is a child of a model path
+        """
+        for model in self.models:
+            if node.name == model:
+                return True
+            node_path = self.get_node_path(node)
+            inp_path = as_path(model).resolve()
+            if inp_path.is_dir():
+                if node_path and inp_path in node_path.parents:
+                    return True
+            elif inp_path.is_file():
+                if node_path and inp_path == node_path:
+                    return True
+        return False
+
+    def _filter_model(self, node: ManifestNode) -> bool:
+        """Validates a node as being actionable.
+
+        Check if the node is a model
+        Check if the node is a source
+        Check if the node is a model and not ephemeral
+        Check if the node is a model and matches the fqn or models filter if supplied
+        """
+        if self.models:
+            filter_method = self._filter_model_by_models
+        elif self.fqn:
+            filter_method = self._filter_model_by_fqn
+        else:
+            filter_method = lambda _: True  # noqa: E731
         return (
-            # Verify Resource Type
             node.resource_type in (NodeType.Model, NodeType.Source)
-            # Verify Package == Current Project
             and node.package_name == self.project_name
-            # Verify Materialized is Not Ephemeral if NodeType is Model [via short-circuit]
             and not (
                 node.resource_type == NodeType.Model and node.config.materialized == "ephemeral"
             )
-            # Verify FQN Length [Always true if no fqn was supplied]
-            and len(node.fqn[1:]) >= len(fqn_parts)
-            # Verify FQN Matches Parts [Always true if no fqn was supplied]
-            and all(left == right for left, right in zip(fqn_parts, node.fqn[1:]))
+            and filter_method(node)
         )
 
     @staticmethod
     def get_patch_path(node: ManifestNode) -> Optional[Path]:
+        """Returns the patch path for a node if it exists"""
         if node is not None and node.patch_path:
             return as_path(node.patch_path.split("://")[-1])
 
@@ -191,6 +246,10 @@ class DbtYamlManager(DbtProject):
             raise InvalidOsmosisConfig(
                 f"Invalid config for model {node.name}: {osmosis_spec}"
             ) from exc
+
+    def get_node_path(self, node: ManifestNode):
+        """Resolve absolute file path for a manifest node"""
+        return as_path(self.config.project_root, node.original_file_path).resolve()
 
     def get_schema_path(self, node: ManifestNode) -> Optional[Path]:
         """Resolve absolute schema file path for a manifest node"""
@@ -775,7 +834,7 @@ class DbtYamlManager(DbtProject):
                 if section is None:  # If we can't find the section, we can't take action
                     logger().info(":thumbs_up: No actions needed for %s", node.unique_id)
                     return
-            
+
                 should_dump = False
                 n_cols_added, n_cols_doc_inherited, n_cols_removed = 0, 0, 0
                 if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:

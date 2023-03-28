@@ -75,4 +75,4 @@ vars:
   github: "all_sources/github.yml"
 ```
 
-Notice the use of the `{parent}` variable in the `jira` source configuration. This variable is a special variable that will be replaced with the name of the parent directory of the YAML file. The other special variables are `{node}` and `{model}`. We will discuss these variables in more detail later.
+Notice the use of the `{parent}` variable in the `jira` source configuration. This variable is a special variable that will be replaced with the name of the parent directory of the YAML file. The other special variables are `{node}` and `{model}`. We will discuss these variables in more detail in the next section.

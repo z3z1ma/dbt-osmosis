@@ -6,7 +6,7 @@ import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, List
 from urllib.parse import urlencode
 
 import click
@@ -109,6 +109,7 @@ def shared_opts(func: Callable) -> Callable:
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
+@click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
@@ -116,6 +117,7 @@ def refactor(
     fqn: Optional[str] = None,
     force_inheritance: bool = False,
     dry_run: bool = False,
+    models: Optional[List[str]] = None,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
     directory, reparses the project, then executes document passing down inheritable documentation
@@ -137,6 +139,7 @@ def refactor(
         target=target,
         fqn=fqn,
         dry_run=dry_run,
+        models=models,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -162,12 +165,14 @@ def refactor(
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
+@click.argument("models", nargs=-1)
 def organize(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
     dry_run: bool = False,
+    models: Optional[List[str]] = None,
 ):
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -188,6 +193,7 @@ def organize(
         target=target,
         fqn=fqn,
         dry_run=dry_run,
+        models=models,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -220,6 +226,7 @@ def organize(
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
+@click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
@@ -227,6 +234,7 @@ def document(
     fqn: Optional[str] = None,
     force_inheritance: bool = False,
     dry_run: bool = False,
+    models: Optional[List[str]] = None,
 ):
     """Column level documentation inheritance for existing models
 
@@ -247,6 +255,7 @@ def document(
         target=target,
         fqn=fqn,
         dry_run=dry_run,
+        models=models,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
