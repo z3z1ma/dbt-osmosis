@@ -1,0 +1,9 @@
+{
+  "label": "dbt-osmosis - Basics",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "5 minutes to learn the most important dbt-osmosis concepts."
+  },
+  "collapsed": false
+}
