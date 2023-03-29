@@ -58,11 +58,29 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
 ____
 
+## Pre-commit
+
+You can use dbt-osmosis as a pre-commit hook. This will run the `dbt-osmosis yaml refactor` command on your models directory before each commit. This is one way to ensure that your schema.yml files are always up to date. I would recommend reading the docs for more information on what this command does.
+
+```yaml title=".pre-commit-config.yaml"
+repos:
+  - repo: https://github.com/z3z1ma/dbt-osmosis
+    rev: v0.11.11 # verify the latest version
+    hooks:
+      - id: dbt-osmosis
+        files: ^models/
+        # you'd normally run this against your prod target, you can use any target though
+        args: [--target=prod]
+        additional_dependencies: [dbt-<adapter>]
+```
+
+___
+
 ## Workbench
 
-The workbench is a streamlit app that allows you to work on dbt models in a side-by-side editor and query tester. I've kept this portion of the README since users can jump into the streamlit hosted workbench to play around with it. Expect the living documentation moving forward to exist at the [dbt-osmosis documentation site](https://z3z1ma.github.io/dbt-osmosis/).
+The workbench is a streamlit app that allows you to work on dbt models in a side-by-side editor and query tester. I've kept this portion of the README since users can jump into the streamlit hosted workbench to play around with it via the badge below. Expect the living documentation moving forward to exist at the [dbt-osmosis documentation site](https://z3z1ma.github.io/dbt-osmosis/).
 
-I also expect there is some untapped value in the workbench that is only pending some time from myself. I've seen a path to a truly novel development expierence and look forward to exploring it.
+I also expect there is some untapped value in the workbench that is only pending some time from myself. I've seen a path to a truly novel development experience and look forward to exploring it.
 
 Demo the workbench 👇 
 

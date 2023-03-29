@@ -137,6 +137,7 @@ class DbtYamlManager(DbtProject):
 
         self.mutex = Lock()
         self.tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
+        self.mutations = 0
 
     @property
     def yaml_handler(self):
@@ -418,6 +419,7 @@ class DbtYamlManager(DbtProject):
                         },
                         schema_file,
                     )
+                    self.mutations += 1
                 performed_disk_mutation = True
 
         if performed_disk_mutation:
@@ -448,79 +450,88 @@ class DbtYamlManager(DbtProject):
         return schema_map
 
     def _draft(self, schema_file: SchemaFileLocation, unique_id: str, blueprint: dict) -> None:
-        with self.mutex:
-            blueprint.setdefault(
-                schema_file.target,
-                SchemaFileMigration(
-                    output={"version": 2, "models": [], "sources": []}, supersede={}
-                ),
-            )
-        if schema_file.node_type == NodeType.Model:
-            node = self.manifest.nodes[unique_id]
-        elif schema_file.node_type == NodeType.Source:
-            node = self.manifest.sources[unique_id]
-        else:
-            return
-        if schema_file.current is None:
-            # Bootstrapping undocumented NodeType.Model
-            # NodeType.Source files are guaranteed to exist by this point
+        try:
             with self.mutex:
-                assert schema_file.node_type == NodeType.Model
-                blueprint[schema_file.target].output["models"].append(self.get_base_model(node))
-        else:
-            # Sanity check that the file exists before we try to load it, this should never be false
-            assert schema_file.current.exists(), f"File {schema_file.current} does not exist"
-            # Model/Source Is Documented but Must be Migrated
+                blueprint.setdefault(
+                    schema_file.target,
+                    SchemaFileMigration(
+                        output={"version": 2, "models": [], "sources": []}, supersede={}
+                    ),
+                )
+            if schema_file.node_type == NodeType.Model:
+                node = self.manifest.nodes[unique_id]
+            elif schema_file.node_type == NodeType.Source:
+                node = self.manifest.sources[unique_id]
+            else:
+                return
+            if schema_file.current is None:
+                # Bootstrapping undocumented NodeType.Model
+                # NodeType.Source files are guaranteed to exist by this point
+                with self.mutex:
+                    assert schema_file.node_type == NodeType.Model
+                    blueprint[schema_file.target].output["models"].append(self.get_base_model(node))
+            else:
+                # Sanity check that the file exists before we try to load it, this should never be false
+                assert schema_file.current.exists(), f"File {schema_file.current} does not exist"
+                # Model/Source Is Documented but Must be Migrated
+                with self.mutex:
+                    schema = self.yaml_handler.load(schema_file.current)
+                models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
+                sources_in_file: Iterable[Dict[str, Any]] = schema.get("sources", [])
+                for documented_model in (
+                    model for model in models_in_file if model["name"] == node.name
+                ):
+                    # Augment Documented Model
+                    augmented_model = self.augment_existing_model(documented_model, node)
+                    with self.mutex:
+                        blueprint[schema_file.target].output["models"].append(augmented_model)
+                        # Target to supersede current
+                        blueprint[schema_file.target].supersede.setdefault(
+                            schema_file.current, []
+                        ).append(node)
+                    break
+                for documented_model, i in (
+                    (table, j)
+                    for j, source in enumerate(sources_in_file)
+                    if source["name"] == node.source_name
+                    for table in source["tables"]
+                    if table["name"] == node.name
+                ):
+                    # Augment Documented Source
+                    augmented_model = self.augment_existing_model(documented_model, node)
+                    with self.mutex:
+                        if not any(
+                            s["name"] == node.source_name
+                            for s in blueprint[schema_file.target].output["sources"]
+                        ):
+                            # Add the source if it doesn't exist in the blueprint
+                            blueprint[schema_file.target].output["sources"].append(
+                                sources_in_file[i]
+                            )
+                        # Find source in blueprint
+                        for src in blueprint[schema_file.target].output["sources"]:
+                            if src["name"] == node.source_name:
+                                # Find table in blueprint
+                                for tbl in src["tables"]:
+                                    if tbl["name"] == node.name:
+                                        # Augment table
+                                        tbl = augmented_model
+                                        break
+                                break
+                        else:
+                            # This should never happen
+                            raise RuntimeError(f"Source {node.source_name} not found in blueprint?")
+                        # Target to supersede current
+                        blueprint[schema_file.target].supersede.setdefault(
+                            schema_file.current, []
+                        ).append(node)
+                    break
+        except Exception as e:
             with self.mutex:
-                schema = self.yaml_handler.load(schema_file.current)
-            models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
-            sources_in_file: Iterable[Dict[str, Any]] = schema.get("sources", [])
-            for documented_model in (
-                model for model in models_in_file if model["name"] == node.name
-            ):
-                # Augment Documented Model
-                augmented_model = self.augment_existing_model(documented_model, node)
-                with self.mutex:
-                    blueprint[schema_file.target].output["models"].append(augmented_model)
-                    # Target to supersede current
-                    blueprint[schema_file.target].supersede.setdefault(
-                        schema_file.current, []
-                    ).append(node)
-                break
-            for documented_model, i in (
-                (table, j)
-                for j, source in enumerate(sources_in_file)
-                if source["name"] == node.source_name
-                for table in source["tables"]
-                if table["name"] == node.name
-            ):
-                # Augment Documented Source
-                augmented_model = self.augment_existing_model(documented_model, node)
-                with self.mutex:
-                    if not any(
-                        s["name"] == node.source_name
-                        for s in blueprint[schema_file.target].output["sources"]
-                    ):
-                        # Add the source if it doesn't exist in the blueprint
-                        blueprint[schema_file.target].output["sources"].append(sources_in_file[i])
-                    # Find source in blueprint
-                    for src in blueprint[schema_file.target].output["sources"]:
-                        if src["name"] == node.source_name:
-                            # Find table in blueprint
-                            for tbl in src["tables"]:
-                                if tbl["name"] == node.name:
-                                    # Augment table
-                                    tbl = augmented_model
-                                    break
-                            break
-                    else:
-                        # This should never happen
-                        raise RuntimeError(f"Source {node.source_name} not found in blueprint?")
-                    # Target to supersede current
-                    blueprint[schema_file.target].supersede.setdefault(
-                        schema_file.current, []
-                    ).append(node)
-                break
+                logger().error(
+                    "Failed to draft project structure update plan for %s: %s", unique_id, e
+                )
+            raise e
 
     def draft_project_structure_update_plan(self) -> Dict[Path, SchemaFileMigration]:
         """Build project structure update plan based on `dbt-osmosis:` configs set across
@@ -588,6 +599,7 @@ class DbtYamlManager(DbtProject):
                     target.parent.mkdir(exist_ok=True, parents=True)
                     target.touch()
                     self.yaml_handler.dump(structure.output, target)
+                    self.mutations += 1
 
             else:
                 # Update File
@@ -605,6 +617,7 @@ class DbtYamlManager(DbtProject):
                     target_schema.setdefault("sources", []).extend(structure.output["sources"])
                 if not self.dry_run:
                     self.yaml_handler.dump(target_schema, target)
+                    self.mutations += 1
 
             # Clean superseded schema files
             for dir, nodes in structure.supersede.items():
@@ -658,6 +671,7 @@ class DbtYamlManager(DbtProject):
                             raw_schema["sources"].pop(i)
                     if not self.dry_run:
                         self.yaml_handler.dump(raw_schema, dir)
+                        self.mutations += 1
                     logger().info(
                         ":satellite: Model documentation migrated from %s to %s",
                         dir.name,
@@ -862,6 +876,7 @@ class DbtYamlManager(DbtProject):
                 if should_dump and not self.dry_run:
                     # Dump the mutated schema file back to the disk
                     self.yaml_handler.dump(schema_file, schema_path.current)
+                    self.mutations += 1
                     logger().info(
                         ":sparkles: Schema file %s updated",
                         schema_path.current,
@@ -897,7 +912,7 @@ class DbtYamlManager(DbtProject):
         except Exception as e:
             with self.mutex:
                 logger().error("Error occurred while processing model %s: %s", unique_id, e)
-                raise e
+            raise e
 
     def propagate_documentation_downstream(self, force_inheritance: bool = False) -> None:
         schema_map = self.build_schema_folder_mapping()

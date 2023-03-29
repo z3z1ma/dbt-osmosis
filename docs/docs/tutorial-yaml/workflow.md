@@ -59,12 +59,13 @@ We now include a pre-commit hook for dbt-osmosis! This is a great way to keep do
 ```yaml title=".pre-commit-config.yaml"
 repos:
   - repo: https://github.com/z3z1ma/dbt-osmosis
-    rev: v0.11.10 # verify the latest version
+    rev: v0.11.11 # verify the latest version
     hooks:
       - id: dbt-osmosis
         files: ^models/
         # you'd normally run this against your prod target, you can use any target though
         args: [--target=prod]
+        additional_dependencies: [dbt-<adapter>]
 ```
 
 ### CI/CD ⭐️⭐️⭐️

@@ -109,6 +109,12 @@ def shared_opts(func: Callable) -> Callable:
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
+@click.option(
+    "-C",
+    "--check",
+    is_flag=True,
+    help="If specified, will return a non-zero exit code if any files are changed.",
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
@@ -117,6 +123,7 @@ def refactor(
     fqn: Optional[str] = None,
     force_inheritance: bool = False,
     dry_run: bool = False,
+    check: bool = False,
     models: Optional[List[str]] = None,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
@@ -146,6 +153,8 @@ def refactor(
     if runner.commit_project_restructure_to_disk():
         runner.safe_parse_project(reinit=True)
     runner.propagate_documentation_downstream(force_inheritance=force_inheritance)
+    if check and runner.mutations > 0:
+        exit(1)
 
 
 @yaml.command(context_settings=CONTEXT)
@@ -165,6 +174,12 @@ def refactor(
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
+@click.option(
+    "-C",
+    "--check",
+    is_flag=True,
+    help="If specified, will return a non-zero exit code if any files are changed.",
+)
 @click.argument("models", nargs=-1)
 def organize(
     target: Optional[str] = None,
@@ -172,6 +187,7 @@ def organize(
     profiles_dir: Optional[str] = None,
     fqn: Optional[str] = None,
     dry_run: bool = False,
+    check: bool = False,
     models: Optional[List[str]] = None,
 ):
     """Organizes schema ymls based on config and injects undocumented models
@@ -198,6 +214,8 @@ def organize(
 
     # Conform project structure & bootstrap undocumented models injecting columns
     runner.commit_project_restructure_to_disk()
+    if check and runner.mutations > 0:
+        exit(1)
 
 
 @yaml.command(context_settings=CONTEXT)
@@ -226,6 +244,12 @@ def organize(
     is_flag=True,
     help="If specified, no changes are committed to disk.",
 )
+@click.option(
+    "-C",
+    "--check",
+    is_flag=True,
+    help="If specified, will return a non-zero exit code if any files are changed.",
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -234,6 +258,7 @@ def document(
     fqn: Optional[str] = None,
     force_inheritance: bool = False,
     dry_run: bool = False,
+    check: bool = False,
     models: Optional[List[str]] = None,
 ):
     """Column level documentation inheritance for existing models
@@ -260,6 +285,8 @@ def document(
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
     runner.propagate_documentation_downstream(force_inheritance)
+    if check and runner.mutations > 0:
+        exit(1)
 
 
 class ServerRegisterThread(threading.Thread):

@@ -1,6 +1,6 @@
 - id: dbt-osmosis
   name: dbt-osmosis
-  entry: dbt-osmosis yaml refactor
+  entry: dbt-osmosis yaml refactor -C
   description: "Run dbt-osmosis on a dbt project."
   language: python
   require_serial: true
