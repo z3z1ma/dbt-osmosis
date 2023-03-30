@@ -3073,18 +3073,18 @@ docs = ["ipykernel", "jupyter-client", "matplotlib", "nbconvert", "nbformat", "n
 
 [[package]]
 name = "streamlit"
-version = "1.12.0"
+version = "1.20.0"
 description = "The fastest way to build data apps in Python"
 category = "main"
 optional = true
-python-versions = ">=3.7"
+python-versions = ">=3.7, !=3.9.7"
 files = [
-    {file = "streamlit-1.12.0-py2.py3-none-any.whl", hash = "sha256:19f58ae723afaedbc85891c3a159e9576343609036713ecbb73b219a47dfe48d"},
-    {file = "streamlit-1.12.0.tar.gz", hash = "sha256:1bbb406d4eee9acb055e72627212e9f04eea8ef0332f8dfeb6745bdf256c168b"},
+    {file = "streamlit-1.20.0-py2.py3-none-any.whl", hash = "sha256:41a544b8dc618ee65726da3ac76149c5b2bf3da7bde6d50625c4f7ec95e6c9e8"},
+    {file = "streamlit-1.20.0.tar.gz", hash = "sha256:f6e257e033a2532ce9b37c425717a4e885fa4d0e339fa5dcdbbda8d75ec191e9"},
 ]
 
 [package.dependencies]
-altair = ">=3.2.0"
+altair = ">=3.2.0,<5"
 blinker = ">=1.0.0"
 cachetools = ">=4.0"
 click = ">=7.0"
@@ -3092,7 +3092,7 @@ gitpython = "!=3.1.19"
 importlib-metadata = ">=1.4"
 numpy = "*"
 packaging = ">=14.1"
-pandas = ">=0.21.0"
+pandas = ">=0.25,<2"
 pillow = ">=6.2.0"
 protobuf = ">=3.12,<4"
 pyarrow = ">=4.0"
@@ -3103,11 +3103,14 @@ requests = ">=2.4"
 rich = ">=10.11.0"
 semver = "*"
 toml = "*"
-tornado = ">=5.0"
+tornado = ">=6.0.3"
 typing-extensions = ">=3.10.0.0"
 tzlocal = ">=1.1"
 validators = ">=0.2"
 watchdog = {version = "*", markers = "platform_system != \"Darwin\""}
+
+[package.extras]
+snowflake = ["snowflake-snowpark-python"]
 
 [[package]]
 name = "streamlit-ace"
@@ -3663,5 +3666,5 @@ workbench = ["streamlit", "streamlit-ace", "ydata-profiling", "feedparser", "str
 
 [metadata]
 lock-version = "2.0"
-python-versions = ">=3.8,<3.11"
-content-hash = "8d94f74425ff8920a87a37af9ec7206ab6eb40220cfbb8e62ae365a218c341cd"
+python-versions = ">=3.8,<3.9.7 || >3.9.7,<3.11"
+content-hash = "60d9f37d40fcd4a2717d81ea38f804106e65654b1b877ffd5759f02b1874902e"

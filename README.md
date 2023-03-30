@@ -6,7 +6,7 @@
 ![Downloads](https://pepy.tech/badge/dbt-osmosis)
 ![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)
 ![black](https://img.shields.io/badge/code%20style-black-000000.svg)
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-4y67qs.streamlitapp.com/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-v2-i0ico9.streamlit.app/)
 
 
 [![Scc Count Badge](https://sloc.xyz/github/z3z1ma/dbt-osmosis/)](https://github.com/z3z1ma/dbt-osmosis/)
@@ -84,7 +84,7 @@ I also expect there is some untapped value in the workbench that is only pending
 
 Demo the workbench 👇 
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-4y67qs.streamlitapp.com/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-v2-i0ico9.streamlit.app/)
 
  
 ```sh

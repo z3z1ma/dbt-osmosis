@@ -2,7 +2,6 @@ import argparse
 import decimal
 import os
 import sys
-import time
 from collections import OrderedDict
 from datetime import datetime, date
 from textwrap import dedent
@@ -195,28 +194,6 @@ def sidebar(ctx: DbtProject) -> None:
     )
 
 
-def ttl_cache(wait):
-    """Debounce a function call."""
-
-    def decorator(func):
-        last_called = time.time()
-        cached_result = None
-
-        def cached(*args, **kwargs):
-            nonlocal last_called, cached_result
-            elapsed = time.time() - last_called
-            if elapsed < wait and cached_result is not None:
-                return cached_result
-            cached_result = func(*args, **kwargs)
-            last_called = time.time()
-            return cached_result
-
-        return cached
-
-    return decorator
-
-
-@ttl_cache(3.0)
 def compile(ctx: DbtProject, sql: str) -> str:
     """Compile SQL using dbt context."""
     try:
