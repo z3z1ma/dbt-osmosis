@@ -589,7 +589,7 @@ def workbench(
             "--runner.magicEnabled=false",
             f"--browser.serverAddress={host}",
             f"--browser.serverPort={port}",
-            Path(__file__).parent / "app.py",
+            Path(__file__).parent / "app_v2.py",
         ]
         + ctx.args
         + script_args,
