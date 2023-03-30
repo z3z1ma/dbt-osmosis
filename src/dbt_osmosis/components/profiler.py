@@ -31,7 +31,6 @@ class Profiler(Dashboard.Item):
                         style={"width": "100%", "height": "100%", "border": "none"},
                     )
                 else:
-                    # extras.InnerHTML("<a href='https://pandas-profiling.github.io/pandas-profiling/docs/master/rtd/' target='_blank'>Docs</a>")
                     html.Iframe(
                         src="https://pandas-profiling.github.io/pandas-profiling/docs/master/rtd/",
                         style={"width": "100%", "height": "100%", "border": "none"},

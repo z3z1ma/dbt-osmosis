@@ -1,5 +1,6 @@
 import argparse
 import decimal
+import feedparser
 import os
 import sys
 from collections import OrderedDict
@@ -305,6 +306,8 @@ def main():
             # Model
             model="SCRATCH",
             cache_version=0,
+            # Feed
+            feed_contents="",
         )
         # Load raw profiles
         w.raw_profiles = dbt_profile.read_profile(w.profiles_dir)
@@ -331,7 +334,22 @@ def main():
         w.model_opts = ["SCRATCH"] + [node for node in model_nodes]
         # Save state
         state.w = w
+        # Update editor content
         w.editor.update_content("SQL", w.raw_sql)
+        # Generate RSS feed
+        feed = feedparser.parse("https://news.ycombinator.com/rss")
+        feed_contents = []
+        for entry in feed.entries:
+            feed_contents.append(dedent(f"""
+                <div style="padding: 10px 5px 10px 5px; border-bottom: 1px solid #e0e0e0;">
+                    <a href="{entry.link}" target="_blank" style="font-size: 16px; font-weight: bold; color: #FF4136; text-decoration: none;">{entry.title}</a>
+                    <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published} 
+                    <span style="color: #FF4136;">|</span>
+                    <a href="{entry.comments}" target="_blank" style="color: #FF4136; text-decoration: none;">Comments</a>
+                    </div>
+                </div>
+            """))
+        w.feed_contents = "".join(feed_contents)
     else:
         # Load state
         w = state.w

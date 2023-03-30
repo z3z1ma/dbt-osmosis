@@ -1,4 +1,4 @@
-import feedparser
+from streamlit import session_state as state
 from streamlit_elements_fluence import mui, extras
 
 from .dashboard import Dashboard
@@ -33,15 +33,5 @@ class RssFeed(Dashboard.Item):
                 mui.Typography("Hacker News Feed")
 
             # Render hacker news feed
-            feed = feedparser.parse("https://news.ycombinator.com/rss")
-
-            for entry in feed.entries:
-                extras.InnerHTML(f"""
-                    <div style="padding: 10px 5px 10px 5px; border-bottom: 1px solid #e0e0e0;">
-                        <a href="{entry.link}" target="_blank" style="font-size: 16px; font-weight: bold; color: #FF4136; text-decoration: none;">{entry.title}</a>
-                        <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published} 
-                        <span style="color: #FF4136;">|</span>
-                        <a href="{entry.comments}" target="_blank" style="color: #FF4136; text-decoration: none;">Comments</a>
-                        </div>
-                    </div>
-                """)
+            with mui.Box(sx={"flex": 1, "minHeight": 0}):
+                extras.InnerHTML(state.w.feed_contents)
