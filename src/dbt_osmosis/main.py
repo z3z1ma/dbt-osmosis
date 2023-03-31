@@ -381,14 +381,15 @@ def serve(
         _health_check(host, port)
 
         # Register
-        params = {"project_dir": project_dir, "profiles_dir": profiles_dir}
+        body = {"project_dir": project_dir, "profiles_dir": profiles_dir, "force": True}
         if target:
-            params["target"] = target
-        endpoint = f"http://{host}:{port}/register?{urlencode(params)}"
+            body["target"] = target
+        endpoint = f"http://{host}:{port}/register"
         logger().info("Registering project: %s", endpoint)
         res = requests.post(
             endpoint,
             headers={"X-dbt-Project": str(Path(project_dir).absolute())},
+            json=body,
         ).json()
 
         # Log
@@ -456,15 +457,15 @@ def register_project(
     _health_check(host, port)
 
     # Register
-    params = {"project_dir": project_dir, "profiles_dir": profiles_dir, "force": True}
+    body = {"project_dir": project_dir, "profiles_dir": profiles_dir, "force": True}
     if target:
-        params["target"] = target
+        body["target"] = target
     endpoint = f"http://{host}:{port}/register"
     logger().info("Registering project: %s", endpoint)
     res = requests.post(
         endpoint,
         headers={"X-dbt-Project": project_name or str(Path(project_dir).absolute())},
-        json={"project_dir": project_dir, "profiles_dir": profiles_dir, "force": True},
+        json=body,
     )
 
     # Log
