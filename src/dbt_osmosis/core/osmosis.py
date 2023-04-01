@@ -46,14 +46,6 @@ class YamlHandler(ruamel.yaml.YAML):
         self.default_flow_style = False
 
 
-class SchemaFileOrganizationPattern(str, Enum):
-    SchemaYaml = "schema.yml"
-    FolderYaml = "folder.yml"
-    ModelYaml = "model.yml"
-    UnderscoreModelYaml = "_model.yml"
-    SchemaModelYaml = "schema/model.yml"
-
-
 class SchemaFileLocation(BaseModel):
     target: Path
     current: Optional[Path] = None
