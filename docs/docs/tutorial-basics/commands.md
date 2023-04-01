@@ -70,7 +70,7 @@ dbt-osmosis server serve [--host] [--port]
 This command will register a dbt project with the dbt-osmosis server. 
 
 ```bash
-dbt-osmosis server register-project --project-path /path/to/dbt/project
+dbt-osmosis server register-project --project-dir /path/to/dbt/project
 ```
 
 ### Unregister Project
@@ -78,7 +78,7 @@ dbt-osmosis server register-project --project-path /path/to/dbt/project
 This command will unregister a dbt project with the dbt-osmosis server. 
 
 ```bash
-dbt-osmosis server unregister-project --project-path /path/to/dbt/project
+dbt-osmosis server unregister-project --project-dir /path/to/dbt/project
 ```
 
 ## SQL
