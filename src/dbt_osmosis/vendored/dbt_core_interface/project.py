@@ -242,6 +242,10 @@ class DbtConfiguration:
     _vars: str = "{}"
     # Mutes unwanted dbt output
     quiet: bool = True
+    # We need single threaded, simple, jinja parsing -- no rust/pickling
+    use_experimental_parser: bool = False
+    static_parser: bool = False
+    partial_parse: bool = False
     # A required attribute for dbt, not used by our interface
     dependencies: List[str] = field(default_factory=list)
 

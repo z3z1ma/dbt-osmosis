@@ -7,7 +7,6 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Optional, Union, List
-from urllib.parse import urlencode
 
 import click
 import requests

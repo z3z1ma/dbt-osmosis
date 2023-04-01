@@ -116,9 +116,7 @@ class DbtYamlManager(DbtProject):
         models: Optional[List[str]] = None,
     ):
         """Initializes the DbtYamlManager class."""
-        super().__init__(  # partial parse messes up our f strings, so force a full parse on init
-            target, profiles_dir, project_dir, threads, {"_reparse_seed": os.urandom(8).hex()}
-        )
+        super().__init__(target, profiles_dir, project_dir, threads)
         self.fqn = fqn
         self.models = models or []
         self.dry_run = dry_run
