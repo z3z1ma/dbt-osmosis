@@ -696,6 +696,8 @@ class DbtYamlManager(DbtProject):
             family_tree = {}
         if members_found is None:
             members_found = []
+        if not hasattr(node, "depends_on"):
+            return family_tree
         for parent in getattr(node.depends_on, "nodes", []):
             member = self.manifest.nodes.get(parent, self.manifest.sources.get(parent))
             if member and parent not in members_found:
