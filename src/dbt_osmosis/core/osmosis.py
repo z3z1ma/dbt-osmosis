@@ -1,4 +1,5 @@
 import os
+import json
 from concurrent.futures import ThreadPoolExecutor, wait
 from enum import Enum
 from functools import lru_cache
@@ -102,6 +103,7 @@ class DbtYamlManager(DbtProject):
         target: Optional[str] = None,
         profiles_dir: Optional[str] = None,
         project_dir: Optional[str] = None,
+        catalog_file: Optional[str] = None,
         threads: Optional[int] = 1,
         fqn: Optional[str] = None,
         dry_run: bool = False,
@@ -112,6 +114,7 @@ class DbtYamlManager(DbtProject):
         self.fqn = fqn
         self.models = models or []
         self.dry_run = dry_run
+        self.catalog_file = catalog_file
 
         if len(list(self.filtered_models())) == 0:
             logger().warning(
@@ -314,34 +317,52 @@ class DbtYamlManager(DbtProject):
     @lru_cache(maxsize=5000)
     def get_columns(self, parts: Tuple[str, str, str]) -> List[str]:
         """Get all columns in a list for a model"""
-        with self.adapter.connection_named("dbt-osmosis"):
-            table = self.adapter.get_relation(*parts)
-            columns = []
-            if not table:
-                logger().info(
-                    (
-                        ":cross_mark: Relation %s.%s.%s does not exist in target database, cannot"
-                        " resolve columns"
-                    ),
-                    *parts,
-                )
+
+        # If we provide a catalog, we read from it
+        if self.catalog_file:
+            file_path = Path(self.catalog_file)
+
+            content = json.loads(file_path.read_text())
+            matching_models = [
+                model_values
+                for model, model_values in content["nodes"].items()
+                if model.split(".")[-1] == parts[-1]
+            ]
+            if matching_models:
+                return [col.lower() for col in matching_models[0]["columns"].keys()]
+            else:
+                return []
+
+        # If we don't provide a catalog we query the warehouse to get the columns
+        else:
+            with self.adapter.connection_named("dbt-osmosis"):
+                table = self.adapter.get_relation(*parts)
+                columns = []
+                if not table:
+                    logger().info(
+                        (
+                            ":cross_mark: Relation %s.%s.%s does not exist in target database,"
+                            " cannot resolve columns"
+                        ),
+                        *parts,
+                    )
+                    return columns
+                try:
+                    columns = [
+                        self.column_casing(exp.name)
+                        for c in self.adapter.get_columns_in_relation(table)
+                        for exp in getattr(c, "flatten", lambda: [c])()
+                    ]
+                except Exception as error:
+                    logger().info(
+                        (
+                            ":cross_mark: Could not resolve relation %s.%s.%s against database"
+                            " active tables during introspective query: %s"
+                        ),
+                        *parts,
+                        str(error),
+                    )
                 return columns
-            try:
-                columns = [
-                    self.column_casing(exp.name)
-                    for c in self.adapter.get_columns_in_relation(table)
-                    for exp in getattr(c, "flatten", lambda: [c])()
-                ]
-            except Exception as error:
-                logger().info(
-                    (
-                        ":cross_mark: Could not resolve relation %s.%s.%s against database active"
-                        " tables during introspective query: %s"
-                    ),
-                    *parts,
-                    str(error),
-                )
-            return columns
 
     def bootstrap_sources(self) -> None:
         """Bootstrap sources from the dbt-osmosis vars config"""
