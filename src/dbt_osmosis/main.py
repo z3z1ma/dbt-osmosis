@@ -114,11 +114,20 @@ def shared_opts(func: Callable) -> Callable:
     is_flag=True,
     help="If specified, will return a non-zero exit code if any files are changed.",
 )
+@click.option(
+    "--catalog-file",
+    type=click.Path(exists=True),
+    help=(
+        "If specified, will read the list of columns from the catalog.json file instead of querying"
+        " the warehouse."
+    ),
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
     project_dir: Optional[str] = None,
     profiles_dir: Optional[str] = None,
+    catalog_file: Optional[str] = None,
     fqn: Optional[str] = None,
     force_inheritance: bool = False,
     dry_run: bool = False,
@@ -146,6 +155,7 @@ def refactor(
         fqn=fqn,
         dry_run=dry_run,
         models=models,
+        catalog_file=catalog_file,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
