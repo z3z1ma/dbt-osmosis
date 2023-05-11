@@ -108,6 +108,7 @@ class DbtYamlManager(DbtProject):
         fqn: Optional[str] = None,
         dry_run: bool = False,
         models: Optional[List[str]] = None,
+        skip_add_columns: bool = False,
     ):
         """Initializes the DbtYamlManager class."""
         super().__init__(target, profiles_dir, project_dir, threads)
@@ -115,6 +116,7 @@ class DbtYamlManager(DbtProject):
         self.models = models or []
         self.dry_run = dry_run
         self.catalog_file = catalog_file
+        self.skip_add_columns = skip_add_columns
 
         if len(list(self.filtered_models())) == 0:
             logger().warning(
@@ -407,7 +409,7 @@ class DbtYamlManager(DbtProject):
                             }
                             for c in self.adapter.get_columns_in_relation(relation)
                             for exp in getattr(c, "flatten", lambda: [c])()
-                        ],
+                        ] if not self.skip_add_columns else [],
                     }
                     for relation in relations
                 ]
@@ -1036,7 +1038,8 @@ class DbtYamlManager(DbtProject):
     ) -> Tuple[int, int, int]:
         """Take action on a schema file mirroring changes in the node."""
         logger().info(":microscope: Looking for actions for %s", node.unique_id)
-        n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section)
+        if not self.skip_add_columns:
+            n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section)
         n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
             undocumented_columns, node, section
         )

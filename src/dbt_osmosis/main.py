@@ -73,7 +73,7 @@ def shared_opts(func: Callable) -> Callable:
         "-t",
         "--target",
         type=click.STRING,
-        help="Which profile to load. Overrides setting in dbt_project.yml.",
+        help="Which target to load. Overrides default target in the profiles.yml.",
     )
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -122,6 +122,14 @@ def shared_opts(func: Callable) -> Callable:
         " the warehouse."
     ),
 )
+@click.option(
+    "--skip-add-columns",
+    is_flag=True,
+    help=(
+        "If specified, we will skip adding columns to the models. This is useful if you want to"
+        " document your models without adding columns present in the database."
+    ),
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
@@ -132,6 +140,7 @@ def refactor(
     force_inheritance: bool = False,
     dry_run: bool = False,
     check: bool = False,
+    skip_add_columns: bool = False,
     models: Optional[List[str]] = None,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
@@ -156,6 +165,7 @@ def refactor(
         dry_run=dry_run,
         models=models,
         catalog_file=catalog_file,
+        skip_add_columns=skip_add_columns,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -189,6 +199,14 @@ def refactor(
     is_flag=True,
     help="If specified, will return a non-zero exit code if any files are changed.",
 )
+@click.option(
+    "--skip-add-columns",
+    is_flag=True,
+    help=(
+        "If specified, we will skip adding columns to the models. This is useful if you want to"
+        " document your models without adding columns present in the database."
+    ),
+)
 @click.argument("models", nargs=-1)
 def organize(
     target: Optional[str] = None,
@@ -198,6 +216,7 @@ def organize(
     dry_run: bool = False,
     check: bool = False,
     models: Optional[List[str]] = None,
+    skip_add_columns: bool = False,
 ):
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -219,6 +238,7 @@ def organize(
         fqn=fqn,
         dry_run=dry_run,
         models=models,
+        skip_add_columns=skip_add_columns,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -267,6 +287,14 @@ def organize(
         " the warehouse."
     ),
 )
+@click.option(
+    "--skip-add-columns",
+    is_flag=True,
+    help=(
+        "If specified, we will skip adding columns to the models. This is useful if you want to"
+        " document your models without adding columns present in the database."
+    ),
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -278,6 +306,7 @@ def document(
     dry_run: bool = False,
     check: bool = False,
     models: Optional[List[str]] = None,
+    skip_add_columns: bool = False,
 ):
     """Column level documentation inheritance for existing models
 
@@ -300,6 +329,7 @@ def document(
         dry_run=dry_run,
         models=models,
         catalog_file=catalog_file,
+        skip_add_columns=skip_add_columns,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
