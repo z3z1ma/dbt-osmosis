@@ -884,7 +884,18 @@ class DbtYamlManager(DbtProject):
                     logger().info(
                         ":wrench: Reordering columns in schema file for model %s", unique_id
                     )
-                    section["columns"].sort(key=lambda x: database_columns_ordered.index(x["name"]))
+
+                    last_ix: int = int(1e6) # Arbitrary starting value which increments, ensuring sort order
+                    def _sort_columns(column_info: dict) -> int:
+                        nonlocal last_ix
+                        try:
+                            normalized_name = self.column_casing(column_info["name"])
+                            return database_columns_ordered.index(normalized_name)
+                        except IndexError:
+                            last_ix += 1
+                            return last_ix
+
+                    section["columns"].sort(key=_sort_columns)
                     should_dump = True
                 if should_dump and not self.dry_run:
                     # Dump the mutated schema file back to the disk
