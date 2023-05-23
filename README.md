@@ -44,7 +44,7 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
     > Spins up a WSGI server. Can be passed --register-project to automatically register your local project
 
-3. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install dbt-osmosis[workbench]`). 
+3. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install "dbt-osmosis[workbench]"`). 
 
     3a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
 
@@ -89,7 +89,7 @@ Demo the workbench 👇
  
 ```sh
 # NOTE this requires the workbench extra as you can see
-pip install dbt-osmosis[workbench]
+pip install "dbt-osmosis[workbench]"
 
 # Command to start server
 dbt-osmosis workbench
