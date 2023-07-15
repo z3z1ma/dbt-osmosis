@@ -60,19 +60,20 @@ vars:
 
 ```yaml title="dbt_project.yml"
 vars:
-  # a source with a different schema
-  salesforce:
-    path: "staging/salesforce/source.yml"
-    schema: "salesforce_v2"
+  dbt-osmosis:
+    # a source with a different schema
+    salesforce:
+      path: "staging/salesforce/source.yml"
+      schema: "salesforce_v2"
+    
+    # a source with the same schema as the source name
+    marketo: "staging/customer/marketo.yml"
   
-  # a source with the same schema as the source name
-  marketo: "staging/customer/marketo.yml"
-
-  # a special variable interpolated at runtime
-  jira: "staging/project_mgmt/{parent}.yml"
-
-  # a dedicated directory for all sources
-  github: "all_sources/github.yml"
+    # a special variable interpolated at runtime
+    jira: "staging/project_mgmt/{parent}.yml"
+  
+    # a dedicated directory for all sources
+    github: "all_sources/github.yml"
 ```
 
 Notice the use of the `{parent}` variable in the `jira` source configuration. This variable is a special variable that will be replaced with the name of the parent directory of the YAML file. The other special variables are `{node}` and `{model}`. We will discuss these variables in more detail in the next section.
