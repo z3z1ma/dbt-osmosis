@@ -350,11 +350,10 @@ class DbtYamlManager(DbtProject):
                     )
                     return columns
                 try:
-                    columns = [
-                        self.column_casing(exp.name)
-                        for c in self.adapter.get_columns_in_relation(table)
-                        for exp in getattr(c, "flatten", lambda: [c])()
-                    ]
+                    for c in self.adapter.get_columns_in_relation(table):
+                        if hasattr(c, "flatten"):
+                            columns.append(self.column_casing(c.name))
+                        columns.extend([self.column_casing(exp.name) for exp in getattr(c, "flatten", lambda: [c])()])
                 except Exception as error:
                     logger().info(
                         (
