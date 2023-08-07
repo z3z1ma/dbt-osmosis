@@ -1,4 +1,5 @@
 import os
+import re
 import json
 from concurrent.futures import ThreadPoolExecutor, wait
 from enum import Enum
@@ -982,7 +983,8 @@ class DbtYamlManager(DbtProject):
         inheritables = ("description", "tags", "meta")
         changes_committed = 0
         for column in undocumented_columns:
-            prior_knowledge = knowledge.get(column, False) or knowledge.get(column.lower(), False) or {}
+            camel_column = re.sub("_(.)", lambda m:m.group(1).upper(), column)
+            prior_knowledge = knowledge.get(column, False) or knowledge.get(column.lower(), False) or knowledge.get(camel_column, False) or {}
             progenitor = prior_knowledge.pop("progenitor", "Unknown")
             prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
             if not prior_knowledge:
