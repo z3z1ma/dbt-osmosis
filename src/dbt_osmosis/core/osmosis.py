@@ -109,6 +109,8 @@ class DbtYamlManager(DbtProject):
         dry_run: bool = False,
         models: Optional[List[str]] = None,
         skip_add_columns: bool = False,
+        skip_add_tags: bool = False,
+        skip_merge_meta: bool = False,
     ):
         """Initializes the DbtYamlManager class."""
         super().__init__(target, profiles_dir, project_dir, threads)
@@ -117,6 +119,8 @@ class DbtYamlManager(DbtProject):
         self.dry_run = dry_run
         self.catalog_file = catalog_file
         self.skip_add_columns = skip_add_columns
+        self.skip_add_tags = skip_add_tags
+        self.skip_merge_meta = skip_merge_meta
 
         if len(list(self.filtered_models())) == 0:
             logger().warning(
@@ -979,7 +983,13 @@ class DbtYamlManager(DbtProject):
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
         knowledge = self.get_node_columns_with_inherited_knowledge(node)
-        inheritables = ("description", "tags", "meta")
+
+        inheritables = ["description"]
+        if not self.skip_add_tags:
+            inheritables.append("tags")
+        if not self.skip_merge_meta:
+            inheritables.append("meta")
+
         changes_committed = 0
         for column in undocumented_columns:
             prior_knowledge = knowledge.get(column, False) or knowledge.get(column.lower(), False) or {}

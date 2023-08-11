@@ -130,6 +130,16 @@ def shared_opts(func: Callable) -> Callable:
         " document your models without adding columns present in the database."
     ),
 )
+@click.option(
+    "--skip-add-tags",
+    is_flag=True,
+    help="If specified, we will skip adding tags to the models.",
+)
+@click.option(
+    "--skip-merge-meta",
+    is_flag=True,
+    help="If specified, we will skip merging meta to the models.",
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
@@ -141,6 +151,8 @@ def refactor(
     dry_run: bool = False,
     check: bool = False,
     skip_add_columns: bool = False,
+    skip_add_tags: bool = False,
+    skip_merge_meta: bool = False,
     models: Optional[List[str]] = None,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
@@ -166,6 +178,8 @@ def refactor(
         models=models,
         catalog_file=catalog_file,
         skip_add_columns=skip_add_columns,
+        skip_add_tags=skip_add_tags,
+        skip_merge_meta=skip_merge_meta,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -206,6 +220,16 @@ def refactor(
         "If specified, we will skip adding columns to the models. This is useful if you want to"
         " document your models without adding columns present in the database."
     ),
+)
+@click.option(
+    "--skip-add-tags",
+    is_flag=True,
+    help="If specified, we will skip adding tags to the models.",
+)
+@click.option(
+    "--skip-merge-meta",
+    is_flag=True,
+    help="If specified, we will skip merging meta to the models.",
 )
 @click.argument("models", nargs=-1)
 def organize(
@@ -295,6 +319,16 @@ def organize(
         " document your models without adding columns present in the database."
     ),
 )
+@click.option(
+    "--skip-add-tags",
+    is_flag=True,
+    help="If specified, we will skip adding tags to the models.",
+)
+@click.option(
+    "--skip-merge-meta",
+    is_flag=True,
+    help="If specified, we will skip merging meta to the models.",
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -307,6 +341,8 @@ def document(
     check: bool = False,
     models: Optional[List[str]] = None,
     skip_add_columns: bool = False,
+    skip_add_tags: bool = False,
+    skip_merge_meta: bool = False,
 ):
     """Column level documentation inheritance for existing models
 
@@ -330,6 +366,8 @@ def document(
         models=models,
         catalog_file=catalog_file,
         skip_add_columns=skip_add_columns,
+        skip_add_tags=skip_add_tags,
+        skip_merge_meta=skip_merge_meta,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
