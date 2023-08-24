@@ -376,7 +376,7 @@ class DbtYamlManager(DbtProject):
                         *parts,
                         str(error),
                     )
-                return columns
+        return columns
 
     def bootstrap_sources(self) -> None:
         """Bootstrap sources from the dbt-osmosis vars config"""
@@ -1041,6 +1041,7 @@ class DbtYamlManager(DbtProject):
                             model_column.update({
                                 "data_type": columns_db_meta.get(cased_column_name).type
                             })
+                            changes_committed += 1
         return changes_committed
 
     @staticmethod
