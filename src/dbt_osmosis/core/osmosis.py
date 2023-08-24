@@ -952,8 +952,6 @@ class DbtYamlManager(DbtProject):
                     )
         except Exception as e:
             with self.mutex:
-                import traceback
-                print(traceback.format_exc())
                 logger().error("Error occurred while processing model %s: %s", unique_id, e)
             raise e
 
