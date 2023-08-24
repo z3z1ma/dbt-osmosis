@@ -2,7 +2,6 @@ import os
 import re
 import json
 from concurrent.futures import ThreadPoolExecutor, wait
-from enum import Enum
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
@@ -20,6 +19,7 @@ from typing import (
 )
 
 import ruamel.yaml
+from dbt.contracts.results import ColumnMetadata
 from pydantic import BaseModel
 
 from dbt_osmosis.core.exceptions import (
@@ -321,8 +321,13 @@ class DbtYamlManager(DbtProject):
             )
         return documentation
 
-    @lru_cache(maxsize=5000)
     def get_columns(self, parts: Tuple[str, str, str]) -> List[str]:
+        """Get all columns in a list for a model"""
+
+        return list(self.get_columns_meta(parts).keys())
+
+    @lru_cache(maxsize=5000)
+    def get_columns_meta(self, parts: Tuple[str, str, str]) -> Dict[str, ColumnMetadata]:
         """Get all columns in a list for a model"""
 
         # If we provide a catalog, we read from it
@@ -336,15 +341,15 @@ class DbtYamlManager(DbtProject):
                 if model.split(".")[-1] == parts[-1]
             ]
             if matching_models:
-                return [col.lower() for col in matching_models[0]["columns"].keys()]
+                return {self.column_casing(col['name']): ColumnMetadata(**col) for col in matching_models[0]["columns"].values()}
             else:
-                return []
+                return {}
 
         # If we don't provide a catalog we query the warehouse to get the columns
         else:
             with self.adapter.connection_named("dbt-osmosis"):
                 table = self.adapter.get_relation(*parts)
-                columns = []
+                columns = {}
                 if not table:
                     logger().info(
                         (
@@ -355,10 +360,11 @@ class DbtYamlManager(DbtProject):
                     )
                     return columns
                 try:
-                    for c in self.adapter.get_columns_in_relation(table):
-                        columns.append(self.column_casing(c.name))
+                    for col_idx, c in enumerate(self.adapter.get_columns_in_relation(table)):
+                        columns[self.column_casing(c.name)] = ColumnMetadata(name=self.column_casing(c.name), type=c.dtype, index=col_idx)
                         if hasattr(c, "flatten"):
-                            columns.extend([self.column_casing(exp.name) for exp in c.flatten()])
+                            for exp_idx, exp in enumerate(c.flatten()):
+                                columns[self.column_casing(exp.name)] = ColumnMetadata(name=self.column_casing(exp.name), type=c.dtype, index=exp_idx)
                 except Exception as error:
                     logger().info(
                         (
@@ -410,6 +416,9 @@ class DbtYamlManager(DbtProject):
                                 "description": getattr(
                                     exp, "description", getattr(c, "description", "")
                                 ),
+                                "data_type": getattr(
+                                    exp, "dtype", getattr(c, "dtype", "")
+                                )
                             }
                             for c in self.adapter.get_columns_in_relation(relation)
                             for exp in getattr(c, "flatten", lambda: [c])()
@@ -824,6 +833,7 @@ class DbtYamlManager(DbtProject):
             # Build Sets
             logger().info(":mag: Resolving columns in database")
             database_columns_ordered = self.get_columns(self.get_database_parts(node))
+            columns_db_meta = self.get_columns_meta(self.get_database_parts(node))
             database_columns: Set[str] = set(database_columns_ordered)
             yaml_columns_ordered = [column for column in node.columns]
             yaml_columns: Set[str] = set(yaml_columns_ordered)
@@ -882,6 +892,7 @@ class DbtYamlManager(DbtProject):
                         extra_columns,
                         node,
                         section,
+                        columns_db_meta
                     )
                 if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
                     should_dump = True
@@ -941,6 +952,8 @@ class DbtYamlManager(DbtProject):
                     )
         except Exception as e:
             with self.mutex:
+                import traceback
+                print(traceback.format_exc())
                 logger().error("Error occurred while processing model %s: %s", unique_id, e)
             raise e
 
@@ -980,6 +993,7 @@ class DbtYamlManager(DbtProject):
         undocumented_columns: Iterable[str],
         node: ManifestNode,
         yaml_file_model_section: Dict[str, Any],
+        columns_db_meta: Dict[str, ColumnMetadata]
     ) -> int:
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
@@ -1017,6 +1031,16 @@ class DbtYamlManager(DbtProject):
                 node.unique_id,
             )
             logger().info(prior_knowledge)
+        for column in undocumented_columns:
+            cased_column_name = self.column_casing(column)
+            if cased_column_name in node.columns and not node.columns[cased_column_name].data_type:
+                if columns_db_meta.get(cased_column_name):
+                    node.columns[cased_column_name].data_type = columns_db_meta.get(cased_column_name).type
+                    for model_column in yaml_file_model_section["columns"]:
+                        if self.column_casing(model_column["name"]) == cased_column_name:
+                            model_column.update({
+                                "data_type": columns_db_meta.get(cased_column_name).type
+                            })
         return changes_committed
 
     @staticmethod
@@ -1024,14 +1048,15 @@ class DbtYamlManager(DbtProject):
         missing_columns: Iterable,
         node: ManifestNode,
         yaml_file_model_section: Dict[str, Any],
+        columns_db_meta: Dict[str, ColumnMetadata]
     ) -> int:
         """Add missing columns to node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
         changes_committed = 0
         for column in missing_columns:
-            node.columns[column] = ColumnInfo.from_dict({"name": column, "description": ""})
+            node.columns[column] = ColumnInfo.from_dict({"name": column, "description": "", "data_type": columns_db_meta[column].type})
             yaml_file_model_section.setdefault("columns", []).append(
-                {"name": column, "description": ""}
+                {"name": column, "data_type": columns_db_meta[column].type,  "description": ""}
             )
             changes_committed += 1
             logger().info(
@@ -1046,13 +1071,14 @@ class DbtYamlManager(DbtProject):
         extra_columns: Iterable[str],
         node: ManifestNode,
         section: Dict[str, Any],
+        columns_db_meta: Dict[str, ColumnMetadata]
     ) -> Tuple[int, int, int]:
         """Take action on a schema file mirroring changes in the node."""
         logger().info(":microscope: Looking for actions for %s", node.unique_id)
         if not self.skip_add_columns:
-            n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section)
+            n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section, columns_db_meta=columns_db_meta)
         n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
-            undocumented_columns, node, section
+            undocumented_columns, node, section, columns_db_meta
         )
         n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
         return n_cols_added, n_cols_doc_inherited, n_cols_removed
