@@ -1077,7 +1077,7 @@ class DbtYamlManager(DbtProject):
         """Take action on a schema file mirroring changes in the node."""
         logger().info(":microscope: Looking for actions for %s", node.unique_id)
         if not self.skip_add_columns:
-            n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section, columns_db_meta=columns_db_meta)
+            n_cols_added = self.add_missing_cols_to_node_and_model(missing_columns, node, section, columns_db_meta)
         n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
             undocumented_columns, node, section, columns_db_meta
         )
