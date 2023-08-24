@@ -1,6 +1,7 @@
 import os
 import re
 import json
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, wait
 from functools import lru_cache
 from itertools import chain
@@ -329,7 +330,7 @@ class DbtYamlManager(DbtProject):
     @lru_cache(maxsize=5000)
     def get_columns_meta(self, parts: Tuple[str, str, str]) -> Dict[str, ColumnMetadata]:
         """Get all columns in a list for a model"""
-
+        columns = OrderedDict()
         # If we provide a catalog, we read from it
         if self.catalog_file:
             file_path = Path(self.catalog_file)
@@ -341,15 +342,16 @@ class DbtYamlManager(DbtProject):
                 if model.split(".")[-1] == parts[-1]
             ]
             if matching_models:
-                return {self.column_casing(col['name']): ColumnMetadata(**col) for col in matching_models[0]["columns"].values()}
+                for col in matching_models[0]["columns"].values():
+                    columns[self.column_casing(col['name'])] = ColumnMetadata(**col)
             else:
-                return {}
+                return columns
 
         # If we don't provide a catalog we query the warehouse to get the columns
         else:
             with self.adapter.connection_named("dbt-osmosis"):
                 table = self.adapter.get_relation(*parts)
-                columns = {}
+
                 if not table:
                     logger().info(
                         (
