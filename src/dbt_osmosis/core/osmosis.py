@@ -362,11 +362,11 @@ class DbtYamlManager(DbtProject):
                     )
                     return columns
                 try:
-                    for col_idx, c in enumerate(self.adapter.get_columns_in_relation(table)):
-                        columns[self.column_casing(c.name)] = ColumnMetadata(name=self.column_casing(c.name), type=c.dtype, index=col_idx)
+                    for c in self.adapter.get_columns_in_relation(table):
+                        columns[self.column_casing(c.name)] = ColumnMetadata(name=self.column_casing(c.name), type=c.dtype, index=None)
                         if hasattr(c, "flatten"):
-                            for exp_idx, exp in enumerate(c.flatten()):
-                                columns[self.column_casing(exp.name)] = ColumnMetadata(name=self.column_casing(exp.name), type=c.dtype, index=exp_idx)
+                            for exp in c.flatten():
+                                columns[self.column_casing(exp.name)] = ColumnMetadata(name=self.column_casing(exp.name), type=c.dtype, index=None)
                 except Exception as error:
                     logger().info(
                         (
