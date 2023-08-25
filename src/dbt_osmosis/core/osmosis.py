@@ -343,7 +343,7 @@ class DbtYamlManager(DbtProject):
             ]
             if matching_models:
                 for col in matching_models[0]["columns"].values():
-                    columns[self.column_casing(col['name'])] = ColumnMetadata(**col)
+                    columns[self.column_casing(col['name'])] = ColumnMetadata(**col, name=self.column_casing(col['name']))
             else:
                 return columns
 
