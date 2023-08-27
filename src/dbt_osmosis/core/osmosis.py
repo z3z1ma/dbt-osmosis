@@ -113,6 +113,7 @@ class DbtYamlManager(DbtProject):
         skip_add_columns: bool = False,
         skip_add_tags: bool = False,
         skip_merge_meta: bool = False,
+        add_progenitor_to_meta : bool = False,
     ):
         """Initializes the DbtYamlManager class."""
         super().__init__(target, profiles_dir, project_dir, threads)
@@ -123,6 +124,7 @@ class DbtYamlManager(DbtProject):
         self.skip_add_columns = skip_add_columns
         self.skip_add_tags = skip_add_tags
         self.skip_merge_meta = skip_merge_meta
+        self.add_progenitor_to_meta = add_progenitor_to_meta
 
         if len(list(self.filtered_models())) == 0:
             logger().warning(
@@ -1019,6 +1021,9 @@ class DbtYamlManager(DbtProject):
                 node.columns[column].replace(kwargs={"name": column, **prior_knowledge})
             for model_column in yaml_file_model_section["columns"]:
                 if model_column["name"] == column:
+                    if self.add_progenitor_to_meta:
+                        prior_knowledge.setdefault("meta", {})
+                        prior_knowledge["meta"]["osmosis_progenitor"] = progenitor
                     model_column.update(prior_knowledge)
             changes_committed += 1
             logger().info(
