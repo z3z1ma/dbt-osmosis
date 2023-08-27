@@ -140,6 +140,14 @@ def shared_opts(func: Callable) -> Callable:
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
 )
+@click.option(
+    "--add-progenitor-to-meta",
+    is_flag=True,
+    help=(
+        "If specified, progenitor information will be added to the meta information of a column."
+        " This is useful if you want to know which model is the progenitor of a specific model's column."
+    ),
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
@@ -153,6 +161,7 @@ def refactor(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_merge_meta: bool = False,
+    add_progenitor_to_meta : bool = False,
     models: Optional[List[str]] = None,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
@@ -180,6 +189,7 @@ def refactor(
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
         skip_merge_meta=skip_merge_meta,
+        add_progenitor_to_meta=add_progenitor_to_meta,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -231,6 +241,14 @@ def refactor(
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
 )
+@click.option(
+    "--add-progenitor-to-meta",
+    is_flag=True,
+    help=(
+        "If specified, progenitor information will be added to the meta information of a column."
+        " This is useful if you want to know which model is the progenitor of a specific model's column."
+    ),
+)
 @click.argument("models", nargs=-1)
 def organize(
     target: Optional[str] = None,
@@ -241,6 +259,9 @@ def organize(
     check: bool = False,
     models: Optional[List[str]] = None,
     skip_add_columns: bool = False,
+    skip_add_tags: bool = False,
+    skip_merge_meta: bool = False,
+    add_progenitor_to_meta : bool = False,
 ):
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -263,6 +284,9 @@ def organize(
         dry_run=dry_run,
         models=models,
         skip_add_columns=skip_add_columns,
+        skip_add_tags=skip_add_tags,
+        skip_merge_meta=skip_merge_meta,
+        add_progenitor_to_meta=add_progenitor_to_meta,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -329,6 +353,14 @@ def organize(
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
 )
+@click.option(
+    "--add-progenitor-to-meta",
+    is_flag=True,
+    help=(
+        "If specified, progenitor information will be added to the meta information of a column."
+        " This is useful if you want to know which model is the progenitor of a specific model's column."
+    ),
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -343,6 +375,7 @@ def document(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_merge_meta: bool = False,
+    add_progenitor_to_meta : bool = False,
 ):
     """Column level documentation inheritance for existing models
 
@@ -368,6 +401,7 @@ def document(
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
         skip_merge_meta=skip_merge_meta,
+        add_progenitor_to_meta=add_progenitor_to_meta,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
