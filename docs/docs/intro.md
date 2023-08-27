@@ -12,7 +12,7 @@ Get started by **running dbt-osmosis**.
 
 ### What you'll need
 
-- [Python](https://www.python.org/downloads/) (3.7+)
+- [Python](https://www.python.org/downloads/) (3.8+)
 - [dbt](https://docs.getdbt.com/docs/core/installation) (1.0.0+)
 - [pipx](https://pypa.github.io/pipx/installation/)
 - An existing dbt project (or you can play with it using [jaffle shop](https://github.com/dbt-labs/jaffle_shop_duckdb))
