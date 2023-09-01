@@ -390,6 +390,7 @@ class DbtYamlManager(DbtProject):
                 path = spec
             elif isinstance(spec, dict):
                 schema = spec.get("schema", source)
+                database = spec.get("database", self.config.credentials.database)
                 path = spec["path"]
             else:
                 raise TypeError(
@@ -407,7 +408,7 @@ class DbtYamlManager(DbtProject):
                     self.config.model_paths[0], path.lstrip(os.sep)
                 )
                 relations = self.adapter.list_relations(
-                    database=self.config.credentials.database,
+                    database=database,
                     schema=schema,
                 )
                 tables = [
