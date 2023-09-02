@@ -275,7 +275,6 @@ class DbtYamlManager(DbtProject):
         config for the model / directory
         """
         osmosis_path_spec = self.get_osmosis_path_spec(node)
-        logger().info(osmosis_path_spec)
         if not osmosis_path_spec:
             # If no config is set, it is a no-op essentially
             return as_path(self.config.project_root, node.original_file_path)
