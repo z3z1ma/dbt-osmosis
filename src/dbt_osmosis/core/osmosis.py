@@ -237,7 +237,11 @@ class DbtYamlManager(DbtProject):
         """
         if node.resource_type == NodeType.Source:
             source_specs = self.config.vars.vars.get("dbt-osmosis", {})
-            return source_specs.get(node.source_name)
+            source_spec = source_specs.get(node.source_name)
+            if isinstance(source_spec, dict):
+                return source_spec.get("path")
+            else:
+                return source_spec
         osmosis_spec = node.unrendered_config.get("dbt-osmosis")
         if not osmosis_spec:
             raise MissingOsmosisConfig(
@@ -390,6 +394,7 @@ class DbtYamlManager(DbtProject):
                 path = spec
             elif isinstance(spec, dict):
                 schema = spec.get("schema", source)
+                database = spec.get("database", self.config.credentials.database)
                 path = spec["path"]
             else:
                 raise TypeError(
@@ -407,7 +412,7 @@ class DbtYamlManager(DbtProject):
                     self.config.model_paths[0], path.lstrip(os.sep)
                 )
                 relations = self.adapter.list_relations(
-                    database=self.config.credentials.database,
+                    database=database,
                     schema=schema,
                 )
                 tables = [
@@ -442,6 +447,7 @@ class DbtYamlManager(DbtProject):
                             "sources": [
                                 {
                                     "name": source,
+                                    "database": database,
                                     "schema": schema,
                                     "tables": tables,
                                 }

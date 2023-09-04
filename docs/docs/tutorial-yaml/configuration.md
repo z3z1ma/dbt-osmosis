@@ -49,11 +49,13 @@ vars:
     <source_name>: <path>
     <source_name>:
       path: <path>
+      database: <database>
       schema: <schema>
 ```
 
 - `<source_name>` is the name of a source in your `dbt_project.yml` file.
 - `<path>` is the path to the YAML file that will be generated for the source. This path is relative to the root of your dbt project models directory.
+- `<database>` is the database that will be used for the source. If not specified, the database will default to the one in your profiles.yml file.
 - `<schema>` is the schema that will be used for the source. If not specified, the source name is assumed to be the schema which matches dbt's default behavior.
 
 #### Examples
