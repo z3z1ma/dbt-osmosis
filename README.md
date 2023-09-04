@@ -3,7 +3,7 @@
 <!--![GitHub Actions](https://github.com/z3z1ma/dbt-osmosis/actions/workflows/master.yml/badge.svg)-->
 
 ![PyPI](https://img.shields.io/pypi/v/dbt-osmosis)
-![Downloads](https://pepy.tech/badge/dbt-osmosis)
+[![Downloads](https://static.pepy.tech/badge/dbt-osmosis)](https://pepy.tech/project/dbt-osmosis)
 ![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)
 ![black](https://img.shields.io/badge/code%20style-black-000000.svg)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-v2-i0ico9.streamlit.app/)
