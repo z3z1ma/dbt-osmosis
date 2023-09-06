@@ -6,4 +6,4 @@ jaffle_shop:
       path: "demo_duckdb/jaffle_shop.duckdb"
     test:
       type: duckdb
-      path: "jaffle_shop.duckdb"
+      path: "{{env_var('PWD')}}/jaffle_shop.duckdb"
