@@ -8,24 +8,47 @@ models:
           - unique
           - not_null
 
+        data_type: INTEGER
+      - name: first_name
+        data_type: VARCHAR
+        description: ''
+      - name: last_name
+        data_type: VARCHAR
+        description: ''
   - name: stg_orders
     columns:
       - name: order_id
         tests:
           - unique
           - not_null
+        data_type: INTEGER
+      - name: customer_id
+        data_type: INTEGER
+        description: ''
+      - name: order_date
+        data_type: DATE
+        description: ''
       - name: status
         tests:
           - accepted_values:
               values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
 
+        data_type: VARCHAR
   - name: stg_payments
     columns:
       - name: payment_id
         tests:
           - unique
           - not_null
+        data_type: INTEGER
+      - name: order_id
+        data_type: INTEGER
+        description: ''
       - name: payment_method
         tests:
           - accepted_values:
               values: ['credit_card', 'coupon', 'bank_transfer', 'gift_card']
+        data_type: VARCHAR
+      - name: amount
+        data_type: DOUBLE
+        description: ''
