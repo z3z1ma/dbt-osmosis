@@ -391,6 +391,7 @@ class DbtYamlManager(DbtProject):
             # Parse source config
             if isinstance(spec, str):
                 schema = source
+                database = self.config.credentials.database
                 path = spec
             elif isinstance(spec, dict):
                 schema = spec.get("schema", source)
