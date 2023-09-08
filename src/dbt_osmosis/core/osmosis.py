@@ -803,7 +803,8 @@ class DbtYamlManager(DbtProject):
                 if not member:
                     continue
                 for name, info in member.columns.items():
-                    knowledge.setdefault(name, {"progenitor": ancestor})
+                    knowledge_default = {"progenitor": ancestor, "generation": generation}
+                    knowledge.setdefault(name, knowledge_default)
                     deserialized_info = info.to_dict()
                     # Handle Info:
                     # 1. tags are additive
@@ -1029,6 +1030,31 @@ class DbtYamlManager(DbtProject):
             )
         return changes_committed
 
+    @staticmethod
+    def get_prior_knowledge(
+        knowledge: Dict[str, Dict[str, Any]],
+        column: str,
+    ) -> Dict[str, Any]:
+        camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
+        prior_knowledge_candidates = [
+            knowledge.get(column),
+            knowledge.get(column.lower()),
+            knowledge.get(camel_column),
+        ]
+        sorted_prior_knowledge_candidates_sources = sorted(
+            [knowledge for knowledge in prior_knowledge_candidates if knowledge is not None and knowledge["progenitor"].startswith("source")],
+            key=lambda knowledge: knowledge["generation"],
+            reverse=True,
+        )
+        sorted_prior_knowledge_candidates_models = sorted(
+            [knowledge for knowledge in prior_knowledge_candidates if knowledge is not None and knowledge["progenitor"].startswith("model")],
+            key=lambda knowledge: knowledge["generation"],
+            reverse=True,
+        )
+        sorted_prior_knowledge_candidates = sorted_prior_knowledge_candidates_sources + sorted_prior_knowledge_candidates_models
+        prior_knowledge = sorted_prior_knowledge_candidates[0] if sorted_prior_knowledge_candidates else {}
+        return prior_knowledge
+
     def update_undocumented_columns_with_prior_knowledge(
         self,
         undocumented_columns: Iterable[str],
@@ -1048,13 +1074,7 @@ class DbtYamlManager(DbtProject):
 
         changes_committed = 0
         for column in undocumented_columns:
-            camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
-            prior_knowledge = (
-                knowledge.get(column, False)
-                or knowledge.get(column.lower(), False)
-                or knowledge.get(camel_column, False)
-                or {}
-            )
+            prior_knowledge = self.get_prior_knowledge(knowledge, column)
             progenitor = prior_knowledge.pop("progenitor", "Unknown")
             prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
             if not prior_knowledge:
