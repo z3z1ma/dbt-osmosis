@@ -51,12 +51,14 @@ vars:
       path: <path>
       database: <database>
       schema: <schema>
+    _blacklist: <blacklist>
 ```
 
 - `<source_name>` is the name of a source in your `dbt_project.yml` file.
 - `<path>` is the path to the YAML file that will be generated for the source. This path is relative to the root of your dbt project models directory.
 - `<database>` is the database that will be used for the source. If not specified, the database will default to the one in your profiles.yml file.
 - `<schema>` is the schema that will be used for the source. If not specified, the source name is assumed to be the schema which matches dbt's default behavior.
+- `<blacklist>` is the columns to be ignored. You can use regular expressions to specify which columns you'd like to exclude.
 
 #### Examples
 
@@ -76,6 +78,10 @@ vars:
   
     # a dedicated directory for all sources
     github: "all_sources/github.yml"
+
+  _blacklist:
+    - "_FIVETRAN_SYNCED"
+    - ".*__key__.namespace"
 ```
 
 Notice the use of the `{parent}` variable in the `jira` source configuration. This variable is a special variable that will be replaced with the name of the parent directory of the YAML file. The other special variables are `{node}` and `{model}`. We will discuss these variables in more detail in the next section.
