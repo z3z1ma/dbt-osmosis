@@ -1043,12 +1043,12 @@ class DbtYamlManager(DbtProject):
         ]))
         sorted_prior_knowledge_candidates_sources = sorted(
             [k for k in prior_knowledge_candidates if k["progenitor"].startswith("source")],
-            key=lambda knowledge: knowledge["generation"],
+            key=lambda k: k["generation"],
             reverse=True,
         )
         sorted_prior_knowledge_candidates_models = sorted(
             [k for k in prior_knowledge_candidates if k["progenitor"].startswith("model")],
-            key=lambda knowledge: knowledge["generation"],
+            key=lambda k: k["generation"],
             reverse=True,
         )
         sorted_prior_knowledge_candidates = sorted_prior_knowledge_candidates_sources + sorted_prior_knowledge_candidates_models
