@@ -1036,18 +1036,18 @@ class DbtYamlManager(DbtProject):
         column: str,
     ) -> Dict[str, Any]:
         camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
-        prior_knowledge_candidates = [
+        prior_knowledge_candidates = list(filter(lambda k: k, [
             knowledge.get(column),
             knowledge.get(column.lower()),
             knowledge.get(camel_column),
-        ]
+        ]))
         sorted_prior_knowledge_candidates_sources = sorted(
-            [k for k in prior_knowledge_candidates if k is not None and k["progenitor"].startswith("source")],
+            [k for k in prior_knowledge_candidates if k["progenitor"].startswith("source")],
             key=lambda knowledge: knowledge["generation"],
             reverse=True,
         )
         sorted_prior_knowledge_candidates_models = sorted(
-            [k for k in prior_knowledge_candidates if k is not None and k["progenitor"].startswith("model")],
+            [k for k in prior_knowledge_candidates if k["progenitor"].startswith("model")],
             key=lambda knowledge: knowledge["generation"],
             reverse=True,
         )
