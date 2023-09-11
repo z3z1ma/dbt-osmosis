@@ -13,6 +13,12 @@ dbt-osmosis accumulates a knowledge graph for a specfic model by traversing the 
 
 The crux of the value proposition is that we often alias columns in our staging models and use them many times in many places without changing the name. This means, within the context of a specific models family tree, we should be able to inherit that knowledge. This inheritance can include tags and descriptions. This permits propagating PII, GDPR, and other compliance related tags for example. When a column is used in a model and its definition is semantically different while the column name is the same (which is a questionable practice), you should update the definition for that column in that model. The inheritors will use the updated definition if they pull from said model. 
 
+:::tip Tip
+
+If you use the `--add-progenitor-to-meta` option, you can add the `meta.osmosis_progenitor` field to yaml files, indicating which model is inherited from.
+
+:::
+
 ## Takeways
 
 While this obviously has some limitations, it is a powerful feature that can help you be more DRY with your documentation. It is also a great way to ensure that your documentation is consistent across your entire dbt project. It captures +80% of the meat of the repetitive documentation for a model.
