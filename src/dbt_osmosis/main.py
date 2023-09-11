@@ -91,6 +91,7 @@ def shared_opts(func: Callable) -> Callable:
     help=(
         "Specify models based on dbt's FQN. Looks like folder.folder, folder.folder.model, or"
         " folder.folder.source.table. Use list command to see the scope of an FQN filter."
+        " This may be deprecated in the future. Please use model positional selectors instead."
     ),
 )
 @click.option(
@@ -209,6 +210,7 @@ def refactor(
     help=(
         "Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or"
         " folder.folder.source.table. Use list command to see the scope of an FQN filter."
+        " This may be deprecated in the future. Please use model positional selectors instead."
     ),
 )
 @click.option(
@@ -304,6 +306,7 @@ def organize(
     help=(
         "Specify models based on FQN. Use dots as separators. Looks like folder.folder.model or"
         " folder.folder.source.table. Use list command to see the scope of an FQN filter."
+        " This may be deprecated in the future. Please use model positional selectors instead."
     ),
 )
 @click.option(
