@@ -1042,12 +1042,12 @@ class DbtYamlManager(DbtProject):
             knowledge.get(camel_column),
         ]
         sorted_prior_knowledge_candidates_sources = sorted(
-            [knowledge for knowledge in prior_knowledge_candidates if knowledge is not None and knowledge["progenitor"].startswith("source")],
+            [k for k in prior_knowledge_candidates if k is not None and k["progenitor"].startswith("source")],
             key=lambda knowledge: knowledge["generation"],
             reverse=True,
         )
         sorted_prior_knowledge_candidates_models = sorted(
-            [knowledge for knowledge in prior_knowledge_candidates if knowledge is not None and knowledge["progenitor"].startswith("model")],
+            [k for k in prior_knowledge_candidates if k is not None and k["progenitor"].startswith("model")],
             key=lambda knowledge: knowledge["generation"],
             reverse=True,
         )
