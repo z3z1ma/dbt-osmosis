@@ -28,7 +28,11 @@ from dbt_osmosis.core.exceptions import (
     MissingOsmosisConfig,
 )
 from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
+from dbt_osmosis.core.column_level_knowledge_propagator import (
+    ColumnLevelKnowledgePropagator,
+    ColumnLevelKnowledge,
+    Knowledge,
+)
 from dbt_osmosis.vendored.dbt_core_interface.project import (
     ColumnInfo,
     DbtProject,
@@ -958,9 +962,9 @@ class DbtYamlManager(DbtProject):
 
     @staticmethod
     def get_prior_knowledge(
-        knowledge: Dict[str, Dict[str, Any]],
+        knowledge: Knowledge,
         column: str,
-    ) -> Dict[str, Any]:
+    ) -> ColumnLevelKnowledge:
         camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
         prior_knowledge_candidates = list(filter(lambda k: k, [
             knowledge.get(column),
@@ -990,7 +994,7 @@ class DbtYamlManager(DbtProject):
     ) -> int:
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
-        knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+        knowledge: Knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
             self.manifest, node, self.placeholders
         )
 
@@ -1002,7 +1006,7 @@ class DbtYamlManager(DbtProject):
 
         changes_committed = 0
         for column in undocumented_columns:
-            prior_knowledge = self.get_prior_knowledge(knowledge, column)
+            prior_knowledge: ColumnLevelKnowledge = self.get_prior_knowledge(knowledge, column)
             progenitor = prior_knowledge.pop("progenitor", "Unknown")
             prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
             if not prior_knowledge:
