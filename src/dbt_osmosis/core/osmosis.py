@@ -762,9 +762,10 @@ class DbtYamlManager(DbtProject):
             )
         )
 
+    @staticmethod
     def build_node_ancestor_tree(
-        self,
         node: ManifestNode,
+        manifest: ManifestNode,
         family_tree: Optional[Dict[str, List[str]]] = None,
         members_found: Optional[List[str]] = None,
         depth: int = 0,
@@ -777,13 +778,13 @@ class DbtYamlManager(DbtProject):
         if not hasattr(node, "depends_on"):
             return family_tree
         for parent in getattr(node.depends_on, "nodes", []):
-            member = self.manifest.nodes.get(parent, self.manifest.sources.get(parent))
+            member = manifest.nodes.get(parent, manifest.sources.get(parent))
             if member and parent not in members_found:
                 family_tree.setdefault(f"generation_{depth}", []).append(parent)
                 members_found.append(parent)
                 # Recursion
-                family_tree = self.build_node_ancestor_tree(
-                    member, family_tree, members_found, depth + 1
+                family_tree = DbtYamlManager.build_node_ancestor_tree(
+                    member, manifest, family_tree, members_found, depth + 1
                 )
         return family_tree
 
@@ -833,7 +834,7 @@ class DbtYamlManager(DbtProject):
         node: ManifestNode,
     ) -> Dict[str, Dict[str, Any]]:
         """Build a knowledgebase for the model based on iterating through ancestors"""
-        family_tree = self.build_node_ancestor_tree(node)
+        family_tree = self.build_node_ancestor_tree(node, self.manifest)
         knowledge = self.inherit_column_level_knowledge(family_tree)
         return knowledge
 
