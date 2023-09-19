@@ -43,6 +43,7 @@ dbt-postgres = { version = ">=1.0.0", optional = true }
 black = ">=21.9b0"
 mypy = ">=0.910"
 pylint = ">=2.11.1"
+pre-commit = ">3.0.0"
 
 [tool.poetry.extras]
 duckdb = ["dbt-duckdb"]
