@@ -5,7 +5,7 @@ sidebar_position: 4
 
 ## Selecting models
 
-The `dbt-osmosis yaml` commands have two methods to selecting files to execute on. 
+The `dbt-osmosis yaml` commands have two methods to selecting files to execute on.
 
 ### Positional selectors
 

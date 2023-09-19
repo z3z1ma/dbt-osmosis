@@ -33,7 +33,7 @@ const FeatureList = [
     Svg: require('@site/static/img/github-icon.svg').default,
     description: (
       <>
-        A single execution on your dbt project can save you hours of manual toil. dbt-osmosis 
+        A single execution on your dbt project can save you hours of manual toil. dbt-osmosis
         is built to work with your existing dbt project. It can be run directly, as a pre-commit hook,
         or as a CI/CD step generating a PR. By leveraging git, we can safely execute
         file changes en masse with proper diffs and version control.

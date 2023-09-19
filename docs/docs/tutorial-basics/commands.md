@@ -67,7 +67,7 @@ dbt-osmosis server serve [--host] [--port]
 
 ### Register Project
 
-This command will register a dbt project with the dbt-osmosis server. 
+This command will register a dbt project with the dbt-osmosis server.
 
 ```bash
 dbt-osmosis server register-project --project-dir /path/to/dbt/project
@@ -75,7 +75,7 @@ dbt-osmosis server register-project --project-dir /path/to/dbt/project
 
 ### Unregister Project
 
-This command will unregister a dbt project with the dbt-osmosis server. 
+This command will unregister a dbt project with the dbt-osmosis server.
 
 ```bash
 dbt-osmosis server unregister-project --project-dir /path/to/dbt/project
@@ -103,7 +103,7 @@ dbt-osmosis sql compile [--project-dir] [--profiles-dir] [--target] "select * fr
 
 ## Workbench
 
-This command starts a [streamlit](https://streamlit.io/) workbench. The workbench is a REPL environment that allows you to run dbt models, provides realtime side by side compilation, and lets you explore the results. 
+This command starts a [streamlit](https://streamlit.io/) workbench. The workbench is a REPL environment that allows you to run dbt models, provides realtime side by side compilation, and lets you explore the results.
 
 ```bash
 dbt-osmosis workbench [--project-dir] [--profiles-dir] [--target] [--host] [--port]

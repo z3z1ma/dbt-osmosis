@@ -6,7 +6,7 @@ sidebar_position: 1
 
 ## Install with pipx
 
-If you  will install dbt-osmosis and its dependencies in a virtual environment, and make it available as a command-line tool. 
+If you  will install dbt-osmosis and its dependencies in a virtual environment, and make it available as a command-line tool.
 
 ```bash
 pipx install dbt-osmosis
