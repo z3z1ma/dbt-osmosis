@@ -16,3 +16,8 @@ repos:
     rev: v0.9.0.2
     hooks:
       - id: shellcheck
+# TODO refactor the files in the 'docker' directory later.
+#  - repo: https://github.com/hadolint/hadolint
+#    rev: v2.12.0
+#    hooks:
+#      - id: hadolint-docker
