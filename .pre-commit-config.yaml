@@ -16,18 +16,19 @@ repos:
     rev: v0.9.0.2
     hooks:
       - id: shellcheck
-  - repo: https://github.com/psf/black
-    rev: 23.9.1
-    hooks:
-      - id: black
-  - repo: https://github.com/pycqa/isort
-    rev: 5.10.1
-    hooks:
-      - id: isort
-  - repo: https://github.com/pycqa/flake8
-    rev: 4.0.1
-    hooks:
-      - id: flake8
+# TODO format files to follow the style guide later.
+#  - repo: https://github.com/psf/black
+#    rev: 23.9.1
+#    hooks:
+#      - id: black
+#  - repo: https://github.com/pycqa/isort
+#    rev: 5.10.1
+#    hooks:
+#      - id: isort
+#  - repo: https://github.com/pycqa/flake8
+#    rev: 4.0.1
+#    hooks:
+#      - id: flake8
 # TODO refactor the files in the 'docker' directory later.
 #  - repo: https://github.com/hadolint/hadolint
 #    rev: v2.12.0
