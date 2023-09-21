@@ -56,7 +56,7 @@ def _get_demo_query() -> str:
             order_id,
 
             {% for payment_method in payment_methods -%}
-            sum(case when payment_method = '{{ payment_method }}' then amount else 0 end) 
+            sum(case when payment_method = '{{ payment_method }}' then amount else 0 end)
             as {{ payment_method }}_amount,
             {% endfor -%}
 
@@ -344,7 +344,7 @@ def main():
             feed_contents.append(dedent(f"""
                 <div style="padding: 10px 5px 10px 5px; border-bottom: 1px solid #e0e0e0;">
                     <a href="{entry.link}" target="_blank" style="font-size: 16px; font-weight: bold; color: #FF4136; text-decoration: none;">{entry.title}</a>
-                    <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published} 
+                    <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published}
                     <span style="color: #FF4136;">|</span>
                     <a href="{entry.comments}" target="_blank" style="color: #FF4136; text-decoration: none;">Comments</a>
                     </div>

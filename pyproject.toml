@@ -57,6 +57,7 @@ black = ">=21.9b0"
 mypy = ">=0.910"
 pylint = ">=2.11.1"
 pytest = "^7.4.2"
+pre-commit = ">3.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

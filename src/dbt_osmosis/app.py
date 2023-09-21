@@ -287,7 +287,7 @@ Welcome to the [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) workbench �
 The workbench serves as a no fuss way to spin up 
 an environment where you can very quickly iterate on dbt models. In an ideal flow, a developer
 can spin up the workbench and use it as a _complement_ to their IDE, not a replacement. This means
-copying and pasting over a model you are really digging into 🧑‍💻 OR it is just as valid to use 
+copying and pasting over a model you are really digging into 🧑‍💻 OR it is just as valid to use
 the workbench as a scratchpad 👷‍♀️. In a full day of development, you may never spin down the workbench.
 Refreshing the page is enough to reparse the physical dbt project on disk. The instantaneous feedback
 rarely experienced with jinja + ability to execute the SQL both synergize to supercharge ⚡️ productivity!
@@ -365,7 +365,7 @@ with testHeaderContainer:
     st.write("")
     st.markdown(
         """Run queries against your datawarehouse leveraging the selected target profile. This is a critical step in
-    developer productivity 📈 and dbt-osmosis workbench aims to keep it a click away. Additionally, you can leverage the 
+    developer productivity 📈 and dbt-osmosis workbench aims to keep it a click away. Additionally, you can leverage the
     profiling functionality to get an idea of the dataset you have in memory."""
     ),
     st.write(""), st.write("")

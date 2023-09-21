@@ -7,7 +7,7 @@ sidebar_position: 5
 
 ### Sources
 
-dbt-osmosis will manage synchronizing your sources regardless of if you specify them in the vars.dbt-osmosis key your `dbt_project.yml` or not. That key, as seen in the example below, only serves to **declaratively** tell dbt-osmosis where the source file _should_ live. 
+dbt-osmosis will manage synchronizing your sources regardless of if you specify them in the vars.dbt-osmosis key your `dbt_project.yml` or not. That key, as seen in the example below, only serves to **declaratively** tell dbt-osmosis where the source file _should_ live.
 
 The advantage of this approach is that you can use dbt-osmosis to manage your sources without having to scaffold the YAML file yourself. You simply add a key value to the dictionary in the vars.dbt-osmosis key and dbt-osmosis will create the YAML file for you on next execution. It also hardens it against changes that violate the declarative nature of dbt-osmosis since it will simply migrate the file back to its original state on next execution unless you explicitly change it.
 
@@ -46,7 +46,7 @@ models:
 
 ## Running dbt-osmosis
 
-I will step through 3 ways to run dbt-osmosis. These are not mutually exclusive. You can use any combination of these approaches to get the most out of dbt-osmosis. They are ordered based on the amount of effort required to get started and by the overall scalability as model count increases. 
+I will step through 3 ways to run dbt-osmosis. These are not mutually exclusive. You can use any combination of these approaches to get the most out of dbt-osmosis. They are ordered based on the amount of effort required to get started and by the overall scalability as model count increases.
 
 ### On-demand ⭐️
 
@@ -70,7 +70,7 @@ repos:
 
 ### CI/CD ⭐️⭐️⭐️
 
-You can also run dbt-osmosis as part of your CI/CD pipeline. The best way to do this is to simply clone the repo, run dbt-osmosis, and then commit the changes. Preferably, you would do this in a separate branch and then open a PR. This is the most robust approach since it ensures that the changes are reviewed and approved by a human before they are merged into the main branch whilst taking the load off of developer machines. 
+You can also run dbt-osmosis as part of your CI/CD pipeline. The best way to do this is to simply clone the repo, run dbt-osmosis, and then commit the changes. Preferably, you would do this in a separate branch and then open a PR. This is the most robust approach since it ensures that the changes are reviewed and approved by a human before they are merged into the main branch whilst taking the load off of developer machines.
 
 ```bash title="example.sh"
 # this only exists to provide color, in the future we may add a preconfigured GHA to do this

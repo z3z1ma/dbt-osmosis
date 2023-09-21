@@ -25,7 +25,7 @@ Please check it out for a more in-depth introduction to dbt-osmosis. 👇
 Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this through providing 4 core features:
 
 1. Automated schema YAML management.
-    
+
     1a. `dbt-osmosis yaml refactor --project-dir ... --profiles-dir ...`
 
     > Automatically generate documentation based on upstream documented columns, organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules, inject columns from data warehouse schema if missing in yaml and remove columns no longer present in data warehouse (organize -> document)
@@ -44,7 +44,7 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
     > Spins up a WSGI server. Can be passed --register-project to automatically register your local project
 
-3. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install "dbt-osmosis[workbench]"`). 
+3. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install "dbt-osmosis[workbench]"`).
 
     3a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
 
@@ -82,11 +82,11 @@ The workbench is a streamlit app that allows you to work on dbt models in a side
 
 I also expect there is some untapped value in the workbench that is only pending some time from myself. I've seen a path to a truly novel development experience and look forward to exploring it.
 
-Demo the workbench 👇 
+Demo the workbench 👇
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-v2-i0ico9.streamlit.app/)
 
- 
+
 ```sh
 # NOTE this requires the workbench extra as you can see
 pip install "dbt-osmosis[workbench]"
@@ -107,7 +107,7 @@ Press "r" to reload the workbench at any time.
 ✔️ Data Profiler (leverages pandas-profiling)
 
 
-**Editor** 
+**Editor**
 
 The editor is able to compile models with control+enter or dynamically as you type. Its speedy! You can choose any target defined in your profiles yml for compilation and execution.
 
