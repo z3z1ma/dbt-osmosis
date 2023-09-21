@@ -1,26 +1,27 @@
 import argparse
 import decimal
-import feedparser
 import os
 import sys
 from collections import OrderedDict
-from datetime import datetime, date
+from datetime import date, datetime
 from textwrap import dedent
 from types import SimpleNamespace
 
 import dbt.config.profile as dbt_profile
+import feedparser
 import pandas as pd
-import ydata_profiling
 import streamlit as st
+import ydata_profiling
 from streamlit import session_state as state
 from streamlit_elements_fluence import elements, event, sync
 
-from dbt_osmosis.components.editor import Editor, Tabs as EditorTabs
 from dbt_osmosis.components.dashboard import Dashboard
+from dbt_osmosis.components.editor import Editor
+from dbt_osmosis.components.editor import Tabs as EditorTabs
+from dbt_osmosis.components.feed import RssFeed
 from dbt_osmosis.components.preview import Preview
 from dbt_osmosis.components.profiler import Profiler
 from dbt_osmosis.components.renderer import Renderer
-from dbt_osmosis.components.feed import RssFeed
 from dbt_osmosis.vendored.dbt_core_interface import (
     DbtProject,
     default_profiles_dir,
@@ -55,7 +56,7 @@ def _get_demo_query() -> str:
             order_id,
 
             {% for payment_method in payment_methods -%}
-            sum(case when payment_method = '{{ payment_method }}' then amount else 0 end) 
+            sum(case when payment_method = '{{ payment_method }}' then amount else 0 end)
             as {{ payment_method }}_amount,
             {% endfor -%}
 
@@ -343,7 +344,7 @@ def main():
             feed_contents.append(dedent(f"""
                 <div style="padding: 10px 5px 10px 5px; border-bottom: 1px solid #e0e0e0;">
                     <a href="{entry.link}" target="_blank" style="font-size: 16px; font-weight: bold; color: #FF4136; text-decoration: none;">{entry.title}</a>
-                    <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published} 
+                    <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published}
                     <span style="color: #FF4136;">|</span>
                     <a href="{entry.comments}" target="_blank" style="color: #FF4136; text-decoration: none;">Comments</a>
                     </div>

@@ -33,7 +33,8 @@ jobs:
       - name: Check if there is a parent commit
         id: check-parent-commit
         run: |
-          echo "::set-output name=sha::$(git rev-parse --verify --quiet HEAD^)"
+          sha="$(git rev-parse --verify --quiet HEAD^)"
+          echo "sha=${sha:?}" >> "$GITHUB_OUTPUT"
 
       - name: Detect and tag new version
         id: check-version
@@ -47,8 +48,8 @@ jobs:
         if: "! steps.check-version.outputs.tag"
         run: |
           poetry version patch &&
-          version=$(poetry version | awk '{ print $2 }') &&
-          poetry version $version.dev.$(date +%s)
+          version="$(poetry version | awk '{ print $2 }')" &&
+          poetry version "${version:?}.dev.$(date +%s)"
 
       - name: Build package
         run: |

@@ -6,7 +6,7 @@ import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Callable, Optional, Union, List
+from typing import Callable, List, Optional, Union
 
 import click
 import requests
@@ -146,7 +146,8 @@ def shared_opts(func: Callable) -> Callable:
     is_flag=True,
     help=(
         "If specified, progenitor information will be added to the meta information of a column."
-        " This is useful if you want to know which model is the progenitor of a specific model's column."
+        " This is useful if you want to know which model is the progenitor of a specific model's"
+        " column."
     ),
 )
 @click.option(
@@ -158,8 +159,9 @@ def shared_opts(func: Callable) -> Callable:
     "--vars",
     type=click.STRING,
     help=(
-            "Supply variables to the project. This argument overrides variables defined in your dbt_project.yml file. "
-            "This argument should be a YAML string, eg. '{my_variable: my_value}'"
+        "Supply variables to the project. This argument overrides variables defined in your"
+        " dbt_project.yml file. This argument should be a YAML string, eg. '{my_variable:"
+        " my_value}'"
     ),
 )
 @click.argument("models", nargs=-1)
@@ -175,7 +177,7 @@ def refactor(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_merge_meta: bool = False,
-    add_progenitor_to_meta : bool = False,
+    add_progenitor_to_meta: bool = False,
     models: Optional[List[str]] = None,
     profile: Optional[str] = None,
     vars: Optional[str] = None,
@@ -265,7 +267,8 @@ def refactor(
     is_flag=True,
     help=(
         "If specified, progenitor information will be added to the meta information of a column."
-        " This is useful if you want to know which model is the progenitor of a specific model's column."
+        " This is useful if you want to know which model is the progenitor of a specific model's"
+        " column."
     ),
 )
 @click.option(
@@ -277,8 +280,9 @@ def refactor(
     "--vars",
     type=click.STRING,
     help=(
-            "Supply variables to the project. This argument overrides variables defined in your dbt_project.yml file. "
-            "This argument should be a YAML string, eg. '{my_variable: my_value}'"
+        "Supply variables to the project. This argument overrides variables defined in your"
+        " dbt_project.yml file. This argument should be a YAML string, eg. '{my_variable:"
+        " my_value}'"
     ),
 )
 @click.argument("models", nargs=-1)
@@ -395,7 +399,8 @@ def organize(
     is_flag=True,
     help=(
         "If specified, progenitor information will be added to the meta information of a column."
-        " This is useful if you want to know which model is the progenitor of a specific model's column."
+        " This is useful if you want to know which model is the progenitor of a specific model's"
+        " column."
     ),
 )
 @click.option(
@@ -407,8 +412,9 @@ def organize(
     "--vars",
     type=click.STRING,
     help=(
-            "Supply variables to the project. This argument overrides variables defined in your dbt_project.yml file. "
-            "This argument should be a YAML string, eg. '{my_variable: my_value}'"
+        "Supply variables to the project. This argument overrides variables defined in your"
+        " dbt_project.yml file. This argument should be a YAML string, eg. '{my_variable:"
+        " my_value}'"
     ),
 )
 @click.argument("models", nargs=-1)
@@ -899,8 +905,7 @@ def compile(
     profiles_dir: Optional[str] = None,
     target: Optional[str] = None,
 ):
-    """Compiles dbt SQL statement writing an OsmosisCompileResult | OsmosisErrorContainer to stdout
-    """
+    """Compiles dbt SQL statement writing an OsmosisCompileResult | OsmosisErrorContainer to stdout"""
     from dbt_osmosis.vendored.dbt_core_interface.project import (
         ServerCompileResult,
         ServerError,
