@@ -849,7 +849,7 @@ class DbtYamlManager(DbtProject):
             n_cols_added = 0
             n_cols_doc_inherited = 0
             n_cols_removed = 0
-            n_cols_data_type_updated = 0
+            n_cols_data_type_changed = 0
 
             with self.mutex:
                 schema_file = self.yaml_handler.load(schema_path.current)
