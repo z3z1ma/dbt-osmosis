@@ -63,7 +63,6 @@
             PROJECT_ROOT=$(git rev-parse --show-toplevel)
             echo Setting up Python virtual environment...
             [ -d $PROJECT_ROOT/.venv ] || python -m venv $PROJECT_ROOT/.venv
-            ${pkgs.poetry}/bin/poetry config virtualenvs.in-project true
             export PATH="$PROJECT_ROOT/.venv/bin:$PATH"
             ${pkgs.poetry}/bin/poetry install
             eval "$(${pkgs.poetry}/bin/poetry env info --path)/bin/activate"
