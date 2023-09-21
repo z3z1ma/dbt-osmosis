@@ -8,13 +8,14 @@ from typing import Optional
 import dbt.config.profile as dbt_profile
 import feedparser
 import pandas as pd
-import ydata_profiling
 import streamlit as st
+import ydata_profiling
 from streamlit_ace import THEMES, st_ace
+
+from dbt_osmosis.vendored.dbt_core_interface import DEFAULT_PROFILES_DIR, DbtProject
 
 # from streamlit_pandas_profiling import st_profile_report
 
-from dbt_osmosis.vendored.dbt_core_interface import DEFAULT_PROFILES_DIR, DbtProject
 
 st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 state = st.session_state
@@ -281,18 +282,16 @@ descriptionContainer = st.container()
 compileOptionContainer = st.container()
 ideContainer = st.container()
 
-descriptionContainer.markdown(
-    """
-Welcome to the [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) workbench 👋. 
-The workbench serves as a no fuss way to spin up 
+descriptionContainer.markdown("""
+Welcome to the [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) workbench 👋.
+The workbench serves as a no fuss way to spin up
 an environment where you can very quickly iterate on dbt models. In an ideal flow, a developer
 can spin up the workbench and use it as a _complement_ to their IDE, not a replacement. This means
-copying and pasting over a model you are really digging into 🧑‍💻 OR it is just as valid to use 
+copying and pasting over a model you are really digging into 🧑‍💻 OR it is just as valid to use
 the workbench as a scratchpad 👷‍♀️. In a full day of development, you may never spin down the workbench.
 Refreshing the page is enough to reparse the physical dbt project on disk. The instantaneous feedback
 rarely experienced with jinja + ability to execute the SQL both synergize to supercharge ⚡️ productivity!
-"""
-)
+""")
 
 if not state[PIVOT_LAYOUT]:
     idePart1, idePart2 = ideContainer.columns(2)
@@ -366,7 +365,7 @@ with testHeaderContainer:
     st.write("")
     st.markdown(
         """Run queries against your datawarehouse leveraging the selected target profile. This is a critical step in
-    developer productivity 📈 and dbt-osmosis workbench aims to keep it a click away. Additionally, you can leverage the 
+    developer productivity 📈 and dbt-osmosis workbench aims to keep it a click away. Additionally, you can leverage the
     profiling functionality to get an idea of the dataset you have in memory."""
     ),
     st.write(""), st.write("")
@@ -442,8 +441,7 @@ footer1, footer2 = st.columns([1, 2])
 footer1.header("Useful Links 🧐")
 footer2.header("RSS Feeds 🚨")
 footer1.write("")
-footer1.markdown(
-    """
+footer1.markdown("""
 ##### dbt docs
 - [docs.getdbt.com](https://docs.getdbt.com/)
 
@@ -455,8 +453,7 @@ footer1.markdown(
 - [Gitlab Data Team Wiki](https://about.gitlab.com/handbook/business-technology/data-team/)
 - [dbt Best Practices](https://docs.getdbt.com/guides/best-practices/how-we-structure/1-guide-overview)
 
-"""
-)
+""")
 
 
 @st.cache(ttl=300.0)

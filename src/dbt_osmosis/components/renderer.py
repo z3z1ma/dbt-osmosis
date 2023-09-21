@@ -2,7 +2,7 @@ from hashlib import md5
 from uuid import uuid4
 
 from streamlit import session_state as state
-from streamlit_elements_fluence import editor, mui, dashboard
+from streamlit_elements_fluence import dashboard, editor, mui
 
 from .dashboard import Dashboard
 

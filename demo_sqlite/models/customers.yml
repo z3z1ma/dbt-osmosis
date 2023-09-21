@@ -28,4 +28,3 @@ models:
 
   - name: total_order_amount
     description: Total value (AUD) of a customer's orders
-

@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-json
+      - id: check-yaml
+      - id: detect-private-key
+      - id: debug-statements
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.6.21
+    hooks:
+      - id: actionlint-docker
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.2
+    hooks:
+      - id: shellcheck
+# TODO format files to follow the style guide later.
+#  - repo: https://github.com/psf/black
+#    rev: 23.9.1
+#    hooks:
+#      - id: black
+#  - repo: https://github.com/pycqa/isort
+#    rev: 5.10.1
+#    hooks:
+#      - id: isort
+#  - repo: https://github.com/pycqa/flake8
+#    rev: 4.0.1
+#    hooks:
+#      - id: flake8
+# TODO refactor the files in the 'docker' directory later.
+#  - repo: https://github.com/hadolint/hadolint
+#    rev: v2.12.0
+#    hooks:
+#      - id: hadolint-docker

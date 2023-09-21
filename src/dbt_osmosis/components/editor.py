@@ -98,7 +98,7 @@ class Editor(Dashboard.Item):
                         theme="vs-dark" if self._dark_mode else "light",
                         path=path,
                         options=options,
-                        key=f"editor-{state.w.cache_version}-{index}"
+                        key=f"editor-{state.w.cache_version}-{index}",
                     )
 
             with mui.Stack(direction="row", spacing=2, alignItems="center", sx={"padding": "10px"}):
