@@ -393,7 +393,7 @@ class DbtProject:
         profiles_dir: str = DEFAULT_PROFILES_DIR,
         project_dir: str = DEFAULT_PROJECT_DIR,
         threads: int = 1,
-        vars: str = "{}",
+        vars: Optional[str] = None,
     ) -> None:
         """Initialize the DbtProject."""
         self.base_config = DbtConfiguration(
@@ -402,6 +402,8 @@ class DbtProject:
             profiles_dir=profiles_dir or DEFAULT_PROFILES_DIR,
             project_dir=project_dir or DEFAULT_PROJECT_DIR,
         )
+        if vars is None:
+            vars = "{}"
         self.base_config.vars = vars
 
         # Mutexes
