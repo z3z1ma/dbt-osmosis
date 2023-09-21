@@ -297,7 +297,7 @@ def organize(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_merge_meta: bool = False,
-    add_progenitor_to_meta : bool = False,
+    add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
     vars: Optional[str] = None,
 ):
@@ -431,7 +431,7 @@ def document(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_merge_meta: bool = False,
-    add_progenitor_to_meta : bool = False,
+    add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
     vars: Optional[str] = None,
 ):
