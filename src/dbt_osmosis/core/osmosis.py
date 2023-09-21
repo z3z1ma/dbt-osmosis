@@ -837,7 +837,7 @@ class DbtYamlManager(DbtProject):
             n_cols_added = 0
             n_cols_doc_inherited = 0
             n_cols_removed = 0
-            n_cols_data_type_updated = 0
+            n_cols_data_type_changed = 0
 
             with self.mutex:
                 schema_file = self.yaml_handler.load(schema_path.current)
@@ -1005,7 +1005,6 @@ class DbtYamlManager(DbtProject):
         undocumented_columns: Iterable[str],
         node: ManifestNode,
         yaml_file_model_section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
     ) -> int:
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
@@ -1109,7 +1108,7 @@ class DbtYamlManager(DbtProject):
                 missing_columns, node, section, columns_db_meta
             )
         n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
-            undocumented_columns, node, section, columns_db_meta
+            undocumented_columns, node, section
         )
         n_cols_data_type_updated = self.update_columns_data_type(node, section, columns_db_meta)
         n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
