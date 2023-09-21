@@ -28,6 +28,11 @@ from dbt_osmosis.core.exceptions import (
     MissingOsmosisConfig,
 )
 from dbt_osmosis.core.log_controller import logger
+from dbt_osmosis.core.column_level_knowledge_propagator import (
+    ColumnLevelKnowledgePropagator,
+    ColumnLevelKnowledge,
+    Knowledge,
+)
 from dbt_osmosis.vendored.dbt_core_interface.project import (
     ColumnInfo,
     DbtProject,
@@ -114,10 +119,11 @@ class DbtYamlManager(DbtProject):
         skip_add_tags: bool = False,
         skip_merge_meta: bool = False,
         add_progenitor_to_meta: bool = False,
+        vars: Optional[str] = None,
         profile: Optional[str] = None,
     ):
         """Initializes the DbtYamlManager class."""
-        super().__init__(target, profiles_dir, project_dir, threads, profile=profile)
+        super().__init__(target, profiles_dir, project_dir, threads, vars=vars, profile=profile)
         self.fqn = fqn
         self.models = models or []
         self.dry_run = dry_run
@@ -595,6 +601,13 @@ class DbtYamlManager(DbtProject):
                             schema_file.current, []
                         ).append(node)
                     break
+            for k in blueprint:
+                # Remove if sources or models are empty
+                if blueprint[k].output.get("sources", None) == []:
+                    del blueprint[k].output["sources"]
+                if blueprint[k].output.get("models", None) == []:
+                    del blueprint[k].output["models"]
+
         except Exception as e:
             with self.mutex:
                 logger().error(
@@ -763,81 +776,6 @@ class DbtYamlManager(DbtProject):
             )
         )
 
-    def build_node_ancestor_tree(
-        self,
-        node: ManifestNode,
-        family_tree: Optional[Dict[str, List[str]]] = None,
-        members_found: Optional[List[str]] = None,
-        depth: int = 0,
-    ) -> Dict[str, List[str]]:
-        """Recursively build dictionary of parents in generational order"""
-        if family_tree is None:
-            family_tree = {}
-        if members_found is None:
-            members_found = []
-        if not hasattr(node, "depends_on"):
-            return family_tree
-        for parent in getattr(node.depends_on, "nodes", []):
-            member = self.manifest.nodes.get(parent, self.manifest.sources.get(parent))
-            if member and parent not in members_found:
-                family_tree.setdefault(f"generation_{depth}", []).append(parent)
-                members_found.append(parent)
-                # Recursion
-                family_tree = self.build_node_ancestor_tree(
-                    member, family_tree, members_found, depth + 1
-                )
-        return family_tree
-
-    def inherit_column_level_knowledge(
-        self,
-        family_tree: Dict[str, Any],
-    ) -> Dict[str, Dict[str, Any]]:
-        """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
-        recent ancestor is always the one to inherit from
-        """
-        knowledge: Dict[str, Dict[str, Any]] = {}
-        for generation in reversed(family_tree):
-            for ancestor in family_tree[generation]:
-                member: ManifestNode = self.manifest.nodes.get(
-                    ancestor, self.manifest.sources.get(ancestor)
-                )
-                if not member:
-                    continue
-                for name, info in member.columns.items():
-                    knowledge_default = {"progenitor": ancestor, "generation": generation}
-                    knowledge.setdefault(name, knowledge_default)
-                    deserialized_info = info.to_dict()
-                    # Handle Info:
-                    # 1. tags are additive
-                    # 2. descriptions are overriden
-                    # 3. meta is merged
-                    # 4. tests are ignored until I am convinced those shouldn't be
-                    #       hand curated with love
-                    if deserialized_info["description"] in self.placeholders:
-                        deserialized_info.pop("description", None)
-                    deserialized_info["tags"] = list(
-                        set(deserialized_info.pop("tags", []) + knowledge[name].get("tags", []))
-                    )
-                    if not deserialized_info["tags"]:
-                        deserialized_info.pop("tags")  # poppin' tags like Macklemore
-                    deserialized_info["meta"] = {
-                        **knowledge[name].get("meta", {}),
-                        **deserialized_info["meta"],
-                    }
-                    if not deserialized_info["meta"]:
-                        deserialized_info.pop("meta")
-                    knowledge[name].update(deserialized_info)
-        return knowledge
-
-    def get_node_columns_with_inherited_knowledge(
-        self,
-        node: ManifestNode,
-    ) -> Dict[str, Dict[str, Any]]:
-        """Build a knowledgebase for the model based on iterating through ancestors"""
-        family_tree = self.build_node_ancestor_tree(node)
-        knowledge = self.inherit_column_level_knowledge(family_tree)
-        return knowledge
-
     @staticmethod
     def get_column_sets(
         database_columns: Iterable[str],
@@ -912,6 +850,7 @@ class DbtYamlManager(DbtProject):
             n_cols_added = 0
             n_cols_doc_inherited = 0
             n_cols_removed = 0
+            n_cols_data_type_updated = 0
 
             with self.mutex:
                 schema_file = self.yaml_handler.load(schema_path.current)
@@ -921,13 +860,14 @@ class DbtYamlManager(DbtProject):
                     return
 
                 should_dump = False
-                n_cols_added, n_cols_doc_inherited, n_cols_removed = 0, 0, 0
+                n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_data_type_changed = 0, 0, 0, 0
                 if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
                     # Update schema file
                     (
                         n_cols_added,
                         n_cols_doc_inherited,
                         n_cols_removed,
+                        n_cols_data_type_changed,
                     ) = self.update_schema_file_and_node(
                         missing_columns,
                         undocumented_columns,
@@ -936,7 +876,7 @@ class DbtYamlManager(DbtProject):
                         section,
                         columns_db_meta,
                     )
-                if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
+                if n_cols_added + n_cols_doc_inherited + n_cols_removed + n_cols_data_type_changed > 0:
                     should_dump = True
                 if tuple(database_columns_ordered) != tuple(yaml_columns_ordered):
                     # Sort columns in schema file to match database
@@ -1033,9 +973,9 @@ class DbtYamlManager(DbtProject):
 
     @staticmethod
     def get_prior_knowledge(
-        knowledge: Dict[str, Dict[str, Any]],
+        knowledge: Knowledge,
         column: str,
-    ) -> Dict[str, Any]:
+    ) -> ColumnLevelKnowledge:
         camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
         prior_knowledge_candidates = list(filter(lambda k: k, [
             knowledge.get(column),
@@ -1065,7 +1005,9 @@ class DbtYamlManager(DbtProject):
     ) -> int:
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
-        knowledge = self.get_node_columns_with_inherited_knowledge(node)
+        knowledge: Knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+            self.manifest, node, self.placeholders
+        )
 
         inheritables = ["description"]
         if not self.skip_add_tags:
@@ -1075,7 +1017,7 @@ class DbtYamlManager(DbtProject):
 
         changes_committed = 0
         for column in undocumented_columns:
-            prior_knowledge = self.get_prior_knowledge(knowledge, column)
+            prior_knowledge: ColumnLevelKnowledge = self.get_prior_knowledge(knowledge, column)
             progenitor = prior_knowledge.pop("progenitor", "Unknown")
             prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
             if not prior_knowledge:
@@ -1099,18 +1041,26 @@ class DbtYamlManager(DbtProject):
                 node.unique_id,
             )
             logger().info(prior_knowledge)
-        for column in undocumented_columns:
+        return changes_committed
+    
+    def update_columns_data_type(
+        self,
+        node: ManifestNode,
+        yaml_file_model_section: Dict[str, Any],
+        columns_db_meta: Dict[str, ColumnMetadata],
+    ) -> int:
+        changes_committed = 0
+        for column in columns_db_meta:
             cased_column_name = self.column_casing(column)
-            if cased_column_name in node.columns and not node.columns[cased_column_name].data_type:
+            if cased_column_name in node.columns:
                 if columns_db_meta.get(cased_column_name):
-                    node.columns[cased_column_name].data_type = columns_db_meta.get(
-                        cased_column_name
-                    ).type
+                    data_type = columns_db_meta.get(cased_column_name).type
+                    if node.columns[cased_column_name].data_type == data_type:
+                        continue
+                    node.columns[cased_column_name].data_type = data_type
                     for model_column in yaml_file_model_section["columns"]:
                         if self.column_casing(model_column["name"]) == cased_column_name:
-                            model_column.update(
-                                {"data_type": columns_db_meta.get(cased_column_name).type}
-                            )
+                            model_column.update({"data_type": data_type})
                             changes_committed += 1
         return changes_committed
 
@@ -1145,7 +1095,7 @@ class DbtYamlManager(DbtProject):
         node: ManifestNode,
         section: Dict[str, Any],
         columns_db_meta: Dict[str, ColumnMetadata],
-    ) -> Tuple[int, int, int]:
+    ) -> Tuple[int, int, int, int]:
         """Take action on a schema file mirroring changes in the node."""
         logger().info(":microscope: Looking for actions for %s", node.unique_id)
         if not self.skip_add_columns:
@@ -1155,8 +1105,9 @@ class DbtYamlManager(DbtProject):
         n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
             undocumented_columns, node, section, columns_db_meta
         )
+        n_cols_data_type_updated = self.update_columns_data_type(node, section, columns_db_meta)
         n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
-        return n_cols_added, n_cols_doc_inherited, n_cols_removed
+        return n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_data_type_updated
 
     @staticmethod
     def maybe_get_section_from_schema_file(
