@@ -1,14 +1,6 @@
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-)
+from typing import Any, Dict, List, Optional
 
-from dbt_osmosis.vendored.dbt_core_interface.project import (
-    ManifestNode,
-)
-
+from dbt_osmosis.vendored.dbt_core_interface.project import ManifestNode
 
 ColumnLevelKnowledge = Dict[str, Any]
 Knowledge = Dict[str, ColumnLevelKnowledge]

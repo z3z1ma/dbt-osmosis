@@ -69,13 +69,13 @@ vars:
     salesforce:
       path: "staging/salesforce/source.yml"
       schema: "salesforce_v2"
-    
+
     # a source with the same schema as the source name
     marketo: "staging/customer/marketo.yml"
-  
+
     # a special variable interpolated at runtime
     jira: "staging/project_mgmt/{parent}.yml"
-  
+
     # a dedicated directory for all sources
     github: "all_sources/github.yml"
 

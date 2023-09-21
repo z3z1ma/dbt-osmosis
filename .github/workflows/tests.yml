@@ -6,7 +6,7 @@ on:
 
 jobs:
   tests:
-    name: Run pytest 
+    name: Run pytest
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
@@ -26,11 +26,11 @@ jobs:
         run: |
           pip install --constraint=.github/workflows/constraints.txt poetry
           poetry --version
-      
-      - name: Install required packages 
+
+      - name: Install required packages
         run: |
           poetry install
-      
+
       - name: Run pytest
         run: |
           poetry run python -m pytest

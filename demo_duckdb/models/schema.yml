@@ -79,4 +79,3 @@ models:
         description: Total amount (AUD) of the order
         tests:
           - not_null
-
