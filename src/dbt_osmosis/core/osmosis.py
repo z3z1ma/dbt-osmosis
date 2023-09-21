@@ -848,6 +848,7 @@ class DbtYamlManager(DbtProject):
             n_cols_added = 0
             n_cols_doc_inherited = 0
             n_cols_removed = 0
+            n_cols_data_type_updated = 0
 
             with self.mutex:
                 schema_file = self.yaml_handler.load(schema_path.current)
@@ -857,13 +858,14 @@ class DbtYamlManager(DbtProject):
                     return
 
                 should_dump = False
-                n_cols_added, n_cols_doc_inherited, n_cols_removed = 0, 0, 0
+                n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_data_type_changed = 0, 0, 0, 0
                 if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
                     # Update schema file
                     (
                         n_cols_added,
                         n_cols_doc_inherited,
                         n_cols_removed,
+                        n_cols_data_type_changed,
                     ) = self.update_schema_file_and_node(
                         missing_columns,
                         undocumented_columns,
@@ -872,7 +874,7 @@ class DbtYamlManager(DbtProject):
                         section,
                         columns_db_meta,
                     )
-                if n_cols_added + n_cols_doc_inherited + n_cols_removed > 0:
+                if n_cols_added + n_cols_doc_inherited + n_cols_removed + n_cols_data_type_changed > 0:
                     should_dump = True
                 if tuple(database_columns_ordered) != tuple(yaml_columns_ordered):
                     # Sort columns in schema file to match database
@@ -1037,18 +1039,26 @@ class DbtYamlManager(DbtProject):
                 node.unique_id,
             )
             logger().info(prior_knowledge)
-        for column in undocumented_columns:
+        return changes_committed
+    
+    def update_columns_data_type(
+        self,
+        node: ManifestNode,
+        yaml_file_model_section: Dict[str, Any],
+        columns_db_meta: Dict[str, ColumnMetadata],
+    ) -> int:
+        changes_committed = 0
+        for column in columns_db_meta:
             cased_column_name = self.column_casing(column)
-            if cased_column_name in node.columns and not node.columns[cased_column_name].data_type:
+            if cased_column_name in node.columns:
                 if columns_db_meta.get(cased_column_name):
-                    node.columns[cased_column_name].data_type = columns_db_meta.get(
-                        cased_column_name
-                    ).type
+                    data_type = columns_db_meta.get(cased_column_name).type
+                    if node.columns[cased_column_name].data_type == data_type:
+                        continue
+                    node.columns[cased_column_name].data_type = data_type
                     for model_column in yaml_file_model_section["columns"]:
                         if self.column_casing(model_column["name"]) == cased_column_name:
-                            model_column.update(
-                                {"data_type": columns_db_meta.get(cased_column_name).type}
-                            )
+                            model_column.update({"data_type": data_type})
                             changes_committed += 1
         return changes_committed
 
@@ -1083,7 +1093,7 @@ class DbtYamlManager(DbtProject):
         node: ManifestNode,
         section: Dict[str, Any],
         columns_db_meta: Dict[str, ColumnMetadata],
-    ) -> Tuple[int, int, int]:
+    ) -> Tuple[int, int, int, int]:
         """Take action on a schema file mirroring changes in the node."""
         logger().info(":microscope: Looking for actions for %s", node.unique_id)
         if not self.skip_add_columns:
@@ -1093,8 +1103,9 @@ class DbtYamlManager(DbtProject):
         n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
             undocumented_columns, node, section, columns_db_meta
         )
+        n_cols_data_type_updated = self.update_columns_data_type(node, section, columns_db_meta)
         n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
-        return n_cols_added, n_cols_doc_inherited, n_cols_removed
+        return n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_data_type_updated
 
     @staticmethod
     def maybe_get_section_from_schema_file(
