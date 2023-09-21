@@ -20,14 +20,12 @@ repos:
     rev: 23.9.1
     hooks:
       - id: black
+        args: ["--config", "pyproject.toml"]
   - repo: https://github.com/pycqa/isort
     rev: 5.12.0
     hooks:
       - id: isort
-  - repo: https://github.com/pycqa/flake8
-    rev: 6.1.0
-    hooks:
-      - id: flake8
+        args: ["-sp", "pyproject.toml"]
 # TODO refactor the files in the 'docker' directory later.
 #  - repo: https://github.com/hadolint/hadolint
 #    rev: v2.12.0
