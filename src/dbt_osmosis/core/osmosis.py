@@ -599,6 +599,13 @@ class DbtYamlManager(DbtProject):
                             schema_file.current, []
                         ).append(node)
                     break
+            for k in blueprint:
+                # Remove if sources or models are empty
+                if blueprint[k].output.get("sources", None) == []:
+                    del blueprint[k].output["sources"]
+                if blueprint[k].output.get("models", None) == []:
+                    del blueprint[k].output["models"]
+
         except Exception as e:
             with self.mutex:
                 logger().error(
