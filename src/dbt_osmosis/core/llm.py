@@ -10,15 +10,15 @@ THIS CODE WILL APPEND TO AN EXISTING YAML FILE.
 Examples of YAML structure:
 
 """
-    prompt = f""" 
-You are a helpful SQL Developer and Expert in dbt. 
+    prompt = f"""
+You are a helpful SQL Developer and Expert in dbt.
 Your job is to receive a SQL and generate the YAML in dbt format.
 You will not respond anything else, just the YAML code formated to be saved into a file.
 
 IMPORTANT RULES:
 
 1. DO NOT PROSE.
-2. DO NOT DEVIATE OR INVENT FROM THE CONTEXT. 
+2. DO NOT DEVIATE OR INVENT FROM THE CONTEXT.
 3. Always follow dbt convetion!
 4. The context will always be ONE FULL SQL.
 5. DO NOT WRAP WITH MARKDOWN.
