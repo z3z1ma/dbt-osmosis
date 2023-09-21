@@ -1,38 +1,25 @@
+import json
 import os
 import re
-import json
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, wait
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from threading import Lock
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    MutableMapping,
-    Optional,
-    Set,
-    Tuple,
-)
+from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Optional, Set, Tuple
 
 import ruamel.yaml
 from dbt.contracts.results import ColumnMetadata
 from pydantic import BaseModel
 
-from dbt_osmosis.core.exceptions import (
-    InvalidOsmosisConfig,
-    MissingOsmosisConfig,
-)
-from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.core.column_level_knowledge_propagator import (
-    ColumnLevelKnowledgePropagator,
     ColumnLevelKnowledge,
+    ColumnLevelKnowledgePropagator,
     Knowledge,
 )
+from dbt_osmosis.core.exceptions import InvalidOsmosisConfig, MissingOsmosisConfig
+from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.vendored.dbt_core_interface.project import (
     ColumnInfo,
     DbtProject,
@@ -859,7 +846,12 @@ class DbtYamlManager(DbtProject):
                     return
 
                 should_dump = False
-                n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_data_type_changed = 0, 0, 0, 0
+                n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_data_type_changed = (
+                    0,
+                    0,
+                    0,
+                    0,
+                )
                 if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
                     # Update schema file
                     (
@@ -875,7 +867,10 @@ class DbtYamlManager(DbtProject):
                         section,
                         columns_db_meta,
                     )
-                if n_cols_added + n_cols_doc_inherited + n_cols_removed + n_cols_data_type_changed > 0:
+                if (
+                    n_cols_added + n_cols_doc_inherited + n_cols_removed + n_cols_data_type_changed
+                    > 0
+                ):
                     should_dump = True
                 if tuple(database_columns_ordered) != tuple(yaml_columns_ordered):
                     # Sort columns in schema file to match database
@@ -976,11 +971,16 @@ class DbtYamlManager(DbtProject):
         column: str,
     ) -> ColumnLevelKnowledge:
         camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
-        prior_knowledge_candidates = list(filter(lambda k: k, [
-            knowledge.get(column),
-            knowledge.get(column.lower()),
-            knowledge.get(camel_column),
-        ]))
+        prior_knowledge_candidates = list(
+            filter(
+                lambda k: k,
+                [
+                    knowledge.get(column),
+                    knowledge.get(column.lower()),
+                    knowledge.get(camel_column),
+                ],
+            )
+        )
         sorted_prior_knowledge_candidates_sources = sorted(
             [k for k in prior_knowledge_candidates if k["progenitor"].startswith("source")],
             key=lambda k: k["generation"],
@@ -991,8 +991,12 @@ class DbtYamlManager(DbtProject):
             key=lambda k: k["generation"],
             reverse=True,
         )
-        sorted_prior_knowledge_candidates = sorted_prior_knowledge_candidates_sources + sorted_prior_knowledge_candidates_models
-        prior_knowledge = sorted_prior_knowledge_candidates[0] if sorted_prior_knowledge_candidates else {}
+        sorted_prior_knowledge_candidates = (
+            sorted_prior_knowledge_candidates_sources + sorted_prior_knowledge_candidates_models
+        )
+        prior_knowledge = (
+            sorted_prior_knowledge_candidates[0] if sorted_prior_knowledge_candidates else {}
+        )
         return prior_knowledge
 
     def update_undocumented_columns_with_prior_knowledge(
@@ -1004,8 +1008,10 @@ class DbtYamlManager(DbtProject):
     ) -> int:
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
-        knowledge: Knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-            self.manifest, node, self.placeholders
+        knowledge: Knowledge = (
+            ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+                self.manifest, node, self.placeholders
+            )
         )
 
         inheritables = ["description"]
@@ -1041,7 +1047,7 @@ class DbtYamlManager(DbtProject):
             )
             logger().info(prior_knowledge)
         return changes_committed
-    
+
     def update_columns_data_type(
         self,
         node: ManifestNode,

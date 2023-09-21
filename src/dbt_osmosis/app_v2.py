@@ -1,26 +1,27 @@
 import argparse
 import decimal
-import feedparser
 import os
 import sys
 from collections import OrderedDict
-from datetime import datetime, date
+from datetime import date, datetime
 from textwrap import dedent
 from types import SimpleNamespace
 
 import dbt.config.profile as dbt_profile
+import feedparser
 import pandas as pd
-import ydata_profiling
 import streamlit as st
+import ydata_profiling
 from streamlit import session_state as state
 from streamlit_elements_fluence import elements, event, sync
 
-from dbt_osmosis.components.editor import Editor, Tabs as EditorTabs
 from dbt_osmosis.components.dashboard import Dashboard
+from dbt_osmosis.components.editor import Editor
+from dbt_osmosis.components.editor import Tabs as EditorTabs
+from dbt_osmosis.components.feed import RssFeed
 from dbt_osmosis.components.preview import Preview
 from dbt_osmosis.components.profiler import Profiler
 from dbt_osmosis.components.renderer import Renderer
-from dbt_osmosis.components.feed import RssFeed
 from dbt_osmosis.vendored.dbt_core_interface import (
     DbtProject,
     default_profiles_dir,

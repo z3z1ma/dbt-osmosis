@@ -38,6 +38,7 @@ streamlit-elements-fluence = { version = ">=0.1.4", optional = true }
 dbt-duckdb = { version = ">=1.0.0", optional = true }
 dbt-sqlite = { version = ">=1.0.0", optional = true }
 dbt-postgres = { version = ">=1.0.0", optional = true }
+openai = "^0.28.0"
 
 [tool.poetry.extras]
 duckdb = ["dbt-duckdb"]
