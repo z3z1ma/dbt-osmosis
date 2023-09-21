@@ -28,6 +28,11 @@ from dbt_osmosis.core.exceptions import (
     MissingOsmosisConfig,
 )
 from dbt_osmosis.core.log_controller import logger
+from dbt_osmosis.core.column_level_knowledge_propagator import (
+    ColumnLevelKnowledgePropagator,
+    ColumnLevelKnowledge,
+    Knowledge,
+)
 from dbt_osmosis.vendored.dbt_core_interface.project import (
     ColumnInfo,
     DbtProject,
@@ -762,81 +767,6 @@ class DbtYamlManager(DbtProject):
             )
         )
 
-    def build_node_ancestor_tree(
-        self,
-        node: ManifestNode,
-        family_tree: Optional[Dict[str, List[str]]] = None,
-        members_found: Optional[List[str]] = None,
-        depth: int = 0,
-    ) -> Dict[str, List[str]]:
-        """Recursively build dictionary of parents in generational order"""
-        if family_tree is None:
-            family_tree = {}
-        if members_found is None:
-            members_found = []
-        if not hasattr(node, "depends_on"):
-            return family_tree
-        for parent in getattr(node.depends_on, "nodes", []):
-            member = self.manifest.nodes.get(parent, self.manifest.sources.get(parent))
-            if member and parent not in members_found:
-                family_tree.setdefault(f"generation_{depth}", []).append(parent)
-                members_found.append(parent)
-                # Recursion
-                family_tree = self.build_node_ancestor_tree(
-                    member, family_tree, members_found, depth + 1
-                )
-        return family_tree
-
-    def inherit_column_level_knowledge(
-        self,
-        family_tree: Dict[str, Any],
-    ) -> Dict[str, Dict[str, Any]]:
-        """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
-        recent ancestor is always the one to inherit from
-        """
-        knowledge: Dict[str, Dict[str, Any]] = {}
-        for generation in reversed(family_tree):
-            for ancestor in family_tree[generation]:
-                member: ManifestNode = self.manifest.nodes.get(
-                    ancestor, self.manifest.sources.get(ancestor)
-                )
-                if not member:
-                    continue
-                for name, info in member.columns.items():
-                    knowledge_default = {"progenitor": ancestor, "generation": generation}
-                    knowledge.setdefault(name, knowledge_default)
-                    deserialized_info = info.to_dict()
-                    # Handle Info:
-                    # 1. tags are additive
-                    # 2. descriptions are overriden
-                    # 3. meta is merged
-                    # 4. tests are ignored until I am convinced those shouldn't be
-                    #       hand curated with love
-                    if deserialized_info["description"] in self.placeholders:
-                        deserialized_info.pop("description", None)
-                    deserialized_info["tags"] = list(
-                        set(deserialized_info.pop("tags", []) + knowledge[name].get("tags", []))
-                    )
-                    if not deserialized_info["tags"]:
-                        deserialized_info.pop("tags")  # poppin' tags like Macklemore
-                    deserialized_info["meta"] = {
-                        **knowledge[name].get("meta", {}),
-                        **deserialized_info["meta"],
-                    }
-                    if not deserialized_info["meta"]:
-                        deserialized_info.pop("meta")
-                    knowledge[name].update(deserialized_info)
-        return knowledge
-
-    def get_node_columns_with_inherited_knowledge(
-        self,
-        node: ManifestNode,
-    ) -> Dict[str, Dict[str, Any]]:
-        """Build a knowledgebase for the model based on iterating through ancestors"""
-        family_tree = self.build_node_ancestor_tree(node)
-        knowledge = self.inherit_column_level_knowledge(family_tree)
-        return knowledge
-
     @staticmethod
     def get_column_sets(
         database_columns: Iterable[str],
@@ -1032,9 +962,9 @@ class DbtYamlManager(DbtProject):
 
     @staticmethod
     def get_prior_knowledge(
-        knowledge: Dict[str, Dict[str, Any]],
+        knowledge: Knowledge,
         column: str,
-    ) -> Dict[str, Any]:
+    ) -> ColumnLevelKnowledge:
         camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
         prior_knowledge_candidates = list(filter(lambda k: k, [
             knowledge.get(column),
@@ -1064,7 +994,9 @@ class DbtYamlManager(DbtProject):
     ) -> int:
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
-        knowledge = self.get_node_columns_with_inherited_knowledge(node)
+        knowledge: Knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+            self.manifest, node, self.placeholders
+        )
 
         inheritables = ["description"]
         if not self.skip_add_tags:
@@ -1074,7 +1006,7 @@ class DbtYamlManager(DbtProject):
 
         changes_committed = 0
         for column in undocumented_columns:
-            prior_knowledge = self.get_prior_knowledge(knowledge, column)
+            prior_knowledge: ColumnLevelKnowledge = self.get_prior_knowledge(knowledge, column)
             progenitor = prior_knowledge.pop("progenitor", "Unknown")
             prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
             if not prior_knowledge:
