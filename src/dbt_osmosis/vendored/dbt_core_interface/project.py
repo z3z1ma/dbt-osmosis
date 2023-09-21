@@ -236,6 +236,7 @@ class DbtConfiguration:
 
     project_dir: str = DEFAULT_PROJECT_DIR
     profiles_dir: str = DEFAULT_PROFILES_DIR
+    profile: Optional[str] = None
     target: Optional[str] = None
     threads: int = 1
     single_threaded: bool = True
@@ -254,11 +255,6 @@ class DbtConfiguration:
         if self.target is None:
             del self.target
         self.single_threaded = self.threads == 1
-
-    @property
-    def profile(self) -> str:
-        """Access the profiles_dir attribute as a string."""
-        return None
 
     @property
     def vars(self) -> str:
@@ -394,6 +390,7 @@ class DbtProject:
         project_dir: str = DEFAULT_PROJECT_DIR,
         threads: int = 1,
         vars: Optional[str] = None,
+        profile: Optional[str] = None,
     ) -> None:
         """Initialize the DbtProject."""
         self.base_config = DbtConfiguration(
@@ -401,6 +398,7 @@ class DbtProject:
             target=target,
             profiles_dir=profiles_dir or DEFAULT_PROFILES_DIR,
             project_dir=project_dir or DEFAULT_PROJECT_DIR,
+            profile=profile,
         )
         if vars is None:
             vars = "{}"

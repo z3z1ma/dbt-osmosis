@@ -107,9 +107,10 @@ class DbtYamlManager(DbtProject):
         skip_merge_meta: bool = False,
         add_progenitor_to_meta: bool = False,
         vars: Optional[str] = None,
+        profile: Optional[str] = None,
     ):
         """Initializes the DbtYamlManager class."""
-        super().__init__(target, profiles_dir, project_dir, threads, vars)
+        super().__init__(target, profiles_dir, project_dir, threads, vars=vars, profile=profile)
         self.fqn = fqn
         self.models = models or []
         self.dry_run = dry_run

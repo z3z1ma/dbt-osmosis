@@ -151,6 +151,11 @@ def shared_opts(func: Callable) -> Callable:
     ),
 )
 @click.option(
+    "--profile",
+    type=click.STRING,
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
+)
+@click.option(
     "--vars",
     type=click.STRING,
     help=(
@@ -174,6 +179,7 @@ def refactor(
     skip_merge_meta: bool = False,
     add_progenitor_to_meta: bool = False,
     models: Optional[List[str]] = None,
+    profile: Optional[str] = None,
     vars: Optional[str] = None,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
@@ -202,6 +208,7 @@ def refactor(
         skip_add_tags=skip_add_tags,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
+        profile=profile,
         vars=vars,
     )
 
@@ -265,6 +272,11 @@ def refactor(
     ),
 )
 @click.option(
+    "--profile",
+    type=click.STRING,
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
+)
+@click.option(
     "--vars",
     type=click.STRING,
     help=(
@@ -285,7 +297,8 @@ def organize(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_merge_meta: bool = False,
-    add_progenitor_to_meta: bool = False,
+    add_progenitor_to_meta : bool = False,
+    profile: Optional[str] = None,
     vars: Optional[str] = None,
 ):
     """Organizes schema ymls based on config and injects undocumented models
@@ -312,6 +325,7 @@ def organize(
         skip_add_tags=skip_add_tags,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
+        profile=profile,
         vars=vars,
     )
 
@@ -390,6 +404,11 @@ def organize(
     ),
 )
 @click.option(
+    "--profile",
+    type=click.STRING,
+    help="Which profile to load. Overrides setting in dbt_project.yml.",
+)
+@click.option(
     "--vars",
     type=click.STRING,
     help=(
@@ -412,7 +431,8 @@ def document(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_merge_meta: bool = False,
-    add_progenitor_to_meta: bool = False,
+    add_progenitor_to_meta : bool = False,
+    profile: Optional[str] = None,
     vars: Optional[str] = None,
 ):
     """Column level documentation inheritance for existing models
@@ -440,6 +460,7 @@ def document(
         skip_add_tags=skip_add_tags,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
+        profile=profile,
         vars=vars,
     )
 
