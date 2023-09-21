@@ -86,19 +86,19 @@ import dbt.version
 from dbt.adapters.factory import get_adapter_class_by_name
 from dbt.clients.system import make_directory
 from dbt.config.runtime import RuntimeConfig
+from dbt.flags import set_from_args
 from dbt.node_types import NodeType
 from dbt.parser.manifest import PARTIAL_PARSE_FILE_NAME, ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.sql import SqlCompileRunner
 from dbt.tracking import disable_tracking
-from dbt.flags import set_from_args
 
 # brute force import for dbt 1.3 back-compat
 # these are here for consumers of dbt-core-interface
 try:
     # dbt <= 1.3
-    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
     from dbt.contracts.graph.compiled import ManifestNode  # type: ignore
+    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
 except Exception:
     # dbt > 1.3
     from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode  # type: ignore
@@ -601,9 +601,7 @@ class DbtProject:
             ),
         )
 
-    def get_source_node(
-        self, target_source_name: str, target_table_name: str
-    ) -> "ManifestNode":
+    def get_source_node(self, target_source_name: str, target_table_name: str) -> "ManifestNode":
         """Get a `ManifestNode` from a dbt project source name and table name.
 
         This is the same as one would in a {{ source(...) }} macro call.
@@ -1663,10 +1661,8 @@ class Route:
             0,
             13,
             "Route.get_config() is deprecated.",
-            (
-                "The Route.config property already includes values from the"
-                " application config for missing keys. Access it directly."
-            ),
+            "The Route.config property already includes values from the"
+            " application config for missing keys. Access it directly.",
         )
         return self.config.get(key, default)
 
@@ -1702,10 +1698,8 @@ class Bottle:
                 0,
                 13,
                 "Bottle(catchall) keyword argument.",
-                (
-                    "The 'catchall' setting is now part of the app "
-                    "configuration. Fix: `app.config['catchall'] = False`"
-                ),
+                "The 'catchall' setting is now part of the app "
+                "configuration. Fix: `app.config['catchall'] = False`",
             )
             self.config["catchall"] = False
         if kwargs.get("autojson") is False:
@@ -1713,10 +1707,8 @@ class Bottle:
                 0,
                 13,
                 "Bottle(autojson) keyword argument.",
-                (
-                    "The 'autojson' setting is now part of the app "
-                    "configuration. Fix: `app.config['json.enable'] = False`"
-                ),
+                "The 'autojson' setting is now part of the app "
+                "configuration. Fix: `app.config['json.enable'] = False`",
             )
             self.config["json.disable"] = True
 
@@ -1846,10 +1838,8 @@ class Bottle:
                 0,
                 13,
                 "Prefix must end in '/'. Falling back to WSGI mount.",
-                (
-                    "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the"
-                    " parent application."
-                ),
+                "Consider adding an explicit redirect from '/prefix' to '/prefix/' in the"
+                " parent application.",
             )
             return self._mount_wsgi(prefix, app, **options)
 
@@ -5517,8 +5507,7 @@ HTTP_CODES[511] = "Network Authentication Required"
 _HTTP_STATUS_LINES = {k: "%d %s" % (k, v) for (k, v) in HTTP_CODES.items()}
 
 #: The default template used for error pages. Override with @error()
-ERROR_PAGE_TEMPLATE = (
-    """
+ERROR_PAGE_TEMPLATE = """
 %%try:
     %%from %s import DEBUG, request
     <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
@@ -5556,9 +5545,7 @@ ERROR_PAGE_TEMPLATE = (
     <b>ImportError:</b> Could not generate the error page. Please add bottle to
     the import path.
 %%end
-"""
-    % __name__
-)
+""" % __name__
 
 #: A thread-safe instance of :class:`LocalRequest`. If accessed from within a
 #: request callback, this instance always refers to the *current* request

@@ -13,11 +13,7 @@ import ruamel.yaml
 from dbt.contracts.results import ColumnMetadata
 from pydantic import BaseModel
 
-from dbt_osmosis.core.column_level_knowledge_propagator import (
-    ColumnLevelKnowledge,
-    ColumnLevelKnowledgePropagator,
-    Knowledge,
-)
+from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
 from dbt_osmosis.core.exceptions import InvalidOsmosisConfig, MissingOsmosisConfig
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.vendored.dbt_core_interface.project import (
@@ -966,88 +962,6 @@ class DbtYamlManager(DbtProject):
             )
         return changes_committed
 
-    @staticmethod
-    def get_prior_knowledge(
-        knowledge: Knowledge,
-        column: str,
-    ) -> ColumnLevelKnowledge:
-        camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
-        prior_knowledge_candidates = list(
-            filter(
-                lambda k: k,
-                [
-                    knowledge.get(column),
-                    knowledge.get(column.lower()),
-                    knowledge.get(camel_column),
-                ],
-            )
-        )
-        sorted_prior_knowledge_candidates_sources = sorted(
-            [k for k in prior_knowledge_candidates if k["progenitor"].startswith("source")],
-            key=lambda k: k["generation"],
-            reverse=True,
-        )
-        sorted_prior_knowledge_candidates_models = sorted(
-            [k for k in prior_knowledge_candidates if k["progenitor"].startswith("model")],
-            key=lambda k: k["generation"],
-            reverse=True,
-        )
-        sorted_prior_knowledge_candidates = (
-            sorted_prior_knowledge_candidates_sources + sorted_prior_knowledge_candidates_models
-        )
-        prior_knowledge = (
-            sorted_prior_knowledge_candidates[0] if sorted_prior_knowledge_candidates else {}
-        )
-        return prior_knowledge
-
-    def update_undocumented_columns_with_prior_knowledge(
-        self,
-        undocumented_columns: Iterable[str],
-        node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
-    ) -> int:
-        """Update undocumented columns with prior knowledge in node and model simultaneously
-        THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
-        knowledge: Knowledge = (
-            ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-                self.manifest, node, self.placeholders
-            )
-        )
-
-        inheritables = ["description"]
-        if not self.skip_add_tags:
-            inheritables.append("tags")
-        if not self.skip_merge_meta:
-            inheritables.append("meta")
-
-        changes_committed = 0
-        for column in undocumented_columns:
-            prior_knowledge: ColumnLevelKnowledge = self.get_prior_knowledge(knowledge, column)
-            progenitor = prior_knowledge.pop("progenitor", "Unknown")
-            prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
-            if not prior_knowledge:
-                continue
-            if column not in node.columns:
-                node.columns[column] = ColumnInfo.from_dict({"name": column, **prior_knowledge})
-            else:
-                node.columns[column].replace(kwargs={"name": column, **prior_knowledge})
-            for model_column in yaml_file_model_section["columns"]:
-                if model_column["name"] == column:
-                    if self.add_progenitor_to_meta:
-                        prior_knowledge.setdefault("meta", {})
-                        prior_knowledge["meta"]["osmosis_progenitor"] = progenitor
-                    model_column.update(prior_knowledge)
-            changes_committed += 1
-            logger().info(
-                ":light_bulb: Column %s is inheriting knowledge from the lineage of progenitor"
-                " (%s) for model %s",
-                column,
-                progenitor,
-                node.unique_id,
-            )
-            logger().info(prior_knowledge)
-        return changes_committed
-
     def update_columns_data_type(
         self,
         node: ManifestNode,
@@ -1107,8 +1021,20 @@ class DbtYamlManager(DbtProject):
             n_cols_added = self.add_missing_cols_to_node_and_model(
                 missing_columns, node, section, columns_db_meta
             )
-        n_cols_doc_inherited = self.update_undocumented_columns_with_prior_knowledge(
-            undocumented_columns, node, section
+
+        knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+            self.manifest, node, self.placeholders
+        )
+        n_cols_doc_inherited = (
+            ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
+                undocumented_columns,
+                node,
+                section,
+                knowledge,
+                self.skip_add_tags,
+                self.skip_merge_meta,
+                self.add_progenitor_to_meta,
+            )
         )
         n_cols_data_type_updated = self.update_columns_data_type(node, section, columns_db_meta)
         n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
