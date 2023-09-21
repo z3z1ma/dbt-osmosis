@@ -1041,7 +1041,7 @@ class DbtYamlManager(DbtProject):
             )
             logger().info(prior_knowledge)
         return changes_committed
-    
+
     def update_columns_data_type(
         self,
         node: ManifestNode,
