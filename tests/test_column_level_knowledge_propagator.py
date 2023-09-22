@@ -1,5 +1,7 @@
 import json
+
 from dbt.contracts.graph.manifest import Manifest
+
 from dbt_osmosis.core.column_level_knowledge_propagator import (
     _build_node_ancestor_tree,
     _inherit_column_level_knowledge,
@@ -35,7 +37,9 @@ def test_inherit_column_level_knowledge():
         manifest_text = f.read()
         manifest_dict = json.loads(manifest_text)
 
-    manifest_dict["nodes"]["model.jaffle_shop_duckdb.stg_customers"]["columns"]["customer_id"]["description"] = "THIS COLUMN IS UPDATED FOR TESTING"
+    manifest_dict["nodes"]["model.jaffle_shop_duckdb.stg_customers"]["columns"]["customer_id"][
+        "description"
+    ] = "THIS COLUMN IS UPDATED FOR TESTING"
     manifest = Manifest.from_dict(manifest_dict)
 
     expect = {

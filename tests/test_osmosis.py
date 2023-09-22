@@ -1,4 +1,5 @@
 from dbt.contracts.graph.manifest import Manifest
+
 from dbt_osmosis.core.osmosis import DbtYamlManager
 
 
