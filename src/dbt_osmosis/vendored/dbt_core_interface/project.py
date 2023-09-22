@@ -28,6 +28,7 @@ import hashlib
 import hmac
 import http.client as httplib
 import itertools
+import yaml
 import json
 import logging
 import mimetypes
@@ -269,10 +270,10 @@ class DbtConfiguration:
         """
         if (__dbt_major_version__, __dbt_minor_version__) >= (1, 5):
             if isinstance(v, str):
-                v = json.loads(v)
+                v = yaml.safe_load(v)
         else:
             if isinstance(v, dict):
-                v = json.dumps(v)
+                v = yaml.dump(v)
         self._vars = v
 
 
