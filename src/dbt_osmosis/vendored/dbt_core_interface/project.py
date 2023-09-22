@@ -28,7 +28,6 @@ import hashlib
 import hmac
 import http.client as httplib
 import itertools
-import yaml
 import json
 import logging
 import mimetypes
@@ -82,6 +81,7 @@ from urllib.parse import unquote as urlunquote
 from urllib.parse import urlencode, urljoin
 
 import dbt.version
+import yaml
 
 # We maintain the smallest possible surface area of dbt imports
 from dbt.adapters.factory import get_adapter_class_by_name
