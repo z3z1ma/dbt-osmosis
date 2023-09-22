@@ -1,9 +1,12 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
-from dbt_osmosis.vendored.dbt_core_interface.project import ManifestNode
-
-ColumnLevelKnowledge = Dict[str, Any]
-Knowledge = Dict[str, ColumnLevelKnowledge]
+from dbt_osmosis.core.column_level_knowledge import (
+    ColumnLevelKnowledge,
+    Knowledge,
+    get_prior_knowledge,
+)
+from dbt_osmosis.core.log_controller import logger
+from dbt_osmosis.vendored.dbt_core_interface.project import ColumnInfo, ManifestNode
 
 
 def _build_node_ancestor_tree(
@@ -84,3 +87,51 @@ class ColumnLevelKnowledgePropagator:
         family_tree = _build_node_ancestor_tree(manifest, node)
         knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders)
         return knowledge
+
+    @staticmethod
+    def update_undocumented_columns_with_prior_knowledge(
+        undocumented_columns: Iterable[str],
+        node: ManifestNode,
+        yaml_file_model_section: Dict[str, Any],
+        knowledge: Knowledge,
+        skip_add_tags: bool,
+        skip_merge_meta: bool,
+        add_progenitor_to_meta: bool,
+    ) -> int:
+        """Update undocumented columns with prior knowledge in node and model simultaneously
+        THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
+        inheritables = ["description"]
+        if not skip_add_tags:
+            inheritables.append("tags")
+        if not skip_merge_meta:
+            inheritables.append("meta")
+
+        changes_committed = 0
+        for column in undocumented_columns:
+            prior_knowledge: ColumnLevelKnowledge = get_prior_knowledge(knowledge, column)
+            progenitor = prior_knowledge.pop("progenitor", None)
+            prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
+            if add_progenitor_to_meta and progenitor:
+                prior_knowledge.setdefault("meta", {})
+                prior_knowledge["meta"]["osmosis_progenitor"] = progenitor
+            if not prior_knowledge:
+                continue
+            if column not in node.columns:
+                node.columns[column] = ColumnInfo.from_dict({"name": column, **prior_knowledge})
+            else:
+                node.columns[column] = ColumnInfo.from_dict(
+                    dict(node.columns[column].to_dict(), **prior_knowledge)
+                )
+            for model_column in yaml_file_model_section["columns"]:
+                if model_column["name"] == column:
+                    model_column.update(prior_knowledge)
+            changes_committed += 1
+            logger().info(
+                ":light_bulb: Column %s is inheriting knowledge from the lineage of progenitor"
+                " (%s) for model %s",
+                column,
+                progenitor,
+                node.unique_id,
+            )
+            logger().info(prior_knowledge)
+        return changes_committed

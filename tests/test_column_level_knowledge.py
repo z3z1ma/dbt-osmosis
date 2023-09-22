@@ -1,6 +1,4 @@
-from dbt.contracts.graph.manifest import Manifest
-
-from dbt_osmosis.core.osmosis import DbtYamlManager
+from dbt_osmosis.core.column_level_knowledge import get_prior_knowledge
 
 
 class TestDbtYamlManager:
@@ -18,7 +16,7 @@ class TestDbtYamlManager:
             },
         }
         assert (
-            DbtYamlManager.get_prior_knowledge(knowledge, "my_column")["progenitor"]
+            get_prior_knowledge(knowledge, "my_column")["progenitor"]
             == "source.my_model.source.Order"
         )
 
@@ -36,6 +34,5 @@ class TestDbtYamlManager:
             },
         }
         assert (
-            DbtYamlManager.get_prior_knowledge(knowledge, "my_column")["progenitor"]
-            == "model.my_model.dwh.Order"
+            get_prior_knowledge(knowledge, "my_column")["progenitor"] == "model.my_model.dwh.Order"
         )
