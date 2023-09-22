@@ -3,7 +3,7 @@ FROM python:3.10-slim-bullseye
 # Set separate working directory for easier debugging.
 WORKDIR /app
 
-RUN pip install 'poetry==1.2.1'
+RUN pip install --no-cache-dir 'poetry==1.2.1'
 COPY pyproject.toml poetry.lock ./
 # Install the dependencies first, so that we can cache them.
 RUN poetry install --with test --extras postgres
