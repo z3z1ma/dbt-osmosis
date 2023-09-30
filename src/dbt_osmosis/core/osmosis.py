@@ -782,7 +782,13 @@ class DbtYamlManager(DbtProject):
         ]
         return missing_columns, undocumented_columns, extra_columns
 
-    def _run(self, unique_id, node, schema_map, force_inheritance=False):
+    def _run(
+        self,
+        unique_id: str,
+        node: ManifestNode,
+        schema_map: Dict[str, SchemaFileLocation],
+        force_inheritance: bool = False,
+    ):
         try:
             with self.mutex:
                 logger().info(":point_right: Processing model: [bold]%s[/bold]", unique_id)
