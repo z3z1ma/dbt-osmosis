@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Optional, Set, Tuple
 
 import ruamel.yaml
-from dbt.contracts.results import ColumnMetadata, CatalogArtifact, CatalogTable, CatalogKey
+from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
 from pydantic import BaseModel
 
 from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
