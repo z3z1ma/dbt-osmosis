@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Optional, Set, Tuple
 
 import ruamel.yaml
-from dbt.contracts.results import ColumnMetadata
+from dbt.contracts.results import ColumnMetadata, CatalogArtifact, CatalogTable, CatalogKey
 from pydantic import BaseModel
 
 from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
@@ -111,7 +111,7 @@ class DbtYamlManager(DbtProject):
         self.models = models or []
         self.dry_run = dry_run
         self.catalog_file = catalog_file
-        self._catalog = None
+        self._catalog: Optional[CatalogArtifact] = None
         self.skip_add_columns = skip_add_columns
         self.skip_add_tags = skip_add_tags
         self.skip_merge_meta = skip_merge_meta
@@ -325,7 +325,7 @@ class DbtYamlManager(DbtProject):
         return list(self.get_columns_meta(parts).keys())
 
     @property
-    def catalog(self) -> Optional[dict]:
+    def catalog(self) -> Optional[CatalogArtifact]:
         """Get the catalog data from the catalog file
 
         Catalog data is cached in memory to avoid reading and parsing the file multiple times
@@ -337,7 +337,7 @@ class DbtYamlManager(DbtProject):
         file_path = Path(self.catalog_file)
         if not file_path.exists():
             return None
-        self._catalog = json.loads(file_path.read_text())
+        self._catalog = CatalogArtifact.from_dict(json.loads(file_path.read_text()))
         return self._catalog
 
     @lru_cache(maxsize=5000)
@@ -347,17 +347,17 @@ class DbtYamlManager(DbtProject):
         blacklist = self.config.vars.vars.get("dbt-osmosis", {}).get("_blacklist", [])
         # If we provide a catalog, we read from it
         if self.catalog:
-            matching_models = [
+            matching_models: List[CatalogTable] = [
                 model_values
-                for model, model_values in self.catalog["nodes"].items()
+                for model, model_values in self.catalog.nodes.items()
                 if model.split(".")[-1] == parts[-1]
             ]
             if matching_models:
-                for col in matching_models[0]["columns"].values():
-                    if any(re.match(pattern, col["name"]) for pattern in blacklist):
+                for col in matching_models[0].columns.values():
+                    if any(re.match(pattern, col.name) for pattern in blacklist):
                         continue
-                    columns[self.column_casing(col["name"])] = ColumnMetadata(
-                        name=self.column_casing(col["name"]), type=col["type"], index=col["index"]
+                    columns[self.column_casing(col.name)] = ColumnMetadata(
+                        name=self.column_casing(col.name), type=col.type, index=col.index
                     )
             else:
                 return columns
