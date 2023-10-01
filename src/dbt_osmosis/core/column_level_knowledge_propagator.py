@@ -129,7 +129,6 @@ class ColumnLevelKnowledgePropagator:
 
         if original_knowledge["meta"].get("osmosis_keep_description", None):
             prior_knowledge["description"] = original_knowledge["description"]
-            prior_knowledge["meta"]["osmosis_keep_description"] = True
 
         for k in ["tags", "meta"]:
             delete_if_value_is_empty(prior_knowledge, k)
