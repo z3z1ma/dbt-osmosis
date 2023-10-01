@@ -3,8 +3,8 @@ from typing import Any, Dict, Iterable, List, Optional
 from dbt_osmosis.core.column_level_knowledge import (
     ColumnLevelKnowledge,
     Knowledge,
-    get_prior_knowledge,
     delete_if_value_is_empty,
+    get_prior_knowledge,
 )
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.vendored.dbt_core_interface.project import ColumnInfo, ManifestNode
