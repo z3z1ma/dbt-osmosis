@@ -4,6 +4,7 @@ from dbt_osmosis.core.column_level_knowledge import (
     ColumnLevelKnowledge,
     Knowledge,
     get_prior_knowledge,
+    delete_if_value_is_empty,
 )
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.vendored.dbt_core_interface.project import ColumnInfo, ManifestNode
@@ -89,6 +90,51 @@ class ColumnLevelKnowledgePropagator:
         return knowledge
 
     @staticmethod
+    def _get_original_knowledge(node: ManifestNode, column: str) -> ColumnLevelKnowledge:
+        original_knowledge: ColumnLevelKnowledge = {
+            "description": None,
+            "tags": set(),
+            "meta": {},
+        }
+        if column in node.columns:
+            original_knowledge["description"] = node.columns[column].description
+            original_knowledge["meta"] = node.columns[column].meta
+            original_knowledge["tags"] = node.columns[column].tags
+        return original_knowledge
+
+    @staticmethod
+    def _merge_prior_knowledge_with_original_knowledge(
+        prior_knowledge: ColumnLevelKnowledge,
+        original_knowledge: ColumnLevelKnowledge,
+        add_progenitor_to_meta: bool,
+        progenitor: str,
+    ) -> None:
+        if "tags" in prior_knowledge:
+            prior_knowledge["tags"] = list(
+                set(prior_knowledge["tags"] + list(original_knowledge["tags"]))
+            )
+        else:
+            prior_knowledge["tags"] = original_knowledge["tags"]
+
+        if "meta" in prior_knowledge:
+            prior_knowledge["meta"] = {
+                **original_knowledge["meta"],
+                **prior_knowledge["meta"],
+            }
+        else:
+            prior_knowledge["meta"] = original_knowledge["meta"]
+
+        if add_progenitor_to_meta and progenitor:
+            prior_knowledge["meta"]["osmosis_progenitor"] = progenitor
+
+        if original_knowledge["meta"].get("osmosis_keep_description", None):
+            prior_knowledge["description"] = original_knowledge["description"]
+            prior_knowledge["meta"]["osmosis_keep_description"] = True
+
+        for k in ["tags", "meta"]:
+            delete_if_value_is_empty(prior_knowledge, k)
+
+    @staticmethod
     def update_undocumented_columns_with_prior_knowledge(
         undocumented_columns: Iterable[str],
         node: ManifestNode,
@@ -110,12 +156,19 @@ class ColumnLevelKnowledgePropagator:
         for column in undocumented_columns:
             prior_knowledge: ColumnLevelKnowledge = get_prior_knowledge(knowledge, column)
             progenitor = prior_knowledge.pop("progenitor", None)
-            prior_knowledge = {k: v for k, v in prior_knowledge.items() if k in inheritables}
-            if add_progenitor_to_meta and progenitor:
-                prior_knowledge.setdefault("meta", {})
-                prior_knowledge["meta"]["osmosis_progenitor"] = progenitor
+            prior_knowledge: ColumnLevelKnowledge = {
+                k: v for k, v in prior_knowledge.items() if k in inheritables
+            }
+
+            ColumnLevelKnowledgePropagator._merge_prior_knowledge_with_original_knowledge(
+                prior_knowledge,
+                ColumnLevelKnowledgePropagator._get_original_knowledge(node, column),
+                add_progenitor_to_meta,
+                progenitor,
+            )
             if not prior_knowledge:
                 continue
+
             if column not in node.columns:
                 node.columns[column] = ColumnInfo.from_dict({"name": column, **prior_knowledge})
             else:
