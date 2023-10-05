@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Optional, Set, Tuple
 
 import ruamel.yaml
-from dbt.contracts.results import ColumnMetadata
+from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
 from pydantic import BaseModel
 
 from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
@@ -111,7 +111,7 @@ class DbtYamlManager(DbtProject):
         self.models = models or []
         self.dry_run = dry_run
         self.catalog_file = catalog_file
-        self._catalog = None
+        self._catalog: Optional[CatalogArtifact] = None
         self.skip_add_columns = skip_add_columns
         self.skip_add_tags = skip_add_tags
         self.skip_merge_meta = skip_merge_meta
@@ -285,13 +285,13 @@ class DbtYamlManager(DbtProject):
         return as_path(self.config.project_root).joinpath(*parts)
 
     @staticmethod
-    def get_database_parts(node: ManifestNode) -> Tuple[str, str, str]:
-        """Returns a tuple of database, schema, and alias for a given node."""
-        return node.database, node.schema, getattr(node, "alias", node.name)
+    def get_catalog_key(node: ManifestNode) -> CatalogKey:
+        """Returns CatalogKey for a given node."""
+        return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
 
     def get_base_model(self, node: ManifestNode) -> Dict[str, Any]:
         """Construct a base model object with model name, column names populated from database"""
-        columns = self.get_columns(self.get_database_parts(node))
+        columns = self.get_columns(self.get_catalog_key(node))
         return {
             "name": node.name,
             "columns": [{"name": column_name, "description": ""} for column_name in columns],
@@ -302,7 +302,7 @@ class DbtYamlManager(DbtProject):
     ) -> Dict[str, Any]:
         """Injects columns from database into existing model if not found"""
         model_columns: List[str] = [c["name"] for c in documentation.get("columns", [])]
-        database_columns = self.get_columns(self.get_database_parts(node))
+        database_columns = self.get_columns(self.get_catalog_key(node))
         for column in (
             c for c in database_columns if not any(c.lower() == m.lower() for m in model_columns)
         ):
@@ -319,13 +319,13 @@ class DbtYamlManager(DbtProject):
             )
         return documentation
 
-    def get_columns(self, parts: Tuple[str, str, str]) -> List[str]:
+    def get_columns(self, catalog_key: CatalogKey) -> List[str]:
         """Get all columns in a list for a model"""
 
-        return list(self.get_columns_meta(parts).keys())
+        return list(self.get_columns_meta(catalog_key).keys())
 
     @property
-    def catalog(self) -> Optional[dict]:
+    def catalog(self) -> Optional[CatalogArtifact]:
         """Get the catalog data from the catalog file
 
         Catalog data is cached in memory to avoid reading and parsing the file multiple times
@@ -337,27 +337,27 @@ class DbtYamlManager(DbtProject):
         file_path = Path(self.catalog_file)
         if not file_path.exists():
             return None
-        self._catalog = json.loads(file_path.read_text())
+        self._catalog = CatalogArtifact.from_dict(json.loads(file_path.read_text()))
         return self._catalog
 
     @lru_cache(maxsize=5000)
-    def get_columns_meta(self, parts: Tuple[str, str, str]) -> Dict[str, ColumnMetadata]:
+    def get_columns_meta(self, catalog_key: CatalogKey) -> Dict[str, ColumnMetadata]:
         """Get all columns in a list for a model"""
         columns = OrderedDict()
         blacklist = self.config.vars.vars.get("dbt-osmosis", {}).get("_blacklist", [])
         # If we provide a catalog, we read from it
         if self.catalog:
-            matching_models = [
+            matching_models: List[CatalogTable] = [
                 model_values
-                for model, model_values in self.catalog["nodes"].items()
-                if model.split(".")[-1] == parts[-1]
+                for model, model_values in self.catalog.nodes.items()
+                if model.split(".")[-1] == catalog_key.name
             ]
             if matching_models:
-                for col in matching_models[0]["columns"].values():
-                    if any(re.match(pattern, col["name"]) for pattern in blacklist):
+                for col in matching_models[0].columns.values():
+                    if any(re.match(pattern, col.name) for pattern in blacklist):
                         continue
-                    columns[self.column_casing(col["name"])] = ColumnMetadata(
-                        name=self.column_casing(col["name"]), type=col["type"], index=col["index"]
+                    columns[self.column_casing(col.name)] = ColumnMetadata(
+                        name=self.column_casing(col.name), type=col.type, index=col.index
                     )
             else:
                 return columns
@@ -365,13 +365,13 @@ class DbtYamlManager(DbtProject):
         # If we don't provide a catalog we query the warehouse to get the columns
         else:
             with self.adapter.connection_named("dbt-osmosis"):
-                table = self.adapter.get_relation(*parts)
+                table = self.adapter.get_relation(*catalog_key)
 
                 if not table:
                     logger().info(
                         ":cross_mark: Relation %s.%s.%s does not exist in target database,"
                         " cannot resolve columns",
-                        *parts,
+                        *catalog_key,
                     )
                     return columns
                 try:
@@ -392,7 +392,7 @@ class DbtYamlManager(DbtProject):
                     logger().info(
                         ":cross_mark: Could not resolve relation %s.%s.%s against database"
                         " active tables during introspective query: %s",
-                        *parts,
+                        *catalog_key,
                         str(error),
                     )
         return columns
@@ -782,7 +782,13 @@ class DbtYamlManager(DbtProject):
         ]
         return missing_columns, undocumented_columns, extra_columns
 
-    def _run(self, unique_id, node, schema_map, force_inheritance=False):
+    def _run(
+        self,
+        unique_id: str,
+        node: ManifestNode,
+        schema_map: Dict[str, SchemaFileLocation],
+        force_inheritance: bool = False,
+    ):
         try:
             with self.mutex:
                 logger().info(":point_right: Processing model: [bold]%s[/bold]", unique_id)
@@ -797,8 +803,8 @@ class DbtYamlManager(DbtProject):
 
             # Build Sets
             logger().info(":mag: Resolving columns in database")
-            database_columns_ordered = self.get_columns(self.get_database_parts(node))
-            columns_db_meta = self.get_columns_meta(self.get_database_parts(node))
+            database_columns_ordered = self.get_columns(self.get_catalog_key(node))
+            columns_db_meta = self.get_columns_meta(self.get_catalog_key(node))
             database_columns: Set[str] = set(database_columns_ordered)
             yaml_columns_ordered = [column for column in node.columns]
             yaml_columns: Set[str] = set(yaml_columns_ordered)
