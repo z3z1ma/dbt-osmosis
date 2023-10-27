@@ -287,6 +287,8 @@ class DbtYamlManager(DbtProject):
     @staticmethod
     def get_catalog_key(node: ManifestNode) -> CatalogKey:
         """Returns CatalogKey for a given node."""
+        if node.resource_type == NodeType.Source:
+            return CatalogKey(node.database, node.schema, getattr(node, "identifier", node.name))
         return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
 
     def get_base_model(self, node: ManifestNode) -> Dict[str, Any]:
