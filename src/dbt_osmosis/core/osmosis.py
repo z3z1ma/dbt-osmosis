@@ -591,9 +591,9 @@ class DbtYamlManager(DbtProject):
                     break
             for k in blueprint:
                 # Remove if sources or models are empty
-                if blueprint[k].output.get("sources", None) == []:
+                if blueprint[k].output.get("sources", []) == []:
                     del blueprint[k].output["sources"]
-                if blueprint[k].output.get("models", None) == []:
+                if blueprint[k].output.get("models", []) == []:
                     del blueprint[k].output["models"]
 
         except Exception as e:
@@ -681,9 +681,9 @@ class DbtYamlManager(DbtProject):
                 elif "version" not in target_schema:
                     target_schema["version"] = 2
                 # Add models and sources to target schema
-                if structure.output["models"]:
+                if structure.output.get("models"):
                     target_schema.setdefault("models", []).extend(structure.output["models"])
-                if structure.output["sources"]:
+                if structure.output.get("sources"):
                     target_schema.setdefault("sources", []).extend(structure.output["sources"])
                 if not self.dry_run:
                     self.yaml_handler.dump(target_schema, target)
