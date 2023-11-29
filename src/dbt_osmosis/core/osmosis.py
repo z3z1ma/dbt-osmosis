@@ -253,8 +253,11 @@ class DbtYamlManager(DbtProject):
     def get_schema_path(self, node: ManifestNode) -> Optional[Path]:
         """Resolve absolute schema file path for a manifest node"""
         schema_path = None
-        if node.resource_type == NodeType.Model and node.patch_path:
-            schema_path: str = node.patch_path.partition("://")[-1]
+        if node.resource_type == NodeType.Model:
+            if node.patch_path:
+                schema_path: str = node.patch_path.partition("://")[-1]
+            else:
+                schema_path: str = node.original_file_path
         elif node.resource_type == NodeType.Source:
             if hasattr(node, "source_name"):
                 schema_path: str = node.path
