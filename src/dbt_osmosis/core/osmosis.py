@@ -359,7 +359,10 @@ class DbtYamlManager(DbtProject):
                     if any(re.match(pattern, col.name) for pattern in blacklist):
                         continue
                     columns[self.column_casing(col.name)] = ColumnMetadata(
-                        name=self.column_casing(col.name), type=col.type, index=col.index
+                        name=self.column_casing(col.name),
+                        type=col.type,
+                        index=col.index,
+                        comment=col.comment,
                     )
             else:
                 return columns
@@ -381,14 +384,20 @@ class DbtYamlManager(DbtProject):
                         if any(re.match(pattern, c.name) for pattern in blacklist):
                             continue
                         columns[self.column_casing(c.name)] = ColumnMetadata(
-                            name=self.column_casing(c.name), type=c.dtype, index=None
+                            name=self.column_casing(c.name),
+                            type=c.dtype,
+                            index=None,
+                            comment=getattr(c, "comment", None),
                         )
                         if hasattr(c, "flatten"):
                             for exp in c.flatten():
                                 if any(re.match(pattern, exp.name) for pattern in blacklist):
                                     continue
                                 columns[self.column_casing(exp.name)] = ColumnMetadata(
-                                    name=self.column_casing(exp.name), type=c.dtype, index=None
+                                    name=self.column_casing(exp.name),
+                                    type=c.dtype,
+                                    index=None,
+                                    comment=getattr(c, "comment", None),
                                 )
                 except Exception as error:
                     logger().info(
@@ -1003,10 +1012,18 @@ class DbtYamlManager(DbtProject):
         changes_committed = 0
         for column in missing_columns:
             node.columns[column] = ColumnInfo.from_dict(
-                {"name": column, "description": "", "data_type": columns_db_meta[column].type}
+                {
+                    "name": column,
+                    "description": columns_db_meta[column].comment or "",
+                    "data_type": columns_db_meta[column].type,
+                }
             )
             yaml_file_model_section.setdefault("columns", []).append(
-                {"name": column, "data_type": columns_db_meta[column].type, "description": ""}
+                {
+                    "name": column,
+                    "description": columns_db_meta[column].comment or "",
+                    "data_type": columns_db_meta[column].type,
+                }
             )
             changes_committed += 1
             logger().info(
