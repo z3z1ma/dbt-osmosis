@@ -686,10 +686,10 @@ class DbtYamlManager(DbtProject):
                     target_schema = {"version": 2}
                 elif "version" not in target_schema:
                     target_schema["version"] = 2
-                # Add models and sources to target schema
+                # Add models and sources (if available) to target schema
                 if structure.output["models"]:
                     target_schema.setdefault("models", []).extend(structure.output["models"])
-                if structure.output["sources"]:
+                if structure.output.get("sources") is not None:
                     target_schema.setdefault("sources", []).extend(structure.output["sources"])
                 if not self.dry_run:
                     self.yaml_handler.dump(target_schema, target)
