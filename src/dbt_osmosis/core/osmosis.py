@@ -35,6 +35,7 @@ class YamlHandler(ruamel.yaml.YAML):
         self.width = 800
         self.preserve_quotes = True
         self.default_flow_style = False
+        self.encoding = os.getenv("DBT_OSMOSIS_ENCODING", "utf-8")
 
 
 class SchemaFileLocation(BaseModel):
