@@ -396,9 +396,9 @@ class DbtYamlManager(DbtProject):
                                     continue
                                 columns[self.column_casing(exp.name)] = ColumnMetadata(
                                     name=self.column_casing(exp.name),
-                                    type=c.dtype,
+                                    type=exp.dtype,
                                     index=None,
-                                    comment=getattr(c, "comment", None),
+                                    comment=getattr(exp, "comment", None),
                                 )
                 except Exception as error:
                     logger().info(
