@@ -350,13 +350,15 @@ class DbtYamlManager(DbtProject):
         blacklist = self.config.vars.vars.get("dbt-osmosis", {}).get("_blacklist", [])
         # If we provide a catalog, we read from it
         if self.catalog:
-            matching_models: List[CatalogTable] = [
-                model_values
-                for model, model_values in self.catalog.nodes.items()
-                if model.split(".")[-1] == catalog_key.name
+            matching_models_or_sources: List[CatalogTable] = [
+                model_or_source_values
+                for model_or_source, model_or_source_values in dict(
+                    **self.catalog.nodes, **self.catalog.sources
+                ).items()
+                if model_or_source.split(".")[-1] == catalog_key.name
             ]
-            if matching_models:
-                for col in matching_models[0].columns.values():
+            if matching_models_or_sources:
+                for col in matching_models_or_sources[0].columns.values():
                     if any(re.match(pattern, col.name) for pattern in blacklist):
                         continue
                     columns[self.column_casing(col.name)] = ColumnMetadata(
