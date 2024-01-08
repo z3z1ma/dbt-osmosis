@@ -135,7 +135,18 @@ def test_update_undocumented_columns_with_prior_knowledge():
         "my_tag2",
     ]
 
-    target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    target_node_name = "model.jaffle_shop_duckdb.customers"
+    manifest.nodes[target_node_name].columns["customer_id"].tags = set(
+        [
+            "my_tag3",
+            "my_tag4",
+        ]
+    )
+    manifest.nodes[target_node_name].columns["customer_id"].meta = {
+        "my_key": "my_old_value",
+        "my_new_key": "my_new_value",
+    }
+    target_node = manifest.nodes[target_node_name]
     knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
         manifest, target_node, placeholders=[""]
     )
@@ -161,12 +172,22 @@ def test_update_undocumented_columns_with_prior_knowledge():
     assert (
         yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
     )
-    assert yaml_file_model_section["columns"][0]["meta"] == {"my_key": "my_value"}
-    assert set(yaml_file_model_section["columns"][0]["tags"]) == set(["my_tag1", "my_tag2"])
+    assert yaml_file_model_section["columns"][0]["meta"] == {
+        "my_key": "my_value",
+        "my_new_key": "my_new_value",
+    }
+    assert set(yaml_file_model_section["columns"][0]["tags"]) == set(
+        ["my_tag1", "my_tag2", "my_tag3", "my_tag4"]
+    )
 
     assert target_node.columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
-    assert target_node.columns["customer_id"].meta == {"my_key": "my_value"}
-    assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])
+    assert target_node.columns["customer_id"].meta == {
+        "my_key": "my_value",
+        "my_new_key": "my_new_value",
+    }
+    assert set(target_node.columns["customer_id"].tags) == set(
+        ["my_tag1", "my_tag2", "my_tag3", "my_tag4"]
+    )
 
 
 def test_update_undocumented_columns_with_prior_knowledge_skip_add_tags():
@@ -311,6 +332,142 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
     assert target_node.columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
     assert target_node.columns["customer_id"].meta == {
         "my_key": "my_value",
+        "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers",
+    }
+    assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])
+
+
+def test_update_undocumented_columns_with_prior_knowledge_with_osmosis_keep_description():
+    manifest = load_manifest()
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
+        "customer_id"
+    ].description = "THIS COLUMN IS UPDATED FOR TESTING"
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].meta = {
+        "my_key": "my_value",
+    }
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].tags = [
+        "my_tag1",
+        "my_tag2",
+    ]
+
+    column_description_not_updated = (
+        "This column will not be updated as it has the 'osmosis_keep_description' attribute"
+    )
+    target_node_name = "model.jaffle_shop_duckdb.customers"
+
+    manifest.nodes[target_node_name].columns[
+        "customer_id"
+    ].description = column_description_not_updated
+    manifest.nodes[target_node_name].columns["customer_id"].tags = set(
+        [
+            "my_tag3",
+            "my_tag4",
+        ]
+    )
+    manifest.nodes[target_node_name].columns["customer_id"].meta = {
+        "my_key": "my_value",
+        "osmosis_keep_description": True,
+    }
+
+    target_node = manifest.nodes[target_node_name]
+    knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+        manifest, target_node, placeholders=[""]
+    )
+    yaml_file_model_section = {
+        "columns": [
+            {
+                "name": "customer_id",
+            }
+        ]
+    }
+    undocumented_columns = target_node.columns.keys()
+    ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
+        undocumented_columns,
+        target_node,
+        yaml_file_model_section,
+        knowledge,
+        skip_add_tags=True,
+        skip_merge_meta=True,
+        add_progenitor_to_meta=False,
+    )
+
+    assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
+    assert yaml_file_model_section["columns"][0]["description"] == column_description_not_updated
+    assert yaml_file_model_section["columns"][0]["meta"] == {
+        "my_key": "my_value",
+        "osmosis_keep_description": True,
+    }
+    assert set(yaml_file_model_section["columns"][0]["tags"]) == set(["my_tag3", "my_tag4"])
+
+    assert target_node.columns["customer_id"].description == column_description_not_updated
+    assert target_node.columns["customer_id"].meta == {
+        "my_key": "my_value",
+        "osmosis_keep_description": True,
+    }
+    assert set(target_node.columns["customer_id"].tags) == set(["my_tag3", "my_tag4"])
+
+
+def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta_and_osmosis_keep_description():
+    manifest = load_manifest()
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
+        "customer_id"
+    ].description = "THIS COLUMN IS UPDATED FOR TESTING"
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].meta = {
+        "my_key": "my_value",
+    }
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].tags = [
+        "my_tag1",
+        "my_tag2",
+    ]
+
+    column_description_not_updated = (
+        "This column will not be updated as it has the 'osmosis_keep_description' attribute"
+    )
+    target_node_name = "model.jaffle_shop_duckdb.customers"
+
+    manifest.nodes[target_node_name].columns[
+        "customer_id"
+    ].description = column_description_not_updated
+    manifest.nodes[target_node_name].columns["customer_id"].meta = {
+        "my_key": "my_value",
+        "osmosis_keep_description": True,
+    }
+
+    target_node = manifest.nodes[target_node_name]
+    knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+        manifest, target_node, placeholders=[""]
+    )
+    yaml_file_model_section = {
+        "columns": [
+            {
+                "name": "customer_id",
+            }
+        ]
+    }
+    undocumented_columns = target_node.columns.keys()
+    ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
+        undocumented_columns,
+        target_node,
+        yaml_file_model_section,
+        knowledge,
+        skip_add_tags=False,
+        skip_merge_meta=False,
+        add_progenitor_to_meta=True,
+    )
+
+    assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
+    assert yaml_file_model_section["columns"][0]["description"] == column_description_not_updated
+    assert yaml_file_model_section["columns"][0]["meta"] == {
+        "my_key": "my_value",
+        "osmosis_keep_description": True,
+        "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers",
+    }
+    assert set(yaml_file_model_section["columns"][0]["tags"]) == set(["my_tag1", "my_tag2"])
+
+    assert target_node.columns["customer_id"].description == column_description_not_updated
+    assert target_node.columns["customer_id"].meta == {
+        "my_key": "my_value",
+        "osmosis_keep_description": True,
         "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers",
     }
     assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])

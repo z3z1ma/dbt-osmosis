@@ -5,6 +5,11 @@ ColumnLevelKnowledge = Dict[str, Any]
 Knowledge = Dict[str, ColumnLevelKnowledge]
 
 
+def delete_if_value_is_empty(prior_knowledge: ColumnLevelKnowledge, key: str) -> None:
+    if not prior_knowledge[key]:
+        del prior_knowledge[key]
+
+
 def get_prior_knowledge(
     knowledge: Knowledge,
     column: str,
