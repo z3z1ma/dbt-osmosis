@@ -1,5 +1,6 @@
 from typing import Any, Dict, Iterable, List, Optional
-
+from pathlib import Path
+import yaml
 from dbt_osmosis.core.column_level_knowledge import (
     ColumnLevelKnowledge,
     Knowledge,
@@ -35,6 +36,15 @@ def _build_node_ancestor_tree(
             )
     return family_tree
 
+def _get_member_yaml(member):
+    # need to do separate things for models/seeds and sources 
+    if "patch_path" in dir(member) and member.patch_path is not None:
+        # patch_path is coming is as 'jaffle_shop_sqlite:/models/staging/stg_orders.yml'
+        real_path = member.patch_path.split(':')[-1][2:]  # this obviously isn't production-worthy
+        with Path(real_path).open() as f:
+            data = yaml.safe_load(f)
+        model_yaml = next((item for item in data['models'] if item['name'] == member.name), None)
+        return model_yaml
 
 def _inherit_column_level_knowledge(
     manifest: ManifestNode,
@@ -44,16 +54,26 @@ def _inherit_column_level_knowledge(
     """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
     recent ancestor is always the one to inherit from
     """
+    use_direct_yaml_descriptions = True
     knowledge: Knowledge = {}
     for generation in reversed(family_tree):
         for ancestor in family_tree[generation]:
             member: ManifestNode = manifest.nodes.get(ancestor, manifest.sources.get(ancestor))
             if not member:
                 continue
+            if use_direct_yaml_descriptions:
+                # overwrite member as the yaml
+                model_yaml = _get_member_yaml(member)
             for name, info in member.columns.items():
                 knowledge_default = {"progenitor": ancestor, "generation": generation}
                 knowledge.setdefault(name, knowledge_default)
                 deserialized_info = info.to_dict()
+
+                if use_direct_yaml_descriptions: # overwrite the deserialized info with unrendered column info
+                    col_yaml = next((col for col in model_yaml['columns'] if col['name'] == deserialized_info['name']), None)
+                    if "description" in col_yaml:
+                        deserialized_info["description"] = col_yaml["description"]
+
                 # Handle Info:
                 # 1. tags are additive
                 # 2. descriptions are overriden
