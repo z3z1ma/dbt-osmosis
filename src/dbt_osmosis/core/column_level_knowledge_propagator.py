@@ -9,7 +9,7 @@ from dbt_osmosis.core.column_level_knowledge import (
 )
 from dbt_osmosis.core.log_controller import logger
 from dbt_osmosis.vendored.dbt_core_interface.project import ColumnInfo, ManifestNode
-
+from dbt.contracts.graph.nodes import SourceDefinition, SeedNode, ModelNode
 
 def _build_node_ancestor_tree(
     manifest: ManifestNode,
@@ -37,13 +37,30 @@ def _build_node_ancestor_tree(
     return family_tree
 
 def _get_member_yaml(member):
-    # need to do separate things for models/seeds and sources 
-    if "patch_path" in dir(member) and member.patch_path is not None:
-        # patch_path is coming is as 'jaffle_shop_sqlite:/models/staging/stg_orders.yml'
-        real_path = member.patch_path.split(':')[-1][2:]  # this obviously isn't production-worthy
-        with Path(real_path).open() as f:
+    if isinstance(member, SourceDefinition):
+        key = "tables"
+    elif isinstance(member, ModelNode):
+        key = "models"
+    elif isinstance(member, SeedNode):
+        key = "seeds"
+    else:
+        print(f"Unrecognized member type: {type(member)}")
+    data = None
+    if key == "tables" and \
+        hasattr(member, "original_file_path") and \
+        member.original_file_path:
+        with Path(member.original_file_path).open('r') as f:
             data = yaml.safe_load(f)
-        model_yaml = next((item for item in data['models'] if item['name'] == member.name), None)
+        data = next((item for item in data['sources'] if item['name'] == member.source_name), None)
+    elif key in ["seeds", "models"] and \
+        hasattr(member, "patch_path") and \
+        member.patch_path:
+            # patch_path is coming is as 'jaffle_shop_sqlite:/models/staging/stg_orders.yml'
+            real_path = member.patch_path.split(':')[-1][2:]  # this obviously isn't production-worthy
+            with Path(real_path).open() as f:
+                data = yaml.safe_load(f)
+    if data:
+        model_yaml = next((item for item in data[key] if item['name'] == member.name), None)
         return model_yaml
 
 def _inherit_column_level_knowledge(
@@ -68,10 +85,9 @@ def _inherit_column_level_knowledge(
                 knowledge_default = {"progenitor": ancestor, "generation": generation}
                 knowledge.setdefault(name, knowledge_default)
                 deserialized_info = info.to_dict()
-
-                if use_direct_yaml_descriptions: # overwrite the deserialized info with unrendered column info
+                if use_direct_yaml_descriptions and model_yaml: # overwrite the deserialized info with unrendered column info
                     col_yaml = next((col for col in model_yaml['columns'] if col['name'] == deserialized_info['name']), None)
-                    if "description" in col_yaml:
+                    if col_yaml is not None and "description" in col_yaml:
                         deserialized_info["description"] = col_yaml["description"]
 
                 # Handle Info:
