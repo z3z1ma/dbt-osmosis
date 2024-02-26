@@ -598,12 +598,6 @@ class DbtYamlManager(DbtProject):
                             schema_file.current, []
                         ).append(node)
                     break
-            for k in blueprint:
-                # Remove if sources or models are empty
-                if blueprint[k].output.get("sources", None) == []:
-                    del blueprint[k].output["sources"]
-                if blueprint[k].output.get("models", None) == []:
-                    del blueprint[k].output["models"]
 
         except Exception as e:
             with self.mutex:
@@ -637,6 +631,16 @@ class DbtYamlManager(DbtProject):
                     futs.append(self.tpe.submit(self._draft, schema_file, unique_id, blueprint))
             wait(futs)
         return blueprint
+      
+    def cleanup_blueprint(self, blueprint: dict) -> None:
+        with self.mutex:
+            for k in list(blueprint.keys()):
+                # Remove if sources or models are empty
+                if blueprint[k].output.get("sources", None) == []:
+                    del blueprint[k].output["sources"]
+                if blueprint[k].output.get("models", None) == []:
+                    del blueprint[k].output["models"]
+        return blueprint
 
     def commit_project_restructure_to_disk(
         self, blueprint: Optional[Dict[Path, SchemaFileMigration]] = None
@@ -657,6 +661,8 @@ class DbtYamlManager(DbtProject):
         # Build blueprint if not user supplied
         if not blueprint:
             blueprint = self.draft_project_structure_update_plan()
+            
+        blueprint = self.cleanup_blueprint(blueprint)
 
         # Verify we have actions in the plan
         if not blueprint:
