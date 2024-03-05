@@ -55,9 +55,8 @@ def _get_member_yaml(member):
     elif key in ["seeds", "models"] and \
         hasattr(member, "patch_path") and \
         member.patch_path:
-            # patch_path is coming is as 'jaffle_shop_sqlite:/models/staging/stg_orders.yml'
-            real_path = member.patch_path.split(':')[-1][2:]  # this obviously isn't production-worthy
-            with Path(real_path).open() as f:
+            pfp:str = member.patch_path.split('://')[-1]
+            with Path(pfp).open() as f:
                 data = yaml.safe_load(f)
     if data:
         model_yaml = next((item for item in data[key] if item['name'] == member.name), None)
@@ -71,7 +70,7 @@ def _inherit_column_level_knowledge(
     """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
     recent ancestor is always the one to inherit from
     """
-    use_direct_yaml_descriptions = True
+    use_direct_yaml_descriptions = True  # TODO: turn this into click option
     knowledge: Knowledge = {}
     for generation in reversed(family_tree):
         for ancestor in family_tree[generation]:
