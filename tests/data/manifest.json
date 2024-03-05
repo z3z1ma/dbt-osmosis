@@ -19,7 +19,7 @@
       "resource_type": "model",
       "package_name": "jaffle_shop_duckdb",
       "path": "customers.sql",
-      "original_file_path": "models/customers.sql",
+      "original_file_path": "demo_duckdb/models/customers.sql",
       "unique_id": "model.jaffle_shop_duckdb.customers",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -133,7 +133,7 @@
         "show": true,
         "node_color": null
       },
-      "patch_path": "jaffle_shop_duckdb://models/schema.yml",
+      "patch_path": "jaffle_shop_duckdb://demo_duckdb/models/schema.yml",
       "build_path": null,
       "deferred": false,
       "unrendered_config": {
@@ -192,7 +192,7 @@
       "resource_type": "model",
       "package_name": "jaffle_shop_duckdb",
       "path": "orders.sql",
-      "original_file_path": "models/orders.sql",
+      "original_file_path": "demo_duckdb/models/orders.sql",
       "unique_id": "model.jaffle_shop_duckdb.orders",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -324,7 +324,7 @@
         "show": true,
         "node_color": null
       },
-      "patch_path": "jaffle_shop_duckdb://models/schema.yml",
+      "patch_path": "jaffle_shop_duckdb://demo_duckdb/models/schema.yml",
       "build_path": null,
       "deferred": false,
       "unrendered_config": {
@@ -377,7 +377,7 @@
       "resource_type": "model",
       "package_name": "jaffle_shop_duckdb",
       "path": "staging/stg_customers.sql",
-      "original_file_path": "models/staging/stg_customers.sql",
+      "original_file_path": "demo_duckdb/models/staging/stg_customers.sql",
       "unique_id": "model.jaffle_shop_duckdb.stg_customers",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -456,7 +456,7 @@
         "show": true,
         "node_color": null
       },
-      "patch_path": "jaffle_shop_duckdb://models/staging/schema.yml",
+      "patch_path": "jaffle_shop_duckdb://demo_duckdb/models/staging/schema.yml",
       "build_path": null,
       "deferred": false,
       "unrendered_config": {
@@ -503,7 +503,7 @@
       "resource_type": "model",
       "package_name": "jaffle_shop_duckdb",
       "path": "staging/stg_payments.sql",
-      "original_file_path": "models/staging/stg_payments.sql",
+      "original_file_path": "demo_duckdb/models/staging/stg_payments.sql",
       "unique_id": "model.jaffle_shop_duckdb.stg_payments",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -591,7 +591,7 @@
         "show": true,
         "node_color": null
       },
-      "patch_path": "jaffle_shop_duckdb://models/staging/schema.yml",
+      "patch_path": "jaffle_shop_duckdb://demo_duckdb/models/staging/schema.yml",
       "build_path": null,
       "deferred": false,
       "unrendered_config": {
@@ -638,7 +638,7 @@
       "resource_type": "model",
       "package_name": "jaffle_shop_duckdb",
       "path": "staging/stg_orders.sql",
-      "original_file_path": "models/staging/stg_orders.sql",
+      "original_file_path": "demo_duckdb/models/staging/stg_orders.sql",
       "unique_id": "model.jaffle_shop_duckdb.stg_orders",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -726,7 +726,7 @@
         "show": true,
         "node_color": null
       },
-      "patch_path": "jaffle_shop_duckdb://models/staging/schema.yml",
+      "patch_path": "jaffle_shop_duckdb://demo_duckdb/models/staging/schema.yml",
       "build_path": null,
       "deferred": false,
       "unrendered_config": {
@@ -988,7 +988,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "unique_customers_customer_id.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.unique_customers_customer_id.c5af1ff4b1",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1079,7 +1079,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_customers_customer_id.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_customers_customer_id.5c9bf9911d",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1170,7 +1170,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "unique_orders_order_id.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.unique_orders_order_id.fed79b3a6e",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1261,7 +1261,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_orders_order_id.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_orders_order_id.cf6c17daed",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1352,7 +1352,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_orders_customer_id.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_orders_customer_id.c5f02694af",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1445,7 +1445,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "relationships_orders_customer_id__customer_id__ref_customers_.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.relationships_orders_customer_id__customer_id__ref_customers_.c6ec7f58f2",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1549,7 +1549,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "accepted_values_orders_1ce6ab157c285f7cd2ac656013faf758.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.accepted_values_orders_status__placed__shipped__completed__return_pending__returned.be6b5b5ec3",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1642,7 +1642,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_orders_credit_card_amount.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_orders_credit_card_amount.d3ca593b59",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1733,7 +1733,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_orders_coupon_amount.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_orders_coupon_amount.ab90c90625",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1824,7 +1824,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_orders_bank_transfer_amount.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_orders_bank_transfer_amount.7743500c49",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -1915,7 +1915,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_orders_gift_card_amount.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_orders_gift_card_amount.413a0d2d7a",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2006,7 +2006,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_orders_amount.sql",
-      "original_file_path": "models/schema.yml",
+      "original_file_path": "demo_duckdb/models/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_orders_amount.106140f9fd",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2097,7 +2097,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "unique_stg_customers_customer_id.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.unique_stg_customers_customer_id.c7614daada",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2189,7 +2189,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_stg_customers_customer_id.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_stg_customers_customer_id.e2cfb1f9aa",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2281,7 +2281,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "unique_stg_orders_order_id.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.unique_stg_orders_order_id.e3b841c71a",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2373,7 +2373,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_stg_orders_order_id.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_stg_orders_order_id.81cfe2fe64",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2472,7 +2472,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "accepted_values_stg_orders_4f514bf94b77b7ea437830eec4421c58.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.accepted_values_stg_orders_status__placed__shipped__completed__return_pending__returned.080fb20aad",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2566,7 +2566,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "unique_stg_payments_payment_id.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.unique_stg_payments_payment_id.3744510712",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2658,7 +2658,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "not_null_stg_payments_payment_id.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.not_null_stg_payments_payment_id.c19cc50075",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -2756,7 +2756,7 @@
       "resource_type": "test",
       "package_name": "jaffle_shop_duckdb",
       "path": "accepted_values_stg_payments_c7909fb19b1f0177c2bf99c7912f06ef.sql",
-      "original_file_path": "models/staging/schema.yml",
+      "original_file_path": "demo_duckdb/models/staging/schema.yml",
       "unique_id": "test.jaffle_shop_duckdb.accepted_values_stg_payments_payment_method__credit_card__coupon__bank_transfer__gift_card.3c3820f278",
       "fqn": [
         "jaffle_shop_duckdb",
@@ -11163,7 +11163,7 @@
       "resource_type": "doc",
       "package_name": "jaffle_shop_duckdb",
       "path": "overview.md",
-      "original_file_path": "models/overview.md",
+      "original_file_path": "demo_duckdb/models/overview.md",
       "unique_id": "doc.jaffle_shop_duckdb.__overview__",
       "block_contents": "## Data Documentation for Jaffle Shop\n\n`jaffle_shop` is a fictional ecommerce store.\n\nThis [dbt](https://www.getdbt.com/) project is for testing out code.\n\nThe source code can be found [here](https://github.com/clrcrl/jaffle_shop)."
     },
@@ -11172,7 +11172,7 @@
       "resource_type": "doc",
       "package_name": "jaffle_shop_duckdb",
       "path": "docs.md",
-      "original_file_path": "models/docs.md",
+      "original_file_path": "demo_duckdb/models/docs.md",
       "unique_id": "doc.jaffle_shop_duckdb.orders_status",
       "block_contents": "Orders can be one of the following statuses:\n\n| status         | description                                                                                                            |\n|----------------|------------------------------------------------------------------------------------------------------------------------|\n| placed         | The order has been placed but has not yet left the warehouse                                                           |\n| shipped        | The order has ben shipped to the customer and is currently in transit                                                  |\n| completed      | The order has been received by the customer                                                                            |\n| return_pending | The customer has indicated that they would like to return the order, but it has not yet been received at the warehouse |\n| returned       | The order has been returned by the customer and received at the warehouse                                              |"
     },
