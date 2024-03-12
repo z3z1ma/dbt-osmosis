@@ -417,6 +417,12 @@ def organize(
         " my_value}'"
     ),
 )
+@click.option(
+    "--use-direct-yaml-descriptions", 
+    is_flag=True, 
+    help="If specified, will use unrendered column descriptions in the documentation."
+        "This is useful for propogating docs blocks"
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -434,6 +440,7 @@ def document(
     add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
     vars: Optional[str] = None,
+    use_direct_yaml_descriptions: bool = False,
 ):
     """Column level documentation inheritance for existing models
 
@@ -462,6 +469,7 @@ def document(
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
         vars=vars,
+        use_direct_yaml_descriptions=use_direct_yaml_descriptions,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database

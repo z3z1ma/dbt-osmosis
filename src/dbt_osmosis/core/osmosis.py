@@ -104,6 +104,7 @@ class DbtYamlManager(DbtProject):
         skip_merge_meta: bool = False,
         add_progenitor_to_meta: bool = False,
         vars: Optional[str] = None,
+        use_direct_yaml_descriptions: bool = False,
         profile: Optional[str] = None,
     ):
         """Initializes the DbtYamlManager class."""
@@ -117,6 +118,7 @@ class DbtYamlManager(DbtProject):
         self.skip_add_tags = skip_add_tags
         self.skip_merge_meta = skip_merge_meta
         self.add_progenitor_to_meta = add_progenitor_to_meta
+        self.use_direct_yaml_descriptions = use_direct_yaml_descriptions
 
         if len(list(self.filtered_models())) == 0:
             logger().warning(
@@ -1051,7 +1053,7 @@ class DbtYamlManager(DbtProject):
             )
 
         knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-            self.manifest, node, self.placeholders
+            self.manifest, node, self.placeholders, self.use_direct_yaml_descriptions
         )
         n_cols_doc_inherited = (
             ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(

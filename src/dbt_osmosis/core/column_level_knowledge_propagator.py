@@ -67,11 +67,11 @@ def _inherit_column_level_knowledge(
     manifest: ManifestNode,
     family_tree: Dict[str, Any],
     placeholders: List[str],
+    use_direct_yaml_descriptions: bool = False,
 ) -> Knowledge:
     """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
     recent ancestor is always the one to inherit from
     """
-    use_direct_yaml_descriptions = True  # TODO: turn this into click option
     knowledge: Knowledge = {}
     for generation in reversed(family_tree):
         for ancestor in family_tree[generation]:
@@ -128,10 +128,11 @@ class ColumnLevelKnowledgePropagator:
         manifest: ManifestNode,
         node: ManifestNode,
         placeholders: List[str],
+        use_direct_yaml_descriptions: bool = False,
     ) -> Knowledge:
         """Build a knowledgebase for the model based on iterating through ancestors"""
         family_tree = _build_node_ancestor_tree(manifest, node)
-        knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders)
+        knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders, use_direct_yaml_descriptions)
         return knowledge
 
     @staticmethod
