@@ -51,7 +51,6 @@ models:
         description: Date (UTC) that the order was placed
 
       - name: status
-        description: '{{ doc("orders_status") }}'
         tests:
           - accepted_values:
               values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
