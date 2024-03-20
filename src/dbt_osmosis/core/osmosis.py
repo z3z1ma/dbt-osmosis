@@ -631,7 +631,7 @@ class DbtYamlManager(DbtProject):
                     futs.append(self.tpe.submit(self._draft, schema_file, unique_id, blueprint))
             wait(futs)
         return blueprint
-      
+
     def cleanup_blueprint(self, blueprint: dict) -> None:
         with self.mutex:
             for k in list(blueprint.keys()):
@@ -661,7 +661,7 @@ class DbtYamlManager(DbtProject):
         # Build blueprint if not user supplied
         if not blueprint:
             blueprint = self.draft_project_structure_update_plan()
-            
+
         blueprint = self.cleanup_blueprint(blueprint)
 
         # Verify we have actions in the plan
