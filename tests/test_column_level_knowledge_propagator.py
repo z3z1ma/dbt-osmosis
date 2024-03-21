@@ -1,5 +1,6 @@
+# %%
 import json
-
+import os
 from dbt.contracts.graph.manifest import Manifest
 
 from dbt_osmosis.core.column_level_knowledge_propagator import (
@@ -7,7 +8,7 @@ from dbt_osmosis.core.column_level_knowledge_propagator import (
     _build_node_ancestor_tree,
     _inherit_column_level_knowledge,
 )
-
+import pytest
 
 def load_manifest() -> Manifest:
     manifest_path = "tests/data/manifest.json"
@@ -16,6 +17,22 @@ def load_manifest() -> Manifest:
         manifest_dict = json.loads(manifest_text)
     return Manifest.from_dict(manifest_dict)
 
+def parse_and_load_manifest() -> Manifest:
+    import subprocess
+    subprocess.run(["dbt", "parse"])
+    manifest_path = "target/manifest.json"
+    with open(manifest_path, "r") as f:
+        manifest_text = f.read()
+        manifest_dict = json.loads(manifest_text)
+    return Manifest.from_dict(manifest_dict)
+
+    # I'd much rather do this through the dbtRunner, but I can't get it to work
+    # from dbt.cli.main import dbtRunner, dbtRunnerResult
+    # cli_args = ["parse", "--project-dir", "./demo_duckdb", "--profiles-dir", "./demo_duckdb"]
+    # res: dbtRunnerResult = dbt.invoke(cli_args)
+    # manifest: Manifest = res.result
+    # return manifest
+# %%
 
 def test_build_node_ancestor_tree():
     manifest = load_manifest()
@@ -471,3 +488,19 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
         "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers",
     }
     assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])
+
+@pytest.mark.parametrize(("use_direct_yaml_descriptions"), [True, False])
+def test_use_direct_yaml_descriptions(use_direct_yaml_descriptions):
+    # changing directory, assuming that I need to carry profile_dir through as this doesn't work outside of the dbt project
+    os.chdir("demo_duckdb")
+    manifest = parse_and_load_manifest()
+    target_node = manifest.nodes["model.jaffle_shop_duckdb.orders"]
+    placeholders = [""]
+    family_tree = _build_node_ancestor_tree(manifest, target_node)
+    knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders, use_direct_yaml_descriptions=use_direct_yaml_descriptions)
+    os.chdir("..")
+    if use_direct_yaml_descriptions:
+        expected='{{ doc("orders_status") }}'
+    else: 
+        expected= "Orders can be one of the following statuses:"
+    assert knowledge['status']['description'].startswith(expected) # starts with so I don't have to worry about linux/windows line endings
