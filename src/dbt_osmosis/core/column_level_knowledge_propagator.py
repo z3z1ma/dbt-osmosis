@@ -67,7 +67,7 @@ def _inherit_column_level_knowledge(
     manifest: ManifestNode,
     family_tree: Dict[str, Any],
     placeholders: List[str],
-    use_direct_yaml_descriptions: bool = False,
+    use_unrendered_descriptions: bool = False,
 ) -> Knowledge:
     """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
     recent ancestor is always the one to inherit from
@@ -78,7 +78,7 @@ def _inherit_column_level_knowledge(
             member: ManifestNode = manifest.nodes.get(ancestor, manifest.sources.get(ancestor))
             if not member:
                 continue
-            if use_direct_yaml_descriptions:
+            if use_unrendered_descriptions:
                 # overwrite member as the yaml
                 model_yaml = _get_member_yaml(member)
             for name, info in member.columns.items():
@@ -86,7 +86,7 @@ def _inherit_column_level_knowledge(
                 knowledge.setdefault(name, knowledge_default)
                 deserialized_info = info.to_dict()
                 if (
-                    use_direct_yaml_descriptions and model_yaml
+                    use_unrendered_descriptions and model_yaml
                 ):  # overwrite the deserialized info with unrendered column info
                     col_yaml = next(
                         (
@@ -128,11 +128,11 @@ class ColumnLevelKnowledgePropagator:
         manifest: ManifestNode,
         node: ManifestNode,
         placeholders: List[str],
-        use_direct_yaml_descriptions: bool = False,
+        use_unrendered_descriptions: bool = False,
     ) -> Knowledge:
         """Build a knowledgebase for the model based on iterating through ancestors"""
         family_tree = _build_node_ancestor_tree(manifest, node)
-        knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders, use_direct_yaml_descriptions)
+        knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders, use_unrendered_descriptions)
         return knowledge
 
     @staticmethod

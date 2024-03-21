@@ -489,17 +489,17 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
     }
     assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])
 
-@pytest.mark.parametrize(("use_direct_yaml_descriptions"), [True, False])
-def test_use_direct_yaml_descriptions(use_direct_yaml_descriptions):
+@pytest.mark.parametrize(("use_unrendered_descriptions"), [True, False])
+def test_use_unrendered_descriptions(use_unrendered_descriptions):
     # changing directory, assuming that I need to carry profile_dir through as this doesn't work outside of the dbt project
     os.chdir("demo_duckdb")
     manifest = parse_and_load_manifest()
     target_node = manifest.nodes["model.jaffle_shop_duckdb.orders"]
     placeholders = [""]
     family_tree = _build_node_ancestor_tree(manifest, target_node)
-    knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders, use_direct_yaml_descriptions=use_direct_yaml_descriptions)
+    knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders, use_unrendered_descriptions=use_unrendered_descriptions)
     os.chdir("..")
-    if use_direct_yaml_descriptions:
+    if use_unrendered_descriptions:
         expected='{{ doc("orders_status") }}'
     else: 
         expected= "Orders can be one of the following statuses:"
