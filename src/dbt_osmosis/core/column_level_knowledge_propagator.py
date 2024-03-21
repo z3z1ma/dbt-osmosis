@@ -40,7 +40,8 @@ def _build_node_ancestor_tree(
     return family_tree
 
 
-def _get_member_yaml(member):
+def _get_member_yaml(member: ManifestNode) -> Optional[dict]:
+    """Get the yaml for a member from the file in the manifest, only returns relevant section"""
     if isinstance(member, SourceDefinition):
         key = "tables"
     elif isinstance(member, ModelNode):
@@ -48,7 +49,8 @@ def _get_member_yaml(member):
     elif isinstance(member, SeedNode):
         key = "seeds"
     else:
-        print(f"Unrecognized member type: {type(member)}")
+        return None
+    
     data = None
     if key == "tables" and hasattr(member, "original_file_path") and member.original_file_path:
         with Path(member.original_file_path).open("r") as f:
