@@ -164,6 +164,14 @@ def shared_opts(func: Callable) -> Callable:
         " my_value}'"
     ),
 )
+@click.option(
+    "--use-unrendered-descriptions",
+    is_flag=True,
+    help=(
+        "If specified, will use unrendered column descriptions in the documentation."
+        "This is useful for propogating docs blocks"
+    ),
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
@@ -181,6 +189,7 @@ def refactor(
     models: Optional[List[str]] = None,
     profile: Optional[str] = None,
     vars: Optional[str] = None,
+    use_unrendered_descriptions: bool = False,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
     directory, reparses the project, then executes document passing down inheritable documentation
@@ -210,6 +219,7 @@ def refactor(
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
         vars=vars,
+        use_unrendered_descriptions=use_unrendered_descriptions,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -417,6 +427,14 @@ def organize(
         " my_value}'"
     ),
 )
+@click.option(
+    "--use-unrendered-descriptions",
+    is_flag=True,
+    help=(
+        "If specified, will use unrendered column descriptions in the documentation."
+        "This is useful for propogating docs blocks"
+    ),
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -434,6 +452,7 @@ def document(
     add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
     vars: Optional[str] = None,
+    use_unrendered_descriptions: bool = False,
 ):
     """Column level documentation inheritance for existing models
 
@@ -462,6 +481,7 @@ def document(
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
         vars=vars,
+        use_unrendered_descriptions=use_unrendered_descriptions,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
