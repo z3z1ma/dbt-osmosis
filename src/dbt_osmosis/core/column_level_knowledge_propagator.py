@@ -50,7 +50,7 @@ def _get_member_yaml(member: ManifestNode) -> Optional[dict]:
         key = "seeds"
     else:
         return None
-    
+
     data = None
     if key == "tables" and hasattr(member, "original_file_path") and member.original_file_path:
         with Path(member.original_file_path).open("r") as f:
@@ -134,7 +134,9 @@ class ColumnLevelKnowledgePropagator:
     ) -> Knowledge:
         """Build a knowledgebase for the model based on iterating through ancestors"""
         family_tree = _build_node_ancestor_tree(manifest, node)
-        knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders, use_unrendered_descriptions)
+        knowledge = _inherit_column_level_knowledge(
+            manifest, family_tree, placeholders, use_unrendered_descriptions
+        )
         return knowledge
 
     @staticmethod

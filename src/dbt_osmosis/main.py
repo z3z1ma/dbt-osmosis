@@ -165,10 +165,12 @@ def shared_opts(func: Callable) -> Callable:
     ),
 )
 @click.option(
-    "--use-unrendered-descriptions", 
-    is_flag=True, 
-    help="If specified, will use unrendered column descriptions in the documentation."
+    "--use-unrendered-descriptions",
+    is_flag=True,
+    help=(
+        "If specified, will use unrendered column descriptions in the documentation."
         "This is useful for propogating docs blocks"
+    ),
 )
 @click.argument("models", nargs=-1)
 def refactor(
@@ -426,10 +428,12 @@ def organize(
     ),
 )
 @click.option(
-    "--use-unrendered-descriptions", 
-    is_flag=True, 
-    help="If specified, will use unrendered column descriptions in the documentation."
+    "--use-unrendered-descriptions",
+    is_flag=True,
+    help=(
+        "If specified, will use unrendered column descriptions in the documentation."
         "This is useful for propogating docs blocks"
+    ),
 )
 @click.argument("models", nargs=-1)
 def document(
