@@ -33,7 +33,7 @@ jobs:
       
       - name: Parse manifest
         run: |
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          poetry run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
 
       - name: Run pytest
         run: |
