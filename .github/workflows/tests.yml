@@ -28,8 +28,8 @@ jobs:
           poetry --version
 
       - name: Install required packages
-        run: |
-          poetry install
+        run: | # install duckdb extras to be able to parse manifest
+          poetry install -E duckdb 
 
       - name: Run pytest
         run: |
