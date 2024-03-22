@@ -53,12 +53,12 @@ def _get_member_yaml(member: ManifestNode, project_dir: Path) -> Optional[dict]:
 
     data = None
     if key == "tables" and hasattr(member, "original_file_path") and member.original_file_path:
-        with (project_dir/Path(member.original_file_path)).open("r") as f:
+        with (project_dir / Path(member.original_file_path)).open("r") as f:
             data = yaml.safe_load(f)
         data = next((item for item in data["sources"] if item["name"] == member.source_name), None)
     elif key in ["seeds", "models"] and hasattr(member, "patch_path") and member.patch_path:
         pfp: str = member.patch_path.split("://")[-1]
-        with (project_dir/Path(pfp)).open() as f:
+        with (project_dir / Path(pfp)).open() as f:
             data = yaml.safe_load(f)
     if data:
         model_yaml = next((item for item in data[key] if item["name"] == member.name), None)
@@ -131,7 +131,7 @@ class ColumnLevelKnowledgePropagator:
         manifest: ManifestNode,
         node: ManifestNode,
         placeholders: List[str],
-        project_dir: Path = Path.cwd(), 
+        project_dir: Path = Path.cwd(),
         use_unrendered_descriptions: bool = False,
     ) -> Knowledge:
         """Build a knowledgebase for the model based on iterating through ancestors"""

@@ -1053,7 +1053,11 @@ class DbtYamlManager(DbtProject):
             )
 
         knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-            self.manifest, node, self.placeholders, self.base_config.project_dir, self.use_unrendered_descriptions
+            self.manifest,
+            node,
+            self.placeholders,
+            self.base_config.project_dir,
+            self.use_unrendered_descriptions,
         )
         n_cols_doc_inherited = (
             ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(

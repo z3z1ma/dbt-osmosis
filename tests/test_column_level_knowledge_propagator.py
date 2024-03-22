@@ -14,11 +14,12 @@ from dbt_osmosis.core.column_level_knowledge_propagator import (
 
 
 def load_manifest() -> Manifest:
-    manifest_path = Path(__file__).parent.parent/"demo_duckdb/target/manifest.json"
+    manifest_path = Path(__file__).parent.parent / "demo_duckdb/target/manifest.json"
     with manifest_path.open("r") as f:
         manifest_text = f.read()
         manifest_dict = json.loads(manifest_text)
     return Manifest.from_dict(manifest_dict)
+
 
 # %%
 
@@ -92,14 +93,14 @@ def test_inherit_column_level_knowledge():
             "constraints": [],
             "quote": None,
         },
-        'status': {
-            'progenitor': 'seed.jaffle_shop_duckdb.raw_orders'
-            , 'generation': 'generation_1'
-            , 'name': 'status'
-            , 'description': "THIS COLUMN IS UPDATED FOR TESTING"
-            , 'data_type': 'VARCHAR'
-            , 'constraints': []
-            , 'quote': None
+        "status": {
+            "progenitor": "seed.jaffle_shop_duckdb.raw_orders",
+            "generation": "generation_1",
+            "name": "status",
+            "description": "THIS COLUMN IS UPDATED FOR TESTING",
+            "data_type": "VARCHAR",
+            "constraints": [],
+            "quote": None,
         },
         "payment_id": {
             "progenitor": "model.jaffle_shop_duckdb.stg_payments",
@@ -490,12 +491,16 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
 def test_use_unrendered_descriptions(use_unrendered_descriptions):
     manifest = load_manifest()
     # changing directory, assuming that I need to carry profile_dir through as this doesn't work outside of the dbt project
-    project_dir = (Path(__file__).parent.parent / "demo_duckdb")
+    project_dir = Path(__file__).parent.parent / "demo_duckdb"
     target_node = manifest.nodes["model.jaffle_shop_duckdb.orders"]
     placeholders = [""]
     family_tree = _build_node_ancestor_tree(manifest, target_node)
     knowledge = _inherit_column_level_knowledge(
-        manifest, family_tree, placeholders, project_dir, use_unrendered_descriptions=use_unrendered_descriptions
+        manifest,
+        family_tree,
+        placeholders,
+        project_dir,
+        use_unrendered_descriptions=use_unrendered_descriptions,
     )
     if use_unrendered_descriptions:
         expected = '{{ doc("orders_status") }}'
