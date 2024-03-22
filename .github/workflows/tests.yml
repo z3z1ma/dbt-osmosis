@@ -30,6 +30,10 @@ jobs:
       - name: Install required packages
         run: | # install duckdb extras to be able to parse manifest
           poetry install -E duckdb 
+      
+      - name: Parse manifest
+        run: |
+          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
 
       - name: Run pytest
         run: |

@@ -14,30 +14,11 @@ from dbt_osmosis.core.column_level_knowledge_propagator import (
 
 
 def load_manifest() -> Manifest:
-    manifest_path = "tests/data/manifest.json"
-    with open(manifest_path, "r") as f:
+    manifest_path = Path(__file__).parent.parent/"demo_duckdb/target/manifest.json"
+    with manifest_path.open("r") as f:
         manifest_text = f.read()
         manifest_dict = json.loads(manifest_text)
     return Manifest.from_dict(manifest_dict)
-
-
-def parse_and_load_manifest() -> Manifest:
-    import subprocess
-
-    subprocess.run(["dbt", "parse"])
-    manifest_path = "target/manifest.json"
-    with open(manifest_path, "r") as f:
-        manifest_text = f.read()
-        manifest_dict = json.loads(manifest_text)
-    return Manifest.from_dict(manifest_dict)
-
-    # I'd much rather do this through the dbtRunner, but I can't get it to work
-    # from dbt.cli.main import dbtRunner, dbtRunnerResult
-    # cli_args = ["parse", "--project-dir", "./demo_duckdb", "--profiles-dir", "./demo_duckdb"]
-    # res: dbtRunnerResult = dbt.invoke(cli_args)
-    # manifest: Manifest = res.result
-    # return manifest
-
 
 # %%
 
@@ -64,6 +45,9 @@ def test_inherit_column_level_knowledge():
     manifest = load_manifest()
     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
         "customer_id"
+    ].description = "THIS COLUMN IS UPDATED FOR TESTING"
+    manifest.nodes["seed.jaffle_shop_duckdb.raw_orders"].columns[
+        "status"
     ].description = "THIS COLUMN IS UPDATED FOR TESTING"
 
     expect = {
@@ -108,13 +92,14 @@ def test_inherit_column_level_knowledge():
             "constraints": [],
             "quote": None,
         },
-        "status": {
-            "progenitor": "model.jaffle_shop_duckdb.stg_orders",
-            "generation": "generation_0",
-            "name": "status",
-            "data_type": "VARCHAR",
-            "constraints": [],
-            "quote": None,
+        'status': {
+            'progenitor': 'seed.jaffle_shop_duckdb.raw_orders'
+            , 'generation': 'generation_1'
+            , 'name': 'status'
+            , 'description': "THIS COLUMN IS UPDATED FOR TESTING"
+            , 'data_type': 'VARCHAR'
+            , 'constraints': []
+            , 'quote': None
         },
         "payment_id": {
             "progenitor": "model.jaffle_shop_duckdb.stg_payments",
@@ -144,6 +129,9 @@ def test_inherit_column_level_knowledge():
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
     family_tree = _build_node_ancestor_tree(manifest, target_node)
     placeholders = [""]
+    actual = _inherit_column_level_knowledge(manifest, family_tree, placeholders)
+    print(expect)
+    print(actual)
     assert _inherit_column_level_knowledge(manifest, family_tree, placeholders) == expect
 
 
@@ -500,16 +488,15 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
 
 @pytest.mark.parametrize("use_unrendered_descriptions", [True, False])
 def test_use_unrendered_descriptions(use_unrendered_descriptions):
+    manifest = load_manifest()
     # changing directory, assuming that I need to carry profile_dir through as this doesn't work outside of the dbt project
-    os.chdir(Path(__file__).parent.parent / "demo_duckdb")
-    manifest = parse_and_load_manifest()
+    project_dir = (Path(__file__).parent.parent / "demo_duckdb")
     target_node = manifest.nodes["model.jaffle_shop_duckdb.orders"]
     placeholders = [""]
     family_tree = _build_node_ancestor_tree(manifest, target_node)
     knowledge = _inherit_column_level_knowledge(
-        manifest, family_tree, placeholders, use_unrendered_descriptions=use_unrendered_descriptions
+        manifest, family_tree, placeholders, project_dir, use_unrendered_descriptions=use_unrendered_descriptions
     )
-    os.chdir("..")
     if use_unrendered_descriptions:
         expected = '{{ doc("orders_status") }}'
     else:

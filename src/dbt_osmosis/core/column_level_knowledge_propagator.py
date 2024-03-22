@@ -40,7 +40,7 @@ def _build_node_ancestor_tree(
     return family_tree
 
 
-def _get_member_yaml(member: ManifestNode) -> Optional[dict]:
+def _get_member_yaml(member: ManifestNode, project_dir: Path) -> Optional[dict]:
     """Get the yaml for a member from the file in the manifest, only returns relevant section"""
     if isinstance(member, SourceDefinition):
         key = "tables"
@@ -53,12 +53,12 @@ def _get_member_yaml(member: ManifestNode) -> Optional[dict]:
 
     data = None
     if key == "tables" and hasattr(member, "original_file_path") and member.original_file_path:
-        with Path(member.original_file_path).open("r") as f:
+        with (project_dir/Path(member.original_file_path)).open("r") as f:
             data = yaml.safe_load(f)
         data = next((item for item in data["sources"] if item["name"] == member.source_name), None)
     elif key in ["seeds", "models"] and hasattr(member, "patch_path") and member.patch_path:
         pfp: str = member.patch_path.split("://")[-1]
-        with Path(pfp).open() as f:
+        with (project_dir/Path(pfp)).open() as f:
             data = yaml.safe_load(f)
     if data:
         model_yaml = next((item for item in data[key] if item["name"] == member.name), None)
@@ -69,6 +69,7 @@ def _inherit_column_level_knowledge(
     manifest: ManifestNode,
     family_tree: Dict[str, Any],
     placeholders: List[str],
+    project_dir: Path = Path.cwd(),
     use_unrendered_descriptions: bool = False,
 ) -> Knowledge:
     """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
@@ -82,7 +83,7 @@ def _inherit_column_level_knowledge(
                 continue
             if use_unrendered_descriptions:
                 # overwrite member as the yaml
-                model_yaml = _get_member_yaml(member)
+                model_yaml = _get_member_yaml(member, project_dir)
             for name, info in member.columns.items():
                 knowledge_default = {"progenitor": ancestor, "generation": generation}
                 knowledge.setdefault(name, knowledge_default)
@@ -130,12 +131,13 @@ class ColumnLevelKnowledgePropagator:
         manifest: ManifestNode,
         node: ManifestNode,
         placeholders: List[str],
+        project_dir: Path = Path.cwd(), 
         use_unrendered_descriptions: bool = False,
     ) -> Knowledge:
         """Build a knowledgebase for the model based on iterating through ancestors"""
         family_tree = _build_node_ancestor_tree(manifest, node)
         knowledge = _inherit_column_level_knowledge(
-            manifest, family_tree, placeholders, use_unrendered_descriptions
+            manifest, family_tree, placeholders, project_dir, use_unrendered_descriptions
         )
         return knowledge
 
