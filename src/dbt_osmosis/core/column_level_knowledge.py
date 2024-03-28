@@ -26,7 +26,11 @@ def get_prior_knowledge(
         )
     )
     sorted_prior_knowledge_candidates_sources = sorted(
-        [k for k in prior_knowledge_candidates if k["progenitor"].startswith("source")],
+        [
+            k
+            for k in prior_knowledge_candidates
+            if (k["progenitor"].startswith("source") or k["progenitor"].startswith("seed"))
+        ],
         key=lambda k: k["generation"],
         reverse=True,
     )

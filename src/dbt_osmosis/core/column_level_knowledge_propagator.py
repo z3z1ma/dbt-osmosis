@@ -1,4 +1,8 @@
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+
+import yaml
+from dbt.contracts.graph.nodes import ModelNode, SeedNode, SourceDefinition
 
 from dbt_osmosis.core.column_level_knowledge import (
     ColumnLevelKnowledge,
@@ -36,10 +40,37 @@ def _build_node_ancestor_tree(
     return family_tree
 
 
+def _get_member_yaml(member: ManifestNode, project_dir: Path) -> Optional[dict]:
+    """Get the yaml for a member from the file in the manifest, only returns relevant section"""
+    if isinstance(member, SourceDefinition):
+        key = "tables"
+    elif isinstance(member, ModelNode):
+        key = "models"
+    elif isinstance(member, SeedNode):
+        key = "seeds"
+    else:
+        return None
+
+    data = None
+    if key == "tables" and hasattr(member, "original_file_path") and member.original_file_path:
+        with (project_dir / Path(member.original_file_path)).open("r") as f:
+            data = yaml.safe_load(f)
+        data = next((item for item in data["sources"] if item["name"] == member.source_name), None)
+    elif key in ["seeds", "models"] and hasattr(member, "patch_path") and member.patch_path:
+        pfp: str = member.patch_path.split("://")[-1]
+        with (project_dir / Path(pfp)).open() as f:
+            data = yaml.safe_load(f)
+    if data:
+        model_yaml = next((item for item in data[key] if item["name"] == member.name), None)
+        return model_yaml
+
+
 def _inherit_column_level_knowledge(
     manifest: ManifestNode,
     family_tree: Dict[str, Any],
     placeholders: List[str],
+    project_dir: Path = Path.cwd(),
+    use_unrendered_descriptions: bool = False,
 ) -> Knowledge:
     """Inherit knowledge from ancestors in reverse insertion order to ensure that the most
     recent ancestor is always the one to inherit from
@@ -50,10 +81,27 @@ def _inherit_column_level_knowledge(
             member: ManifestNode = manifest.nodes.get(ancestor, manifest.sources.get(ancestor))
             if not member:
                 continue
+            if use_unrendered_descriptions:
+                # overwrite member as the yaml
+                model_yaml = _get_member_yaml(member, project_dir)
             for name, info in member.columns.items():
                 knowledge_default = {"progenitor": ancestor, "generation": generation}
                 knowledge.setdefault(name, knowledge_default)
                 deserialized_info = info.to_dict()
+                if (
+                    use_unrendered_descriptions and model_yaml
+                ):  # overwrite the deserialized info with unrendered column info
+                    col_yaml = next(
+                        (
+                            col
+                            for col in model_yaml["columns"]
+                            if col["name"] == deserialized_info["name"]
+                        ),
+                        None,
+                    )
+                    if col_yaml is not None and "description" in col_yaml:
+                        deserialized_info["description"] = col_yaml["description"]
+
                 # Handle Info:
                 # 1. tags are additive
                 # 2. descriptions are overriden
@@ -83,10 +131,14 @@ class ColumnLevelKnowledgePropagator:
         manifest: ManifestNode,
         node: ManifestNode,
         placeholders: List[str],
+        project_dir: Path = Path.cwd(),
+        use_unrendered_descriptions: bool = False,
     ) -> Knowledge:
         """Build a knowledgebase for the model based on iterating through ancestors"""
         family_tree = _build_node_ancestor_tree(manifest, node)
-        knowledge = _inherit_column_level_knowledge(manifest, family_tree, placeholders)
+        knowledge = _inherit_column_level_knowledge(
+            manifest, family_tree, placeholders, project_dir, use_unrendered_descriptions
+        )
         return knowledge
 
     @staticmethod
