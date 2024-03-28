@@ -3,6 +3,7 @@ import os
 import re
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
@@ -11,7 +12,6 @@ from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Optional
 
 import ruamel.yaml
 from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
-from pydantic import BaseModel
 
 from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
 from dbt_osmosis.core.exceptions import InvalidOsmosisConfig, MissingOsmosisConfig
@@ -38,7 +38,8 @@ class YamlHandler(ruamel.yaml.YAML):
         self.encoding = os.getenv("DBT_OSMOSIS_ENCODING", "utf-8")
 
 
-class SchemaFileLocation(BaseModel):
+@dataclass
+class SchemaFileLocation:
     target: Path
     current: Optional[Path] = None
     node_type: NodeType = NodeType.Model
@@ -48,9 +49,10 @@ class SchemaFileLocation(BaseModel):
         return self.current == self.target
 
 
-class SchemaFileMigration(BaseModel):
-    output: Dict[str, Any] = {}
-    supersede: Dict[Path, List[str]] = {}
+@dataclass
+class SchemaFileMigration:
+    output: Dict[str, Any] = field(default_factory=dict)
+    supersede: Dict[Path, List[str]] = field(default_factory=dict)
 
 
 class DbtYamlManager(DbtProject):
