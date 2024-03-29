@@ -103,6 +103,7 @@ class DbtYamlManager(DbtProject):
         models: Optional[List[str]] = None,
         skip_add_columns: bool = False,
         skip_add_tags: bool = False,
+        skip_add_data_types: bool = False,
         skip_merge_meta: bool = False,
         add_progenitor_to_meta: bool = False,
         vars: Optional[str] = None,
@@ -118,6 +119,7 @@ class DbtYamlManager(DbtProject):
         self._catalog: Optional[CatalogArtifact] = None
         self.skip_add_columns = skip_add_columns
         self.skip_add_tags = skip_add_tags
+        self.skip_add_data_types = skip_add_data_types
         self.skip_merge_meta = skip_merge_meta
         self.add_progenitor_to_meta = add_progenitor_to_meta
         self.use_unrendered_descriptions = use_unrendered_descriptions
@@ -999,6 +1001,8 @@ class DbtYamlManager(DbtProject):
         columns_db_meta: Dict[str, ColumnMetadata],
     ) -> int:
         changes_committed = 0
+        if not self.skip_add_data_types:
+            return changes_committed
         for column in columns_db_meta:
             cased_column_name = self.column_casing(column)
             if cased_column_name in node.columns:

@@ -137,6 +137,11 @@ def shared_opts(func: Callable) -> Callable:
     help="If specified, we will skip adding tags to the models.",
 )
 @click.option(
+    "--skip-add-data-types",
+    is_flag=True,
+    help="If specified, we will skip adding data types to the models.",
+)
+@click.option(
     "--skip-merge-meta",
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
@@ -184,6 +189,7 @@ def refactor(
     check: bool = False,
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
+    skip_add_data_types: bool = False,
     skip_merge_meta: bool = False,
     add_progenitor_to_meta: bool = False,
     models: Optional[List[str]] = None,
@@ -215,6 +221,7 @@ def refactor(
         catalog_file=catalog_file,
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
+        skip_add_data_types=skip_add_data_types,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
@@ -268,6 +275,11 @@ def refactor(
     help="If specified, we will skip adding tags to the models.",
 )
 @click.option(
+    "--skip-add-data-types",
+    is_flag=True,
+    help="If specified, we will skip adding data types to the models.",
+)
+@click.option(
     "--skip-merge-meta",
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
@@ -306,6 +318,7 @@ def organize(
     models: Optional[List[str]] = None,
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
+    skip_add_data_types: bool = False,
     skip_merge_meta: bool = False,
     add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
@@ -333,6 +346,7 @@ def organize(
         models=models,
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
+        skip_add_data_types=skip_add_data_types,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
@@ -400,6 +414,11 @@ def organize(
     help="If specified, we will skip adding tags to the models.",
 )
 @click.option(
+    "--skip-add-data-types",
+    is_flag=True,
+    help="If specified, we will skip adding data types to the models.",
+)
+@click.option(
     "--skip-merge-meta",
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
@@ -448,6 +467,7 @@ def document(
     models: Optional[List[str]] = None,
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
+    skip_add_data_types: bool = False,
     skip_merge_meta: bool = False,
     add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
@@ -477,6 +497,7 @@ def document(
         catalog_file=catalog_file,
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
+        skip_add_data_types=skip_add_data_types,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
