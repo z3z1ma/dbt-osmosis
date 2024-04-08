@@ -1001,7 +1001,7 @@ class DbtYamlManager(DbtProject):
         columns_db_meta: Dict[str, ColumnMetadata],
     ) -> int:
         changes_committed = 0
-        if not self.skip_add_data_types:
+        if self.skip_add_data_types:
             return changes_committed
         for column in columns_db_meta:
             cased_column_name = self.column_casing(column)
