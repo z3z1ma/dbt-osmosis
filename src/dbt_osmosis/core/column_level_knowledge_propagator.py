@@ -106,7 +106,8 @@ def _inherit_column_level_knowledge(
                 # 1. tags are additive
                 # 2. descriptions are overriden
                 # 3. meta is merged
-                # 4. tests are ignored until I am convinced those shouldn't be
+                # 4. policy_tags are additive
+                # 5. tests are ignored until I am convinced those shouldn't be
                 #       hand curated with love
                 if deserialized_info["description"] in placeholders:
                     deserialized_info.pop("description", None)
@@ -121,6 +122,12 @@ def _inherit_column_level_knowledge(
                 }
                 if not deserialized_info["meta"]:
                     deserialized_info.pop("meta")
+                deserialized_info["policy_tags"] = list(
+                    set(deserialized_info.pop("policy_tags", []) + knowledge[name].get("policy_tags", []))
+                )
+                if not deserialized_info["policy_tags"]:
+                    deserialized_info.pop("policy_tags")
+                
                 knowledge[name].update(deserialized_info)
     return knowledge
 
@@ -147,11 +154,13 @@ class ColumnLevelKnowledgePropagator:
             "description": None,
             "tags": set(),
             "meta": {},
+            "_extra": set()
         }
         if column in node.columns:
             original_knowledge["description"] = node.columns[column].description
             original_knowledge["meta"] = node.columns[column].meta
             original_knowledge["tags"] = node.columns[column].tags
+            original_knowledge["_extra"] = node.columns[column]._extra
         return original_knowledge
 
     @staticmethod
@@ -176,13 +185,20 @@ class ColumnLevelKnowledgePropagator:
         else:
             prior_knowledge["meta"] = original_knowledge["meta"]
 
+        if "policy_tags" in prior_knowledge:
+            prior_knowledge["policy_tags"] = list(
+                set(prior_knowledge["policy_tags"] + list(original_knowledge["_extra"].get("policy_tags", [])))
+            )
+        else:
+            prior_knowledge["policy_tags"] = original_knowledge["_extra"].get("policy_tags", [])
+
         if add_progenitor_to_meta and progenitor:
             prior_knowledge["meta"]["osmosis_progenitor"] = progenitor
 
         if original_knowledge["meta"].get("osmosis_keep_description", None):
             prior_knowledge["description"] = original_knowledge["description"]
 
-        for k in ["tags", "meta"]:
+        for k in ["tags", "meta", "policy_tags"]:
             delete_if_value_is_empty(prior_knowledge, k)
 
     @staticmethod
