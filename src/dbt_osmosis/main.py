@@ -177,6 +177,14 @@ def shared_opts(func: Callable) -> Callable:
         "This is useful for propogating docs blocks"
     ),
 )
+@click.option(
+    "--add-inheritance-for-specified-keys",
+    multiple=True,
+    type=click.STRING,
+    help=(
+        "If specified, will add inheritance for the specified keys."
+    )
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
@@ -196,6 +204,7 @@ def refactor(
     profile: Optional[str] = None,
     vars: Optional[str] = None,
     use_unrendered_descriptions: bool = False,
+    add_inheritance_for_specified_keys: Optional[List[str]] = None,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
     directory, reparses the project, then executes document passing down inheritable documentation
@@ -227,6 +236,7 @@ def refactor(
         profile=profile,
         vars=vars,
         use_unrendered_descriptions=use_unrendered_descriptions,
+        add_inheritance_for_specified_keys=add_inheritance_for_specified_keys,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -307,6 +317,14 @@ def refactor(
         " my_value}'"
     ),
 )
+@click.option(
+    "--add-inheritance-for-specified-keys",
+    multiple=True,
+    type=click.STRING,
+    help=(
+        "If specified, will add inheritance for the specified keys."
+    )
+)
 @click.argument("models", nargs=-1)
 def organize(
     target: Optional[str] = None,
@@ -323,6 +341,7 @@ def organize(
     add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
     vars: Optional[str] = None,
+    add_inheritance_for_specified_keys: Optional[List[str]] = None,
 ):
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -351,6 +370,7 @@ def organize(
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
         vars=vars,
+        add_inheritance_for_specified_keys=add_inheritance_for_specified_keys,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -454,6 +474,14 @@ def organize(
         "This is useful for propogating docs blocks"
     ),
 )
+@click.option(
+    "--add-inheritance-for-specified-keys",
+    multiple=True,
+    type=click.STRING,
+    help=(
+        "If specified, will add inheritance for the specified keys."
+    )
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -473,6 +501,7 @@ def document(
     profile: Optional[str] = None,
     vars: Optional[str] = None,
     use_unrendered_descriptions: bool = False,
+    add_inheritance_for_specified_keys: Optional[List[str]] = None,
 ):
     """Column level documentation inheritance for existing models
 
@@ -503,6 +532,7 @@ def document(
         profile=profile,
         vars=vars,
         use_unrendered_descriptions=use_unrendered_descriptions,
+        add_inheritance_for_specified_keys=add_inheritance_for_specified_keys,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database

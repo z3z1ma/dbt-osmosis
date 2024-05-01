@@ -109,6 +109,7 @@ class DbtYamlManager(DbtProject):
         vars: Optional[str] = None,
         use_unrendered_descriptions: bool = False,
         profile: Optional[str] = None,
+        add_inheritance_for_specified_keys: Optional[List[str]] = None,
     ):
         """Initializes the DbtYamlManager class."""
         super().__init__(target, profiles_dir, project_dir, threads, vars=vars, profile=profile)
@@ -123,6 +124,7 @@ class DbtYamlManager(DbtProject):
         self.skip_merge_meta = skip_merge_meta
         self.add_progenitor_to_meta = add_progenitor_to_meta
         self.use_unrendered_descriptions = use_unrendered_descriptions
+        self.add_inheritance_for_specified_keys = add_inheritance_for_specified_keys or []
 
         if len(list(self.filtered_models())) == 0:
             logger().warning(
@@ -1081,6 +1083,7 @@ class DbtYamlManager(DbtProject):
                 self.skip_add_tags,
                 self.skip_merge_meta,
                 self.add_progenitor_to_meta,
+                self.add_inheritance_for_specified_keys,
             )
         )
         n_cols_data_type_updated = self.update_columns_data_type(node, section, columns_db_meta)
