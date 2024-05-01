@@ -486,6 +486,78 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
     }
     assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])
 
+def test_update_undocumented_columns_with_prior_knowledge_with_add_inheritance_for_specified_keys():
+    manifest = load_manifest()
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
+        "customer_id"
+    ].description = "THIS COLUMN IS UPDATED FOR TESTING"
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].meta = {
+        "my_key": "my_value"
+    }
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].tags = [
+        "my_tag1",
+        "my_tag2",
+    ]
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"]._extra = {
+        "policy_tags": ["my_policy_tag1"],
+    }
+
+    target_node_name = "model.jaffle_shop_duckdb.customers"
+    manifest.nodes[target_node_name].columns["customer_id"].tags = set(
+        [
+            "my_tag3",
+            "my_tag4",
+        ]
+    )
+    manifest.nodes[target_node_name].columns["customer_id"].meta = {
+        "my_key": "my_old_value",
+        "my_new_key": "my_new_value",
+    }
+    target_node = manifest.nodes[target_node_name]
+    knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
+        manifest, target_node, placeholders=[""]
+    )
+    yaml_file_model_section = {
+        "columns": [
+            {
+                "name": "customer_id",
+            }
+        ]
+    }
+    undocumented_columns = target_node.columns.keys()
+    ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
+        undocumented_columns,
+        target_node,
+        yaml_file_model_section,
+        knowledge,
+        skip_add_tags=False,
+        skip_merge_meta=False,
+        add_progenitor_to_meta=False,
+        add_inheritance_for_specified_keys=["policy_tags"],
+    )
+
+    assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
+    assert (
+        yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
+    )
+    assert yaml_file_model_section["columns"][0]["meta"] == {
+        "my_key": "my_value",
+        "my_new_key": "my_new_value",
+    }
+    assert set(yaml_file_model_section["columns"][0]["tags"]) == set(
+        ["my_tag1", "my_tag2", "my_tag3", "my_tag4"]
+    )
+    assert set(yaml_file_model_section["columns"][0]["policy_tags"]) == set(["my_policy_tag1"])
+
+    assert target_node.columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
+    assert target_node.columns["customer_id"].meta == {
+        "my_key": "my_value",
+        "my_new_key": "my_new_value",
+    }
+    assert set(target_node.columns["customer_id"].tags) == set(
+        ["my_tag1", "my_tag2", "my_tag3", "my_tag4"]
+    )
+    assert set(target_node.columns["customer_id"]._extra["policy_tags"]) == set(["my_policy_tag1"])
 
 @pytest.mark.parametrize("use_unrendered_descriptions", [True, False])
 def test_use_unrendered_descriptions(use_unrendered_descriptions):
