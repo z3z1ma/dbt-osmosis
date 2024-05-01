@@ -133,7 +133,6 @@ class ColumnLevelKnowledgePropagator:
         placeholders: List[str],
         project_dir: Path = Path.cwd(),
         use_unrendered_descriptions: bool = False,
-        add_inheritance_for_specified_keys: List[str] = [],
     ) -> Knowledge:
         """Build a knowledgebase for the model based on iterating through ancestors"""
         family_tree = _build_node_ancestor_tree(manifest, node)
