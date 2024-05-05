@@ -194,6 +194,7 @@ class ColumnLevelKnowledgePropagator:
         skip_add_tags: bool,
         skip_merge_meta: bool,
         add_progenitor_to_meta: bool,
+        add_inheritance_for_specified_keys: Iterable[str] = [],
     ) -> int:
         """Update undocumented columns with prior knowledge in node and model simultaneously
         THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
@@ -202,6 +203,9 @@ class ColumnLevelKnowledgePropagator:
             inheritables.append("tags")
         if not skip_merge_meta:
             inheritables.append("meta")
+        for key in add_inheritance_for_specified_keys:
+            if key not in inheritables:
+                inheritables.append(key)
 
         changes_committed = 0
         for column in undocumented_columns:
