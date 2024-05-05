@@ -91,6 +91,10 @@ class DbtYamlManager(DbtProject):
         "",  # This is the important one
     ]
 
+    # NOTE: we use an arbitrarily large TTL since the YAML manager is not
+    # a long-running service which needs to periodically invalidate and refresh
+    ADAPTER_TTL = 1e9
+
     def __init__(
         self,
         target: Optional[str] = None,
