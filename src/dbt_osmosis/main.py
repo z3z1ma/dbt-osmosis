@@ -181,9 +181,7 @@ def shared_opts(func: Callable) -> Callable:
     "--add-inheritance-for-specified-keys",
     multiple=True,
     type=click.STRING,
-    help=(
-        "If specified, will add inheritance for the specified keys."
-    )
+    help="If specified, will add inheritance for the specified keys.",
 )
 @click.argument("models", nargs=-1)
 def refactor(
@@ -321,9 +319,7 @@ def refactor(
     "--add-inheritance-for-specified-keys",
     multiple=True,
     type=click.STRING,
-    help=(
-        "If specified, will add inheritance for the specified keys."
-    )
+    help="If specified, will add inheritance for the specified keys.",
 )
 @click.argument("models", nargs=-1)
 def organize(
@@ -478,9 +474,7 @@ def organize(
     "--add-inheritance-for-specified-keys",
     multiple=True,
     type=click.STRING,
-    help=(
-        "If specified, will add inheritance for the specified keys."
-    )
+    help="If specified, will add inheritance for the specified keys.",
 )
 @click.argument("models", nargs=-1)
 def document(

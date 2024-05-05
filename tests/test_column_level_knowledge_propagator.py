@@ -486,6 +486,7 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
     }
     assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])
 
+
 def test_update_undocumented_columns_with_prior_knowledge_with_add_inheritance_for_specified_keys():
     manifest = load_manifest()
     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
@@ -558,6 +559,7 @@ def test_update_undocumented_columns_with_prior_knowledge_with_add_inheritance_f
         ["my_tag1", "my_tag2", "my_tag3", "my_tag4"]
     )
     assert set(target_node.columns["customer_id"]._extra["policy_tags"]) == set(["my_policy_tag1"])
+
 
 @pytest.mark.parametrize("use_unrendered_descriptions", [True, False])
 def test_use_unrendered_descriptions(use_unrendered_descriptions):
