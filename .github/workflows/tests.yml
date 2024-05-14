@@ -8,6 +8,11 @@ jobs:
   tests:
     name: Run pytest
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        dbt-version: ["1.6.0", "1.7.0"]
+
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4.1.1
@@ -26,6 +31,10 @@ jobs:
         run: |
           pip install --constraint=.github/workflows/constraints.txt poetry
           poetry --version
+
+      - name: Install dbt-core
+        run: |
+          poetry add dbt-core==${{ matrix.dbt-version }}
 
       - name: Install required packages
         run: | # install duckdb extras to be able to parse manifest
