@@ -87,22 +87,13 @@ import yaml
 from dbt.adapters.factory import get_adapter_class_by_name
 from dbt.clients.system import make_directory
 from dbt.config.runtime import RuntimeConfig
+from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode
 from dbt.flags import set_from_args
 from dbt.node_types import NodeType
 from dbt.parser.manifest import PARTIAL_PARSE_FILE_NAME, ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.sql import SqlCompileRunner
 from dbt.tracking import disable_tracking
-
-# brute force import for dbt 1.3 back-compat
-# these are here for consumers of dbt-core-interface
-try:
-    # dbt <= 1.3
-    from dbt.contracts.graph.compiled import ManifestNode  # type: ignore
-    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
-except Exception:
-    # dbt > 1.3
-    from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode  # type: ignore
 
 if TYPE_CHECKING:
     # These imports are only used for type checking
@@ -119,22 +110,8 @@ disable_tracking()
 
 urlunquote = functools.partial(urlunquote, encoding="latin1")
 
-# Version specific dbt constants and overrides
-__dbt_major_version__ = int(dbt.version.installed.major or 0)
-__dbt_minor_version__ = int(dbt.version.installed.minor or 0)
-__dbt_patch_version__ = int(dbt.version.installed.patch or 0)
-if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) > (1, 3, 0):
-    RAW_CODE = "raw_code"
-    COMPILED_CODE = "compiled_code"
-else:
-    RAW_CODE = "raw_code"
-    COMPILED_CODE = "compiled_code"
-if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) < (1, 5, 0):
-    import dbt.events.functions
-
-    # I expect a change in dbt 1.5.0 that may make this monkey patch unnecessary
-    # but we can reduce the codepath since dbt is **loaded** with telemetry calls...
-    dbt.events.functions.fire_event = lambda *args, **kwargs: None
+RAW_CODE = "raw_code"
+COMPILED_CODE = "compiled_code"
 
 
 def default_project_dir() -> Path:
@@ -173,12 +150,6 @@ def write_manifest_for_partial_parse(self: ManifestLoader):
         raise
 
 
-if (__dbt_major_version__, __dbt_minor_version__) < (1, 4):
-    # Patched so we write partial parse to correct directory
-    # https://github.com/dbt-labs/dbt-core/blob/v1.3.2/core/dbt/parser/manifest.py#L548
-    ManifestLoader.write_manifest_for_partial_parse = write_manifest_for_partial_parse
-
-
 __all__ = [
     "DbtProject",
     "DbtProjectContainer",
@@ -186,9 +157,6 @@ __all__ = [
     "DbtAdapterCompilationResult",
     "DbtManifestProxy",
     "DbtConfiguration",
-    "__dbt_major_version__",
-    "__dbt_minor_version__",
-    "__dbt_patch_version__",
     "DEFAULT_PROFILES_DIR",
     "DEFAULT_PROJECT_DIR",
     "ServerRunResult",
@@ -268,12 +236,8 @@ class DbtConfiguration:
 
         If dict then it will be converted to a string which is what dbt expects.
         """
-        if (__dbt_major_version__, __dbt_minor_version__) >= (1, 5):
-            if isinstance(v, str):
-                v = yaml.safe_load(v)
-        else:
-            if isinstance(v, dict):
-                v = yaml.dump(v)
+        if isinstance(v, str):
+            v = yaml.safe_load(v)
         self._vars = v
 
 
@@ -1159,20 +1123,6 @@ def _cli_parse(args):  # pragma: no coverage
     cli_args = parser.parse_args(args[1:])
 
     return cli_args, parser
-
-
-def _cli_patch(cli_args):  # pragma: no coverage
-    parsed_args, _ = _cli_parse(cli_args)
-    opts = parsed_args
-    if opts.server:
-        if opts.server.startswith("gevent"):
-            import gevent.monkey
-
-            gevent.monkey.patch_all()
-        elif opts.server.startswith("eventlet"):
-            import eventlet
-
-            eventlet.monkey_patch()
 
 
 py = sys.version_info
