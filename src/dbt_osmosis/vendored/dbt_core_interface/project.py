@@ -85,7 +85,13 @@ import yaml
 
 # We maintain the smallest possible surface area of dbt imports
 from dbt.adapters.factory import get_adapter_class_by_name
-from dbt.clients.system import make_directory
+
+try:
+    # dbt >= 1.8
+    from dbt_common.clients.system import make_directory
+except ImportError:
+    # dbt < 1.8
+    from dbt.clients.system import make_directory
 from dbt.config.runtime import RuntimeConfig
 from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode
 from dbt.flags import set_from_args
@@ -99,9 +105,17 @@ if TYPE_CHECKING:
     # These imports are only used for type checking
     from agate import Table  # type: ignore  # No stubs for agate
     from dbt.adapters.base import BaseAdapter, BaseRelation  # type: ignore
-    from dbt.contracts.connection import AdapterResponse
+
+    try:
+        # dbt >= 1.8
+        from dbt.adapters.contracts.connection import AdapterResponse
+        from dbt_common.semver import VersionSpecifier
+
+    except ImportError:
+        # dbt < 1.8
+        from dbt.contracts.connection import AdapterResponse
+        from dbt.semver import VersionSpecifier
     from dbt.contracts.results import ExecutionResult, RunExecutionResult
-    from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
 
 # dbt-core-interface is designed for non-standard use. There is no
