@@ -5472,7 +5472,8 @@ HTTP_CODES[511] = "Network Authentication Required"
 _HTTP_STATUS_LINES = {k: "%d %s" % (k, v) for (k, v) in HTTP_CODES.items()}
 
 #: The default template used for error pages. Override with @error()
-ERROR_PAGE_TEMPLATE = """
+ERROR_PAGE_TEMPLATE = (
+    """
 %%try:
     %%from %s import DEBUG, request
     <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
@@ -5510,7 +5511,9 @@ ERROR_PAGE_TEMPLATE = """
     <b>ImportError:</b> Could not generate the error page. Please add bottle to
     the import path.
 %%end
-""" % __name__
+"""
+    % __name__
+)
 
 #: A thread-safe instance of :class:`LocalRequest`. If accessed from within a
 #: request callback, this instance always refers to the *current* request
