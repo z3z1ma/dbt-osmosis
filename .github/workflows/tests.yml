@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
+        python-version: ["3.10", "3.11", "3.12"]
         dbt-version: ["1.6.0", "1.7.0", "1.8.0"]
 
     steps:
@@ -20,7 +22,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5.1.0
         with:
-          python-version: "3.10"
+          python-version: "${{ matrix.python-version }}"
 
       - name: Upgrade pip
         run: |
