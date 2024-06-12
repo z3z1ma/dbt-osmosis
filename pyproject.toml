@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.12.10"
+version = "0.13.0"
 description = "A dbt server and suite of optional developer tools to make developing with dbt delightful."
 authors = ["z3z1ma <butler.alex2010@gmail.com>"]
 license = "Apache-2.0"
@@ -21,7 +21,7 @@ documentation = "https://github.com/z3z1ma/dbt-osmosis"
 repository = "https://github.com/z3z1ma/dbt-osmosis"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.9.7 || >3.9.7,<3.12"
+python = ">=3.9,<3.9.7 || >3.9.7,<3.12"
 click = ">7"
 dbt-core = ">=1.6,<1.9"
 "ruamel.yaml" = ">=0.17"
@@ -37,7 +37,7 @@ streamlit-elements-fluence = { version = ">=0.1.4", optional = true }
 dbt-duckdb = { version = ">=1.0.0", optional = true }
 dbt-sqlite = { version = ">=1.0.0", optional = true }
 dbt-postgres = { version = ">=1.0.0", optional = true }
-openai = "^0.28.0"
+openai = { version = ">0.28.0", optional = true }
 
 [tool.poetry.extras]
 duckdb = ["dbt-duckdb"]

@@ -8,7 +8,18 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, Iterable, Iterator, List, MutableMapping, Optional, Set, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import ruamel.yaml
 from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
@@ -400,8 +411,8 @@ class DbtYamlManager(DbtProject):
                             continue
                         columns[self.column_casing(c.name)] = ColumnMetadata(
                             name=self.column_casing(c.name),
-                            type=c.dtype,
-                            index=None,
+                            type=c.data_type,
+                            index=None,  # type: ignore
                             comment=getattr(c, "comment", None),
                         )
                         if hasattr(c, "flatten"):
@@ -410,8 +421,8 @@ class DbtYamlManager(DbtProject):
                                     continue
                                 columns[self.column_casing(exp.name)] = ColumnMetadata(
                                     name=self.column_casing(exp.name),
-                                    type=exp.dtype,
-                                    index=None,
+                                    type=exp.data_type,
+                                    index=None,  # type: ignore
                                     comment=getattr(exp, "comment", None),
                                 )
                 except Exception as error:
@@ -560,8 +571,8 @@ class DbtYamlManager(DbtProject):
                 # Model/Source Is Documented but Must be Migrated
                 with self.mutex:
                     schema = self.yaml_handler.load(schema_file.current)
-                models_in_file: Iterable[Dict[str, Any]] = schema.get("models", [])
-                sources_in_file: Iterable[Dict[str, Any]] = schema.get("sources", [])
+                models_in_file: Sequence[Dict[str, Any]] = schema.get("models", [])
+                sources_in_file: Sequence[Dict[str, Any]] = schema.get("sources", [])
                 for documented_model in (
                     model for model in models_in_file if model["name"] == node.name
                 ):
