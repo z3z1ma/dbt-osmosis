@@ -35,7 +35,8 @@ default_prompt = (
 
 
 def _get_demo_query() -> str:
-    return dedent("""
+    return dedent(
+        """
     {% set payment_methods = ['credit_card', 'coupon', 'bank_transfer', 'gift_card'] %}
 
     with orders as (
@@ -93,7 +94,8 @@ def _get_demo_query() -> str:
     )
 
     select * from final
-        """)
+        """
+    )
 
 
 def _parse_args() -> dict:
@@ -341,7 +343,9 @@ def main():
         feed = feedparser.parse("https://news.ycombinator.com/rss")
         feed_contents = []
         for entry in feed.entries:
-            feed_contents.append(dedent(f"""
+            feed_contents.append(
+                dedent(
+                    f"""
                 <div style="padding: 10px 5px 10px 5px; border-bottom: 1px solid #e0e0e0;">
                     <a href="{entry.link}" target="_blank" style="font-size: 16px; font-weight: bold; color: #FF4136; text-decoration: none;">{entry.title}</a>
                     <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published}
@@ -349,7 +353,9 @@ def main():
                     <a href="{entry.comments}" target="_blank" style="color: #FF4136; text-decoration: none;">Comments</a>
                     </div>
                 </div>
-            """))
+            """
+                )
+            )
         w.feed_contents = "".join(feed_contents)
     else:
         # Load state

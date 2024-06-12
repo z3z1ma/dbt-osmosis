@@ -282,7 +282,8 @@ descriptionContainer = st.container()
 compileOptionContainer = st.container()
 ideContainer = st.container()
 
-descriptionContainer.markdown("""
+descriptionContainer.markdown(
+    """
 Welcome to the [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) workbench 👋.
 The workbench serves as a no fuss way to spin up
 an environment where you can very quickly iterate on dbt models. In an ideal flow, a developer
@@ -291,7 +292,8 @@ copying and pasting over a model you are really digging into 🧑‍💻 OR it i
 the workbench as a scratchpad 👷‍♀️. In a full day of development, you may never spin down the workbench.
 Refreshing the page is enough to reparse the physical dbt project on disk. The instantaneous feedback
 rarely experienced with jinja + ability to execute the SQL both synergize to supercharge ⚡️ productivity!
-""")
+"""
+)
 
 if not state[PIVOT_LAYOUT]:
     idePart1, idePart2 = ideContainer.columns(2)
@@ -441,7 +443,8 @@ footer1, footer2 = st.columns([1, 2])
 footer1.header("Useful Links 🧐")
 footer2.header("RSS Feeds 🚨")
 footer1.write("")
-footer1.markdown("""
+footer1.markdown(
+    """
 ##### dbt docs
 - [docs.getdbt.com](https://docs.getdbt.com/)
 
@@ -453,7 +456,8 @@ footer1.markdown("""
 - [Gitlab Data Team Wiki](https://about.gitlab.com/handbook/business-technology/data-team/)
 - [dbt Best Practices](https://docs.getdbt.com/guides/best-practices/how-we-structure/1-guide-overview)
 
-""")
+"""
+)
 
 
 @st.cache(ttl=300.0)

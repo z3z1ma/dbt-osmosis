@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v4.6.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -9,25 +9,25 @@ repos:
       - id: detect-private-key
       - id: debug-statements
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.6.26
+    rev: v1.7.1
     hooks:
       - id: actionlint-docker
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.9.0.5
+    rev: v0.10.0.1
     hooks:
       - id: shellcheck
   - repo: https://github.com/psf/black
-    rev: 23.9.1
+    rev: 24.4.2
     hooks:
       - id: black
         args: ["--config", "pyproject.toml"]
   - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+    rev: 5.13.2
     hooks:
       - id: isort
         args: ["-sp", "pyproject.toml"]
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
+    rev: v2.13.0-beta
     hooks:
       - id: hadolint-docker
 #  - repo: https://github.com/pycqa/flake8
