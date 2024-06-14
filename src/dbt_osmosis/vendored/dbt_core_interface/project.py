@@ -9,7 +9,6 @@ the dbt_core_interface folder into your project and import it from there.
 
 # region dbt-core-interface imports & monkey patches
 
-
 if 1:  # this stops ruff from complaining about the import order
     import dbt.adapters.factory
 
@@ -405,7 +404,7 @@ class DbtProject:
             threads=config.threads,
         )
 
-    def get_adapter_cls(self) -> "BaseAdapter":
+    def get_adapter_cls(self) -> Type["BaseAdapter"]:
         """Get the adapter class associated with the dbt profile."""
         return get_adapter_class_by_name(self.config.credentials.type)
 
@@ -421,7 +420,12 @@ class DbtProject:
                 LOGGER.debug(f"Failed to cleanup adapter connections: {e}")
         # The adapter.setter verifies connection, resets TTL, and updates adapter ref on config
         # this is thread safe by virtue of the adapter_mutex on the adapter.setter
-        self.adapter = self.get_adapter_cls()(self.config)
+        try:
+            self.adapter = self.get_adapter_cls()(self.config)
+        except TypeError:
+            from dbt.mp_context import get_mp_context
+
+            self.adapter = self.get_adapter_cls()(self.config, get_mp_context())
 
     @property
     def adapter(self) -> "BaseAdapter":
