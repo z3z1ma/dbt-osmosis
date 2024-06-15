@@ -44,7 +44,7 @@ def test_bootstrap_sources(yaml_manager: DbtYamlManager):
 
 
 def test_draft_project_structure_update_plan(yaml_manager: DbtYamlManager):
-    yaml_manager.draft_project_structure_update_plan()
+    plan = yaml_manager.draft_project_structure_update_plan()
 
 
 def test_commit_project_restructure_to_disk(yaml_manager: DbtYamlManager):
@@ -70,11 +70,47 @@ def _customer_column_types(yaml_manager: DbtYamlManager) -> dict[str, str]:
 
 def test_get_columns_meta(yaml_manager: DbtYamlManager):
     assert _customer_column_types(yaml_manager) == {
+        # in DuckDB decimals always have presision and scale
+        "customer_average_value": "DECIMAL(18,3)",
         "customer_id": "INTEGER",
         "customer_lifetime_value": "DOUBLE",
-        "first_name": "character varying(256)",
+        "first_name": "VARCHAR",
         "first_order": "DATE",
-        "last_name": "character varying(256)",
+        "last_name": "VARCHAR",
+        "most_recent_order": "DATE",
+        "number_of_orders": "BIGINT",
+    }
+
+
+def test_get_columns_meta_char_length():
+    yaml_manager = DbtYamlManager(
+        project_dir="demo_duckdb", profiles_dir="demo_duckdb", char_length=True, dry_run=True
+    )
+    assert _customer_column_types(yaml_manager) == {
+        # in DuckDB decimals always have presision and scale
+        "customer_average_value": "DECIMAL(18,3)",
+        "customer_id": "INTEGER",
+        "customer_lifetime_value": "DOUBLE",
+        "first_name": "character varying (256)",
+        "first_order": "DATE",
+        "last_name": "VARCHAR",
+        "most_recent_order": "DATE",
+        "number_of_orders": "BIGINT",
+    }
+
+
+def test_get_columns_meta_numeric_precision():
+    yaml_manager = DbtYamlManager(
+        project_dir="demo_duckdb", profiles_dir="demo_duckdb", numeric_precision=True, dry_run=True
+    )
+    assert _customer_column_types(yaml_manager) == {
+        # in DuckDB decimals always have presision and scale
+        "customer_average_value": "DECIMAL(18,3)",
+        "customer_id": "INTEGER",
+        "customer_lifetime_value": "DOUBLE",
+        "first_name": "VARCHAR",
+        "first_order": "DATE",
+        "last_name": "VARCHAR",
         "most_recent_order": "DATE",
         "number_of_orders": "BIGINT",
     }

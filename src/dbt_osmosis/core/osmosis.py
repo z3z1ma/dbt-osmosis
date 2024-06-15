@@ -22,6 +22,7 @@ from typing import (
 )
 
 import ruamel.yaml
+from dbt.adapters.base.column import Column
 from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
 
 from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
@@ -119,6 +120,8 @@ class DbtYamlManager(DbtProject):
         skip_add_columns: bool = False,
         skip_add_tags: bool = False,
         skip_add_data_types: bool = False,
+        numeric_precision: bool = False,
+        char_length: bool = False,
         skip_merge_meta: bool = False,
         add_progenitor_to_meta: bool = False,
         vars: Optional[str] = None,
@@ -136,6 +139,8 @@ class DbtYamlManager(DbtProject):
         self.skip_add_columns = skip_add_columns
         self.skip_add_tags = skip_add_tags
         self.skip_add_data_types = skip_add_data_types
+        self.numeric_precision = numeric_precision
+        self.char_length = char_length
         self.skip_merge_meta = skip_merge_meta
         self.add_progenitor_to_meta = add_progenitor_to_meta
         self.use_unrendered_descriptions = use_unrendered_descriptions
@@ -366,6 +371,16 @@ class DbtYamlManager(DbtProject):
         self._catalog = CatalogArtifact.from_dict(json.loads(file_path.read_text()))
         return self._catalog
 
+    def _get_column_type(self, column: Column) -> str:
+        if (
+            column.is_numeric()
+            and self.numeric_precision
+            or column.is_string()
+            and self.char_length
+        ):
+            return column.data_type
+        return column.dtype
+
     @lru_cache(maxsize=5000)
     def get_columns_meta(self, catalog_key: CatalogKey) -> Dict[str, ColumnMetadata]:
         """Get all columns in a list for a model"""
@@ -411,7 +426,7 @@ class DbtYamlManager(DbtProject):
                             continue
                         columns[self.column_casing(c.name)] = ColumnMetadata(
                             name=self.column_casing(c.name),
-                            type=c.data_type,
+                            type=self._get_column_type(c),
                             index=None,  # type: ignore
                             comment=getattr(c, "comment", None),
                         )
@@ -421,7 +436,7 @@ class DbtYamlManager(DbtProject):
                                     continue
                                 columns[self.column_casing(exp.name)] = ColumnMetadata(
                                     name=self.column_casing(exp.name),
-                                    type=exp.data_type,
+                                    type=self._get_column_type(exp),
                                     index=None,  # type: ignore
                                     comment=getattr(exp, "comment", None),
                                 )
