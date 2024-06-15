@@ -435,6 +435,13 @@ class DbtProject:
 
             self.adapter = self.get_adapter_cls()(self.config, get_mp_context())
 
+        try:
+            from dbt.context.providers import generate_runtime_macro_context
+
+            self.adapter.set_macro_context_generator(generate_runtime_macro_context)
+        except Exception:
+            pass
+
     @property
     def adapter(self) -> "BaseAdapter":
         """dbt-core adapter with TTL and automatic reinstantiation.
