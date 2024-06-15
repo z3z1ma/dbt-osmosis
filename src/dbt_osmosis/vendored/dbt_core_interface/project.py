@@ -231,6 +231,9 @@ class DbtConfiguration:
     partial_parse: bool = False
     # A required attribute for dbt, not used by our interface
     dependencies: List[str] = field(default_factory=list)
+    which: str = None
+    DEBUG: bool = False
+    REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES: bool = False
 
     def __post_init__(self) -> None:
         """Post init hook to set single_threaded and remove target if not provided."""
@@ -332,6 +335,11 @@ class DbtTaskConfiguration:
         self.macro: Optional[str] = kwargs.get("macro")
         self.args: str = kwargs.get("args", "{}")
         self.quiet: bool = kwargs.get("quiet", True)
+        self.defer_state: Path = kwargs.get("defer_state", None)
+        self.exclude_resource_types: List[str] = kwargs.get("exclude_resource_types", None)
+        self.selector: str = kwargs.get("selector", None)
+        self.write_json: bool = kwargs.get("write_json", False)
+        self.include_saved_query: bool = kwargs.get("include_saved_query", False)
 
     @classmethod
     def from_runtime_config(cls, config: RuntimeConfig, **kwargs: Any) -> "DbtTaskConfiguration":
@@ -888,7 +896,12 @@ class DbtProject:
 
     def get_task(self, typ: DbtCommand, args: DbtTaskConfiguration) -> "ManifestTask":
         """Get a dbt-core task by type."""
-        task = self.get_task_cls(typ)(args, self.config)
+        try:
+            # DBT 1.8 requires manifest as 2-nd positional argument
+            task = self.get_task_cls(typ)(args, self.config, self.manifest)
+        except Exception as e:
+            raise e
+            task = self.get_task_cls(typ)(args, self.config)
         # Render this a no-op on this class instance so that the tasks `run`
         # method plumbing will defer to our existing in memory manifest.
         task.load_manifest = lambda *args, **kwargs: None  # type: ignore
