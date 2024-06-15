@@ -339,6 +339,7 @@ class DbtTaskConfiguration:
         self.exclude_resource_types: List[str] = kwargs.get("exclude_resource_types", None)
         self.selector: str = kwargs.get("selector", None)
         self.write_json: bool = kwargs.get("write_json", False)
+        self.include_saved_query: bool = kwargs.get("include_saved_query", False)
 
     @classmethod
     def from_runtime_config(cls, config: RuntimeConfig, **kwargs: Any) -> "DbtTaskConfiguration":
