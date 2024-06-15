@@ -44,7 +44,7 @@ def test_bootstrap_sources(yaml_manager: DbtYamlManager):
 
 
 def test_draft_project_structure_update_plan(yaml_manager: DbtYamlManager):
-    plan = yaml_manager.draft_project_structure_update_plan()
+    yaml_manager.draft_project_structure_update_plan()
 
 
 def test_commit_project_restructure_to_disk(yaml_manager: DbtYamlManager):
@@ -91,9 +91,9 @@ def test_get_columns_meta_char_length():
         "customer_average_value": "DECIMAL(18,3)",
         "customer_id": "INTEGER",
         "customer_lifetime_value": "DOUBLE",
-        "first_name": "character varying (256)",
+        "first_name": "character varying(256)",
         "first_order": "DATE",
-        "last_name": "VARCHAR",
+        "last_name": "character varying(256)",
         "most_recent_order": "DATE",
         "number_of_orders": "BIGINT",
     }
