@@ -87,7 +87,8 @@ from dbt.adapters.factory import get_adapter_class_by_name
 
 try:
     # dbt >= 1.8
-    from dbt_common.clients.system import make_directory
+    from dbt_common.clients.system import make_directory, get_env
+    from dbt_common.context import set_invocation_context
 except ImportError:
     # dbt < 1.8
     from dbt.clients.system import make_directory
@@ -386,6 +387,8 @@ class DbtProject:
             project_dir=project_dir or DEFAULT_PROJECT_DIR,
             profile=profile,
         )
+        if hasattr(sys.modules[__name__], 'set_invocation_context'):
+            set_invocation_context(get_env())
         if vars is None:
             vars = "{}"
         self.base_config.vars = vars
