@@ -34,7 +34,8 @@ customer_payments as (
 
     select
         orders.customer_id,
-        sum(amount) as total_amount
+        sum(amount) as total_amount,
+        avg(amount) as average_amount
 
     from payments
 
@@ -50,11 +51,12 @@ final as (
     select
         customers.customer_id,
         customers.first_name,
-        customers.last_name,
+        cast(customers.last_name as varchar(256)) as last_name,
         customer_orders.first_order,
         customer_orders.most_recent_order,
         customer_orders.number_of_orders,
-        customer_payments.total_amount as customer_lifetime_value
+        customer_payments.total_amount as customer_lifetime_value,
+        cast(customer_payments.average_amount as decimal) as customer_average_value
 
     from customers
 

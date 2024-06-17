@@ -142,6 +142,16 @@ def shared_opts(func: Callable) -> Callable:
     help="If specified, we will skip adding data types to the models.",
 )
 @click.option(
+    "--numeric-precision",
+    is_flag=True,
+    help="If specified, numeric types will have precision and scale, e.g. Number(38, 8).",
+)
+@click.option(
+    "--char-length",
+    is_flag=True,
+    help="If specified, character types will have length, e.g. Varchar(128).",
+)
+@click.option(
     "--skip-merge-meta",
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
@@ -196,6 +206,8 @@ def refactor(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_add_data_types: bool = False,
+    numeric_precision: bool = False,
+    char_length: bool = False,
     skip_merge_meta: bool = False,
     add_progenitor_to_meta: bool = False,
     models: Optional[List[str]] = None,
@@ -229,6 +241,8 @@ def refactor(
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
         skip_add_data_types=skip_add_data_types,
+        numeric_precision=numeric_precision,
+        char_length=char_length,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
@@ -288,6 +302,16 @@ def refactor(
     help="If specified, we will skip adding data types to the models.",
 )
 @click.option(
+    "--numeric-precision",
+    is_flag=True,
+    help="If specified, numeric types will have precision and scale, e.g. Number(38, 8).",
+)
+@click.option(
+    "--char-length",
+    is_flag=True,
+    help="If specified, character types will have length, e.g. Varchar(128).",
+)
+@click.option(
     "--skip-merge-meta",
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
@@ -333,6 +357,8 @@ def organize(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_add_data_types: bool = False,
+    numeric_precision: bool = False,
+    char_length: bool = False,
     skip_merge_meta: bool = False,
     add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
@@ -362,6 +388,8 @@ def organize(
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
         skip_add_data_types=skip_add_data_types,
+        numeric_precision=numeric_precision,
+        char_length=char_length,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
@@ -435,6 +463,16 @@ def organize(
     help="If specified, we will skip adding data types to the models.",
 )
 @click.option(
+    "--numeric-precision",
+    is_flag=True,
+    help="If specified, numeric types will have precision and scale, e.g. Number(38, 8).",
+)
+@click.option(
+    "--char-length",
+    is_flag=True,
+    help="If specified, character types will have length, e.g. Varchar(128).",
+)
+@click.option(
     "--skip-merge-meta",
     is_flag=True,
     help="If specified, we will skip merging meta to the models.",
@@ -490,6 +528,8 @@ def document(
     skip_add_columns: bool = False,
     skip_add_tags: bool = False,
     skip_add_data_types: bool = False,
+    numeric_precision: bool = False,
+    char_length: bool = False,
     skip_merge_meta: bool = False,
     add_progenitor_to_meta: bool = False,
     profile: Optional[str] = None,
@@ -521,6 +561,8 @@ def document(
         skip_add_columns=skip_add_columns,
         skip_add_tags=skip_add_tags,
         skip_add_data_types=skip_add_data_types,
+        numeric_precision=numeric_precision,
+        char_length=char_length,
         skip_merge_meta=skip_merge_meta,
         add_progenitor_to_meta=add_progenitor_to_meta,
         profile=profile,
