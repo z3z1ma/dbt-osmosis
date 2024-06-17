@@ -900,7 +900,6 @@ class DbtProject:
             # DBT 1.8 requires manifest as 2-nd positional argument
             task = self.get_task_cls(typ)(args, self.config, self.manifest)
         except Exception as e:
-            raise e
             task = self.get_task_cls(typ)(args, self.config)
         # Render this a no-op on this class instance so that the tasks `run`
         # method plumbing will defer to our existing in memory manifest.
