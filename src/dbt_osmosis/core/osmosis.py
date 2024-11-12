@@ -1029,51 +1029,33 @@ class DbtYamlManager(DbtProject):
             )
         return changes_committed
 
-    def update_columns_data_type(
+    def update_columns_attribute(
         self,
         node: ManifestNode,
         yaml_file_model_section: Dict[str, Any],
         columns_db_meta: Dict[str, ColumnMetadata],
+        attribute_name: str,
+        meta_key: str,
+        skip_attribute_update: Any
     ) -> int:
         changes_committed = 0
-        if self.skip_add_data_types:
+        if (skip_attribute_update is True) or (skip_attribute_update is None):
             return changes_committed
         for column in columns_db_meta:
             cased_column_name = self.column_casing(column)
             if cased_column_name in node.columns:
-                if columns_db_meta.get(cased_column_name):
-                    data_type = columns_db_meta.get(cased_column_name).type
-                    if node.columns[cased_column_name].data_type == data_type:
+                column_meta_obj = columns_db_meta.get(cased_column_name)
+                if column_meta_obj:
+                    column_meta = getattr(column_meta_obj, meta_key, '')
+                    if column_meta is None:
+                        column_meta = ''
+                    current_value = getattr(node.columns[cased_column_name], attribute_name, '')
+                    if current_value == column_meta:
                         continue
-                    node.columns[cased_column_name].data_type = data_type
+                    setattr(node.columns[cased_column_name], attribute_name, column_meta)
                     for model_column in yaml_file_model_section["columns"]:
                         if self.column_casing(model_column["name"]) == cased_column_name:
-                            model_column.update({"data_type": data_type})
-                            changes_committed += 1
-        return changes_committed
-
-    def update_columns_description(
-        self,
-        node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
-    ) -> int:
-        changes_committed = 0
-        if self.catalog_file is None:
-            return changes_committed
-        for column in columns_db_meta:
-            cased_column_name = self.column_casing(column)
-            if cased_column_name in node.columns:
-                if columns_db_meta.get(cased_column_name):
-                    description = columns_db_meta.get(cased_column_name).comment
-                    if description is None:
-                        description = ''
-                    if node.columns[cased_column_name].description == description:
-                        continue
-                    node.columns[cased_column_name].description = description
-                    for model_column in yaml_file_model_section["columns"]:
-                        if self.column_casing(model_column["name"]) == cased_column_name:
-                            model_column.update({"description": description})
+                            model_column.update({attribute_name: column_meta})
                             changes_committed += 1
         return changes_committed
 
@@ -1144,8 +1126,22 @@ class DbtYamlManager(DbtProject):
                 self.add_inheritance_for_specified_keys,
             )
         )
-        n_cols_data_type_updated = self.update_columns_data_type(node, section, columns_db_meta)
-        n_cols_description_updated = self.update_columns_description(node, section, columns_db_meta)
+        n_cols_data_type_updated = self.update_columns_attribute(
+            node,
+            section,
+            columns_db_meta,
+            "data_type",
+            "type",
+            self.skip_add_data_types
+        )
+        n_cols_description_updated = self.update_columns_attribute(
+            node,
+            section,
+            columns_db_meta,
+            "description",
+            "comment",
+            self.catalog_file
+        )
         n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
         return n_cols_added, n_cols_doc_inherited, n_cols_removed, n_cols_data_type_updated, n_cols_description_updated
 
