@@ -29,6 +29,10 @@ models:
       - name: customer_lifetime_value
         data_type: DOUBLE
         description: ''
+
+      - name: customer_rank
+        data_type: VARCHAR
+        description: ''
   - name: orders
     description: This table has basic information about orders, as well as some derived facts based on payments
 
