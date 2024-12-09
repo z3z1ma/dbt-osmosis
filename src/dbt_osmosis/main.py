@@ -193,6 +193,11 @@ def shared_opts(func: Callable) -> Callable:
     type=click.STRING,
     help="If specified, will add inheritance for the specified keys.",
 )
+@click.option(
+    "--output-to-lower",
+    is_flag=True,
+    help="If specified, output yaml file in lowercase if possible.",
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: Optional[str] = None,
@@ -215,6 +220,7 @@ def refactor(
     vars: Optional[str] = None,
     use_unrendered_descriptions: bool = False,
     add_inheritance_for_specified_keys: Optional[List[str]] = None,
+    output_to_lower: bool = False,
 ):
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
     directory, reparses the project, then executes document passing down inheritable documentation
@@ -249,12 +255,15 @@ def refactor(
         vars=vars,
         use_unrendered_descriptions=use_unrendered_descriptions,
         add_inheritance_for_specified_keys=add_inheritance_for_specified_keys,
+        output_to_lower=output_to_lower,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
     if runner.commit_project_restructure_to_disk():
         runner.safe_parse_project(reinit=True)
-    runner.propagate_documentation_downstream(force_inheritance=force_inheritance)
+    runner.propagate_documentation_downstream(
+        force_inheritance=force_inheritance, output_to_lower=output_to_lower
+    )
     if check and runner.mutations > 0:
         exit(1)
 
@@ -345,6 +354,11 @@ def refactor(
     type=click.STRING,
     help="If specified, will add inheritance for the specified keys.",
 )
+@click.option(
+    "--output-to-lower",
+    is_flag=True,
+    help="If specified, output yaml file in lowercase if possible.",
+)
 @click.argument("models", nargs=-1)
 def organize(
     target: Optional[str] = None,
@@ -364,6 +378,7 @@ def organize(
     profile: Optional[str] = None,
     vars: Optional[str] = None,
     add_inheritance_for_specified_keys: Optional[List[str]] = None,
+    output_to_lower: bool = False,
 ):
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -395,6 +410,7 @@ def organize(
         profile=profile,
         vars=vars,
         add_inheritance_for_specified_keys=add_inheritance_for_specified_keys,
+        output_to_lower=output_to_lower,
     )
 
     # Conform project structure & bootstrap undocumented models injecting columns
@@ -514,6 +530,11 @@ def organize(
     type=click.STRING,
     help="If specified, will add inheritance for the specified keys.",
 )
+@click.option(
+    "--output-to-lower",
+    is_flag=True,
+    help="If specified, output yaml file in lowercase if possible.",
+)
 @click.argument("models", nargs=-1)
 def document(
     target: Optional[str] = None,
@@ -536,6 +557,7 @@ def document(
     vars: Optional[str] = None,
     use_unrendered_descriptions: bool = False,
     add_inheritance_for_specified_keys: Optional[List[str]] = None,
+    output_to_lower: bool = False,
 ):
     """Column level documentation inheritance for existing models
 
@@ -569,10 +591,11 @@ def document(
         vars=vars,
         use_unrendered_descriptions=use_unrendered_descriptions,
         add_inheritance_for_specified_keys=add_inheritance_for_specified_keys,
+        output_to_lower=output_to_lower,
     )
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
-    runner.propagate_documentation_downstream(force_inheritance)
+    runner.propagate_documentation_downstream(force_inheritance, output_to_lower)
     if check and runner.mutations > 0:
         exit(1)
 
