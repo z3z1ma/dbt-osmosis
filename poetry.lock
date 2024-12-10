@@ -3751,4 +3751,4 @@ workbench = ["feedparser", "streamlit", "streamlit-ace", "streamlit-elements-flu
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.9.7 || >3.9.7,<3.12"
-content-hash = "ef131c1f2ffc308ea809406c56fb8d61532bfdaaccfec62a62b345cf712b7f67"
+content-hash = "e32966c1d87c49adb89e8b50d9e15ae7c36bd8ec4270c8b38c043094615b9d19"
