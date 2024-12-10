@@ -9,7 +9,6 @@ the dbt_core_interface folder into your project and import it from there.
 
 # region dbt-core-interface imports & monkey patches
 
-
 if 1:  # this stops ruff from complaining about the import order
     import dbt.adapters.factory
 
@@ -85,8 +84,17 @@ import yaml
 
 # We maintain the smallest possible surface area of dbt imports
 from dbt.adapters.factory import get_adapter_class_by_name
-from dbt.clients.system import make_directory
+
+try:
+    # dbt >= 1.8
+    from dbt_common.clients.system import get_env, make_directory
+    from dbt_common.context import set_invocation_context
+except ImportError:
+    # dbt < 1.8
+    from dbt.clients.system import make_directory
+
 from dbt.config.runtime import RuntimeConfig
+from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode
 from dbt.flags import set_from_args
 from dbt.node_types import NodeType
 from dbt.parser.manifest import PARTIAL_PARSE_FILE_NAME, ManifestLoader, process_node
@@ -94,23 +102,21 @@ from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.sql import SqlCompileRunner
 from dbt.tracking import disable_tracking
 
-# brute force import for dbt 1.3 back-compat
-# these are here for consumers of dbt-core-interface
-try:
-    # dbt <= 1.3
-    from dbt.contracts.graph.compiled import ManifestNode  # type: ignore
-    from dbt.contracts.graph.parsed import ColumnInfo  # type: ignore
-except Exception:
-    # dbt > 1.3
-    from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode  # type: ignore
-
 if TYPE_CHECKING:
     # These imports are only used for type checking
     from agate import Table  # type: ignore  # No stubs for agate
     from dbt.adapters.base import BaseAdapter, BaseRelation  # type: ignore
-    from dbt.contracts.connection import AdapterResponse
+
+    try:
+        # dbt >= 1.8
+        from dbt.adapters.contracts.connection import AdapterResponse
+        from dbt_common.semver import VersionSpecifier
+
+    except ImportError:
+        # dbt < 1.8
+        from dbt.contracts.connection import AdapterResponse
+        from dbt.semver import VersionSpecifier
     from dbt.contracts.results import ExecutionResult, RunExecutionResult
-    from dbt.semver import VersionSpecifier
     from dbt.task.runnable import ManifestTask
 
 # dbt-core-interface is designed for non-standard use. There is no
@@ -119,22 +125,8 @@ disable_tracking()
 
 urlunquote = functools.partial(urlunquote, encoding="latin1")
 
-# Version specific dbt constants and overrides
-__dbt_major_version__ = int(dbt.version.installed.major or 0)
-__dbt_minor_version__ = int(dbt.version.installed.minor or 0)
-__dbt_patch_version__ = int(dbt.version.installed.patch or 0)
-if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) > (1, 3, 0):
-    RAW_CODE = "raw_code"
-    COMPILED_CODE = "compiled_code"
-else:
-    RAW_CODE = "raw_code"
-    COMPILED_CODE = "compiled_code"
-if (__dbt_major_version__, __dbt_minor_version__, __dbt_patch_version__) < (1, 5, 0):
-    import dbt.events.functions
-
-    # I expect a change in dbt 1.5.0 that may make this monkey patch unnecessary
-    # but we can reduce the codepath since dbt is **loaded** with telemetry calls...
-    dbt.events.functions.fire_event = lambda *args, **kwargs: None
+RAW_CODE = "raw_code"
+COMPILED_CODE = "compiled_code"
 
 
 def default_project_dir() -> Path:
@@ -173,12 +165,6 @@ def write_manifest_for_partial_parse(self: ManifestLoader):
         raise
 
 
-if (__dbt_major_version__, __dbt_minor_version__) < (1, 4):
-    # Patched so we write partial parse to correct directory
-    # https://github.com/dbt-labs/dbt-core/blob/v1.3.2/core/dbt/parser/manifest.py#L548
-    ManifestLoader.write_manifest_for_partial_parse = write_manifest_for_partial_parse
-
-
 __all__ = [
     "DbtProject",
     "DbtProjectContainer",
@@ -186,9 +172,6 @@ __all__ = [
     "DbtAdapterCompilationResult",
     "DbtManifestProxy",
     "DbtConfiguration",
-    "__dbt_major_version__",
-    "__dbt_minor_version__",
-    "__dbt_patch_version__",
     "DEFAULT_PROFILES_DIR",
     "DEFAULT_PROJECT_DIR",
     "ServerRunResult",
@@ -250,6 +233,9 @@ class DbtConfiguration:
     partial_parse: bool = False
     # A required attribute for dbt, not used by our interface
     dependencies: List[str] = field(default_factory=list)
+    which: str = None
+    DEBUG: bool = False
+    REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES: bool = False
 
     def __post_init__(self) -> None:
         """Post init hook to set single_threaded and remove target if not provided."""
@@ -268,12 +254,8 @@ class DbtConfiguration:
 
         If dict then it will be converted to a string which is what dbt expects.
         """
-        if (__dbt_major_version__, __dbt_minor_version__) >= (1, 5):
-            if isinstance(v, str):
-                v = yaml.safe_load(v)
-        else:
-            if isinstance(v, dict):
-                v = yaml.dump(v)
+        if isinstance(v, str):
+            v = yaml.safe_load(v)
         self._vars = v
 
 
@@ -355,6 +337,11 @@ class DbtTaskConfiguration:
         self.macro: Optional[str] = kwargs.get("macro")
         self.args: str = kwargs.get("args", "{}")
         self.quiet: bool = kwargs.get("quiet", True)
+        self.defer_state: Path = kwargs.get("defer_state", None)
+        self.exclude_resource_types: List[str] = kwargs.get("exclude_resource_types", None)
+        self.selector: str = kwargs.get("selector", None)
+        self.write_json: bool = kwargs.get("write_json", False)
+        self.include_saved_query: bool = kwargs.get("include_saved_query", False)
 
     @classmethod
     def from_runtime_config(cls, config: RuntimeConfig, **kwargs: Any) -> "DbtTaskConfiguration":
@@ -401,6 +388,8 @@ class DbtProject:
             project_dir=project_dir or DEFAULT_PROJECT_DIR,
             profile=profile,
         )
+        if hasattr(sys.modules[__name__], "set_invocation_context"):
+            set_invocation_context(get_env())
         if vars is None:
             vars = "{}"
         self.base_config.vars = vars
@@ -427,7 +416,7 @@ class DbtProject:
             threads=config.threads,
         )
 
-    def get_adapter_cls(self) -> "BaseAdapter":
+    def get_adapter_cls(self) -> Type["BaseAdapter"]:
         """Get the adapter class associated with the dbt profile."""
         return get_adapter_class_by_name(self.config.credentials.type)
 
@@ -443,7 +432,19 @@ class DbtProject:
                 LOGGER.debug(f"Failed to cleanup adapter connections: {e}")
         # The adapter.setter verifies connection, resets TTL, and updates adapter ref on config
         # this is thread safe by virtue of the adapter_mutex on the adapter.setter
-        self.adapter = self.get_adapter_cls()(self.config)
+        try:
+            self.adapter = self.get_adapter_cls()(self.config)
+        except TypeError:
+            from dbt.mp_context import get_mp_context
+
+            self.adapter = self.get_adapter_cls()(self.config, get_mp_context())
+
+        try:
+            from dbt.context.providers import generate_runtime_macro_context
+
+            self.adapter.set_macro_context_generator(generate_runtime_macro_context)
+        except Exception:
+            pass
 
     @property
     def adapter(self) -> "BaseAdapter":
@@ -906,7 +907,11 @@ class DbtProject:
 
     def get_task(self, typ: DbtCommand, args: DbtTaskConfiguration) -> "ManifestTask":
         """Get a dbt-core task by type."""
-        task = self.get_task_cls(typ)(args, self.config)
+        try:
+            # DBT 1.8 requires manifest as 2-nd positional argument
+            task = self.get_task_cls(typ)(args, self.config, self.manifest)
+        except Exception as e:
+            task = self.get_task_cls(typ)(args, self.config)
         # Render this a no-op on this class instance so that the tasks `run`
         # method plumbing will defer to our existing in memory manifest.
         task.load_manifest = lambda *args, **kwargs: None  # type: ignore
@@ -1159,20 +1164,6 @@ def _cli_parse(args):  # pragma: no coverage
     cli_args = parser.parse_args(args[1:])
 
     return cli_args, parser
-
-
-def _cli_patch(cli_args):  # pragma: no coverage
-    parsed_args, _ = _cli_parse(cli_args)
-    opts = parsed_args
-    if opts.server:
-        if opts.server.startswith("gevent"):
-            import gevent.monkey
-
-            gevent.monkey.patch_all()
-        elif opts.server.startswith("eventlet"):
-            import eventlet
-
-            eventlet.monkey_patch()
 
 
 py = sys.version_info
@@ -5508,7 +5499,8 @@ HTTP_CODES[511] = "Network Authentication Required"
 _HTTP_STATUS_LINES = {k: "%d %s" % (k, v) for (k, v) in HTTP_CODES.items()}
 
 #: The default template used for error pages. Override with @error()
-ERROR_PAGE_TEMPLATE = """
+ERROR_PAGE_TEMPLATE = (
+    """
 %%try:
     %%from %s import DEBUG, request
     <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
@@ -5546,7 +5538,9 @@ ERROR_PAGE_TEMPLATE = """
     <b>ImportError:</b> Could not generate the error page. Please add bottle to
     the import path.
 %%end
-""" % __name__
+"""
+    % __name__
+)
 
 #: A thread-safe instance of :class:`LocalRequest`. If accessed from within a
 #: request callback, this instance always refers to the *current* request

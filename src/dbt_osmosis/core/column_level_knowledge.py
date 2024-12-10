@@ -15,6 +15,7 @@ def get_prior_knowledge(
     column: str,
 ) -> ColumnLevelKnowledge:
     camel_column = re.sub("_(.)", lambda m: m.group(1).upper(), column)
+    pascal_column = camel_column[0].upper() + camel_column[1:]
     prior_knowledge_candidates = list(
         filter(
             lambda k: k,
@@ -22,6 +23,7 @@ def get_prior_knowledge(
                 knowledge.get(column),
                 knowledge.get(column.lower()),
                 knowledge.get(camel_column),
+                knowledge.get(pascal_column),
             ],
         )
     )
