@@ -1,16 +1,18 @@
-# %%
 import json
-import os
 from pathlib import Path
 
+import dbt.version
 import pytest
 from dbt.contracts.graph.manifest import Manifest
+from packaging.version import Version
 
 from dbt_osmosis.core.column_level_knowledge_propagator import (
     ColumnLevelKnowledgePropagator,
     _build_node_ancestor_tree,
     _inherit_column_level_knowledge,
 )
+
+dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip_matcher=True))
 
 
 def load_manifest() -> Manifest:
@@ -19,9 +21,6 @@ def load_manifest() -> Manifest:
         manifest_text = f.read()
         manifest_dict = json.loads(manifest_text)
     return Manifest.from_dict(manifest_dict)
-
-
-# %%
 
 
 def test_build_node_ancestor_tree():
@@ -135,12 +134,13 @@ def test_inherit_column_level_knowledge():
             "quote": None,
         },
     }
+    if dbt_version >= Version("1.9.0"):
+        for key in expect.keys():
+            expect[key]["granularity"] = None
+
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
     family_tree = _build_node_ancestor_tree(manifest, target_node)
     placeholders = [""]
-    actual = _inherit_column_level_knowledge(manifest, family_tree, placeholders)
-    print(expect)
-    print(actual)
     assert _inherit_column_level_knowledge(manifest, family_tree, placeholders) == expect
 
 
