@@ -1,25 +1,16 @@
 import json
 import os
 import re
+import sys
+import typing as t
 from collections import OrderedDict
+from collections.abc import Iterable, Iterator, MutableMapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from threading import Lock
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    MutableMapping,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-)
 
 import ruamel.yaml
 from dbt.adapters.base.column import Column
@@ -53,7 +44,7 @@ class YamlHandler(ruamel.yaml.YAML):
 @dataclass
 class SchemaFileLocation:
     target: Path
-    current: Optional[Path] = None
+    current: Path | None = None
     node_type: NodeType = NodeType.Model
 
     @property
@@ -63,15 +54,16 @@ class SchemaFileLocation:
 
 @dataclass
 class SchemaFileMigration:
-    output: Dict[str, Any] = field(default_factory=dict)
-    supersede: Dict[Path, List[str]] = field(default_factory=dict)
+    output: dict[str, t.Any] = field(default_factory=dict)
+    supersede: dict[Path, list[str]] = field(default_factory=dict)
 
 
+@(t.final if sys.version_info >= (3, 8) else lambda f: f)
 class DbtYamlManager(DbtProject):
     """The DbtYamlManager class handles developer automation tasks surrounding
     schema yaml files organziation, documentation, and coverage."""
 
-    audit_report = """
+    audit_report: t.ClassVar[str] = """
     :white_check_mark: [bold]Audit Report[/bold]
     -------------------------------
 
@@ -91,7 +83,7 @@ class DbtYamlManager(DbtProject):
     # TODO: Let user supply a custom arg / config file / csv of strings which we
     # consider placeholders which are not valid documentation, these are just my own
     # We may well drop the placeholder concept too. It is just a convenience for refactors
-    placeholders = [
+    placeholders: t.ClassVar[list[str]] = [
         "Pending further documentation",
         "Pending further documentation.",
         "No description for this column",
@@ -105,18 +97,18 @@ class DbtYamlManager(DbtProject):
 
     # NOTE: we use an arbitrarily large TTL since the YAML manager is not
     # a long-running service which needs to periodically invalidate and refresh
-    ADAPTER_TTL = 1e9
+    ADAPTER_TTL: t.ClassVar[float] = 1e9
 
     def __init__(
         self,
-        target: Optional[str] = None,
-        profiles_dir: Optional[str] = None,
-        project_dir: Optional[str] = None,
-        catalog_file: Optional[str] = None,
-        threads: Optional[int] = 1,
-        fqn: Optional[str] = None,
+        target: str | None = None,
+        profiles_dir: str | None = None,
+        project_dir: str | None = None,
+        catalog_file: str | None = None,
+        threads: int | None = 1,
+        fqn: str | None = None,
         dry_run: bool = False,
-        models: Optional[List[str]] = None,
+        models: list[str] | None = None,
         skip_add_columns: bool = False,
         skip_add_tags: bool = False,
         skip_add_data_types: bool = False,
@@ -124,19 +116,19 @@ class DbtYamlManager(DbtProject):
         char_length: bool = False,
         skip_merge_meta: bool = False,
         add_progenitor_to_meta: bool = False,
-        vars: Optional[str] = None,
+        vars: str | None = None,
         use_unrendered_descriptions: bool = False,
-        profile: Optional[str] = None,
-        add_inheritance_for_specified_keys: Optional[List[str]] = None,
+        profile: str | None = None,
+        add_inheritance_for_specified_keys: list[str] | None = None,
         output_to_lower: bool = False,
     ):
         """Initializes the DbtYamlManager class."""
-        super().__init__(target, profiles_dir, project_dir, threads, vars=vars, profile=profile)
+        super().__init__(target, profiles_dir, project_dir, threads, vars=vars, profile=profile)  # pyright: ignore[reportArgumentType]
         self.fqn = fqn
         self.models = models or []
         self.dry_run = dry_run
         self.catalog_file = catalog_file
-        self._catalog: Optional[CatalogArtifact] = None
+        self._catalog: CatalogArtifact | None = None
         self.skip_add_columns = skip_add_columns
         self.skip_add_tags = skip_add_tags
         self.skip_add_data_types = skip_add_data_types
@@ -156,7 +148,7 @@ class DbtYamlManager(DbtProject):
             )
             logger().info(
                 "Please supply a valid fqn segment if using --fqn or a valid model name, path, or"
-                " subpath if using positional arguments"
+                + " subpath if using positional arguments"
             )
             exit(0)
 
@@ -240,14 +232,14 @@ class DbtYamlManager(DbtProject):
         )
 
     @staticmethod
-    def get_patch_path(node: ManifestNode) -> Optional[Path]:
+    def get_patch_path(node: ManifestNode) -> Path | None:
         """Returns the patch path for a node if it exists"""
         if node is not None and node.patch_path:
             return as_path(node.patch_path.split("://")[-1])
 
     def filtered_models(
-        self, subset: Optional[MutableMapping[str, ManifestNode]] = None
-    ) -> Iterator[Tuple[str, ManifestNode]]:
+        self, subset: MutableMapping[str, ManifestNode] | None = None
+    ) -> Iterator[tuple[str, ManifestNode]]:
         """Generates an iterator of valid models"""
         for unique_id, dbt_node in (
             subset.items()
@@ -257,7 +249,7 @@ class DbtYamlManager(DbtProject):
             if self._filter_model(dbt_node):
                 yield unique_id, dbt_node
 
-    def get_osmosis_path_spec(self, node: ManifestNode) -> Optional[str]:
+    def get_osmosis_path_spec(self, node: ManifestNode) -> str | None:
         """Validates a config string.
 
         If input is a source, we return the resource type str instead
@@ -286,7 +278,7 @@ class DbtYamlManager(DbtProject):
         """Resolve absolute file path for a manifest node"""
         return as_path(self.config.project_root, node.original_file_path).resolve()
 
-    def get_schema_path(self, node: ManifestNode) -> Optional[Path]:
+    def get_schema_path(self, node: ManifestNode) -> Path | None:
         """Resolve absolute schema file path for a manifest node"""
         schema_path = None
         if node.resource_type == NodeType.Model and node.patch_path:
@@ -327,7 +319,7 @@ class DbtYamlManager(DbtProject):
             return CatalogKey(node.database, node.schema, getattr(node, "identifier", node.name))
         return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
 
-    def get_base_model(self, node: ManifestNode, output_to_lower: bool) -> Dict[str, Any]:
+    def get_base_model(self, node: ManifestNode, output_to_lower: bool) -> dict[str, t.Any]:
         """Construct a base model object with model name, column names populated from database"""
         columns = self.get_columns(self.get_catalog_key(node), output_to_lower)
         return {
@@ -336,10 +328,10 @@ class DbtYamlManager(DbtProject):
         }
 
     def augment_existing_model(
-        self, documentation: Dict[str, Any], node: ManifestNode, output_to_lower: bool
-    ) -> Dict[str, Any]:
+        self, documentation: dict[str, t.Any], node: ManifestNode, output_to_lower: bool
+    ) -> dict[str, t.Any]:
         """Injects columns from database into existing model if not found"""
-        model_columns: List[str] = [c["name"] for c in documentation.get("columns", [])]
+        model_columns: list[str] = [c["name"] for c in documentation.get("columns", [])]
         database_columns = self.get_columns(self.get_catalog_key(node), output_to_lower)
         for column in (
             c for c in database_columns if not any(c.lower() == m.lower() for m in model_columns)
@@ -357,13 +349,13 @@ class DbtYamlManager(DbtProject):
             )
         return documentation
 
-    def get_columns(self, catalog_key: CatalogKey, output_to_lower: bool) -> List[str]:
+    def get_columns(self, catalog_key: CatalogKey, output_to_lower: bool) -> list[str]:
         """Get all columns in a list for a model"""
 
         return list(self.get_columns_meta(catalog_key, output_to_lower).keys())
 
     @property
-    def catalog(self) -> Optional[CatalogArtifact]:
+    def catalog(self) -> CatalogArtifact | None:
         """Get the catalog data from the catalog file
 
         Catalog data is cached in memory to avoid reading and parsing the file multiple times
@@ -391,13 +383,13 @@ class DbtYamlManager(DbtProject):
     @lru_cache(maxsize=5000)
     def get_columns_meta(
         self, catalog_key: CatalogKey, output_to_lower: bool = False
-    ) -> Dict[str, ColumnMetadata]:
+    ) -> dict[str, ColumnMetadata]:
         """Get all columns in a list for a model"""
         columns = OrderedDict()
         blacklist = self.config.vars.vars.get("dbt-osmosis", {}).get("_blacklist", [])
         # If we provide a catalog, we read from it
         if self.catalog:
-            matching_models_or_sources: List[CatalogTable] = [
+            matching_models_or_sources: list[CatalogTable] = [
                 model_or_source_values
                 for model_or_source, model_or_source_values in dict(
                     **self.catalog.nodes, **self.catalog.sources
@@ -548,7 +540,7 @@ class DbtYamlManager(DbtProject):
             logger().info("...reloading project to pick up new sources")
             self.safe_parse_project(reinit=True)
 
-    def build_schema_folder_mapping(self, output_to_lower: bool) -> Dict[str, SchemaFileLocation]:
+    def build_schema_folder_mapping(self, output_to_lower: bool) -> dict[str, SchemaFileLocation]:
         """Builds a mapping of models or sources to their existing and target schema file paths"""
 
         # Resolve target nodes
@@ -605,8 +597,8 @@ class DbtYamlManager(DbtProject):
                 # Model/Source Is Documented but Must be Migrated
                 with self.mutex:
                     schema = self.yaml_handler.load(schema_file.current)
-                models_in_file: Sequence[Dict[str, Any]] = schema.get("models", [])
-                sources_in_file: Sequence[Dict[str, Any]] = schema.get("sources", [])
+                models_in_file: Sequence[dict[str, t.Any]] = schema.get("models", [])
+                sources_in_file: Sequence[dict[str, t.Any]] = schema.get("sources", [])
                 for documented_model in (
                     model for model in models_in_file if model["name"] == node.name
                 ):
@@ -669,7 +661,7 @@ class DbtYamlManager(DbtProject):
 
     def draft_project_structure_update_plan(
         self, output_to_lower: bool = False
-    ) -> Dict[Path, SchemaFileMigration]:
+    ) -> dict[Path, SchemaFileMigration]:
         """Build project structure update plan based on `dbt-osmosis:` configs set across
         dbt_project.yml and model files. The update plan includes injection of undocumented models.
         Unless this plan is constructed and executed by the `commit_project_restructure` function,
@@ -682,7 +674,7 @@ class DbtYamlManager(DbtProject):
         """
 
         # Container for output
-        blueprint: Dict[Path, SchemaFileMigration] = {}
+        blueprint: dict[Path, SchemaFileMigration] = {}
         logger().info(
             ":chart_increasing: Searching project stucture for required updates and building action"
             " plan"
@@ -711,7 +703,7 @@ class DbtYamlManager(DbtProject):
 
     def commit_project_restructure_to_disk(
         self,
-        blueprint: Optional[Dict[Path, SchemaFileMigration]] = None,
+        blueprint: dict[Path, SchemaFileMigration] | None = None,
         output_to_lower: bool = False,
     ) -> bool:
         """Given a project restrucure plan of pathlib Paths to a mapping of output and supersedes
@@ -720,9 +712,9 @@ class DbtYamlManager(DbtProject):
         as needed.
 
         Args:
-            blueprint (Dict[Path, SchemaFileMigration]): Project restructure plan as typically
+            blueprint (dict[Path, SchemaFileMigration]): Project restructure plan as typically
                 created by `build_project_structure_update_plan`
-            output_to_lower (bool): Set column casing to lowercase.
+            output_to_lower (bool): set column casing to lowercase.
 
         Returns:
             bool: True if the project was restructured, False if no action was required
@@ -759,7 +751,7 @@ class DbtYamlManager(DbtProject):
             else:
                 # Update File
                 logger().info(":toolbox: Updating schema file %s", target.name)
-                target_schema: Optional[Dict[str, Any]] = self.yaml_handler.load(target)
+                target_schema: dict[str, t.Any] | None = self.yaml_handler.load(target)
                 # Add version if not present
                 if not target_schema:
                     target_schema = {"version": 2}
@@ -776,7 +768,7 @@ class DbtYamlManager(DbtProject):
 
             # Clean superseded schema files
             for dir, nodes in structure.supersede.items():
-                raw_schema: Dict[str, Any] = self.yaml_handler.load(dir)
+                raw_schema: dict[str, t.Any] = self.yaml_handler.load(dir)
                 # Gather models and sources marked for superseding
                 models_marked_for_superseding = set(
                     node.name for node in nodes if node.resource_type == NodeType.Model
@@ -793,7 +785,7 @@ class DbtYamlManager(DbtProject):
                     for s in raw_schema.get("sources", [])
                     for t in s.get("tables", [])
                 )
-                # Set difference to determine non-superseded models and sources
+                # set difference to determine non-superseded models and sources
                 non_superseded_models = models_in_schema - models_marked_for_superseding
                 non_superseded_sources = sources_in_schema - sources_marked_for_superseding
                 if len(non_superseded_models) + len(non_superseded_sources) == 0:
@@ -835,7 +827,7 @@ class DbtYamlManager(DbtProject):
         return True
 
     @staticmethod
-    def pretty_print_restructure_plan(blueprint: Dict[Path, SchemaFileMigration]) -> None:
+    def pretty_print_restructure_plan(blueprint: dict[Path, SchemaFileMigration]) -> None:
         logger().info(
             list(
                 map(
@@ -854,7 +846,7 @@ class DbtYamlManager(DbtProject):
         database_columns: Iterable[str],
         yaml_columns: Iterable[str],
         documented_columns: Iterable[str],
-    ) -> Tuple[List[str], List[str], List[str]]:
+    ) -> tuple[list[str], list[str], list[str]]:
         """Returns:
         missing_columns: Columns in database not in dbt -- will be injected into schema file
         undocumented_columns: Columns missing documentation -- descriptions will be inherited and
@@ -876,7 +868,7 @@ class DbtYamlManager(DbtProject):
         self,
         unique_id: str,
         node: ManifestNode,
-        schema_map: Dict[str, SchemaFileLocation],
+        schema_map: dict[str, SchemaFileLocation],
         force_inheritance: bool = False,
         output_to_lower: bool = False,
     ):
@@ -884,7 +876,7 @@ class DbtYamlManager(DbtProject):
             with self.mutex:
                 logger().info(":point_right: Processing model: [bold]%s[/bold]", unique_id)
             # Get schema file path, must exist to propagate documentation
-            schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
+            schema_path: SchemaFileLocation | None = schema_map.get(unique_id)
             if schema_path is None or schema_path.current is None:
                 with self.mutex:
                     logger().info(
@@ -892,13 +884,13 @@ class DbtYamlManager(DbtProject):
                     )  # We can't take action
                     return
 
-            # Build Sets
+            # Build sets
             logger().info(":mag: Resolving columns in database")
             database_columns_ordered = self.get_columns(self.get_catalog_key(node), output_to_lower)
             columns_db_meta = self.get_columns_meta(self.get_catalog_key(node), output_to_lower)
-            database_columns: Set[str] = set(database_columns_ordered)
+            database_columns: set[str] = set(database_columns_ordered)
             yaml_columns_ordered = [column for column in node.columns]
-            yaml_columns: Set[str] = set(yaml_columns_ordered)
+            yaml_columns: set[str] = set(yaml_columns_ordered)
 
             if not database_columns:
                 with self.mutex:
@@ -911,7 +903,7 @@ class DbtYamlManager(DbtProject):
                 database_columns = yaml_columns
 
             # Get documentated columns
-            documented_columns: Set[str] = set(
+            documented_columns: set[str] = set(
                 column
                 for column, info in node.columns.items()
                 if info.description and info.description not in self.placeholders
@@ -1056,7 +1048,7 @@ class DbtYamlManager(DbtProject):
     def remove_columns_not_in_database(
         extra_columns: Iterable[str],
         node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
+        yaml_file_model_section: dict[str, t.Any],
     ) -> int:
         """Removes columns found in dbt model that do not exist in database from both node
         and model simultaneously
@@ -1076,11 +1068,11 @@ class DbtYamlManager(DbtProject):
     def update_columns_attribute(
         self,
         node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
+        yaml_file_model_section: dict[str, t.Any],
+        columns_db_meta: dict[str, ColumnMetadata],
         attribute_name: str,
         meta_key: str,
-        skip_attribute_update: Any,
+        skip_attribute_update: t.Any,
         output_to_lower: bool = False,
     ) -> int:
         changes_committed = 0
@@ -1114,8 +1106,8 @@ class DbtYamlManager(DbtProject):
     def add_missing_cols_to_node_and_model(
         missing_columns: Iterable,
         node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
+        yaml_file_model_section: dict[str, t.Any],
+        columns_db_meta: dict[str, ColumnMetadata],
         output_to_lower: bool,
     ) -> int:
         """Add missing columns to node and model simultaneously
@@ -1164,10 +1156,10 @@ class DbtYamlManager(DbtProject):
         undocumented_columns: Iterable[str],
         extra_columns: Iterable[str],
         node: ManifestNode,
-        section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
+        section: dict[str, t.Any],
+        columns_db_meta: dict[str, ColumnMetadata],
         output_to_lower: bool,
-    ) -> Tuple[int, int, int, int, int]:
+    ) -> tuple[int, int, int, int, int]:
         """Take action on a schema file mirroring changes in the node."""
         logger().info(":microscope: Looking for actions for %s", node.unique_id)
         n_cols_added = 0
@@ -1224,8 +1216,8 @@ class DbtYamlManager(DbtProject):
 
     @staticmethod
     def maybe_get_section_from_schema_file(
-        yaml_file: Dict[str, Any], node: ManifestNode
-    ) -> Optional[Dict[str, Any]]:
+        yaml_file: dict[str, t.Any], node: ManifestNode
+    ) -> dict[str, t.Any] | None:
         """Get the section of a schema file that corresponds to a node."""
         if node.resource_type == NodeType.Source:
             section = next(
