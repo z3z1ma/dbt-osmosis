@@ -260,11 +260,11 @@ def refactor(
 
     # Conform project structure & bootstrap undocumented models injecting columns
     if runner.commit_project_restructure_to_disk():
-        runner.safe_parse_project(reinit=True)
+        runner.safe_parse_project(init=True)
     runner.propagate_documentation_downstream(
         force_inheritance=force_inheritance, output_to_lower=output_to_lower
     )
-    if check and runner.mutations > 0:
+    if check and runner._mutations > 0:
         exit(1)
 
 
@@ -415,7 +415,7 @@ def organize(
 
     # Conform project structure & bootstrap undocumented models injecting columns
     runner.commit_project_restructure_to_disk()
-    if check and runner.mutations > 0:
+    if check and runner._mutations > 0:
         exit(1)
 
 
@@ -596,7 +596,7 @@ def document(
 
     # Propagate documentation & inject/remove schema file columns to align with model in database
     runner.propagate_documentation_downstream(force_inheritance, output_to_lower)
-    if check and runner.mutations > 0:
+    if check and runner._mutations > 0:
         exit(1)
 
 
