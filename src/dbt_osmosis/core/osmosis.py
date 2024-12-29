@@ -19,11 +19,20 @@ from pathlib import Path
 
 import dbt.flags as dbt_flags
 import ruamel.yaml
+from dbt.adapters.base.impl import BaseAdapter
 from dbt.adapters.contracts.connection import AdapterResponse
-from dbt.adapters.factory import Adapter, get_adapter_class_by_name
+from dbt.adapters.factory import get_adapter_class_by_name
 from dbt.config.runtime import RuntimeConfig
 from dbt.contracts.graph.manifest import Manifest
-from dbt.contracts.graph.nodes import ColumnInfo, ManifestNode, ManifestSQLNode, SourceDefinition
+from dbt.contracts.graph.nodes import (
+    ColumnInfo,
+    ManifestNode,
+    ManifestSQLNode,
+    ModelNode,
+    ResultNode,
+    SeedNode,
+    SourceDefinition,
+)
 from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
 from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
@@ -144,58 +153,6 @@ class SchemaFileMigration:
     supersede: dict[Path, list[str]] = field(default_factory=dict)
 
 
-# FIXME: fold this in from the other file
-@dataclass
-class ColumnLevelKnowledgePropagator:
-    """Example usage for doc-propagation logic. placeholders is a tuple to avoid accidental mutation."""
-
-    placeholders: tuple[str, ...] = (
-        EMPTY_STRING,
-        "Pending further documentation",
-        "Pending further documentation.",
-        "No description for this column",
-        "No description for this column.",
-        "Not documented",
-        "Not documented.",
-        "Undefined",
-        "Undefined.",
-    )
-
-    @staticmethod
-    def get_node_columns_with_inherited_knowledge(
-        manifest: Manifest,
-        node: ManifestNode,
-        placeholders: list[str],
-        use_unrendered_descriptions: bool,
-    ) -> dict[str, dict[str, t.Any]]:
-        _ = manifest, node, placeholders, use_unrendered_descriptions
-        return {}
-
-    @staticmethod
-    def update_undocumented_columns_with_prior_knowledge(
-        columns_to_update: Iterable[str],
-        node: ManifestNode,
-        yaml_section: dict[str, t.Any],
-        known_knowledge: dict[str, dict[str, t.Any]],
-    ) -> int:
-        changed_count = 0
-        for col in columns_to_update:
-            if col not in node.columns:
-                continue
-            cinfo = node.columns[col]
-            old_desc = getattr(cinfo, "description", "")
-            new_desc = old_desc
-            if col in known_knowledge and not old_desc:
-                new_desc = known_knowledge[col].get("description", "")
-            if new_desc and new_desc != old_desc:
-                setattr(cinfo, "description", new_desc)
-                for c in yaml_section.get("columns", []):
-                    if c["name"].lower() == col.lower():
-                        c["description"] = new_desc
-                changed_count += 1
-        return changed_count
-
-
 class MissingOsmosisConfig(Exception):
     """Raised when an osmosis configuration is missing."""
 
@@ -248,7 +205,7 @@ class DbtProjectContext:
 
     _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
-    _adapter: Adapter | None = None
+    _adapter: BaseAdapter | None = None
     _adapter_created_at: float = 0.0
 
     @property
@@ -256,9 +213,8 @@ class DbtProjectContext:
         """Check if the adapter has expired based on the adapter TTL."""
         return time.time() - self._adapter_created_at > self.adapter_ttl
 
-    # NOTE: the way we use the adapter, the generics are irrelevant
     @property
-    def adapter(self) -> Adapter[t.Any, t.Any, t.Any, t.Any]:
+    def adapter(self) -> BaseAdapter:
         """Get the adapter instance, creating a new one if the current one has expired."""
         with self._adapter_mutex:
             if not self._adapter or self.is_adapter_expired:
@@ -273,7 +229,7 @@ class DbtProjectContext:
         return self._manifest_mutex
 
 
-def instantiate_adapter(runtime_config: RuntimeConfig) -> Adapter[t.Any, t.Any, t.Any, t.Any]:
+def instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
     """Instantiate a dbt adapter based on the runtime configuration."""
     adapter_cls = get_adapter_class_by_name(runtime_config.credentials.type)
     if not adapter_cls:
@@ -344,11 +300,11 @@ class YamlRefactorContext:
         "Undefined",
     )
 
-    mutation_count: int = 0
+    _mutation_count: int = field(default=0, init=False)
 
     def register_mutations(self, count: int) -> None:
         """Increment the mutation count by a specified amount."""
-        self.mutation_count += count
+        self._mutation_count += count
 
     def __post_init__(self) -> None:
         if EMPTY_STRING not in self.placeholders:
@@ -365,7 +321,7 @@ def load_catalog(settings: YamlRefactorSettings) -> CatalogArtifact | None:
     return CatalogArtifact.from_dict(json.loads(fp.read_text()))
 
 
-def has_jinja(code: str) -> bool:
+def _has_jinja(code: str) -> bool:
     """Check if a code string contains jinja tokens."""
     return any(token in code for token in ("{{", "}}", "{%", "%}", "{#", "#}"))
 
@@ -378,7 +334,7 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
         _ = context.manifest.nodes.pop(key, None)
 
         node = context.sql_parser.parse_remote(raw_sql, tmp_id)
-        if not has_jinja(raw_sql):
+        if not _has_jinja(raw_sql):
             return node
         process_node(context.config, context.manifest, node)
         compiled_node = SqlCompileRunner(
@@ -396,7 +352,7 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
 
 def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> AdapterResponse:
     """Execute jinja SQL using the context's manifest and adapter."""
-    if has_jinja(raw_sql):
+    if _has_jinja(raw_sql):
         comp = compile_sql_code(context, raw_sql)
         sql_to_exec = comp.compiled_code or comp.raw_code
     else:
@@ -406,12 +362,45 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> AdapterRespons
     return resp
 
 
+def _is_fqn_match(node: ResultNode, fqn_str: str) -> bool:
+    """Filter models based on the provided fully qualified name matching on partial segments."""
+    if not fqn_str:
+        return True
+    parts = fqn_str.split(".")
+    return len(node.fqn[1:]) >= len(parts) and all(
+        left == right for left, right in zip(parts, node.fqn[1:])
+    )
+
+
+def _is_file_match(node: ResultNode, paths: list[str]) -> bool:
+    """Check if a node's file path matches any of the provided file paths or names."""
+    node_path = _get_node_path(node)
+    for model in paths:
+        if node.name == model:
+            return True
+        try_path = Path(model).resolve()
+        if try_path.is_dir():
+            if node_path and try_path in node_path.parents:
+                return True
+        elif try_path.is_file():
+            if node_path and try_path == node_path:
+                return True
+    return False
+
+
+def _get_node_path(node: ResultNode) -> Path | None:
+    """Return the path to the node's original file if available."""
+    if node.original_file_path and hasattr(node, "root_path"):
+        return Path(getattr(node, "root_path"), node.original_file_path).resolve()
+    return None
+
+
 def filter_models(
     context: YamlRefactorContext,
-) -> Iterator[tuple[str, ManifestNode | SourceDefinition]]:
+) -> Iterator[tuple[str, ResultNode]]:
     """Iterate over the models in the dbt project manifest applying the filter settings."""
 
-    def f(node: ManifestNode | SourceDefinition) -> bool:
+    def f(node: ResultNode) -> bool:
         """Closure to filter models based on the context settings."""
         if node.resource_type not in (NodeType.Model, NodeType.Source):
             return False
@@ -433,39 +422,6 @@ def filter_models(
             yield uid, dbt_node
 
 
-def _is_fqn_match(node: ManifestNode | SourceDefinition, fqn_str: str) -> bool:
-    """Filter models based on the provided fully qualified name matching on partial segments."""
-    if not fqn_str:
-        return True
-    parts = fqn_str.split(".")
-    return len(node.fqn[1:]) >= len(parts) and all(
-        left == right for left, right in zip(parts, node.fqn[1:])
-    )
-
-
-def _is_file_match(node: ManifestNode | SourceDefinition, paths: list[str]) -> bool:
-    """Check if a node's file path matches any of the provided file paths or names."""
-    node_path = _get_node_path(node)
-    for model in paths:
-        if node.name == model:
-            return True
-        try_path = Path(model).resolve()
-        if try_path.is_dir():
-            if node_path and try_path in node_path.parents:
-                return True
-        elif try_path.is_file():
-            if node_path and try_path == node_path:
-                return True
-    return False
-
-
-def _get_node_path(node: ManifestNode | SourceDefinition) -> Path | None:
-    """Return the path to the node's original file if available."""
-    if node.original_file_path and hasattr(node, "root_path"):
-        return Path(getattr(node, "root_path"), node.original_file_path).resolve()
-    return None
-
-
 def normalize_column_name(column: str, credentials_type: str, to_lower: bool) -> str:
     """Apply case normalization to a column name based on the credentials type."""
     if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
@@ -477,26 +433,404 @@ def normalize_column_name(column: str, credentials_type: str, to_lower: bool) ->
     return column
 
 
+@dataclass
+class ColumnData:
+    """Simple data object for column information"""
+
+    name: str
+    description: str
+    data_type: str
+
+
+def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
+    """Use the precise data type if enabled in the settings."""
+    if (col.is_numeric() and settings.numeric_precision) or (
+        col.is_string() and settings.char_length
+    ):
+        return col.data_type
+    return col.dtype
+
+
+def _catalog_key_for_node(node: ResultNode) -> CatalogKey:
+    """Make an appropriate catalog key for a dbt node."""
+    if node.resource_type == NodeType.Source:
+        return CatalogKey(node.database, node.schema, getattr(node, "identifier", node.name))
+    return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
+
+
+def get_columns_meta_for_key(
+    context: YamlRefactorContext, key: CatalogKey, output_to_lower: bool
+) -> dict[str, ColumnMetadata]:
+    """Equivalent to get_columns_meta in old code but directly referencing a key, not a node."""
+    cased_cols = OrderedDict()
+    blacklist = context.project.config.vars.to_dict().get("dbt-osmosis", {}).get("_blacklist", [])
+    catalog = None
+    if context.settings.catalog_file:
+        path = Path(context.settings.catalog_file)
+        if path.is_file():
+            catalog = CatalogArtifact.from_dict(json.loads(path.read_text()))
+
+    # Catalog first
+    if catalog:
+        cat_objs = {**catalog.nodes, **catalog.sources}
+        matched = [table for cat_k, table in cat_objs.items() if cat_k.split(".")[-1] == key.name]
+        if matched:
+            for col in matched[0].columns.values():
+                if any(re.match(p, col.name) for p in blacklist):
+                    continue
+                cased = normalize_column_name(
+                    col.name,
+                    context.project.config.credentials.type,
+                    output_to_lower,
+                )
+                cased_cols[cased] = ColumnMetadata(
+                    name=cased,
+                    type=col.type,
+                    index=col.index,
+                    comment=col.comment,
+                )
+            return cased_cols
+
+    # Fallback to adapter-based
+    adapter = context.project.adapter
+    rel = adapter.get_relation(key.database, key.schema, key.name)
+    if not rel:
+        return cased_cols
+    try:
+        for col_ in adapter.get_columns_in_relation(rel):
+            if any(re.match(b, col_.name) for b in blacklist):
+                continue
+            cased = normalize_column_name(
+                col_.name,
+                context.project.config.credentials.type,
+                output_to_lower,
+            )
+            dtype = _maybe_use_precise_dtype(col_, context.settings)
+            cased_cols[cased] = ColumnMetadata(
+                name=cased,
+                type=dtype,
+                index=None,
+                comment=getattr(col_, "comment", None),
+            )
+            if hasattr(col_, "flatten"):
+                for exp in col_.flatten():
+                    if any(re.match(b, exp.name) for b in blacklist):
+                        continue
+                    cased2 = normalize_column_name(
+                        exp.name,
+                        context.project.config.credentials.type,
+                        output_to_lower,
+                    )
+                    dtype2 = _maybe_use_precise_dtype(exp, context.settings)
+                    cased_cols[cased2] = ColumnMetadata(
+                        name=cased2,
+                        type=dtype2,
+                        index=None,
+                        comment=getattr(exp, "comment", None),
+                    )
+    except Exception as ex:
+        logger.warning(f"Could not introspect columns for {key}: {ex}")
+    return cased_cols
+
+
+def get_columns_for_key(
+    context: YamlRefactorContext, key: CatalogKey, output_to_lower: bool
+) -> list[str]:
+    """Equivalent to get_columns in old code; returns just the list of column names."""
+    meta = get_columns_meta_for_key(context, key, output_to_lower)
+    return list(meta.keys())
+
+
 # TODO: more work to do below the fold here
 
 
-# NOTE: in multithreaded operations, we need to use the thread connection for the adapter
-def get_columns_meta(
-    context: YamlRefactorContext,
+_ColumnLevelKnowledge = dict[str, t.Any]
+_KnowledgeBase = dict[str, _ColumnLevelKnowledge]
+
+
+def _build_node_ancestor_tree(
+    manifest: Manifest,
+    node: ResultNode,
+    family_tree: dict[str, list[str]] | None = None,
+    members_found: list[str] | None = None,
+    depth: int = 0,
+) -> dict[str, list[str]]:
+    """Recursively build dictionary of parents in generational order using a simple DFS algorithm"""
+    # Set initial values
+    if family_tree is None:
+        family_tree = {}
+    if members_found is None:
+        members_found = []
+
+    # If the node has no dependencies, return the family tree as it is
+    if not hasattr(node, "depends_on"):
+        return family_tree
+
+    # Iterate over the parents of the node mutating family_tree
+    for parent in getattr(node.depends_on, "nodes", []):
+        member = manifest.nodes.get(parent, manifest.sources.get(parent))
+        if member and parent not in members_found:
+            family_tree.setdefault(f"generation_{depth}", []).append(parent)
+            _ = _build_node_ancestor_tree(manifest, member, family_tree, members_found, depth + 1)
+            members_found.append(parent)
+
+    return family_tree
+
+
+def _find_first(coll: Iterable[dict[str, t.Any]], predicate: t.Callable[[t.Any], bool]) -> t.Any:
+    """Find the first item in a container that satisfies a predicate."""
+    for item in coll:
+        if predicate(item):
+            return item
+
+
+def get_member_yaml(context: YamlRefactorContext, member: ResultNode) -> dict[str, t.Any] | None:
+    """Get the parsed YAML for a dbt model or source node."""
+    project_dir = Path(context.project.config.project_root)
+    yaml_handler = context.yaml_handler
+
+    if isinstance(member, SourceDefinition):
+        if not member.original_file_path:
+            return None
+        path = project_dir.joinpath(member.original_file_path)
+        if not path.exists():
+            return None
+        with path.open("r") as f:
+            parsed_yaml = yaml_handler.load(f)
+        data: t.Any = parsed_yaml.get("sources", [])
+        src = _find_first(data, lambda s: s["name"] == member.source_name)
+        if not src:
+            return None
+        tables = src.get("tables", [])
+        return _find_first(tables, lambda tbl: tbl["name"] == member.name)
+
+    elif isinstance(member, (ModelNode, SeedNode)):
+        if not member.patch_path:
+            return None
+        patch_file = project_dir.joinpath(member.patch_path.split("://")[-1])
+        if not patch_file.is_file():
+            return None
+        with patch_file.open("r") as f:
+            parsed_yaml = yaml_handler.load(f)
+        section_key = f"{member.resource_type}s"
+        data = parsed_yaml.get(section_key, [])
+        return _find_first(data, lambda model: model["name"] == member.name)
+
+    return None
+
+
+def inherit_column_level_knowledge(
+    context: YamlRefactorContext, family_tree: dict[str, list[str]]
+) -> _KnowledgeBase:
+    """Generate a knowledge base by applying inheritance logic based on the family tree graph."""
+    knowledge: _KnowledgeBase = {}
+    placeholders = context.placeholders
+    manifest = context.project.manifest
+
+    # If the user wants to use unrendered descriptions
+    use_unrendered = context.settings.use_unrendered_descriptions
+
+    # We traverse from the last generation to the earliest
+    # so that the "nearest" ancestor overwrites the older ones.
+    for gen_name in reversed(family_tree.keys()):
+        members_in_generation = family_tree[gen_name]
+        for ancestor_id in members_in_generation:
+            member = manifest.nodes.get(ancestor_id, manifest.sources.get(ancestor_id))
+            if not member:
+                continue
+
+            member_yaml: dict[str, t.Any] | None = None
+            if use_unrendered:
+                member_yaml = get_member_yaml(context, member)
+
+            # For each column in the ancestor
+            for col_name, col_info in member.columns.items():
+                # If we haven't seen this column name yet, seed it with minimal data
+                _ = knowledge.setdefault(
+                    col_name,
+                    {"progenitor": ancestor_id, "generation": gen_name},
+                )
+                merged_info = col_info.to_dict()
+
+                # If the description is in placeholders, discard it
+                if merged_info.get("description", "") in placeholders:
+                    merged_info["description"] = ""
+
+                # If user wants unrendered, read from YAML file if present
+                if member_yaml and "columns" in member_yaml:
+                    col_in_yaml = _find_first(
+                        member_yaml["columns"], lambda c: c["name"] == merged_info["name"]
+                    )
+                    if col_in_yaml and "description" in col_in_yaml:
+                        merged_info["description"] = col_in_yaml["description"]
+
+                # Merge tags
+                existing_tags = knowledge[col_name].get("tags", [])
+                new_tags = set(merged_info.pop("tags", [])) | set(existing_tags)
+                if new_tags:
+                    merged_info["tags"] = list(new_tags)
+
+                # Merge meta
+                existing_meta = knowledge[col_name].get("meta", {})
+                combined_meta = {**existing_meta, **merged_info.pop("meta", {})}
+                if combined_meta:
+                    merged_info["meta"] = combined_meta
+
+                # Now unify
+                knowledge[col_name].update(merged_info)
+
+    return knowledge
+
+
+def get_node_columns_with_inherited_knowledge(
+    context: YamlRefactorContext, node: ResultNode
+) -> _KnowledgeBase:
+    """Build a knowledgebase for the node by climbing the ancestor tree and merging column doc info from nearest to farthest ancestors."""
+    family_tree = _build_node_ancestor_tree(context.project.manifest, node)
+    return inherit_column_level_knowledge(context, family_tree)
+
+
+def get_prior_knowledge(knowledge: _KnowledgeBase, column: str) -> _ColumnLevelKnowledge:
+    """If the user has changed column name's case or prefix, attempt to find the best match among possible variants (lowercase, pascalCase, etc.)
+
+    We sort so that any source/seed is considered first, then models,
+    and within each group we sort descending by generation.
+    """
+    camelcase: str = re.sub(r"_(.)", lambda m: m.group(1).upper(), column)
+    pascalcase: str = camelcase[0].upper() + camelcase[1:] if camelcase else camelcase
+    variants = (column, column.lower(), camelcase, pascalcase)
+
+    def is_source_or_seed(k: _ColumnLevelKnowledge) -> bool:
+        p = k.get("progenitor", "")
+        return p.startswith("source") or p.startswith("seed")
+
+    matches: list[_ColumnLevelKnowledge] = []
+    for var in variants:
+        found = knowledge.get(var)
+        if found is not None:
+            matches.append(found)
+
+    def _sort_k(k: _ColumnLevelKnowledge) -> tuple[bool, str]:
+        return (not is_source_or_seed(k), k.get("generation", ""))
+
+    sorted_matches = sorted(matches, key=_sort_k, reverse=True)
+    return sorted_matches[0] if sorted_matches else {}
+
+
+def merge_knowledge_with_original_knowledge(
+    prior_knowledge: _ColumnLevelKnowledge,
+    original_knowledge: _ColumnLevelKnowledge,
+    add_progenitor_to_meta: bool,
+    progenitor: str,
+) -> _ColumnLevelKnowledge:
+    """Merge two column level knowledge dictionaries."""
+    merged = dict(original_knowledge)
+
+    # Unify tags
+    if "tags" in prior_knowledge:
+        prior_tags = set(prior_knowledge["tags"])
+        merged_tags = set(merged.get("tags", []))
+        merged["tags"] = list(prior_tags | merged_tags)
+
+    # Unify meta
+    if "meta" in prior_knowledge:
+        new_meta = {**merged.get("meta", {}), **prior_knowledge["meta"]}
+        merged["meta"] = new_meta
+
+    # If the user wants the source or seed name in meta, apply it
+    if add_progenitor_to_meta and progenitor:
+        merged.setdefault("meta", {})
+        merged["meta"]["osmosis_progenitor"] = progenitor
+
+    # If meta says "osmosis_keep_description" => keep the original description
+    if merged.get("meta", {}).get("osmosis_keep_description"):
+        # Do nothing
+        pass
+    else:
+        # Otherwise if prior knowledge has a non-empty description, override
+        if prior_knowledge.get("description"):
+            merged["description"] = prior_knowledge["description"]
+
+    # Remove empty tags or meta
+    if merged.get("tags") == []:
+        merged.pop("tags", None)
+    if merged.get("meta") == {}:
+        merged.pop("meta", None)
+
+    return merged
+
+
+def update_undocumented_columns_with_prior_knowledge(
+    undocumented_columns: Iterable[str],
     node: ManifestNode,
-    catalog: CatalogArtifact | None,
+    yaml_file_model_section: dict[str, t.Any],
+    knowledge: _KnowledgeBase,
+    skip_add_tags: bool,
+    skip_merge_meta: bool,
+    add_progenitor_to_meta: bool,
+    add_inheritance_for_specified_keys: Iterable[str] = (),
+) -> int:
+    """For columns that are undocumented, we find prior knowledge in the knowledge dict, merge it with the existing column's knowledge, then assign it to both node and YAML."""
+    # Which keys are we allowed to adopt from prior knowledge
+    inheritables = ["description"]
+    if not skip_add_tags:
+        inheritables.append("tags")
+    if not skip_merge_meta:
+        inheritables.append("meta")
+    for k in add_inheritance_for_specified_keys:
+        if k not in inheritables:
+            inheritables.append(k)
+
+    changes = 0
+    for column in undocumented_columns:
+        if column not in node.columns:
+            node.columns[column] = ColumnInfo.from_dict({"name": column})
+        original_dict = node.columns[column].to_dict()
+
+        prior = get_prior_knowledge(knowledge, column)
+        progenitor = t.cast(str, prior.pop("progenitor", ""))
+
+        # Only keep keys we want to inherit
+        filtered_prior = {kk: vv for kk, vv in prior.items() if kk in inheritables}
+
+        new_knowledge = merge_knowledge_with_original_knowledge(
+            filtered_prior,
+            original_dict,
+            add_progenitor_to_meta,
+            progenitor,
+        )
+        if new_knowledge == original_dict:
+            continue
+
+        node.columns[column] = ColumnInfo.from_dict(new_knowledge)
+        for col_def in yaml_file_model_section.get("columns", []):
+            if col_def.get("name") == column:
+                # Only update the keys we are inheriting
+                for k2 in filtered_prior:
+                    col_def[k2] = new_knowledge.get(k2, col_def.get(k2))
+        logger.info(
+            "[osmosis] Inherited knowledge for column: '%s' from progenitor '%s' in node '%s'",
+            column,
+            progenitor,
+            node.unique_id,
+        )
+        changes += 1
+    return changes
+
+
+def get_columns_meta(
+    context: YamlRefactorContext, node: ManifestNode, catalog: CatalogArtifact | None
 ) -> dict[str, ColumnMetadata]:
-    """Get the column metadata for a node from the catalog or the adapter."""
     cased_cols = OrderedDict()
     blacklist = context.project.config.vars.get("dbt-osmosis", {}).get("_blacklist", [])
 
     key = _catalog_key_for_node(node)
     if catalog:
         cat_objs = {**catalog.nodes, **catalog.sources}
-        matched = [v for k, v in cat_objs.items() if k.split(".")[-1] == key.name]
+        matched = [table for k, table in cat_objs.items() if k.split(".")[-1] == key.name]
         if matched:
             for col in matched[0].columns.values():
-                if any(re.match(p, col.name) for p in blacklist):
+                if any(re.match(b, col.name) for b in blacklist):
                     continue
                 cased = normalize_column_name(
                     col.name,
@@ -511,12 +845,12 @@ def get_columns_meta(
                 )
             return cased_cols
 
-    rel = context.project.adapter.get_relation(key.database, key.schema, key.name)
+    adapter = context.project.adapter
+    rel = adapter.get_relation(key.database, key.schema, key.name)
     if not rel:
         return cased_cols
     try:
-        col_objs = context.project.adapter.get_columns_in_relation(rel)
-        for col_ in col_objs:
+        for col_ in adapter.get_columns_in_relation(rel):
             if any(re.match(b, col_.name) for b in blacklist):
                 continue
             cased = normalize_column_name(
@@ -547,27 +881,9 @@ def get_columns_meta(
                         index=None,
                         comment=getattr(exp, "comment", None),
                     )
-    except Exception as exc:
-        logger.warning(f"Could not introspect columns for {key}: {exc}")
-
+    except Exception as ex:
+        logger.warning(f"Could not introspect columns for {key}: {ex}")
     return cased_cols
-
-
-def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
-    """Use the precise data type if enabled in the settings."""
-    if (col.is_numeric() and settings.numeric_precision) or (
-        col.is_string() and settings.char_length
-    ):
-        return col.data_type
-    return col.dtype
-
-
-def _catalog_key_for_node(node: ManifestNode) -> CatalogKey:
-    """Make an appropriate catalog key for a dbt node."""
-    # TODO: pyright seems to think something is wrong below
-    if node.resource_type == NodeType.Source:
-        return CatalogKey(node.database, node.schema, getattr(node, "identifier", node.name))
-    return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
 
 
 # NOTE: usage example of the more FP style module below
