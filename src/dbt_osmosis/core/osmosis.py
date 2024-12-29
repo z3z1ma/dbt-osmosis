@@ -1,5 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportAny=false, reportUnknownMemberType=false
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -36,28 +38,28 @@ EMPTY_STRING = ""
 logger = logging.getLogger("dbt-osmosis")
 
 
-def has_jinja(code: str) -> bool:
-    """Check if a code string contains jinja tokens."""
-    return any(token in code for token in ("{{", "}}", "{%", "%}", "{#", "#}"))
+def discover_project_dir() -> str:
+    """Return the directory containing a dbt_project.yml if found, else the current dir."""
+    cwd = Path.cwd()
+    for p in [cwd] + list(cwd.parents):
+        if (p / "dbt_project.yml").exists():
+            return str(p.resolve())
+    return str(cwd.resolve())
 
 
-def column_casing(column: str, credentials_type: str, to_lower: bool) -> str:
-    """Apply case normalization to a column name based on the credentials type."""
-    if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
-        return column
-    if to_lower:
-        return column.lower()
-    if credentials_type == "snowflake":
-        return column.upper()
-    return column
+def discover_profiles_dir() -> str:
+    """Return the directory containing a profiles.yml if found, else ~/.dbt."""
+    if (Path.cwd() / "profiles.yml").exists():
+        return str(Path.cwd().resolve())
+    return str(Path.home() / ".dbt")
 
 
 @dataclass
 class DbtConfiguration:
     """Configuration for a dbt project."""
 
-    project_dir: str
-    profiles_dir: str
+    project_dir: str = field(default_factory=discover_project_dir)
+    profiles_dir: str = field(default_factory=discover_profiles_dir)
     target: str | None = None
     profile: str | None = None
     threads: int = 1
@@ -65,7 +67,7 @@ class DbtConfiguration:
     which: str = ""
 
     debug: bool = False
-    _vars: str | dict[str, t.Any] = field(default_factory=dict)
+    _vars: str | dict[str, t.Any] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         if self.threads != 1:
@@ -244,8 +246,8 @@ class DbtProjectContext:
     macro_parser: SqlMacroParser
     adapter_ttl: float = 3600.0
 
-    _adapter_mutex: threading.Lock = field(default_factory=threading.Lock)
-    _manifest_mutex: threading.Lock = field(default_factory=threading.Lock)
+    _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _adapter: Adapter | None = None
     _adapter_created_at: float = 0.0
 
@@ -269,22 +271,6 @@ class DbtProjectContext:
     def manifest_mutex(self) -> threading.Lock:
         """Return the manifest mutex for thread safety."""
         return self._manifest_mutex
-
-
-def discover_project_dir() -> str:
-    """Return the directory containing a dbt_project.yml if found, else the current dir."""
-    cwd = Path.cwd()
-    for p in [cwd] + list(cwd.parents):
-        if (p / "dbt_project.yml").exists():
-            return str(p.resolve())
-    return str(cwd.resolve())
-
-
-def discover_profiles_dir() -> str:
-    """Return the directory containing a profiles.yml if found, else ~/.dbt."""
-    if (Path.cwd() / "profiles.yml").exists():
-        return str(Path.cwd().resolve())
-    return str(Path.home() / ".dbt")
 
 
 def instantiate_adapter(runtime_config: RuntimeConfig) -> Adapter[t.Any, t.Any, t.Any, t.Any]:
@@ -367,6 +353,21 @@ class YamlRefactorContext:
     def __post_init__(self) -> None:
         if EMPTY_STRING not in self.placeholders:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
+
+
+def load_catalog(settings: YamlRefactorSettings) -> CatalogArtifact | None:
+    """Load the catalog file if it exists and return a CatalogArtifact instance."""
+    if not settings.catalog_file:
+        return None
+    fp = Path(settings.catalog_file)
+    if not fp.exists():
+        return None
+    return CatalogArtifact.from_dict(json.loads(fp.read_text()))
+
+
+def has_jinja(code: str) -> bool:
+    """Check if a code string contains jinja tokens."""
+    return any(token in code for token in ("{{", "}}", "{%", "%}", "{#", "#}"))
 
 
 def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNode:
@@ -465,14 +466,15 @@ def _get_node_path(node: ManifestNode | SourceDefinition) -> Path | None:
     return None
 
 
-def load_catalog(settings: YamlRefactorSettings) -> CatalogArtifact | None:
-    """Load the catalog file if it exists and return a CatalogArtifact instance."""
-    if not settings.catalog_file:
-        return None
-    fp = Path(settings.catalog_file)
-    if not fp.exists():
-        return None
-    return CatalogArtifact.from_dict(json.loads(fp.read_text()))
+def normalize_column_name(column: str, credentials_type: str, to_lower: bool) -> str:
+    """Apply case normalization to a column name based on the credentials type."""
+    if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
+        return column
+    if to_lower:
+        return column.lower()
+    if credentials_type == "snowflake":
+        return column.upper()
+    return column
 
 
 # TODO: more work to do below the fold here
@@ -496,7 +498,7 @@ def get_columns_meta(
             for col in matched[0].columns.values():
                 if any(re.match(p, col.name) for p in blacklist):
                     continue
-                cased = column_casing(
+                cased = normalize_column_name(
                     col.name,
                     context.project.config.credentials.type,
                     context.settings.output_to_lower,
@@ -517,7 +519,7 @@ def get_columns_meta(
         for col_ in col_objs:
             if any(re.match(b, col_.name) for b in blacklist):
                 continue
-            cased = column_casing(
+            cased = normalize_column_name(
                 col_.name,
                 context.project.config.credentials.type,
                 context.settings.output_to_lower,
@@ -533,7 +535,7 @@ def get_columns_meta(
                 for exp in col_.flatten():
                     if any(re.match(b, exp.name) for b in blacklist):
                         continue
-                    cased2 = column_casing(
+                    cased2 = normalize_column_name(
                         exp.name,
                         context.project.config.credentials.type,
                         context.settings.output_to_lower,
@@ -568,25 +570,16 @@ def _catalog_key_for_node(node: ManifestNode) -> CatalogKey:
     return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
 
 
-# NOTE: usage examples of the more FP style module below
-
-
-def build_dbt_project_context(cfg: DbtConfiguration) -> DbtProjectContext:
-    if not cfg.project_dir:
-        cfg.project_dir = discover_project_dir()
-    if not cfg.profiles_dir:
-        cfg.profiles_dir = discover_profiles_dir()
-    return create_dbt_project_context(cfg)
+# NOTE: usage example of the more FP style module below
 
 
 def run_example_compilation_flow() -> None:
-    cfg = DbtConfiguration(
-        project_dir="", profiles_dir="", target="some_target", threads=2, _vars={"foo": "bar"}
-    )
-    proj_ctx = build_dbt_project_context(cfg)
+    config = DbtConfiguration(target="some_target", threads=2)
+    config.vars = {"foo": "bar"}
+    proj_ctx = create_dbt_project_context(config)
 
-    cr = compile_sql_code(proj_ctx, "select '{{ 1+1 }}' as col")
-    print("Compiled =>", cr.compiled_code)
+    node = compile_sql_code(proj_ctx, "select '{{ 1+1 }}' as col")
+    print("Compiled =>", node.compiled_code)
 
-    ex = execute_sql_code(proj_ctx, "select '{{ 1+2 }}' as col")
-    print("Rows =>", ex.table)
+    resp = execute_sql_code(proj_ctx, "select '{{ 1+2 }}' as col")
+    print("Resp =>", resp)
