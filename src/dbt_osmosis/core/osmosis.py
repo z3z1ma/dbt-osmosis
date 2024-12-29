@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import sys
 import typing as t
 from collections import OrderedDict
 from collections.abc import Iterable, Iterator, MutableMapping, Sequence
@@ -58,7 +57,7 @@ class SchemaFileMigration:
     supersede: dict[Path, list[str]] = field(default_factory=dict)
 
 
-@(t.final if sys.version_info >= (3, 8) else lambda f: f)
+@t.final
 class DbtYamlManager(DbtProject):
     """The DbtYamlManager class handles developer automation tasks surrounding
     schema yaml files organziation, documentation, and coverage."""
@@ -153,9 +152,12 @@ class DbtYamlManager(DbtProject):
             exit(0)
 
         self.mutex = Lock()
-        self.tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
+        self.tpe = ThreadPoolExecutor(
+            max_workers=os.cpu_count() * 2
+        )  # TODO: configurable via env var, dont use cpu count x 2 also... use default in stdlib
         self.mutations = 0
 
+    # TODO: use cachedproperty
     @property
     def yaml_handler(self):
         """Returns a cached instance of the YAML handler."""
