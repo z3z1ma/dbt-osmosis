@@ -10,10 +10,8 @@ import typing as t
 import uuid
 from collections import OrderedDict
 from collections.abc import Iterable, Iterator
-from concurrent.futures import ThreadPoolExecutor, wait
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 
@@ -233,19 +231,44 @@ class DbtProjectContext:
     """A data object that includes references to:
 
     - The loaded dbt config
-    - The runtime adapter
     - The manifest
     - The sql/macro parsers
+
+    With mutexes for thread safety. The adapter is lazily instantiated and has a TTL which allows
+    for re-use across multiple operations in long-running processes. (is the idea)
     """
 
     config: RuntimeConfig
-    adapter: Adapter
     manifest: Manifest
     sql_parser: SqlBlockParser
     macro_parser: SqlMacroParser
-    adapter_mutex: threading.Lock = field(default_factory=threading.Lock)
-    manifest_mutex: threading.Lock = field(default_factory=threading.Lock)
-    adapter_created_at: float = time.time()
+    adapter_ttl: float = 3600.0
+
+    _adapter_mutex: threading.Lock = field(default_factory=threading.Lock)
+    _manifest_mutex: threading.Lock = field(default_factory=threading.Lock)
+    _adapter: Adapter | None = None
+    _adapter_created_at: float = 0.0
+
+    @property
+    def is_adapter_expired(self) -> bool:
+        """Check if the adapter has expired based on the adapter TTL."""
+        return time.time() - self._adapter_created_at > self.adapter_ttl
+
+    # NOTE: the way we use the adapter, the generics are irrelevant
+    @property
+    def adapter(self) -> Adapter[t.Any, t.Any, t.Any, t.Any]:
+        """Get the adapter instance, creating a new one if the current one has expired."""
+        with self._adapter_mutex:
+            if not self._adapter or self.is_adapter_expired:
+                self._adapter = instantiate_adapter(self.config)
+                self._adapter.set_macro_resolver(self.manifest)
+                self._adapter_created_at = time.time()
+        return self._adapter
+
+    @property
+    def manifest_mutex(self) -> threading.Lock:
+        """Return the manifest mutex for thread safety."""
+        return self._manifest_mutex
 
 
 def discover_project_dir() -> str:
@@ -264,7 +287,7 @@ def discover_profiles_dir() -> str:
     return str(Path.home() / ".dbt")
 
 
-def instantiate_adapter(runtime_config: RuntimeConfig) -> t.Any:
+def instantiate_adapter(runtime_config: RuntimeConfig) -> Adapter[t.Any, t.Any, t.Any, t.Any]:
     """Instantiate a dbt adapter based on the runtime configuration."""
     adapter_cls = get_adapter_class_by_name(runtime_config.credentials.type)
     if not adapter_cls:
@@ -280,7 +303,7 @@ def instantiate_adapter(runtime_config: RuntimeConfig) -> t.Any:
 
         adapter = adapter_cls(runtime_config, get_mp_context())  # pyright: ignore[reportCallIssue]
 
-    adapter.connections.set_connection_name()
+    adapter.connections.set_connection_name("dbt-osmosis")
     return adapter
 
 
@@ -290,27 +313,21 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     dbt_flags.set_from_args(args, args)
     runtime_cfg = RuntimeConfig.from_args(args)
 
-    adapter = instantiate_adapter(runtime_cfg)
-    loader = ManifestLoader(
-        runtime_cfg, runtime_cfg.load_dependencies(), adapter.connections.set_query_header
-    )
+    loader = ManifestLoader(runtime_cfg, runtime_cfg.load_dependencies())
     manifest = loader.load()
     manifest.build_flat_graph()
 
-    loader.save_macros_to_adapter(adapter)
+    adapter = instantiate_adapter(runtime_cfg)
+    adapter.set_macro_resolver(manifest)
 
     sql_parser = SqlBlockParser(runtime_cfg, manifest, runtime_cfg)
     macro_parser = SqlMacroParser(runtime_cfg, manifest)
 
     return DbtProjectContext(
         config=runtime_cfg,
-        adapter=adapter,
         manifest=manifest,
         sql_parser=sql_parser,
         macro_parser=macro_parser,
-        adapter_mutex=threading.Lock(),
-        manifest_mutex=threading.Lock(),
-        adapter_created_at=time.time(),
     )
 
 
@@ -384,9 +401,7 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> AdapterRespons
     else:
         sql_to_exec = raw_sql
 
-    with context.adapter_mutex:
-        resp, _ = context.adapter.execute(sql_to_exec, auto_begin=False, fetch=True)
-
+    resp, _ = context.adapter.execute(sql_to_exec, auto_begin=False, fetch=True)
     return resp
 
 
@@ -460,6 +475,10 @@ def load_catalog(settings: YamlRefactorSettings) -> CatalogArtifact | None:
     return CatalogArtifact.from_dict(json.loads(fp.read_text()))
 
 
+# TODO: more work to do below the fold here
+
+
+# NOTE: in multithreaded operations, we need to use the thread connection for the adapter
 def get_columns_meta(
     context: YamlRefactorContext,
     node: ManifestNode,
@@ -490,50 +509,50 @@ def get_columns_meta(
                 )
             return cased_cols
 
-    with context.project.adapter.connection_named("dbt-osmosis"):
-        rel = context.project.adapter.get_relation(key.database, key.schema, key.name)
-        if not rel:
-            return cased_cols
-        try:
-            col_objs = context.project.adapter.get_columns_in_relation(rel)
-            for col_ in col_objs:
-                if any(re.match(b, col_.name) for b in blacklist):
-                    continue
-                cased = column_casing(
-                    col_.name,
-                    context.project.config.credentials.type,
-                    context.settings.output_to_lower,
-                )
-                dtype = _maybe_use_precise_dtype(col_, context.settings)
-                cased_cols[cased] = ColumnMetadata(
-                    name=cased,
-                    type=dtype,
-                    index=None,
-                    comment=getattr(col_, "comment", None),
-                )
-                if hasattr(col_, "flatten"):
-                    for exp in col_.flatten():
-                        if any(re.match(b, exp.name) for b in blacklist):
-                            continue
-                        cased2 = column_casing(
-                            exp.name,
-                            context.project.config.credentials.type,
-                            context.settings.output_to_lower,
-                        )
-                        dtype2 = _maybe_use_precise_dtype(exp, context.settings)
-                        cased_cols[cased2] = ColumnMetadata(
-                            name=cased2,
-                            type=dtype2,
-                            index=None,
-                            comment=getattr(exp, "comment", None),
-                        )
-        except Exception as exc:
-            logger().warning(f"Could not introspect columns for {key}: {exc}")
+    rel = context.project.adapter.get_relation(key.database, key.schema, key.name)
+    if not rel:
+        return cased_cols
+    try:
+        col_objs = context.project.adapter.get_columns_in_relation(rel)
+        for col_ in col_objs:
+            if any(re.match(b, col_.name) for b in blacklist):
+                continue
+            cased = column_casing(
+                col_.name,
+                context.project.config.credentials.type,
+                context.settings.output_to_lower,
+            )
+            dtype = _maybe_use_precise_dtype(col_, context.settings)
+            cased_cols[cased] = ColumnMetadata(
+                name=cased,
+                type=dtype,
+                index=None,
+                comment=getattr(col_, "comment", None),
+            )
+            if hasattr(col_, "flatten"):
+                for exp in col_.flatten():
+                    if any(re.match(b, exp.name) for b in blacklist):
+                        continue
+                    cased2 = column_casing(
+                        exp.name,
+                        context.project.config.credentials.type,
+                        context.settings.output_to_lower,
+                    )
+                    dtype2 = _maybe_use_precise_dtype(exp, context.settings)
+                    cased_cols[cased2] = ColumnMetadata(
+                        name=cased2,
+                        type=dtype2,
+                        index=None,
+                        comment=getattr(exp, "comment", None),
+                    )
+    except Exception as exc:
+        logger.warning(f"Could not introspect columns for {key}: {exc}")
 
     return cased_cols
 
 
 def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
+    """Use the precise data type if enabled in the settings."""
     if (col.is_numeric() and settings.numeric_precision) or (
         col.is_string() and settings.char_length
     ):
@@ -542,9 +561,14 @@ def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
 
 
 def _catalog_key_for_node(node: ManifestNode) -> CatalogKey:
+    """Make an appropriate catalog key for a dbt node."""
+    # TODO: pyright seems to think something is wrong below
     if node.resource_type == NodeType.Source:
         return CatalogKey(node.database, node.schema, getattr(node, "identifier", node.name))
     return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
+
+
+# NOTE: usage examples of the more FP style module below
 
 
 def build_dbt_project_context(cfg: DbtConfiguration) -> DbtProjectContext:
