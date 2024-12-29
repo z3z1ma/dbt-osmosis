@@ -209,7 +209,19 @@ class ColumnLevelKnowledgePropagator:
 
         changes_committed = 0
         for column in undocumented_columns:
-            prior_knowledge: ColumnLevelKnowledge = get_prior_knowledge(knowledge, column)
+            original_knowledge = ColumnLevelKnowledgePropagator._get_original_knowledge(
+                node, column
+            )
+            if original_knowledge["meta"].get("osmosis_prefix", None):
+                column_without_prefix = column.removeprefix(
+                    original_knowledge["meta"]["osmosis_prefix"]
+                )
+            else:
+                column_without_prefix = column
+
+            prior_knowledge: ColumnLevelKnowledge = get_prior_knowledge(
+                knowledge, column_without_prefix
+            )
             progenitor = prior_knowledge.pop("progenitor", None)
             prior_knowledge: ColumnLevelKnowledge = {
                 k: v for k, v in prior_knowledge.items() if k in inheritables
@@ -217,7 +229,7 @@ class ColumnLevelKnowledgePropagator:
 
             ColumnLevelKnowledgePropagator._merge_prior_knowledge_with_original_knowledge(
                 prior_knowledge,
-                ColumnLevelKnowledgePropagator._get_original_knowledge(node, column),
+                original_knowledge,
                 add_progenitor_to_meta,
                 progenitor,
             )

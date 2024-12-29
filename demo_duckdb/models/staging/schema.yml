@@ -15,6 +15,9 @@ models:
       - name: last_name
         data_type: VARCHAR
         description: ''
+      - name: rank
+        data_type: VARCHAR
+        description: ''
   - name: stg_orders
     columns:
       - name: order_id

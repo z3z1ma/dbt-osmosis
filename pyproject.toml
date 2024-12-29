@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-osmosis"
-version = "0.13.2"
+version = "0.14.0"
 description = "A dbt server and suite of optional developer tools to make developing with dbt delightful."
 authors = ["z3z1ma <butler.alex2010@gmail.com>"]
 license = "Apache-2.0"
@@ -23,7 +23,7 @@ repository = "https://github.com/z3z1ma/dbt-osmosis"
 [tool.poetry.dependencies]
 python = ">=3.9,<3.9.7 || >3.9.7,<3.12"
 click = ">7"
-dbt-core = ">=1.6,<1.9"
+dbt-core = ">=1.8,<1.10"
 "ruamel.yaml" = ">=0.17"
 rich = ">=10"
 GitPython = ">3,<4"
