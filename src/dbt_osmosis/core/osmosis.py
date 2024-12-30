@@ -38,7 +38,10 @@ from dbt.contracts.graph.nodes import (
     SeedNode,
     SourceDefinition,
 )
-from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
+from dbt.contracts.results import CatalogArtifact, ColumnMetadata
+from dbt.contracts.results import (
+    CatalogKey as TableRef,
+)
 from dbt.mp_context import get_mp_context
 from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
@@ -339,6 +342,7 @@ class YamlRefactorContext:
     )
 
     _mutation_count: int = field(default=0, init=False)
+    _catalog: CatalogArtifact | None = field(default=None, init=False)
 
     def register_mutations(self, count: int) -> None:
         """Increment the mutation count by a specified amount."""
@@ -366,6 +370,18 @@ class YamlRefactorContext:
         """The column name skip patterns from the dbt project config."""
         defs = self.project.config.vars.to_dict().get("dbt-osmosis", {}).copy()
         return defs.pop(SKIP_PATTERNS, [])
+
+    def read_catalog(self) -> CatalogArtifact | None:
+        """Read the catalog file if it exists."""
+        if self._catalog:
+            return self._catalog
+        if not self.settings.catalog_file:
+            return None
+        fp = Path(self.settings.catalog_file)
+        if not fp.exists():
+            return None
+        self._catalog = CatalogArtifact.from_dict(json.loads(fp.read_text()))
+        return self._catalog
 
     def __post_init__(self) -> None:
         if EMPTY_STRING not in self.placeholders:
@@ -501,78 +517,59 @@ def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
     return col.dtype
 
 
-def get_catalog_key_for_node(node: ResultNode) -> CatalogKey:
-    """Make an appropriate catalog key for a dbt node."""
-    if node.resource_type == NodeType.Source:
-        return CatalogKey(node.database, node.schema, node.identifier or node.name)
-    return CatalogKey(node.database, node.schema, node.alias or node.name)
+def get_table_ref(node: ResultNode | BaseRelation) -> TableRef:
+    """Make an appropriate table ref for a dbt node or relation."""
+    if isinstance(node, BaseRelation):
+        assert node.schema, "Schema must be set for a BaseRelation to generate a TableRef"
+        assert node.identifier, "Identifier must be set for a BaseRelation to generate a TableRef"
+        return TableRef(node.database, node.schema, node.identifier)
+    elif node.resource_type == NodeType.Source:
+        return TableRef(node.database, node.schema, node.identifier or node.name)
+    else:
+        return TableRef(node.database, node.schema, node.name)
 
 
-def get_columns(context: YamlRefactorContext, key: CatalogKey) -> dict[str, ColumnMetadata]:
+def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, ColumnMetadata]:
     """Equivalent to get_columns_meta in old code but directly referencing a key, not a node."""
     normalized_cols = OrderedDict()
-    skip_patterns = context.skip_patterns
-    catalog = None
-    if context.settings.catalog_file:
-        # TODO: no reason to re-read this file on every call
-        path = Path(context.settings.catalog_file)
-        if path.is_file():
-            catalog = CatalogArtifact.from_dict(json.loads(path.read_text()))
+    offset = 0
 
-    if catalog:
-        # TODO: no reason to dict unpack every call here...
-        catalog_candidates = {**catalog.nodes, **catalog.sources}
-        catalog_entry = _find_first(catalog_candidates.values(), lambda c: c.key() == key)
+    def process_column(col: BaseColumn | ColumnMetadata):
+        nonlocal offset
+        if any(re.match(b, col.name) for b in context.skip_patterns):
+            return
+        normalized = normalize_column_name(col.name, context.project.config.credentials.type)
+        if not isinstance(col, ColumnMetadata):
+            dtype = _maybe_use_precise_dtype(col, context.settings)
+            col = ColumnMetadata(
+                name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
+            )
+        normalized_cols[normalized] = col
+        offset += 1
+        if hasattr(col, "flatten"):
+            for struct_field in t.cast(Iterable[BaseColumn], getattr(col, "flatten")()):
+                process_column(struct_field)
+
+    if catalog := context.read_catalog():
+        catalog_entry = _find_first(
+            chain(catalog.nodes.values(), catalog.sources.values()), lambda c: c.key() == ref
+        )
         if catalog_entry:
             for column in catalog_entry.columns.values():
-                if any(re.match(p, column.name) for p in skip_patterns):
-                    continue
-                normalized = normalize_column_name(
-                    column.name, context.project.config.credentials.type
-                )
-                normalized_cols[normalized] = ColumnMetadata(
-                    name=normalized, type=column.type, index=column.index, comment=column.comment
-                )
+                process_column(column)
             return normalized_cols
 
-    relation: BaseRelation | None = context.project.adapter.get_relation(
-        key.database,
-        key.schema,
-        key.name,
-    )
-    if not relation:
+    relation: BaseRelation | None = context.project.adapter.get_relation(*ref)
+    if relation is None:
         return normalized_cols
 
     try:
-        # TODO: the following should be a recursive function to handle nested columns, probably
-        for index, column in enumerate(
-            t.cast(Iterable[BaseColumn], context.project.adapter.get_columns_in_relation(relation))
+        for column in t.cast(
+            Iterable[BaseColumn], context.project.adapter.get_columns_in_relation(relation)
         ):
-            if any(re.match(b, column.name) for b in skip_patterns):
-                continue
-            normalized = normalize_column_name(column.name, context.project.config.credentials.type)
-            dtype = _maybe_use_precise_dtype(column, context.settings)
-            normalized_cols[normalized] = ColumnMetadata(
-                name=normalized, type=dtype, index=index, comment=getattr(column, "comment", None)
-            )
-            if hasattr(column, "flatten"):
-                for _, subcolumn in enumerate(
-                    t.cast(Iterable[BaseColumn], getattr(column, "flatten")())
-                ):
-                    if any(re.match(b, subcolumn.name) for b in skip_patterns):
-                        continue
-                    normalized = normalize_column_name(
-                        subcolumn.name, context.project.config.credentials.type
-                    )
-                    dtype = _maybe_use_precise_dtype(subcolumn, context.settings)
-                    normalized_cols[normalized] = ColumnMetadata(
-                        name=normalized,
-                        type=dtype,
-                        index=index,
-                        comment=getattr(subcolumn, "comment", None),
-                    )
+            process_column(column)
     except Exception as ex:
-        logger.warning(f"Could not introspect columns for {key}: {ex}")
+        logger.warning(f"Could not introspect columns for {ref}: {ex}")
 
     return normalized_cols
 
@@ -609,19 +606,20 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         )
 
         def _describe(rel: BaseRelation) -> dict[str, t.Any]:
-            columns = []
-            for c in t.cast(
-                Iterable[BaseColumn], context.project.adapter.get_columns_in_relation(rel)
-            ):
-                if any(re.match(b, c.name) for b in context.skip_patterns):
-                    continue
-                # NOTE: we should be consistent about recursively flattening structs
-                normalized_column = normalize_column_name(
-                    c.name, context.project.config.credentials.type
-                )
-                dt = c.dtype.lower() if context.settings.output_to_lower else c.dtype
-                columns.append({"name": normalized_column, "description": "", "data_type": dt})
-            return {"name": rel.identifier, "description": "", "columns": columns}
+            return {
+                "name": rel.identifier,
+                "description": "",
+                "columns": [
+                    {
+                        "name": name,
+                        "description": meta.comment or "",
+                        "data_type": meta.type.lower()
+                        if context.settings.output_to_lower
+                        else meta.type,
+                    }
+                    for name, meta in get_columns(context, get_table_ref(rel)).items()
+                ],
+            }
 
         tables = [
             schema
@@ -819,7 +817,8 @@ def draft_restructure_delta_plan(context: YamlRefactorContext) -> RestructureDel
 def pretty_print_plan(plan: RestructureDeltaPlan) -> None:
     """Pretty print the restructure plan for the dbt project."""
     for op in plan.operations:
-        logger.info(f"Processing {op.content}")
+        str_content = str(op.content)[:80] + "..."
+        logger.info(f"Processing {str_content}")
         if not op.superseded_paths:
             logger.info(f"CREATE or MERGE => {op.file_path}")
         else:
@@ -854,11 +853,24 @@ def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> 
     existing_doc["sources"] = keep_sources
 
 
-def apply_restructure_plan(context: YamlRefactorContext, plan: RestructureDeltaPlan) -> None:
+def apply_restructure_plan(
+    context: YamlRefactorContext, plan: RestructureDeltaPlan, *, confirm: bool = False
+) -> None:
     """Apply the restructure plan for the dbt project."""
     if not plan.operations:
         logger.info("No changes needed.")
         return
+
+    if confirm:
+        pretty_print_plan(plan)
+    while confirm:
+        response = input("Apply the restructure plan? [y/N]: ")
+        if response.lower() in ("y", "yes"):
+            break
+        elif response.lower() in ("n", "no", ""):
+            logger.info("Skipping restructure plan.")
+            return
+        logger.info("Please respond with 'y' or 'n'.")
 
     for op in plan.operations:
         output_doc: dict[str, t.Any] = {"version": 2}
@@ -1218,9 +1230,4 @@ if __name__ == "__main__":
     project = create_dbt_project_context(c)
     yaml_context = YamlRefactorContext(project)
     plan = draft_restructure_delta_plan(yaml_context)
-    # print("Plan =>", plan)
-    pretty_print_plan(plan)
-    apply_restructure_plan(yaml_context, plan)
-    exit(0)
-    plan = draft_project_structure_update_plan(yaml_context)
-    _ = commit_project_restructure_to_disk(yaml_context, plan)
+    apply_restructure_plan(yaml_context, plan, confirm=True)
