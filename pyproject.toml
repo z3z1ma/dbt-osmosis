@@ -21,7 +21,7 @@ documentation = "https://github.com/z3z1ma/dbt-osmosis"
 repository = "https://github.com/z3z1ma/dbt-osmosis"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.9.7 || >3.9.7,<3.12"
+python = ">=3.9,<3.9.7 || >3.9.7,<3.13"
 click = ">7"
 dbt-core = ">=1.8,<1.10"
 "ruamel.yaml" = ">=0.17"
@@ -64,7 +64,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black] # https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html#configuration-via-a-file
 line-length = 100
-target-version = ["py38", "py39", "py310", "py311"]
+target-version = ["py39", "py310", "py311"]
 preview = true
 
 [tool.isort] # https://pycqa.github.io/isort/docs/configuration/options.html
