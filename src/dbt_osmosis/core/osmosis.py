@@ -483,12 +483,10 @@ def filter_models(
             yield uid, dbt_node
 
 
-def normalize_column_name(column: str, credentials_type: str, to_lower: bool = False) -> str:
+def normalize_column_name(column: str, credentials_type: str) -> str:
     """Apply case normalization to a column name based on the credentials type."""
     if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
         return column
-    if to_lower:
-        return column.lower()
     if credentials_type == "snowflake":
         return column.upper()
     return column
@@ -503,7 +501,7 @@ def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
     return col.dtype
 
 
-def _get_catalog_key_for_node(node: ResultNode) -> CatalogKey:
+def get_catalog_key_for_node(node: ResultNode) -> CatalogKey:
     """Make an appropriate catalog key for a dbt node."""
     if node.resource_type == NodeType.Source:
         return CatalogKey(node.database, node.schema, node.identifier or node.name)
