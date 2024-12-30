@@ -13,7 +13,7 @@ import typing as t
 import uuid
 from collections import OrderedDict
 from collections.abc import Iterable, Iterator
-from concurrent.futures import Future, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from itertools import chain
 from pathlib import Path
@@ -49,8 +49,10 @@ from dbt_common.clients.system import get_env
 from dbt_common.context import set_invocation_context
 
 disable_tracking()
-logging.basicConfig(level=logging.DEBUG, handlers=[rich.logging.RichHandler()])
-logger = logging.getLogger("dbt-osmosis")
+
+logger = logging.getLogger(__file__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(rich.logging.RichHandler(level=logging.DEBUG))
 
 T = t.TypeVar("T")
 
@@ -164,6 +166,26 @@ class SchemaFileMigration:
         default_factory=lambda: {"version": 2, "models": [], "sources": []}
     )
     supersede: dict[Path, list[ResultNode]] = field(default_factory=dict)
+
+
+@dataclass
+class RestructureOperation:
+    """Represents a single operation to perform on a YAML file.
+
+    This might be CREATE, UPDATE, SUPERSEDE, etc. In a more advanced approach,
+    we might unify multiple steps under a single operation with sub-operations.
+    """
+
+    file_path: Path
+    content: dict[str, t.Any]
+    superseded_paths: dict[Path, list[ResultNode]] = field(default_factory=dict)
+
+
+@dataclass
+class RestructureDeltaPlan:
+    """Stores all the operations needed to restructure the project."""
+
+    operations: list[RestructureOperation] = field(default_factory=list)
 
 
 class MissingOsmosisConfig(Exception):
@@ -286,6 +308,7 @@ def reload_manifest(context: DbtProjectContext) -> None:
     loader = ManifestLoader(context.config, context.config.load_dependencies())
     manifest = loader.load()
     manifest.build_flat_graph()
+    context.adapter.set_macro_resolver(manifest)
     context.manifest = manifest
 
 
@@ -469,15 +492,6 @@ def normalize_column_name(column: str, credentials_type: str, to_lower: bool = F
     if credentials_type == "snowflake":
         return column.upper()
     return column
-
-
-@dataclass
-class ColumnData:
-    """Simple data object for column information"""
-
-    name: str
-    description: str
-    data_type: str
 
 
 def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
@@ -680,258 +694,217 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
     return Path(context.project.config.project_root, *segments)
 
 
-def build_schema_folder_mapping(context: YamlRefactorContext) -> dict[str, SchemaFileLocation]:
+def build_yaml_file_mapping(
+    context: YamlRefactorContext, create_missing_sources: bool = True
+) -> dict[str, SchemaFileLocation]:
     """Build a mapping of dbt model and source nodes to their current and target yaml paths."""
-    create_missing_source_yamls(context)
-    folder_map: dict[str, SchemaFileLocation] = {}
+    if create_missing_sources:
+        create_missing_source_yamls(context)
+    out_map: dict[str, SchemaFileLocation] = {}
     for uid, node in filter_models(context):
         current_path = get_current_yaml_path(context, node)
-        folder_map[uid] = SchemaFileLocation(
+        out_map[uid] = SchemaFileLocation(
             target=get_target_yaml_path(context, node).resolve(),
             current=current_path.resolve() if current_path else None,
             node_type=node.resource_type,
         )
-    return folder_map
+    return out_map
 
 
-def generate_minimal_yaml_data(context: YamlRefactorContext, node: ResultNode) -> dict[str, t.Any]:
-    """Get the minimal model yaml data for a dbt model node. (operating under the assumption this yaml probably does not exist yet)"""
-    return {
-        "name": node.name,
-        "description": node.description or "",
-        "columns": [
-            {
-                "name": name.lower() if context.settings.output_to_lower else name,
-                "description": meta.comment or "",
-            }
-            for name, meta in get_columns(context, _get_catalog_key_for_node(node)).items()
-        ],
-    }
-
-
-def augment_existing_yaml_data(
-    context: YamlRefactorContext, yaml_section: dict[str, t.Any], node: ResultNode
-) -> dict[str, t.Any]:
-    """Mutate an existing yaml section with additional column information."""
-    existing_cols = [c["name"] for c in yaml_section.get("columns", [])]
-    db_cols = get_columns(context, _get_catalog_key_for_node(node))
-    new_cols = [
-        c for n, c in db_cols.items() if n.lower() not in (e.lower() for e in existing_cols)
-    ]
-    for column in new_cols:
-        yaml_section.setdefault("columns", []).append(
-            {"name": column.name, "description": column.comment or ""}
-        )
-        logger.info(f"Injecting column {column.name} into {node.unique_id}")
-    return yaml_section
-
-
-def _draft_structure_for_node(
-    context: YamlRefactorContext,
-    yaml_loc: SchemaFileLocation,
-    uid: str,
-    blueprint: dict[Path, SchemaFileMigration],
-    bp_mutex: threading.Lock,
-) -> None:
-    """Draft a structure update plan for a dbt model or source node."""
-    with bp_mutex:
-        if yaml_loc.target not in blueprint:
-            blueprint[yaml_loc.target] = SchemaFileMigration()
-
-    node = (
-        context.project.manifest.nodes[uid]
-        if yaml_loc.node_type == NodeType.Model
-        else context.project.manifest.sources[uid]
-    )
-
-    if yaml_loc.current is None:
-        if yaml_loc.node_type == NodeType.Model:
-            with bp_mutex:
-                blueprint[yaml_loc.target].output["models"].append(
-                    generate_minimal_yaml_data(context, node)
-                )
-        return
-
+def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
+    """Read a yaml file from disk."""
+    if not path.is_file():
+        return {}
     with context.yaml_handler_lock:
-        existing_doc = context.yaml_handler.load(yaml_loc.current)
-
-    if yaml_loc.node_type == NodeType.Model:
-        assert isinstance(node, ModelNode)
-        for yaml_data in existing_doc.get("models", []):
-            if yaml_data["name"] == node.name:
-                _ = augment_existing_yaml_data(context, t.cast(dict[str, t.Any], yaml_data), node)
-                with bp_mutex:
-                    blueprint[yaml_loc.target].output["models"].append(yaml_data)
-                    blueprint[yaml_loc.target].supersede.setdefault(
-                        yaml_loc.current,
-                        [],
-                    ).append(node)
-                break
-    else:
-        assert isinstance(node, SourceDefinition)
-        for source in existing_doc.get("sources", []):
-            if source["name"] == node.source_name:
-                for yaml_data in source["tables"]:
-                    if yaml_data["name"] == node.name:
-                        _ = augment_existing_yaml_data(
-                            context, t.cast(dict[str, t.Any], yaml_data), node
-                        )
-                        with bp_mutex:
-                            if not any(
-                                s["name"] == node.source_name
-                                for s in blueprint[yaml_loc.target].output["sources"]
-                            ):
-                                blueprint[yaml_loc.target].output["sources"].append(source)
-                            for existing_sources in blueprint[yaml_loc.target].output["sources"]:
-                                if existing_sources["name"] == node.source_name:
-                                    for existing_tables in existing_sources["tables"]:
-                                        if existing_tables["name"] == node.name:
-                                            existing_tables.update(yaml_data)
-                                            break
-                            blueprint[yaml_loc.target].supersede.setdefault(
-                                yaml_loc.current, []
-                            ).append(node)
-                        break
+        return t.cast(dict[str, t.Any], context.yaml_handler.load(path))
 
 
-def draft_project_structure_update_plan(
-    context: YamlRefactorContext,
-) -> dict[Path, SchemaFileMigration]:
-    """Draft a structure update plan for the dbt project."""
-    blueprint: dict[Path, SchemaFileMigration] = {}
-    bp_mutex = threading.Lock()
-    logger.info("Building structure update plan.")
-    folder_map = build_schema_folder_mapping(context)
-    futs: list[Future[None]] = []
-    for uid, schema_loc in folder_map.items():
-        if not schema_loc.is_valid:
-            futs.append(
-                context.pool.submit(
-                    _draft_structure_for_node, context, schema_loc, uid, blueprint, bp_mutex
+def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]) -> None:
+    """Write a yaml file to disk and register a mutation with the context."""
+    with context.yaml_handler_lock:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        context.yaml_handler.dump(data, path)
+    context.register_mutations(1)
+
+
+def _generate_minimal_model_yaml(node: ModelNode) -> dict[str, t.Any]:
+    """Generate a minimal model yaml for a dbt model node."""
+    return {"name": node.name, "columns": []}
+
+
+def _generate_minimal_source_yaml(node: SourceDefinition) -> dict[str, t.Any]:
+    """Generate a minimal source yaml for a dbt source node."""
+    return {"name": node.source_name, "tables": [{"name": node.name, "columns": []}]}
+
+
+def _create_operations_for_node(
+    context: YamlRefactorContext, uid: str, loc: SchemaFileLocation
+) -> list[RestructureOperation]:
+    """Create restructure operations for a dbt model or source node."""
+    node = context.project.manifest.nodes.get(uid) or context.project.manifest.sources.get(uid)
+    if not node:
+        logger.warning(f"Node {uid} not found in manifest.")
+        return []
+
+    # If loc.current is None => we are generating a brand new file
+    # If loc.current => we unify it with the new location
+    ops: list[RestructureOperation] = []
+
+    if loc.current is None:
+        if loc.node_type == NodeType.Model:
+            assert isinstance(node, ModelNode)
+            minimal = _generate_minimal_model_yaml(node)
+            ops.append(
+                RestructureOperation(
+                    file_path=loc.target,
+                    content={"version": 2, "models": [minimal]},
                 )
             )
-    _ = wait(futs)
-    return blueprint
-
-
-def pretty_print_restructure_plan(blueprint: dict[Path, SchemaFileMigration]) -> None:
-    """Pretty print the restructure plan for the dbt project. (intended for rich.console)"""
-    import pprint
-
-    summary = []
-    for plan_path, migration_obj in blueprint.items():
-        if not migration_obj.supersede:
-            summary.append((["CREATE"], "->", plan_path.name))
         else:
-            files_superseded = [p.name for p in migration_obj.supersede.keys()] or ["CREATE"]
-            summary.append((files_superseded, "->", plan_path.name))
-
-    # logger.info(summary)
-    pprint.pprint(t.cast(list[t.Any], summary))
-
-
-def cleanup_blueprint(
-    blueprint: dict[Path, SchemaFileMigration],
-) -> dict[Path, SchemaFileMigration]:
-    """Cleanup the blueprint by removing empty models and sources, mutating it in place."""
-    for path_key in list(blueprint.keys()):
-        out_dict = blueprint[path_key].output
-        if "models" in out_dict and not out_dict["models"]:
-            del out_dict["models"]
-        if "sources" in out_dict and not out_dict["sources"]:
-            del out_dict["sources"]
-        if not out_dict.get("models") and not out_dict.get("sources"):
-            del blueprint[path_key]
-    return blueprint
-
-
-def commit_project_restructure_to_disk(
-    context: YamlRefactorContext,
-    blueprint: dict[Path, SchemaFileMigration] | None = None,
-) -> int:
-    if not blueprint:
-        blueprint = draft_project_structure_update_plan(context)
-
-    blueprint = cleanup_blueprint(blueprint)
-    if not blueprint:
-        logger.info("Project structure is already conformed.")
-        return 0
-
-    pretty_print_restructure_plan(blueprint)
-    change_offset = context.mutation_count
-
-    for target, struct in blueprint.items():
-        if not target.exists():
-            logger.info(f"Creating schema file {target}")
-
-            if not context.settings.dry_run:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.touch()
-
-                context.yaml_handler.dump(struct.output, target)
-                context.register_mutations(1)
+            assert isinstance(node, SourceDefinition)
+            minimal_source = _generate_minimal_source_yaml(node)
+            ops.append(
+                RestructureOperation(
+                    file_path=loc.target,
+                    content={"version": 2, "sources": [minimal_source]},
+                )
+            )
+    else:
+        existing = _read_yaml(context, loc.current)
+        injectable: dict[str, t.Any] = {"version": 2}
+        injectable.setdefault("models", [])
+        injectable.setdefault("sources", [])
+        if loc.node_type == NodeType.Model:
+            assert isinstance(node, ModelNode)
+            for obj in existing.get("models", []):
+                if obj["name"] == node.name:
+                    injectable["models"].append(obj)
+                    break
         else:
-            logger.info(f"Updating schema file {target}")
+            assert isinstance(node, SourceDefinition)
+            for src in existing.get("sources", []):
+                if src["name"] == node.source_name:
+                    injectable["sources"].append(src)
+                    break
+        ops.append(
+            RestructureOperation(
+                file_path=loc.target,
+                content=injectable,
+                superseded_paths={loc.current: [node]},
+            )
+        )
+    return ops
 
-            existing: dict[str, t.Any] = context.yaml_handler.load(target)
-            if not existing:
-                existing = {"version": 2}
 
-            if "version" not in existing:
-                existing["version"] = 2
-            if "models" in struct.output:
-                existing.setdefault("models", []).extend(struct.output["models"])
-            if "sources" in struct.output:
-                existing.setdefault("sources", []).extend(struct.output["sources"])
+def draft_restructure_delta_plan(context: YamlRefactorContext) -> RestructureDeltaPlan:
+    """Draft a restructure plan for the dbt project."""
+    plan = RestructureDeltaPlan()
+    lock = threading.Lock()
 
-            if not context.settings.dry_run:
-                context.yaml_handler.dump(existing, target)
-                context.register_mutations(1)
+    def _job(uid: str, loc: SchemaFileLocation) -> None:
+        ops = _create_operations_for_node(context, uid, loc)
+        with lock:
+            plan.operations.extend(ops)
 
-        for mut_path, nodes in struct.supersede.items():
-            mut_schema = context.yaml_handler.load(mut_path)
+    futs: list[Future[None]] = []
+    for uid, loc in build_yaml_file_mapping(context).items():
+        if not loc.is_valid:
+            futs.append(context.pool.submit(_job, uid, loc))
+    done, _ = wait(futs, return_when=FIRST_EXCEPTION)
+    for fut in done:
+        exc = fut.exception()
+        if exc:
+            raise exc
+    return plan
 
-            to_remove_models = {n.name for n in nodes if n.resource_type == NodeType.Model}
-            to_remove_sources = {
-                (n.source_name, n.name) for n in nodes if n.resource_type == NodeType.Source
-            }
 
-            keep: list[t.Any] = []
-            for model in mut_schema.get("models", []):
-                if model["name"] not in to_remove_models:
-                    keep.append(model)
-            mut_schema["models"] = keep
+def pretty_print_plan(plan: RestructureDeltaPlan) -> None:
+    """Pretty print the restructure plan for the dbt project."""
+    for op in plan.operations:
+        logger.info(f"Processing {op.content}")
+        if not op.superseded_paths:
+            logger.info(f"CREATE or MERGE => {op.file_path}")
+        else:
+            old_paths = [p.name for p in op.superseded_paths.keys()] or ["UNKNOWN"]
+            logger.info(f"{old_paths} -> {op.file_path}")
 
-            keep_sources: list[t.Any] = []
-            for source in mut_schema.get("sources", []):
-                keep = []
-                for table in source.get("tables", []):
-                    if (source["name"], table["name"]) not in to_remove_sources:
-                        keep.append(table)
-                if keep:  # At least one table remains
-                    source["tables"] = keep
-                    keep_sources.append(source)
-            mut_schema["sources"] = keep_sources
 
-            if not mut_schema.get("models") and not mut_schema.get("sources"):
-                logger.info(f"Superseding entire file {mut_path}")
-                if not context.settings.dry_run:
-                    mut_path.unlink(missing_ok=True)
-                    if mut_path.parent.exists() and not any(mut_path.parent.iterdir()):
-                        mut_path.parent.rmdir()
+def _remove_models(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
+    """Clean up the existing yaml doc by removing models superseded by the restructure plan."""
+    to_remove = {n.name for n in nodes if n.resource_type == NodeType.Model}
+    keep_models = []
+    for model_block in existing_doc.get("models", []):
+        if model_block.get("name") not in to_remove:
+            keep_models.append(model_block)
+    existing_doc["models"] = keep_models
+
+
+def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
+    """Clean up the existing yaml doc by removing sources superseded by the restructure plan."""
+    to_remove_sources = {
+        (n.source_name, n.name) for n in nodes if n.resource_type == NodeType.Source
+    }
+    keep_sources = []
+    for src_block in existing_doc.get("sources", []):
+        keep_tables = []
+        for tbl in src_block.get("tables", []):
+            if (src_block["name"], tbl["name"]) not in to_remove_sources:
+                keep_tables.append(tbl)
+        if keep_tables:
+            src_block["tables"] = keep_tables
+            keep_sources.append(src_block)
+    existing_doc["sources"] = keep_sources
+
+
+def apply_restructure_plan(context: YamlRefactorContext, plan: RestructureDeltaPlan) -> None:
+    """Apply the restructure plan for the dbt project."""
+    if not plan.operations:
+        logger.info("No changes needed.")
+        return
+
+    for op in plan.operations:
+        output_doc: dict[str, t.Any] = {"version": 2}
+        if op.file_path.exists():
+            existing_data = _read_yaml(context, op.file_path)
+            output_doc.update(existing_data)
+
+        for key, val in op.content.items():
+            if isinstance(val, list):
+                output_doc.setdefault(key, []).extend(val)
+            elif isinstance(val, dict):
+                output_doc.setdefault(key, {}).update(val)
             else:
-                if not context.settings.dry_run:
-                    context.yaml_handler.dump(t.cast(dict[str, t.Any], mut_schema), mut_path)
-                    context.register_mutations(1)
-                logger.info(f"Migrated doc from {mut_path} -> {target}")
+                output_doc[key] = val
 
-    return context.mutation_count - change_offset
+        if not context.settings.dry_run:
+            _write_yaml(context, op.file_path, output_doc)
+
+        for path, nodes in op.superseded_paths.items():
+            if path.is_file():
+                existing_data = _read_yaml(context, path)
+
+                if "models" in existing_data:
+                    _remove_models(existing_data, nodes)
+                if "sources" in existing_data:
+                    _remove_sources(existing_data, nodes)
+
+                if (not existing_data.get("models")) and (not existing_data.get("sources")):
+                    if not context.settings.dry_run:
+                        path.unlink(missing_ok=True)
+                        if path.parent.exists() and not any(path.parent.iterdir()):
+                            path.parent.rmdir()
+                        context.register_mutations(1)
+                    logger.info(f"Superseded entire file {path}")
+                else:
+                    if not context.settings.dry_run:
+                        _write_yaml(context, path, existing_data)
+                    logger.info(f"Migrated doc from {path} -> {op.file_path}")
 
 
 def propagate_documentation_downstream(
     context: YamlRefactorContext, force_inheritance: bool = False
 ) -> None:
-    folder_map = build_schema_folder_mapping(context)
+    folder_map = build_yaml_file_mapping(context)
     futures = []
     with context.project.adapter.connection_named("dbt-osmosis"):
         for unique_id, node in filter_models(context):
@@ -1246,5 +1219,10 @@ if __name__ == "__main__":
     c.vars = {"dbt-osmosis": {}}
     project = create_dbt_project_context(c)
     yaml_context = YamlRefactorContext(project)
+    plan = draft_restructure_delta_plan(yaml_context)
+    # print("Plan =>", plan)
+    pretty_print_plan(plan)
+    apply_restructure_plan(yaml_context, plan)
+    exit(0)
     plan = draft_project_structure_update_plan(yaml_context)
     _ = commit_project_restructure_to_disk(yaml_context, plan)
