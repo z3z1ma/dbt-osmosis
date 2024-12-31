@@ -29,14 +29,14 @@ jobs:
           pip install --constraint=.github/workflows/constraints.txt pip
           pip --version
 
-      - name: Install Poetry
+      - name: Install uv
         run: |
           pip install --constraint=.github/workflows/constraints.txt uv
           uv --version
 
       - name: Install required packages
         run: | # install duckdb extras to be able to parse manifest
-          uv sync --extra duckdb
+          uv sync --extra duckdb --extra dev
 
       - name: Install dbt-core
         run: |
@@ -48,4 +48,4 @@ jobs:
 
       - name: Run pytest
         run: |
-          uv tool run pytest
+          uv run pytest

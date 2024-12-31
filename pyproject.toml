@@ -35,6 +35,7 @@ dependencies = [
 duckdb = ["dbt-duckdb>=1.0.0"]
 sqlite = ["dbt-sqlite>=1.0.0"]
 postgres = ["dbt-postgres>=1.0.0"]
+
 workbench = [
   "streamlit>=1.20.0",
   "streamlit-ace>=0.1.0",
@@ -45,13 +46,7 @@ workbench = [
 
 openai = ["openai>0.28.0"]
 
-dev = [
-  "black>=21.9b0",
-  "mypy>=0.910",
-  "pylint>=2.11.1",
-  "pytest~=7.4.2",
-  "pre-commit>3.0.0",
-]
+dev = ["ruff~=0.8.4", "pytest~=8.3.4", "pre-commit>3.0.0"]
 
 [project.scripts]
 "dbt-osmosis" = "dbt_osmosis.main:cli"
