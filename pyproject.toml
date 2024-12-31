@@ -28,7 +28,7 @@ dependencies = [
   "dbt-core>=1.8,<1.10",
   "ruamel.yaml>=0.17",
   "rich>=10",
-  "GitPython>3,<4",
+  "pluggy>=1.5.0",
 ]
 
 [project.optional-dependencies]

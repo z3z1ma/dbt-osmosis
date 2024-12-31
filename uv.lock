@@ -495,7 +495,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "dbt-core" },
-    { name = "gitpython" },
+    { name = "pluggy" },
     { name = "rich" },
     { name = "ruamel-yaml" },
 ]
@@ -537,9 +537,9 @@ requires-dist = [
     { name = "dbt-postgres", marker = "extra == 'postgres'", specifier = ">=1.0.0" },
     { name = "dbt-sqlite", marker = "extra == 'sqlite'", specifier = ">=1.0.0" },
     { name = "feedparser", marker = "extra == 'workbench'", specifier = "~=6.0.10" },
-    { name = "gitpython", specifier = ">3,<4" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=0.910" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">0.28.0" },
+    { name = "pluggy", specifier = ">=1.5.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">3.0.0" },
     { name = "pylint", marker = "extra == 'dev'", specifier = ">=2.11.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "~=7.4.2" },

@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import sys
 import threading
 import time
 import typing as t
@@ -14,10 +15,12 @@ from collections import OrderedDict
 from collections.abc import Iterable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
+from functools import lru_cache, partial
 from itertools import chain
 from pathlib import Path
 
 import dbt.flags as dbt_flags
+import pluggy
 import ruamel.yaml
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.impl import BaseAdapter
@@ -1151,11 +1154,17 @@ def inherit_upstream_column_knowledge(
 
     yaml_section = _get_member_yaml(context, node)
     column_knowledge_graph = _build_column_knowledge_grap(context, node)
+    kwargs = None
     for name, node_column in node.columns.items():
-        # TODO: This is our graph "lookup", and our primary opportunity to apply user defined fuzzing
-        # so we should make the composable and robust (maybe a plugin system for fuzzing? it's an important problem)
-        kwargs = column_knowledge_graph.get(name)
-        if kwargs is None:
+        variants: list[str] = [name]
+        pm = get_plugin_manager()
+        for v in pm.hook.get_candidates(name=name, node=node, context=context.project):
+            variants.extend(v)
+        for variant in variants:
+            kwargs = column_knowledge_graph.get(variant)
+            if kwargs is not None:
+                break
+        else:
             continue
 
         updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
@@ -1272,6 +1281,60 @@ def sort_columns_alphabetically(
     t.cast(list[dict[str, t.Any]], yaml_section["columns"]).sort(key=lambda c: c["name"])
     node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
     context.register_mutations(1)
+
+
+# Fuzzy Plugins
+# =============
+
+_hookspec = pluggy.HookspecMarker("dbt-osmosis")
+hookimpl = pluggy.HookimplMarker("dbt-osmosis")
+
+
+@_hookspec
+def get_candidates(name: str, node: ResultNode, context: DbtProjectContext) -> list[str]:  # pyright: ignore[reportUnusedParameter]
+    """Get a list of candidate names for a column."""
+    raise NotImplementedError
+
+
+class FuzzyCaseMatching:
+    @hookimpl
+    def get_candidates(self, name: str, node: ResultNode, context: DbtProjectContext) -> list[str]:
+        """Get a list of candidate names for a column based on case variants."""
+        _ = node, context
+        variants = [
+            name.lower(),  # lowercase
+            name.upper(),  # UPPERCASE
+            cc := re.sub("_(.)", lambda m: m.group(1).upper(), name),  # camelCase
+            cc[0].upper() + cc[1:],  # PascalCase
+        ]
+        return variants
+
+
+class FuzzyPrefixMatching:
+    @hookimpl
+    def get_candidates(self, name: str, node: ResultNode, context: DbtProjectContext) -> list[str]:
+        """Get a list of candidate names for a column excluding a prefix."""
+        _ = context
+        variants = []
+        prefix = t.cast(
+            str,
+            node.config.extra.get(
+                "dbt-osmosis-prefix", node.unrendered_config.get("dbt-osmosis-prefix")
+            ),
+        )
+        if prefix and name.startswith(prefix):
+            variants.append(name[len(prefix) :])
+        return variants
+
+
+@lru_cache(maxsize=None)
+def get_plugin_manager():
+    """Get the pluggy plugin manager for dbt-osmosis."""
+    manager = pluggy.PluginManager("dbt-osmosis")
+    _ = manager.register(FuzzyCaseMatching())
+    _ = manager.register(FuzzyPrefixMatching())
+    _ = manager.load_setuptools_entrypoints("dbt-osmosis")
+    return manager
 
 
 # NOTE: usage example of the more FP style module below
