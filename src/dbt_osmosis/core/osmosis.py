@@ -48,7 +48,7 @@ from dbt.tracking import disable_tracking
 from dbt_common.clients.system import get_env
 from dbt_common.context import set_invocation_context
 
-from dbt_osmosis.core.log_controller import LOGGER as logger
+import dbt_osmosis.core.logger as logger
 
 disable_tracking()
 
