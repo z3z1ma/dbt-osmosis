@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import os
 import re
 import threading
@@ -19,7 +18,6 @@ from itertools import chain
 from pathlib import Path
 
 import dbt.flags as dbt_flags
-import rich.logging
 import ruamel.yaml
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.impl import BaseAdapter
@@ -1302,18 +1300,20 @@ if __name__ == "__main__":
 
     plan = draft_restructure_delta_plan(yaml_context)
     steps = (
-        step
-        for step in (
-            create_missing_source_yamls(yaml_context),
-            apply_restructure_plan(yaml_context, plan, confirm=True),
-            inject_missing_columns(yaml_context),
-            remove_columns_not_in_database(yaml_context),
-            inherit_upstream_column_knowledge(yaml_context),
-            sort_columns_as_in_database(yaml_context),
-            commit_yamls(yaml_context),
-        )
+        (create_missing_source_yamls, (yaml_context,), {}),
+        (apply_restructure_plan, (yaml_context, plan), {"confirm": True}),
+        (inject_missing_columns, (yaml_context,), {}),
+        (remove_columns_not_in_database, (yaml_context,), {}),
+        (inherit_upstream_column_knowledge, (yaml_context,), {}),
+        (sort_columns_as_in_database, (yaml_context,), {}),
+        (commit_yamls, (yaml_context,), {}),
     )
+    steps = iter(t.cast(t.Any, steps))
 
     DONE = object()
-    while next(steps, DONE) is not DONE:
-        logger.info("Completed step.")
+    nr = 1
+    while (step := next(steps, DONE)) is not DONE:
+        step, args, kwargs = step  # pyright: ignore[reportGeneralTypeIssues]
+        step(*args, **kwargs)
+        logger.info("Completed step %d (%s).", nr, getattr(t.cast(object, step), "__name__"))
+        nr += 1
