@@ -494,7 +494,7 @@ def filter_models(
 
     def f(node: ResultNode) -> bool:
         """Closure to filter models based on the context settings."""
-        if node.resource_type not in (NodeType.Model, NodeType.Source):
+        if node.resource_type not in (NodeType.Model, NodeType.Source, NodeType.Seed):
             return False
         if node.package_name != context.project.config.project_name:
             return False
@@ -711,11 +711,11 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
 
 def get_current_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path | None:
     """Get the current yaml path for a dbt model or source node."""
-    if node.resource_type == NodeType.Model and getattr(node, "patch_path", None):
+    if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
         return Path(context.project.config.project_root).joinpath(
             t.cast(str, node.patch_path).partition("://")[-1]
         )
-    if node.resource_type == NodeType.Source and hasattr(node, "source_name"):
+    if node.resource_type == NodeType.Source:
         return Path(context.project.config.project_root, node.path)
     return None
 
@@ -742,11 +742,13 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
 
 
 def build_yaml_file_mapping(
-    context: YamlRefactorContext, create_missing_sources: bool = True
+    context: YamlRefactorContext, create_missing_sources: bool = False
 ) -> dict[str, SchemaFileLocation]:
     """Build a mapping of dbt model and source nodes to their current and target yaml paths."""
+
     if create_missing_sources:
         create_missing_source_yamls(context)
+
     out_map: dict[str, SchemaFileLocation] = {}
     for uid, node in filter_models(context):
         current_path = get_current_yaml_path(context, node)
@@ -793,7 +795,7 @@ def commit_yamls(context: YamlRefactorContext) -> None:
             context.register_mutations(1)
 
 
-def _generate_minimal_model_yaml(node: ModelNode) -> dict[str, t.Any]:
+def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]:
     """Generate a minimal model yaml for a dbt model node."""
     return {"name": node.name, "columns": []}
 
@@ -817,22 +819,20 @@ def _create_operations_for_node(
     ops: list[RestructureOperation] = []
 
     if loc.current is None:
-        if loc.node_type == NodeType.Model:
-            assert isinstance(node, ModelNode)
+        if isinstance(node, (ModelNode, SeedNode)):
             minimal = _generate_minimal_model_yaml(node)
             ops.append(
                 RestructureOperation(
                     file_path=loc.target,
-                    content={"version": 2, "models": [minimal]},
+                    content={"version": 2, f"{node.resource_type}s": [minimal]},
                 )
             )
         else:
-            assert isinstance(node, SourceDefinition)
-            minimal_source = _generate_minimal_source_yaml(node)
+            minimal = _generate_minimal_source_yaml(t.cast(SourceDefinition, node))
             ops.append(
                 RestructureOperation(
                     file_path=loc.target,
-                    content={"version": 2, "sources": [minimal_source]},
+                    content={"version": 2, "sources": [minimal]},
                 )
             )
     else:
@@ -840,18 +840,24 @@ def _create_operations_for_node(
         injectable: dict[str, t.Any] = {"version": 2}
         injectable.setdefault("models", [])
         injectable.setdefault("sources", [])
+        injectable.setdefault("seeds", [])
         if loc.node_type == NodeType.Model:
             assert isinstance(node, ModelNode)
             for obj in existing.get("models", []):
                 if obj["name"] == node.name:
                     injectable["models"].append(obj)
                     break
-        else:
+        elif loc.node_type == NodeType.Source:
             assert isinstance(node, SourceDefinition)
             for src in existing.get("sources", []):
                 if src["name"] == node.source_name:
                     injectable["sources"].append(src)
                     break
+        elif loc.node_type == NodeType.Seed:
+            assert isinstance(node, SeedNode)
+            for seed in existing.get("seeds", []):
+                if seed["name"] == node.name:
+                    injectable["seeds"].append(seed)
         ops.append(
             RestructureOperation(
                 file_path=loc.target,
@@ -899,11 +905,21 @@ def pretty_print_plan(plan: RestructureDeltaPlan) -> None:
 def _remove_models(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
     """Clean up the existing yaml doc by removing models superseded by the restructure plan."""
     to_remove = {n.name for n in nodes if n.resource_type == NodeType.Model}
-    keep_models = []
-    for model_block in existing_doc.get("models", []):
-        if model_block.get("name") not in to_remove:
-            keep_models.append(model_block)
-    existing_doc["models"] = keep_models
+    keep = []
+    for section in existing_doc.get("models", []):
+        if section.get("name") not in to_remove:
+            keep.append(section)
+    existing_doc["models"] = keep
+
+
+def _remove_seeds(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
+    """Clean up the existing yaml doc by removing models superseded by the restructure plan."""
+    to_remove = {n.name for n in nodes if n.resource_type == NodeType.Seed}
+    keep = []
+    for section in existing_doc.get("seeds", []):
+        if section.get("name") not in to_remove:
+            keep.append(section)
+    existing_doc["seeds"] = keep
 
 
 def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
@@ -912,14 +928,14 @@ def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> 
         (n.source_name, n.name) for n in nodes if n.resource_type == NodeType.Source
     }
     keep_sources = []
-    for src_block in existing_doc.get("sources", []):
+    for section in existing_doc.get("sources", []):
         keep_tables = []
-        for tbl in src_block.get("tables", []):
-            if (src_block["name"], tbl["name"]) not in to_remove_sources:
+        for tbl in section.get("tables", []):
+            if (section["name"], tbl["name"]) not in to_remove_sources:
                 keep_tables.append(tbl)
         if keep_tables:
-            src_block["tables"] = keep_tables
-            keep_sources.append(src_block)
+            section["tables"] = keep_tables
+            keep_sources.append(section)
     existing_doc["sources"] = keep_sources
 
 
@@ -933,6 +949,7 @@ def apply_restructure_plan(
 
     if confirm:
         pretty_print_plan(plan)
+
     while confirm:
         response = input("Apply the restructure plan? [y/N]: ")
         if response.lower() in ("y", "yes"):
@@ -967,18 +984,25 @@ def apply_restructure_plan(
                     _remove_models(existing_data, nodes)
                 if "sources" in existing_data:
                     _remove_sources(existing_data, nodes)
+                if "seeds" in existing_data:
+                    _remove_seeds(existing_data, nodes)
 
-                if (not existing_data.get("models")) and (not existing_data.get("sources")):
+                keys = set(existing_data.keys()) - {"version"}
+                if all(len(existing_data.get(k, [])) == 0 for k in keys):
                     if not context.settings.dry_run:
                         path.unlink(missing_ok=True)
                         if path.parent.exists() and not any(path.parent.iterdir()):
                             path.parent.rmdir()
+                        if path in _YAML_BUFFER_CACHE:
+                            del _YAML_BUFFER_CACHE[path]
                         context.register_mutations(1)
                     logger.info(f"Superseded entire file {path}")
                 else:
                     if not context.settings.dry_run:
                         _write_yaml(context, path, existing_data)
                     logger.info(f"Migrated doc from {path} -> {op.file_path}")
+
+    _ = commit_yamls(context), reload_manifest(context.project)
 
 
 # Inheritance Logic
@@ -1003,6 +1027,8 @@ def _build_node_ancestor_tree(
         return tree
 
     for dep in getattr(node.depends_on, "nodes", []):
+        if not dep.startswith(("model.", "seed.", "source.")):
+            continue
         if dep not in visited:
             visited.add(dep)
             member = manifest.nodes.get(dep, manifest.sources.get(dep))
@@ -1054,7 +1080,7 @@ def _build_column_knowledge_grap(
             ancestor = context.project.manifest.nodes.get(
                 ancestor_uid, context.project.manifest.sources.get(ancestor_uid)
             )
-            if not ancestor:
+            if not isinstance(ancestor, (SourceDefinition, SeedNode, ModelNode)):
                 continue
 
             for name, metadata in ancestor.columns.items():
@@ -1069,9 +1095,16 @@ def _build_column_knowledge_grap(
                 if context.settings.use_unrendered_descriptions:
                     raw_yaml = _get_member_yaml(context, ancestor) or {}
                     raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
-                    raw_column_metadata = _find_first(raw_columns, lambda c: c["name"] == name, {})
-                    if undrendered_description := raw_column_metadata.get("description"):
-                        graph_edge["description"] = undrendered_description
+                    raw_column_metadata = _find_first(
+                        raw_columns,
+                        lambda c: normalize_column_name(
+                            c["name"], context.project.config.credentials.type
+                        )
+                        == name,
+                        {},
+                    )
+                    if unrendered_description := raw_column_metadata.get("description"):
+                        graph_edge["description"] = unrendered_description
 
                 current_tags = graph_node.get("tags", [])
                 if incoming_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
@@ -1087,7 +1120,7 @@ def _build_column_knowledge_grap(
                         graph_edge[inheritable] = incoming_val
 
                 if graph_edge.get("description", EMPTY_STRING) in context.placeholders:
-                    del graph_edge["description"]
+                    _ = graph_edge.pop("description", None)
                 if graph_edge.get("tags") == []:
                     del graph_edge["tags"]
                 if graph_edge.get("meta") == {}:
@@ -1098,16 +1131,18 @@ def _build_column_knowledge_grap(
 
                 graph_node.update(graph_edge)
 
-    return {name: meta.to_dict() for name, meta in node.columns.items()}
+    return column_knowledge_graph
 
 
 def inherit_upstream_column_knowledge(
-    context: YamlRefactorContext, node: ResultNode
-) -> dict[str, dict[str, t.Any]]:
-    """Inherit column level knowledge from the ancestors of a dbt model or source node producing a column data structure usable in dbt yaml files.
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Inherit column level knowledge from the ancestors of a dbt model or source node."""
+    if node is None:
+        for _, node in filter_models(context):
+            inherit_upstream_column_knowledge(context, node)
+        return None
 
-    This mutates the manifest node in place and returns the column data structure for use in a dbt yaml file.
-    """
     inheritable = ["description"]
     if not context.settings.skip_add_tags:
         inheritable.append("tags")
@@ -1116,18 +1151,33 @@ def inherit_upstream_column_knowledge(
     for extra in context.settings.add_inheritance_for_specified_keys:
         if extra not in inheritable:
             inheritable.append(extra)
+
+    yaml_section = _get_member_yaml(context, node)
     column_knowledge_graph = _build_column_knowledge_grap(context, node)
     for name, node_column in node.columns.items():
-        # NOTE: This is our graph "lookup", and our best [only] opportunity to apply user defined fuzzing
-        # so we should make the composable and robust
+        # TODO: This is our graph "lookup", and our primary opportunity to apply user defined fuzzing
+        # so we should make the composable and robust (maybe a plugin system for fuzzing? it's an important problem)
         kwargs = column_knowledge_graph.get(name)
         if kwargs is None:
             continue
-        node.columns[name] = node_column.replace(
-            **{k: v for k, v in kwargs.items() if v is not None and k in inheritable}
-        )
 
-    return {name: meta.to_dict() for name, meta in node.columns.items()}
+        updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
+        node.columns[name] = node_column.replace(**updated_metadata)
+
+        if not yaml_section:
+            continue
+        for column in yaml_section.get("columns", []):
+            yaml_name = normalize_column_name(
+                column["name"], context.project.config.credentials.type
+            )
+            if yaml_name == name:
+                if updated_metadata.get("tags") == []:
+                    del updated_metadata["tags"]
+                if updated_metadata.get("meta") == {}:
+                    del updated_metadata["meta"]
+                if updated_metadata.get("description", EMPTY_STRING) in context.placeholders:
+                    _ = updated_metadata.pop("description", None)
+                column.update(**updated_metadata)
 
 
 def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
@@ -1135,7 +1185,7 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
     if context.settings.skip_add_columns:
         return
     if node is None:
-        for node in context.project.manifest.nodes.values():
+        for _, node in filter_models(context):
             inject_missing_columns(context, node)
         return
     yaml_section = _get_member_yaml(context, node)
@@ -1165,7 +1215,7 @@ def remove_columns_not_in_database(
     if context.settings.skip_add_columns:
         return
     if node is None:
-        for node in context.project.manifest.nodes.values():
+        for _, node in filter_models(context):
             remove_columns_not_in_database(context, node)
         return
     yaml_section = _get_member_yaml(context, node)
@@ -1190,7 +1240,7 @@ def sort_columns_as_in_database(
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
-        for node in context.project.manifest.nodes.values():
+        for _, node in filter_models(context):
             sort_columns_as_in_database(context, node)
         return
     yaml_section = _get_member_yaml(context, node)
@@ -1216,7 +1266,7 @@ def sort_columns_alphabetically(
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section alphabetically. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
-        for node in context.project.manifest.nodes.values():
+        for _, node in filter_models(context):
             sort_columns_alphabetically(context, node)
         return
     yaml_section = _get_member_yaml(context, node)
@@ -1245,11 +1295,26 @@ def run_example_compilation_flow() -> None:
 if __name__ == "__main__":
     c = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
     c.vars = {"dbt-osmosis": {}}
+
     project = create_dbt_project_context(c)
-    yaml_context = YamlRefactorContext(project)
+    yaml_context = YamlRefactorContext(
+        project, settings=YamlRefactorSettings(use_unrendered_descriptions=True)
+    )
+
     plan = draft_restructure_delta_plan(yaml_context)
-    apply_restructure_plan(yaml_context, plan, confirm=True)
-    inject_missing_columns(yaml_context)
-    remove_columns_not_in_database(yaml_context)
-    sort_columns_as_in_database(yaml_context)
-    commit_yamls(yaml_context)
+    steps = (
+        step
+        for step in (
+            create_missing_source_yamls(yaml_context),
+            apply_restructure_plan(yaml_context, plan, confirm=True),
+            inject_missing_columns(yaml_context),
+            remove_columns_not_in_database(yaml_context),
+            inherit_upstream_column_knowledge(yaml_context),
+            sort_columns_as_in_database(yaml_context),
+            commit_yamls(yaml_context),
+        )
+    )
+
+    DONE = object()
+    while next(steps, DONE) is not DONE:
+        logger.info("Completed step.")
