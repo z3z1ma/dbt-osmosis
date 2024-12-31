@@ -306,19 +306,35 @@ class YamlRefactorSettings:
     """Settings for yaml based refactoring operations."""
 
     fqn: str | None = None
+    """Filter models to action via a fully qualified name match."""
     models: list[str] = field(default_factory=list)
+    """Filter models to action via a file path match."""
     dry_run: bool = False
+    """Do not write changes to disk."""
     catalog_file: str | None = None
+    """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
     skip_add_columns: bool = False
+    """Skip adding missing columns in the yaml files."""
     skip_add_tags: bool = False
+    """Skip appending upstream tags in the yaml files."""
     skip_add_data_types: bool = False
+    """Skip adding data types in the yaml files."""
     numeric_precision: bool = False
+    """Include numeric precision in the data type."""
     char_length: bool = False
+    """Include character length in the data type."""
     skip_merge_meta: bool = False
+    """Skip merging upstream meta fields in the yaml files."""
     add_progenitor_to_meta: bool = False
+    """Add a custom progenitor field to the meta section indicating a column's origin."""
     use_unrendered_descriptions: bool = False
+    """Use unrendered descriptions preserving things like {{ doc(...) }} which are otherwise pre-rendered in the manifest object"""
     add_inheritance_for_specified_keys: list[str] = field(default_factory=list)
+    """Include additional keys in the inheritance process."""
     output_to_lower: bool = False
+    """Force column name and data type output to lowercase in the yaml files."""
+    force_inherit_descriptions: bool = False
+    """Force inheritance of descriptions from upstream models, even if node has a valid description."""
 
 
 @dataclass
@@ -1117,7 +1133,9 @@ def _build_column_knowledge_graph(
                     if incoming_val := graph_edge.pop(inheritable, current_val):
                         graph_edge[inheritable] = incoming_val
 
-                if graph_edge.get("description", EMPTY_STRING) in context.placeholders:
+                if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
+                    generation == "generation_0" and context.settings.force_inherit_descriptions
+                ):
                     _ = graph_edge.pop("description", None)
                 if graph_edge.get("tags") == []:
                     del graph_edge["tags"]
@@ -1210,8 +1228,6 @@ def remove_columns_not_in_database(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
     """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
-    if context.settings.skip_add_columns:
-        return
     if node is None:
         for _, node in filter_models(context):
             remove_columns_not_in_database(context, node)

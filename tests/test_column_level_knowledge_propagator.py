@@ -13,7 +13,6 @@ from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
     YamlRefactorContext,
     YamlRefactorSettings,
-    _build_column_knowledge_graph,
     _build_node_ancestor_tree,
     _get_member_yaml,
     create_dbt_project_context,
@@ -158,7 +157,7 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             expect[column]["granularity"] = None
 
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
-    # NOTE: we will only update empty / placeholders descriptions by design
+    # NOTE: we will only update empty / placeholders descriptions by design, see force_inherit_descriptions for legacy behavior
     target_node.columns["customer_id"].description = ""
 
     yaml_context.placeholders = ("",)
@@ -172,8 +171,7 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
 
 
 def test_inherit_upstream_column_knowledge_with_mutations(yaml_context: YamlRefactorContext):
-    yaml_context.settings.skip_add_tags = False
-    yaml_context.settings.skip_merge_meta = False
+    yaml_context.settings.force_inherit_descriptions = True  # NOTE: matches legacy behavior
 
     manifest = yaml_context.project.manifest
     customer_id_column = manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
@@ -185,9 +183,6 @@ def test_inherit_upstream_column_knowledge_with_mutations(yaml_context: YamlRefa
 
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
     target_node_customer_id = target_node.columns["customer_id"]
-    target_node_customer_id.description = (
-        ""  # NOTE: allow inheritance to update this, otherwise a valid description would be skipped
-    )
     target_node_customer_id.tags = ["my_tag3", "my_tag4"]
     target_node_customer_id.meta = {"my_key": "my_local_value", "my_new_key": "my_new_value"}
 
