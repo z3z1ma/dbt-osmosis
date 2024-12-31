@@ -176,19 +176,20 @@ def test_inherit_upstream_column_knowledge_with_mutations(yaml_context: YamlRefa
     yaml_context.settings.skip_merge_meta = False
 
     manifest = yaml_context.project.manifest
-    stg_customer_columns = manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns
-    stg_customer_columns["customer_id"].description = "THIS COLUMN IS UPDATED FOR TESTING"
-    stg_customer_columns["customer_id"].meta = {"my_key": "my_value"}
-    stg_customer_columns["customer_id"].tags = ["my_tag1", "my_tag2"]
+    customer_id_column = manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
+        "customer_id"
+    ]
+    customer_id_column.description = "THIS COLUMN IS UPDATED FOR TESTING"
+    customer_id_column.meta = {"my_key": "my_value"}
+    customer_id_column.tags = ["my_tag1", "my_tag2"]
 
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
-    target_node_columns = target_node.columns
-    target_node_columns["customer_id"].description = ""
-    target_node_columns["customer_id"].tags = ["my_tag3", "my_tag4"]
-    target_node_columns["customer_id"].meta = {
-        "my_key": "my_local_value",
-        "my_new_key": "my_new_value",
-    }
+    target_node_customer_id = target_node.columns["customer_id"]
+    target_node_customer_id.description = (
+        ""  # NOTE: allow inheritance to update this, otherwise a valid description would be skipped
+    )
+    target_node_customer_id.tags = ["my_tag3", "my_tag4"]
+    target_node_customer_id.meta = {"my_key": "my_local_value", "my_new_key": "my_new_value"}
 
     with (
         mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
@@ -197,15 +198,16 @@ def test_inherit_upstream_column_knowledge_with_mutations(yaml_context: YamlRefa
         inherit_upstream_column_knowledge(yaml_context, target_node)
         yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
 
-    assert target_node_columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
+    target_node_customer_id = target_node.columns["customer_id"]
+    assert target_node_customer_id.description == "THIS COLUMN IS UPDATED FOR TESTING"
     assert (
-        target_node_columns["customer_id"].meta
+        target_node_customer_id.meta
         == {
-            "my_key": "my_local_value",  # NOTE: keys on the node itself always take precedence, hence it was not overridden
+            "my_key": "my_local_value",  # NOTE: keys on the node itself always take precedence, hence `my_key` was not overridden
             "my_new_key": "my_new_value",
         }
     )
-    assert sorted(target_node_columns["customer_id"].tags) == [
+    assert sorted(target_node_customer_id.tags) == [
         "my_tag1",
         "my_tag2",
         "my_tag3",
@@ -229,100 +231,105 @@ def test_inherit_upstream_column_knowledge_with_mutations(yaml_context: YamlRefa
     ]
 
 
-# def test_update_undocumented_columns_with_prior_knowledge_skip_add_tags():
-#     manifest = load_manifest()
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
-#         "customer_id"
-#     ].description = "THIS COLUMN IS UPDATED FOR TESTING"
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].meta = {
-#         "my_key": "my_value"
-#     }
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].tags = [
-#         "my_tag1",
-#         "my_tag2",
-#     ]
-#
-#     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
-#     knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-#         manifest, target_node, placeholders=[""]
-#     )
-#     yaml_file_model_section = {
-#         "columns": [
-#             {
-#                 "name": "customer_id",
-#             }
-#         ]
-#     }
-#     undocumented_columns = target_node.columns.keys()
-#     ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
-#         undocumented_columns,
-#         target_node,
-#         yaml_file_model_section,
-#         knowledge,
-#         skip_add_tags=True,
-#         skip_merge_meta=False,
-#         add_progenitor_to_meta=False,
-#     )
-#
-#     assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
-#     assert (
-#         yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
-#     )
-#     assert yaml_file_model_section["columns"][0]["meta"] == {"my_key": "my_value"}
-#     assert "tags" not in yaml_file_model_section["columns"][0]
-#
-#     assert target_node.columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
-#     assert target_node.columns["customer_id"].meta == {"my_key": "my_value"}
-#     assert set(target_node.columns["customer_id"].tags) == set([])
-#
-#
-# def test_update_undocumented_columns_with_prior_knowledge_skip_merge_meta():
-#     manifest = load_manifest()
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
-#         "customer_id"
-#     ].description = "THIS COLUMN IS UPDATED FOR TESTING"
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].meta = {
-#         "my_key": "my_value"
-#     }
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].tags = [
-#         "my_tag1",
-#         "my_tag2",
-#     ]
-#
-#     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
-#     knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-#         manifest, target_node, placeholders=[""]
-#     )
-#     yaml_file_model_section = {
-#         "columns": [
-#             {
-#                 "name": "customer_id",
-#             }
-#         ]
-#     }
-#     undocumented_columns = target_node.columns.keys()
-#     ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
-#         undocumented_columns,
-#         target_node,
-#         yaml_file_model_section,
-#         knowledge,
-#         skip_add_tags=False,
-#         skip_merge_meta=True,
-#         add_progenitor_to_meta=False,
-#     )
-#
-#     assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
-#     assert (
-#         yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
-#     )
-#     assert "meta" not in yaml_file_model_section["columns"][0]
-#     assert set(yaml_file_model_section["columns"][0]["tags"]) == set(["my_tag1", "my_tag2"])
-#
-#     assert target_node.columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
-#     assert target_node.columns["customer_id"].meta == {}
-#     assert set(target_node.columns["customer_id"].tags) == set(["my_tag1", "my_tag2"])
-#
-#
+def test_inherit_upstream_column_knowledge_skip_add_tags(yaml_context: YamlRefactorContext):
+    yaml_context.settings.skip_add_tags = True
+    yaml_context.settings.skip_merge_meta = False
+
+    manifest = yaml_context.project.manifest
+    customer_id_column = manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
+        "customer_id"
+    ]
+    customer_id_column.description = "THIS COLUMN IS UPDATED FOR TESTING"
+    customer_id_column.meta = {"my_key": "my_value"}
+    customer_id_column.tags = ["my_tag1", "my_tag2"]
+
+    target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    target_node_customer_id = target_node.columns["customer_id"]
+    target_node_customer_id.description = ""  # NOTE: allow inheritance to update this
+    target_node_customer_id.tags = ["my_tag3", "my_tag4"]
+    target_node_customer_id.meta = {"my_key": "my_value"}
+
+    with (
+        mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
+        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+    ):
+        inherit_upstream_column_knowledge(yaml_context, target_node)
+        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+
+    target_node_customer_id = target_node.columns["customer_id"]
+    assert target_node_customer_id.description == "THIS COLUMN IS UPDATED FOR TESTING"
+    assert target_node_customer_id.meta == {"my_key": "my_value"}
+    assert (
+        sorted(target_node_customer_id.tags) == ["my_tag3", "my_tag4"]
+    )  # NOTE: nodes tags are not mutated beyond our original mutation in the manifest node since skip_add_tags is True
+
+    assert yaml_file_model_section
+    assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
+    assert (
+        yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
+    )
+    assert yaml_file_model_section["columns"][0]["meta"] == {"my_key": "my_value"}
+    # TODO: consider a function which synchronizes a node with its yaml buffer, and then consider if inherit_upstream_column_knowledge should sync nodes
+    # in which case it would pick up manual mutations to the node and apply them to the yaml buffer (which could be useful I think)
+    assert (
+        yaml_file_model_section["columns"][0].get("tags", []) == []
+    )  # NOTE: yaml tags do not exist in buffer because we added them artificially to the node and skip_add_tags is True
+
+
+def test_update_undocumented_columns_with_prior_knowledge_skip_merge_meta(
+    yaml_context: YamlRefactorContext,
+):
+    yaml_context.settings.skip_add_tags = False
+    yaml_context.settings.skip_merge_meta = True
+
+    manifest = yaml_context.project.manifest
+    stg_customer_columns = manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns
+    stg_customer_columns["customer_id"].description = "THIS COLUMN IS UPDATED FOR TESTING"
+    stg_customer_columns["customer_id"].meta = {"my_upstream_key": "my_upstream_value"}
+    stg_customer_columns["customer_id"].tags = ["my_tag1", "my_tag2"]
+
+    target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    target_node_columns = target_node.columns
+    target_node_columns["customer_id"].description = ""  # NOTE: allow inheritance to update this
+    target_node_columns["customer_id"].tags = ["my_tag3", "my_tag4"]
+    target_node_columns["customer_id"].meta = {"my_key": "my_value"}
+
+    with (
+        mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
+        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+    ):
+        inherit_upstream_column_knowledge(yaml_context, target_node)
+        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+
+    assert target_node_columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
+    assert (
+        target_node_columns["customer_id"].meta == {"my_key": "my_value"}
+    )  # NOTE: nodes meta is not mutated beyond our original mutation in the manifest node since skip_merge_tags is True
+    assert sorted(target_node_columns["customer_id"].tags) == [
+        "my_tag1",
+        "my_tag2",
+        "my_tag3",
+        "my_tag4",
+    ]
+
+    assert yaml_file_model_section
+    assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
+    assert (
+        yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
+    )
+    # TODO: consider a function which synchronizes a node with its yaml buffer, and then consider if inherit_upstream_column_knowledge should sync nodes
+    # in which case it would pick up manual mutations to the node and apply them to the yaml buffer (which could be useful I think)
+    assert (
+        yaml_file_model_section["columns"][0].get("meta", {}) == {}
+    )  # NOTE: yaml meta does not exist in buffer because we added it artificially to the node and skip_merge_meta is True
+    assert sorted(yaml_file_model_section["columns"][0]["tags"]) == [
+        "my_tag1",
+        "my_tag2",
+        "my_tag3",
+        "my_tag4",
+    ]
+
+
 # def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta():
 #     manifest = load_manifest()
 #     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
