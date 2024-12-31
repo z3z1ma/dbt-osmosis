@@ -305,7 +305,7 @@ def test_update_undocumented_columns_with_prior_knowledge_skip_merge_meta(
     assert target_node_columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
     assert (
         target_node_columns["customer_id"].meta == {"my_key": "my_value"}
-    )  # NOTE: nodes meta is not mutated beyond our original mutation in the manifest node since skip_merge_tags is True
+    )  # NOTE: nodes meta is not mutated beyond our original mutation in the manifest node since skip_merge_meta is True
     assert sorted(target_node_columns["customer_id"].tags) == [
         "my_tag1",
         "my_tag2",

@@ -1098,6 +1098,13 @@ def _build_column_knowledge_graph(
     """Generate a column knowledge graph for a dbt model or source node."""
     tree = _build_node_ancestor_tree(context.project.manifest, node)
 
+    pm = get_plugin_manager()
+    node_column_variants: dict[str, list[str]] = {}
+    for column_name, _ in node.columns.items():
+        variants = node_column_variants.setdefault(column_name, [column_name])
+        for v in pm.hook.get_candidates(name=column_name, node=node, context=context.project):
+            variants.extend(t.cast(list[str], v))
+
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
     for generation in reversed(sorted(tree.keys())):
         ancestors = tree[generation]
@@ -1108,14 +1115,20 @@ def _build_column_knowledge_graph(
             if not isinstance(ancestor, (SourceDefinition, SeedNode, ModelNode)):
                 continue
 
-            for name, metadata in ancestor.columns.items():
+            for name, _ in node.columns.items():
                 graph_node = column_knowledge_graph.setdefault(name, {})
+                for variant in node_column_variants[name]:
+                    incoming = ancestor.columns.get(variant)
+                    if incoming is not None:
+                        break
+                else:
+                    continue
+                graph_edge = incoming.to_dict()
+
                 if context.settings.add_progenitor_to_meta:
                     graph_node.setdefault("meta", {}).setdefault(
                         "osmosis_progenitor", ancestor.unique_id
                     )
-
-                graph_edge = metadata.to_dict()
 
                 if context.settings.use_unrendered_descriptions:
                     raw_yaml = _get_member_yaml(context, ancestor) or {}
@@ -1125,7 +1138,7 @@ def _build_column_knowledge_graph(
                         lambda c: normalize_column_name(
                             c["name"], context.project.config.credentials.type
                         )
-                        == name,
+                        in node_column_variants[name],
                         {},
                     )
                     if unrendered_description := raw_column_metadata.get("description"):
@@ -1183,15 +1196,8 @@ def inherit_upstream_column_knowledge(
     column_knowledge_graph = _build_column_knowledge_graph(context, node)
     kwargs = None
     for name, node_column in node.columns.items():
-        variants: list[str] = [name]
-        pm = get_plugin_manager()
-        for v in pm.hook.get_candidates(name=name, node=node, context=context.project):
-            variants.extend(t.cast(list[str], v))
-        for variant in variants:
-            kwargs = column_knowledge_graph.get(variant)
-            if kwargs is not None:
-                break
-        else:
+        kwargs = column_knowledge_graph.get(name)
+        if kwargs is None:
             continue
 
         updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
