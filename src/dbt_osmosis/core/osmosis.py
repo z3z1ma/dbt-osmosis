@@ -764,7 +764,7 @@ _YAML_BUFFER_CACHE: dict[Path, t.Any] = {}
 
 
 def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
-    """Read a yaml file from disk."""
+    """Read a yaml file from disk. Adds an entry to the buffer cache so all operations on a path are consistent."""
     if path not in _YAML_BUFFER_CACHE:
         if not path.is_file():
             return {}
@@ -774,7 +774,7 @@ def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
 
 
 def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]) -> None:
-    """Write a yaml file to disk and register a mutation with the context."""
+    """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache."""
     with context.yaml_handler_lock:
         path.parent.mkdir(parents=True, exist_ok=True)
         context.yaml_handler.dump(data, path)
@@ -784,7 +784,7 @@ def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]
 
 
 def commit_yamls(context: YamlRefactorContext) -> None:
-    """Commit all files in the yaml buffer cache to disk."""
+    """Commit all files in the yaml buffer cache to disk. Clears the buffer cache and registers mutations."""
     with context.yaml_handler_lock:
         for path in list(_YAML_BUFFER_CACHE.keys()):
             with path.open("w") as f:
@@ -982,6 +982,7 @@ def apply_restructure_plan(
 
 
 # Inheritance Logic
+# =================
 
 
 def _build_node_ancestor_tree(
