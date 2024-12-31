@@ -441,6 +441,8 @@ def test_update_undocumented_columns_with_prior_knowledge_with_osmosis_keep_desc
     assert col_0["description"] == column_description_not_updated
 
 
+# NOTE: this test is currently moot, as the default behavior is to keep the description if its not a placeholder
+# but I leave the test in case we want to reintroduce a fine grained osmosis_keep_description meta attr
 def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta_and_osmosis_keep_description(
     yaml_context: YamlRefactorContext,
 ):
@@ -488,8 +490,7 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
     }
     # unify tags
     # upstream => my_tag1, my_tag2
-    # local => might be empty => or we can set them if we want
-    # let's assume local is empty, so final is upstream
+    # local => is empty, so final is upstream
     assert set(cid.tags) == {"my_tag1", "my_tag2"}
 
     # 5) Assert YAML

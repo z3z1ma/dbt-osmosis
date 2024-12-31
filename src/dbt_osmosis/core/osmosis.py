@@ -383,14 +383,20 @@ class YamlRefactorContext:
     @property
     def source_definitions(self) -> dict[str, t.Any]:
         """The source definitions from the dbt project config."""
-        defs = self.project.config.vars.to_dict().get("dbt-osmosis", {}).copy()
+        c = self.project.config.vars.to_dict()
+        defs = _find_first(
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+        )
         defs.pop(SKIP_PATTERNS, None)
         return defs
 
     @property
     def skip_patterns(self) -> list[str]:
         """The column name skip patterns from the dbt project config."""
-        defs = self.project.config.vars.to_dict().get("dbt-osmosis", {}).copy()
+        c = self.project.config.vars.to_dict()
+        defs = _find_first(
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+        )
         return defs.pop(SKIP_PATTERNS, [])
 
     def read_catalog(self) -> CatalogArtifact | None:
@@ -716,7 +722,12 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
         if isinstance(def_or_path, dict):
             return def_or_path.get("path")
         return def_or_path
-    path_template = node.config.extra.get("dbt-osmosis", node.unrendered_config.get("dbt-osmosis"))
+    conf = [
+        c.get(k)
+        for k in ["dbt-osmosis", "dbt_osmosis"]
+        for c in [node.config.extra, node.unrendered_config]
+    ]
+    path_template = _find_first(t.cast(list[str | None], conf), lambda v: v is not None)
     if not path_template:
         raise MissingOsmosisConfig(
             f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
@@ -1326,12 +1337,12 @@ class FuzzyPrefixMatching:
         variants = []
         prefix = t.cast(
             str,
-            node.config.extra.get(
-                "dbt-osmosis-prefix", node.unrendered_config.get("dbt-osmosis-prefix")
-            ),
+            node.meta.get("osmosis_prefix")  # Can be set in the node yml (legacy support)
+            or node.config.extra.get("dbt_osmosis_prefix")  # Or in dbt_project.yml / {{ config() }}
+            or node.unrendered_config.get("dbt_osmosis_prefix"),
         )
-        if prefix and name.startswith(prefix):
-            variants.append(name[len(prefix) :])
+        if prefix:
+            variants.append(name.removeprefix(prefix))
         return variants
 
 
