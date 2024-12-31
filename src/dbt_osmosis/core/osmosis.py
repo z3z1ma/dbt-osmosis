@@ -50,11 +50,9 @@ from dbt.tracking import disable_tracking
 from dbt_common.clients.system import get_env
 from dbt_common.context import set_invocation_context
 
-disable_tracking()
+from dbt_osmosis.core.log_controller import LOGGER as logger
 
-logger = logging.getLogger(__file__)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(rich.logging.RichHandler(level=logging.DEBUG))
+disable_tracking()
 
 T = t.TypeVar("T")
 

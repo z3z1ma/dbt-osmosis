@@ -1,26 +1,20 @@
+"""Logging module for dbt-osmosis. This module provides a logger factory that can be used to create loggers with rotating log files and console streaming. The logger is configured with a default log level of INFO and a default log file format of "time — name — level — message". The default log file path is `~/.dbt-osmosis/logs` and the default log file name is the logger name. The logger is configured to not propagate messages to the root logger."""
+
+from __future__ import annotations
+
 import logging
 from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional, Union
 
 from rich.logging import RichHandler
 
-# Log File Format
-LOG_FILE_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
-
-# Log File Path
-LOG_PATH = Path.home().absolute() / ".dbt-osmosis" / "logs"
-
-# Console Output Level
-LOGGING_LEVEL = logging.INFO
+_LOG_FILE_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
+_LOG_PATH = Path.home().absolute() / ".dbt-osmosis" / "logs"
+_LOGGING_LEVEL = logging.INFO
 
 
-def rotating_log_handler(
-    name: str,
-    path: Path,
-    formatter: str,
-) -> RotatingFileHandler:
+def rotating_log_handler(name: str, path: Path, formatter: str) -> RotatingFileHandler:
     """This handler writes warning and higher level outputs to logs in a home .dbt-osmosis directory rotating them as needed"""
     path.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
@@ -36,11 +30,12 @@ def rotating_log_handler(
 @lru_cache(maxsize=10)
 def logger(
     name: str = "dbt-osmosis",
-    level: Optional[Union[int, str]] = None,
-    path: Optional[Path] = None,
-    formatter: Optional[str] = None,
+    level: int | str | None = None,
+    path: Path | None = None,
+    formatter: str | None = None,
 ) -> logging.Logger:
     """Builds and caches loggers. Can be configured with module level attributes or on a call by call basis.
+
     Simplifies logger management without having to instantiate separate pointers in each module.
 
     Args:
@@ -55,11 +50,11 @@ def logger(
     if isinstance(level, str):
         level = getattr(logging, level, logging.INFO)
     if level is None:
-        level = LOGGING_LEVEL
+        level = _LOGGING_LEVEL
     if path is None:
-        path = LOG_PATH
+        path = _LOG_PATH
     if formatter is None:
-        formatter = LOG_FILE_FORMAT
+        formatter = _LOG_FILE_FORMAT
     _logger = logging.getLogger(name)
     _logger.setLevel(level)
     _logger.addHandler(rotating_log_handler(name, path, formatter))
@@ -73,3 +68,7 @@ def logger(
     )
     _logger.propagate = False
     return _logger
+
+
+LOGGER = logger()
+"""Default logger for dbt-osmosis"""
