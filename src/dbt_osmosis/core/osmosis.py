@@ -6,7 +6,6 @@ import argparse
 import json
 import os
 import re
-import sys
 import threading
 import time
 import typing as t
@@ -15,7 +14,7 @@ from collections import OrderedDict
 from collections.abc import Iterable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
-from functools import lru_cache, partial
+from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 
@@ -547,7 +546,7 @@ def normalize_column_name(column: str, credentials_type: str) -> str:
     return column
 
 
-def _maybe_use_precise_dtype(col: t.Any, settings: YamlRefactorSettings) -> str:
+def _maybe_use_precise_dtype(col: BaseColumn, settings: YamlRefactorSettings) -> str:
     """Use the precise data type if enabled in the settings."""
     if (col.is_numeric() and settings.numeric_precision) or (
         col.is_string() and settings.char_length
