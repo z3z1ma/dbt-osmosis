@@ -45,7 +45,6 @@ workbench = [
 
 openai = ["openai>0.28.0"]
 
-
 dev = [
   "black>=21.9b0",
   "mypy>=0.910",
