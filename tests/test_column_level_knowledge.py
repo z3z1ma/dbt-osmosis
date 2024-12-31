@@ -1,3 +1,7 @@
+def test_noop():
+    pass
+
+
 # TODO: refactor this test
 # from dbt_osmosis.core.column_level_knowledge import get_prior_knowledge
 #
