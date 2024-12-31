@@ -31,7 +31,6 @@ from dbt.context.providers import generate_runtime_macro_context
 from dbt.contracts.graph.manifest import Manifest
 from dbt.contracts.graph.nodes import (
     ColumnInfo,
-    ManifestNode,
     ManifestSQLNode,
     ModelNode,
     ResultNode,
@@ -66,6 +65,7 @@ SKIP_PATTERNS = "_column_ignore_patterns"
 
 
 # Basic DBT Setup
+# ===============
 
 
 def discover_project_dir() -> str:
@@ -224,6 +224,7 @@ def reload_manifest(context: DbtProjectContext) -> None:
 
 
 # YAML + File Data
+# ================
 
 
 def create_yaml_instance(
@@ -405,6 +406,7 @@ def load_catalog(settings: YamlRefactorSettings) -> CatalogArtifact | None:
 
 
 # Basic compile & execute
+# =======================
 
 
 def _has_jinja(code: str) -> bool:
@@ -449,6 +451,7 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> AdapterRespons
 
 
 # Node filtering
+# ==============
 
 
 def _is_fqn_match(node: ResultNode, fqn_str: str) -> bool:
@@ -511,7 +514,8 @@ def filter_models(
             yield uid, dbt_node
 
 
-# Inheritance Logic
+# Introspection
+# =============
 
 
 @t.overload
@@ -532,206 +536,6 @@ def _find_first(
         if predicate(item):
             return item
     return default
-
-
-def _build_node_ancestor_tree(
-    manifest: Manifest,
-    node: ResultNode,
-    tree: dict[str, list[str]] | None = None,
-    visited: set[str] | None = None,
-    depth: int = 1,
-) -> dict[str, list[str]]:
-    """Build a flat graph of a node and it's ancestors."""
-
-    if tree is None or visited is None:
-        visited = set(node.unique_id)
-        tree = {"generation_0": [node.unique_id]}
-        depth = 1
-
-    if not hasattr(node, "depends_on"):
-        return tree
-
-    for dep in getattr(node.depends_on, "nodes", []):
-        if dep not in visited:
-            visited.add(dep)
-            member = manifest.nodes.get(dep, manifest.sources.get(dep))
-            if member:
-                tree.setdefault(f"generation_{depth}", []).append(dep)
-                _ = _build_node_ancestor_tree(manifest, member, tree, visited, depth + 1)
-
-    for generation in tree.values():
-        generation.sort()  # For deterministic ordering
-
-    return tree
-
-
-def _get_member_yaml(context: YamlRefactorContext, member: ResultNode) -> dict[str, t.Any] | None:
-    """Get the parsed YAML for a dbt model or source node."""
-    project_dir = Path(context.project.config.project_root)
-
-    if isinstance(member, SourceDefinition):
-        if not member.original_file_path:
-            return None
-        path = project_dir.joinpath(member.original_file_path)
-        sources = t.cast(list[dict[str, t.Any]], _read_yaml(context, path).get("sources", []))
-        source = _find_first(sources, lambda s: s["name"] == member.source_name, {})
-        tables = source.get("tables", [])
-        return _find_first(tables, lambda tbl: tbl["name"] == member.name)
-
-    elif isinstance(member, (ModelNode, SeedNode)):
-        if not member.patch_path:
-            return None
-        path = project_dir.joinpath(member.patch_path.split("://")[-1])
-        section = f"{member.resource_type}s"
-        models = t.cast(list[dict[str, t.Any]], _read_yaml(context, path).get(section, []))
-        return _find_first(models, lambda model: model["name"] == member.name)
-
-    return None
-
-
-def _build_column_knowledge_grap(
-    context: YamlRefactorContext, node: ResultNode
-) -> dict[str, dict[str, t.Any]]:
-    """Generate a column knowledge graph for a dbt model or source node."""
-    tree = _build_node_ancestor_tree(context.project.manifest, node)
-    _ = tree.pop("generation_0")
-
-    column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
-    for generation in reversed(sorted(tree.keys())):
-        ancestors = tree[generation]
-        for ancestor_uid in ancestors:
-            ancestor = context.project.manifest.nodes.get(
-                ancestor_uid, context.project.manifest.sources.get(ancestor_uid)
-            )
-            if not ancestor:
-                continue
-
-            for name, metadata in ancestor.columns.items():
-                graph_node = column_knowledge_graph.setdefault(name, {})
-                if context.settings.add_progenitor_to_meta:
-                    graph_node.setdefault("meta", {}).setdefault(
-                        "osmosis_progenitor", ancestor.name
-                    )
-
-                graph_edge = metadata.to_dict()
-
-                if context.settings.use_unrendered_descriptions:
-                    raw_yaml = _get_member_yaml(context, ancestor) or {}
-                    raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
-                    raw_column_metadata = _find_first(raw_columns, lambda c: c["name"] == name, {})
-                    if undrendered_description := raw_column_metadata.get("description"):
-                        graph_edge["description"] = undrendered_description
-
-                current_tags = graph_node.get("tags", [])
-                if incoming_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
-                    graph_edge["tags"] = list(incoming_tags)
-
-                current_meta = graph_node.get("meta", {})
-                if incoming_meta := {**current_meta, **graph_edge.pop("meta", {})}:
-                    graph_edge["meta"] = incoming_meta
-
-                for inheritable in context.settings.add_inheritance_for_specified_keys:
-                    current_val = graph_node.get(inheritable)
-                    if incoming_val := graph_edge.pop(inheritable, current_val):
-                        graph_edge[inheritable] = incoming_val
-
-                if graph_edge.get("description", EMPTY_STRING) in context.placeholders:
-                    del graph_edge["description"]
-                if graph_edge.get("tags") == []:
-                    del graph_edge["tags"]
-                if graph_edge.get("meta") == {}:
-                    del graph_edge["meta"]
-                for k in list(graph_edge.keys()):
-                    if graph_edge[k] is None:
-                        graph_edge.pop(k)
-
-                graph_node.update(graph_edge)
-
-    return {name: meta.to_dict() for name, meta in node.columns.items()}
-
-
-def inherit_upstream_column_knowledge(
-    context: YamlRefactorContext, node: ResultNode
-) -> dict[str, dict[str, t.Any]]:
-    """Inherit column level knowledge from the ancestors of a dbt model or source node producing a column data structure usable in dbt yaml files.
-
-    This mutates the manifest node in place and returns the column data structure for use in a dbt yaml file.
-    """
-    inheritable = ["description"]
-    if not context.settings.skip_add_tags:
-        inheritable.append("tags")
-    if not context.settings.skip_merge_meta:
-        inheritable.append("meta")
-    for extra in context.settings.add_inheritance_for_specified_keys:
-        if extra not in inheritable:
-            inheritable.append(extra)
-    column_knowledge_graph = _build_column_knowledge_grap(context, node)
-    for name, node_column in node.columns.items():
-        # NOTE: This is our graph "lookup", and our best [only] opportunity to apply user defined fuzzing
-        # so we should make the composable and robust
-        kwargs = column_knowledge_graph.get(name)
-        if kwargs is None:
-            continue
-        node.columns[name] = node_column.replace(
-            **{k: v for k, v in kwargs.items() if v is not None and k in inheritable}
-        )
-
-    return {name: meta.to_dict() for name, meta in node.columns.items()}
-
-
-def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
-    """Add missing columns to a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
-    if context.settings.skip_add_columns:
-        return
-    if node is None:
-        for node in context.project.manifest.nodes.values():
-            inject_missing_columns(context, node)
-        return
-    yaml_section = _get_member_yaml(context, node)
-    if yaml_section is None:
-        return
-    current_columns = {
-        normalize_column_name(c["name"], context.project.config.credentials.type)
-        for c in yaml_section.get("columns", [])
-    }
-    incoming_columns = get_columns(context, get_table_ref(node))
-    for incoming_name, incoming_meta in incoming_columns.items():
-        if incoming_name not in node.columns and incoming_name not in current_columns:
-            logger.info(
-                f"Detected and reconciling missing column {incoming_name} in node {node.unique_id}"
-            )
-            gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
-            if dtype := incoming_meta.type:
-                gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
-            node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
-            yaml_section.setdefault("columns", []).append(gen_col)
-
-
-def remove_columns_not_in_database(
-    context: YamlRefactorContext, node: ResultNode | None = None
-) -> None:
-    """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
-    if context.settings.skip_add_columns:
-        return
-    if node is None:
-        for node in context.project.manifest.nodes.values():
-            remove_columns_not_in_database(context, node)
-        return
-    yaml_section = _get_member_yaml(context, node)
-    if yaml_section is None:
-        return
-    current_columns = {
-        normalize_column_name(c["name"], context.project.config.credentials.type)
-        for c in yaml_section.get("columns", [])
-    }
-    incoming_columns = get_columns(context, get_table_ref(node))
-    extra_columns = current_columns - set(incoming_columns.keys())
-    for extra_column in extra_columns:
-        logger.info(f"Detected and removing extra column {extra_column} in node {node.unique_id}")
-        _ = node.columns.pop(extra_column, None)
-        yaml_section["columns"] = [
-            c for c in yaml_section.get("columns", []) if c["name"] != extra_column
-        ]
 
 
 def normalize_column_name(column: str, credentials_type: str) -> str:
@@ -765,6 +569,7 @@ def get_table_ref(node: ResultNode | BaseRelation) -> TableRef:
 
 
 _COLUMN_LIST_CACHE = {}
+"""Cache for column lists to avoid redundant introspection."""
 
 
 def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, ColumnMetadata]:
@@ -814,6 +619,10 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
 
     _COLUMN_LIST_CACHE[ref] = normalized_cols
     return normalized_cols
+
+
+# Restructuring Logic
+# ===================
 
 
 def create_missing_source_yamls(context: YamlRefactorContext) -> None:
@@ -951,6 +760,7 @@ def build_yaml_file_mapping(
 
 # TODO: detect if something is dirty to minimize disk writes on commits
 _YAML_BUFFER_CACHE: dict[Path, t.Any] = {}
+"""Cache for yaml file buffers to avoid redundant disk reads/writes and simplify edits."""
 
 
 def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
@@ -1171,6 +981,251 @@ def apply_restructure_plan(
                     logger.info(f"Migrated doc from {path} -> {op.file_path}")
 
 
+# Inheritance Logic
+
+
+def _build_node_ancestor_tree(
+    manifest: Manifest,
+    node: ResultNode,
+    tree: dict[str, list[str]] | None = None,
+    visited: set[str] | None = None,
+    depth: int = 1,
+) -> dict[str, list[str]]:
+    """Build a flat graph of a node and it's ancestors."""
+
+    if tree is None or visited is None:
+        visited = set(node.unique_id)
+        tree = {"generation_0": [node.unique_id]}
+        depth = 1
+
+    if not hasattr(node, "depends_on"):
+        return tree
+
+    for dep in getattr(node.depends_on, "nodes", []):
+        if dep not in visited:
+            visited.add(dep)
+            member = manifest.nodes.get(dep, manifest.sources.get(dep))
+            if member:
+                tree.setdefault(f"generation_{depth}", []).append(dep)
+                _ = _build_node_ancestor_tree(manifest, member, tree, visited, depth + 1)
+
+    for generation in tree.values():
+        generation.sort()  # For deterministic ordering
+
+    return tree
+
+
+def _get_member_yaml(context: YamlRefactorContext, member: ResultNode) -> dict[str, t.Any] | None:
+    """Get the parsed YAML for a dbt model or source node."""
+    project_dir = Path(context.project.config.project_root)
+
+    if isinstance(member, SourceDefinition):
+        if not member.original_file_path:
+            return None
+        path = project_dir.joinpath(member.original_file_path)
+        sources = t.cast(list[dict[str, t.Any]], _read_yaml(context, path).get("sources", []))
+        source = _find_first(sources, lambda s: s["name"] == member.source_name, {})
+        tables = source.get("tables", [])
+        return _find_first(tables, lambda tbl: tbl["name"] == member.name)
+
+    elif isinstance(member, (ModelNode, SeedNode)):
+        if not member.patch_path:
+            return None
+        path = project_dir.joinpath(member.patch_path.split("://")[-1])
+        section = f"{member.resource_type}s"
+        models = t.cast(list[dict[str, t.Any]], _read_yaml(context, path).get(section, []))
+        return _find_first(models, lambda model: model["name"] == member.name)
+
+    return None
+
+
+def _build_column_knowledge_grap(
+    context: YamlRefactorContext, node: ResultNode
+) -> dict[str, dict[str, t.Any]]:
+    """Generate a column knowledge graph for a dbt model or source node."""
+    tree = _build_node_ancestor_tree(context.project.manifest, node)
+    _ = tree.pop("generation_0")
+
+    column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
+    for generation in reversed(sorted(tree.keys())):
+        ancestors = tree[generation]
+        for ancestor_uid in ancestors:
+            ancestor = context.project.manifest.nodes.get(
+                ancestor_uid, context.project.manifest.sources.get(ancestor_uid)
+            )
+            if not ancestor:
+                continue
+
+            for name, metadata in ancestor.columns.items():
+                graph_node = column_knowledge_graph.setdefault(name, {})
+                if context.settings.add_progenitor_to_meta:
+                    graph_node.setdefault("meta", {}).setdefault(
+                        "osmosis_progenitor", ancestor.name
+                    )
+
+                graph_edge = metadata.to_dict()
+
+                if context.settings.use_unrendered_descriptions:
+                    raw_yaml = _get_member_yaml(context, ancestor) or {}
+                    raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
+                    raw_column_metadata = _find_first(raw_columns, lambda c: c["name"] == name, {})
+                    if undrendered_description := raw_column_metadata.get("description"):
+                        graph_edge["description"] = undrendered_description
+
+                current_tags = graph_node.get("tags", [])
+                if incoming_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
+                    graph_edge["tags"] = list(incoming_tags)
+
+                current_meta = graph_node.get("meta", {})
+                if incoming_meta := {**current_meta, **graph_edge.pop("meta", {})}:
+                    graph_edge["meta"] = incoming_meta
+
+                for inheritable in context.settings.add_inheritance_for_specified_keys:
+                    current_val = graph_node.get(inheritable)
+                    if incoming_val := graph_edge.pop(inheritable, current_val):
+                        graph_edge[inheritable] = incoming_val
+
+                if graph_edge.get("description", EMPTY_STRING) in context.placeholders:
+                    del graph_edge["description"]
+                if graph_edge.get("tags") == []:
+                    del graph_edge["tags"]
+                if graph_edge.get("meta") == {}:
+                    del graph_edge["meta"]
+                for k in list(graph_edge.keys()):
+                    if graph_edge[k] is None:
+                        graph_edge.pop(k)
+
+                graph_node.update(graph_edge)
+
+    return {name: meta.to_dict() for name, meta in node.columns.items()}
+
+
+def inherit_upstream_column_knowledge(
+    context: YamlRefactorContext, node: ResultNode
+) -> dict[str, dict[str, t.Any]]:
+    """Inherit column level knowledge from the ancestors of a dbt model or source node producing a column data structure usable in dbt yaml files.
+
+    This mutates the manifest node in place and returns the column data structure for use in a dbt yaml file.
+    """
+    inheritable = ["description"]
+    if not context.settings.skip_add_tags:
+        inheritable.append("tags")
+    if not context.settings.skip_merge_meta:
+        inheritable.append("meta")
+    for extra in context.settings.add_inheritance_for_specified_keys:
+        if extra not in inheritable:
+            inheritable.append(extra)
+    column_knowledge_graph = _build_column_knowledge_grap(context, node)
+    for name, node_column in node.columns.items():
+        # NOTE: This is our graph "lookup", and our best [only] opportunity to apply user defined fuzzing
+        # so we should make the composable and robust
+        kwargs = column_knowledge_graph.get(name)
+        if kwargs is None:
+            continue
+        node.columns[name] = node_column.replace(
+            **{k: v for k, v in kwargs.items() if v is not None and k in inheritable}
+        )
+
+    return {name: meta.to_dict() for name, meta in node.columns.items()}
+
+
+def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
+    """Add missing columns to a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
+    if context.settings.skip_add_columns:
+        return
+    if node is None:
+        for node in context.project.manifest.nodes.values():
+            inject_missing_columns(context, node)
+        return
+    yaml_section = _get_member_yaml(context, node)
+    if yaml_section is None:
+        return
+    current_columns = {
+        normalize_column_name(c["name"], context.project.config.credentials.type)
+        for c in yaml_section.get("columns", [])
+    }
+    incoming_columns = get_columns(context, get_table_ref(node))
+    for incoming_name, incoming_meta in incoming_columns.items():
+        if incoming_name not in node.columns and incoming_name not in current_columns:
+            logger.info(
+                f"Detected and reconciling missing column {incoming_name} in node {node.unique_id}"
+            )
+            gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
+            if dtype := incoming_meta.type:
+                gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
+            node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
+            yaml_section.setdefault("columns", []).append(gen_col)
+
+
+def remove_columns_not_in_database(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
+    if context.settings.skip_add_columns:
+        return
+    if node is None:
+        for node in context.project.manifest.nodes.values():
+            remove_columns_not_in_database(context, node)
+        return
+    yaml_section = _get_member_yaml(context, node)
+    if yaml_section is None:
+        return
+    current_columns = {
+        normalize_column_name(c["name"], context.project.config.credentials.type)
+        for c in yaml_section.get("columns", [])
+    }
+    incoming_columns = get_columns(context, get_table_ref(node))
+    extra_columns = current_columns - set(incoming_columns.keys())
+    for extra_column in extra_columns:
+        logger.info(f"Detected and removing extra column {extra_column} in node {node.unique_id}")
+        _ = node.columns.pop(extra_column, None)
+        yaml_section["columns"] = [
+            c for c in yaml_section.get("columns", []) if c["name"] != extra_column
+        ]
+
+
+def sort_columns_as_in_database(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
+    if node is None:
+        for node in context.project.manifest.nodes.values():
+            sort_columns_as_in_database(context, node)
+        return
+    yaml_section = _get_member_yaml(context, node)
+    if yaml_section is None:
+        return
+    incoming_columns = get_columns(context, get_table_ref(node))
+
+    def _position(column: dict[str, t.Any]):
+        db_info = incoming_columns.get(column["name"])
+        if db_info is None:
+            return 99999
+        return db_info.index
+
+    t.cast(list[dict[str, t.Any]], yaml_section["columns"]).sort(key=_position)
+    node.columns = {
+        k: v for k, v in sorted(node.columns.items(), key=lambda i: _position(i[1].to_dict()))
+    }
+    context.register_mutations(1)
+
+
+def sort_columns_alphabetically(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Sort columns in a dbt node and it's corresponding yaml section alphabetically. Changes are implicitly buffered until commit_yamls is called."""
+    if node is None:
+        for node in context.project.manifest.nodes.values():
+            sort_columns_alphabetically(context, node)
+        return
+    yaml_section = _get_member_yaml(context, node)
+    if yaml_section is None:
+        return
+    t.cast(list[dict[str, t.Any]], yaml_section["columns"]).sort(key=lambda c: c["name"])
+    node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
+    context.register_mutations(1)
+
+
 # NOTE: usage example of the more FP style module below
 
 
@@ -1195,4 +1250,5 @@ if __name__ == "__main__":
     apply_restructure_plan(yaml_context, plan, confirm=True)
     inject_missing_columns(yaml_context)
     remove_columns_not_in_database(yaml_context)
+    sort_columns_as_in_database(yaml_context)
     commit_yamls(yaml_context)
