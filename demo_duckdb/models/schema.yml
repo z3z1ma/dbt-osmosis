@@ -30,9 +30,9 @@ models:
         data_type: DOUBLE
         description: ''
 
-      - name: customer_rank
-        data_type: VARCHAR
+      - name: customer_average_value
         description: ''
+        data_type: DECIMAL(18,3)
   - name: orders
     description: This table has basic information about orders, as well as some derived facts based on payments
 
@@ -59,6 +59,7 @@ models:
           - accepted_values:
               values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
 
+        description: '{{ doc("orders_status") }}'
       - name: credit_card_amount
         description: Amount of the order (AUD) paid for by credit card
         tests:

@@ -1,218 +1,234 @@
-# TODO: refactor this test
-# import json
-# from pathlib import Path
-#
-# import dbt.version
-# import pytest
-# from dbt.contracts.graph.manifest import Manifest
-# from packaging.version import Version
-#
-# from dbt_osmosis.core.column_level_knowledge_propagator import (
-#     ColumnLevelKnowledgePropagator,
-#     _build_node_ancestor_tree,
-#     _inherit_column_level_knowledge,
-# )
-#
-# dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip_matcher=True))
-#
-#
-# def load_manifest() -> Manifest:
-#     manifest_path = Path(__file__).parent.parent / "demo_duckdb/target/manifest.json"
-#     with manifest_path.open("r") as f:
-#         manifest_text = f.read()
-#         manifest_dict = json.loads(manifest_text)
-#     return Manifest.from_dict(manifest_dict)
-#
-#
-# def test_build_node_ancestor_tree():
-#     manifest = load_manifest()
-#     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
-#     expect = {
-#         "generation_0": [
-#             "model.jaffle_shop_duckdb.stg_customers",
-#             "model.jaffle_shop_duckdb.stg_orders",
-#             "model.jaffle_shop_duckdb.stg_payments",
-#         ],
-#         "generation_1": [
-#             "seed.jaffle_shop_duckdb.raw_customers",
-#             "seed.jaffle_shop_duckdb.raw_orders",
-#             "seed.jaffle_shop_duckdb.raw_payments",
-#         ],
-#     }
-#     assert _build_node_ancestor_tree(manifest, target_node) == expect
-#
-#
-# def test_inherit_column_level_knowledge():
-#     manifest = load_manifest()
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
-#         "customer_id"
-#     ].description = "THIS COLUMN IS UPDATED FOR TESTING"
-#     manifest.nodes["seed.jaffle_shop_duckdb.raw_orders"].columns[
-#         "status"
-#     ].description = "THIS COLUMN IS UPDATED FOR TESTING"
-#
-#     expect = {
-#         "customer_id": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_customers",
-#             "generation": "generation_0",
-#             "name": "customer_id",
-#             "description": "THIS COLUMN IS UPDATED FOR TESTING",
-#             "data_type": "INTEGER",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "first_name": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_customers",
-#             "generation": "generation_0",
-#             "name": "first_name",
-#             "data_type": "VARCHAR",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "last_name": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_customers",
-#             "generation": "generation_0",
-#             "name": "last_name",
-#             "data_type": "VARCHAR",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "rank": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_customers",
-#             "generation": "generation_0",
-#             "name": "rank",
-#             "data_type": "VARCHAR",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "order_id": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_orders",
-#             "generation": "generation_0",
-#             "name": "order_id",
-#             "data_type": "INTEGER",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "order_date": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_orders",
-#             "generation": "generation_0",
-#             "name": "order_date",
-#             "data_type": "DATE",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "status": {
-#             "progenitor": "seed.jaffle_shop_duckdb.raw_orders",
-#             "generation": "generation_1",
-#             "name": "status",
-#             "description": "THIS COLUMN IS UPDATED FOR TESTING",
-#             "data_type": "VARCHAR",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "payment_id": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_payments",
-#             "generation": "generation_0",
-#             "name": "payment_id",
-#             "data_type": "INTEGER",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "payment_method": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_payments",
-#             "generation": "generation_0",
-#             "name": "payment_method",
-#             "data_type": "VARCHAR",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#         "amount": {
-#             "progenitor": "model.jaffle_shop_duckdb.stg_payments",
-#             "generation": "generation_0",
-#             "name": "amount",
-#             "data_type": "DOUBLE",
-#             "constraints": [],
-#             "quote": None,
-#         },
-#     }
-#     if dbt_version >= Version("1.9.0"):
-#         for key in expect.keys():
-#             expect[key]["granularity"] = None
-#
-#     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
-#     family_tree = _build_node_ancestor_tree(manifest, target_node)
-#     placeholders = [""]
-#     assert _inherit_column_level_knowledge(manifest, family_tree, placeholders) == expect
-#
-#
-# def test_update_undocumented_columns_with_prior_knowledge():
-#     manifest = load_manifest()
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
-#         "customer_id"
-#     ].description = "THIS COLUMN IS UPDATED FOR TESTING"
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].meta = {
-#         "my_key": "my_value"
-#     }
-#     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns["customer_id"].tags = [
-#         "my_tag1",
-#         "my_tag2",
-#     ]
-#
-#     target_node_name = "model.jaffle_shop_duckdb.customers"
-#     manifest.nodes[target_node_name].columns["customer_id"].tags = set(
-#         [
-#             "my_tag3",
-#             "my_tag4",
-#         ]
-#     )
-#     manifest.nodes[target_node_name].columns["customer_id"].meta = {
-#         "my_key": "my_old_value",
-#         "my_new_key": "my_new_value",
-#     }
-#     target_node = manifest.nodes[target_node_name]
-#     knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-#         manifest, target_node, placeholders=[""]
-#     )
-#     yaml_file_model_section = {
-#         "columns": [
-#             {
-#                 "name": "customer_id",
-#             }
-#         ]
-#     }
-#     undocumented_columns = target_node.columns.keys()
-#     ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
-#         undocumented_columns,
-#         target_node,
-#         yaml_file_model_section,
-#         knowledge,
-#         skip_add_tags=False,
-#         skip_merge_meta=False,
-#         add_progenitor_to_meta=False,
-#     )
-#
-#     assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
-#     assert (
-#         yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
-#     )
-#     assert yaml_file_model_section["columns"][0]["meta"] == {
-#         "my_key": "my_value",
-#         "my_new_key": "my_new_value",
-#     }
-#     assert set(yaml_file_model_section["columns"][0]["tags"]) == set(
-#         ["my_tag1", "my_tag2", "my_tag3", "my_tag4"]
-#     )
-#
-#     assert target_node.columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
-#     assert target_node.columns["customer_id"].meta == {
-#         "my_key": "my_value",
-#         "my_new_key": "my_new_value",
-#     }
-#     assert set(target_node.columns["customer_id"].tags) == set(
-#         ["my_tag1", "my_tag2", "my_tag3", "my_tag4"]
-#     )
-#
-#
+# pyright: reportAny=false, reportUnknownMemberType=false, reportPrivateUsage=false
+import json
+import typing as t
+from pathlib import Path
+from unittest import mock
+
+import dbt.version
+import pytest
+from dbt.contracts.graph.manifest import Manifest
+from packaging.version import Version
+
+from dbt_osmosis.core.osmosis import (
+    DbtConfiguration,
+    YamlRefactorContext,
+    YamlRefactorSettings,
+    _build_column_knowledge_graph,
+    _build_node_ancestor_tree,
+    _get_member_yaml,
+    create_dbt_project_context,
+    inherit_upstream_column_knowledge,
+)
+
+dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip_matcher=True))
+
+
+@pytest.fixture(scope="function")
+def yaml_context() -> YamlRefactorContext:
+    # initializing the context is a sanity test in and of itself
+    c = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
+    c.vars = {"dbt-osmosis": {}}
+    project = create_dbt_project_context(c)
+    context = YamlRefactorContext(
+        project,
+        settings=YamlRefactorSettings(
+            dry_run=True,
+        ),
+    )
+    return context
+
+
+def load_manifest() -> Manifest:
+    manifest_path = Path(__file__).parent.parent / "demo_duckdb/target/manifest.json"
+    with manifest_path.open("r") as f:
+        manifest_text = f.read()
+        manifest_dict = json.loads(manifest_text)
+    return Manifest.from_dict(manifest_dict)
+
+
+def test_build_node_ancestor_tree():
+    manifest = load_manifest()
+    target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    expect = {
+        "generation_0": ["model.jaffle_shop_duckdb.customers"],
+        "generation_1": [
+            "model.jaffle_shop_duckdb.stg_customers",
+            "model.jaffle_shop_duckdb.stg_orders",
+            "model.jaffle_shop_duckdb.stg_payments",
+        ],
+        "generation_2": [
+            "seed.jaffle_shop_duckdb.raw_customers",
+            "seed.jaffle_shop_duckdb.raw_orders",
+            "seed.jaffle_shop_duckdb.raw_payments",
+        ],
+    }
+    assert _build_node_ancestor_tree(manifest, target_node) == expect
+
+
+def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
+    manifest = yaml_context.project.manifest
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
+        "customer_id"
+    ].description = "THIS COLUMN IS UPDATED FOR TESTING"
+
+    expect: dict[str, t.Any] = {
+        "customer_id": {
+            "name": "customer_id",
+            "description": "THIS COLUMN IS UPDATED FOR TESTING",
+            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers"},
+            "data_type": None,
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+        "first_name": {
+            "name": "first_name",
+            "description": "Customer's first name. PII.",
+            "meta": {"osmosis_progenitor": "seed.jaffle_shop_duckdb.raw_customers"},
+            "data_type": None,
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+        "last_name": {
+            "name": "last_name",
+            "description": "Customer's last name. PII.",
+            "meta": {"osmosis_progenitor": "seed.jaffle_shop_duckdb.raw_customers"},
+            "data_type": None,
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+        "first_order": {
+            "name": "first_order",
+            "description": "Date (UTC) of a customer's first order",
+            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
+            "data_type": None,
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+        "most_recent_order": {
+            "name": "most_recent_order",
+            "description": "Date (UTC) of a customer's most recent order",
+            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
+            "data_type": None,
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+        "number_of_orders": {
+            "name": "number_of_orders",
+            "description": "Count of the number of orders a customer has placed",
+            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
+            "data_type": None,
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+        "customer_lifetime_value": {
+            "name": "customer_lifetime_value",
+            "description": "",
+            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
+            "data_type": "DOUBLE",
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+        "customer_average_value": {
+            "name": "customer_average_value",
+            "description": "",
+            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
+            "data_type": "DECIMAL(18,3)",
+            "constraints": [],
+            "quote": None,
+            "tags": [],
+            "granularity": None,
+        },
+    }
+    if dbt_version >= Version("1.9.0"):
+        for column in expect.keys():
+            expect[column]["granularity"] = None
+
+    target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    # NOTE: we will only update empty / placeholders descriptions by design
+    target_node.columns["customer_id"].description = ""
+
+    yaml_context.placeholders = ("",)
+    yaml_context.settings.add_progenitor_to_meta = True
+    with (
+        mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
+        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+    ):
+        inherit_upstream_column_knowledge(yaml_context, target_node)
+    assert {k: v.to_dict() for k, v in target_node.columns.items()} == expect
+
+
+def test_inherit_upstream_column_knowledge_with_mutations(yaml_context: YamlRefactorContext):
+    yaml_context.settings.skip_add_tags = False
+    yaml_context.settings.skip_merge_meta = False
+
+    manifest = yaml_context.project.manifest
+    stg_customer_columns = manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns
+    stg_customer_columns["customer_id"].description = "THIS COLUMN IS UPDATED FOR TESTING"
+    stg_customer_columns["customer_id"].meta = {"my_key": "my_value"}
+    stg_customer_columns["customer_id"].tags = ["my_tag1", "my_tag2"]
+
+    target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    target_node_columns = target_node.columns
+    target_node_columns["customer_id"].description = ""
+    target_node_columns["customer_id"].tags = ["my_tag3", "my_tag4"]
+    target_node_columns["customer_id"].meta = {
+        "my_key": "my_local_value",
+        "my_new_key": "my_new_value",
+    }
+
+    with (
+        mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
+        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+    ):
+        inherit_upstream_column_knowledge(yaml_context, target_node)
+        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+
+    assert target_node_columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
+    assert (
+        target_node_columns["customer_id"].meta
+        == {
+            "my_key": "my_local_value",  # NOTE: keys on the node itself always take precedence, hence it was not overridden
+            "my_new_key": "my_new_value",
+        }
+    )
+    assert sorted(target_node_columns["customer_id"].tags) == [
+        "my_tag1",
+        "my_tag2",
+        "my_tag3",
+        "my_tag4",
+    ]
+
+    assert yaml_file_model_section
+    assert yaml_file_model_section["columns"][0]["name"] == "customer_id"
+    assert (
+        yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
+    )
+    assert yaml_file_model_section["columns"][0]["meta"] == {
+        "my_key": "my_local_value",
+        "my_new_key": "my_new_value",
+    }
+    assert sorted(yaml_file_model_section["columns"][0]["tags"]) == [
+        "my_tag1",
+        "my_tag2",
+        "my_tag3",
+        "my_tag4",
+    ]
+
+
 # def test_update_undocumented_columns_with_prior_knowledge_skip_add_tags():
 #     manifest = load_manifest()
 #     manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[

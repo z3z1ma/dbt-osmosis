@@ -2,5 +2,39 @@ version: 2
 seeds:
   - name: raw_orders
     columns:
+      - name: id
+        description: ''
+        data_type: INTEGER
+      - name: user_id
+        description: ''
+        data_type: INTEGER
+      - name: order_date
+        description: ''
+        data_type: DATE
       - name: status
         description: '{{ doc("orders_status") }}' # putting this in to test if unrendered propogation works
+  - name: raw_payments
+    columns:
+      - name: id
+        description: ''
+        data_type: INTEGER
+      - name: order_id
+        description: ''
+        data_type: INTEGER
+      - name: payment_method
+        description: ''
+        data_type: VARCHAR
+      - name: amount
+        description: ''
+        data_type: INTEGER
+  - name: raw_customers
+    columns:
+      - name: id
+        description: ''
+        data_type: INTEGER
+      - name: first_name
+        description: ''
+        data_type: VARCHAR
+      - name: last_name
+        description: ''
+        data_type: VARCHAR

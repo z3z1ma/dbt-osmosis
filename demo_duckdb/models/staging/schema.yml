@@ -15,9 +15,6 @@ models:
       - name: last_name
         data_type: VARCHAR
         description: ''
-      - name: rank
-        data_type: VARCHAR
-        description: ''
   - name: stg_orders
     columns:
       - name: order_id
@@ -37,6 +34,7 @@ models:
               values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
 
         data_type: VARCHAR
+        description: '{{ doc("orders_status") }}'
   - name: stg_payments
     columns:
       - name: payment_id

@@ -776,22 +776,24 @@ def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
 
 def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]) -> None:
     """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache."""
-    with context.yaml_handler_lock:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        context.yaml_handler.dump(data, path)
-    if path in _YAML_BUFFER_CACHE:
-        del _YAML_BUFFER_CACHE[path]
+    if not context.settings.dry_run:
+        with context.yaml_handler_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            context.yaml_handler.dump(data, path)
+        if path in _YAML_BUFFER_CACHE:
+            del _YAML_BUFFER_CACHE[path]
     context.register_mutations(1)
 
 
 def commit_yamls(context: YamlRefactorContext) -> None:
     """Commit all files in the yaml buffer cache to disk. Clears the buffer cache and registers mutations."""
-    with context.yaml_handler_lock:
-        for path in list(_YAML_BUFFER_CACHE.keys()):
-            with path.open("w") as f:
-                context.yaml_handler.dump(_YAML_BUFFER_CACHE[path], f)
-            del _YAML_BUFFER_CACHE[path]
-            context.register_mutations(1)
+    if not context.settings.dry_run:
+        with context.yaml_handler_lock:
+            for path in list(_YAML_BUFFER_CACHE.keys()):
+                with path.open("w") as f:
+                    context.yaml_handler.dump(_YAML_BUFFER_CACHE[path], f)
+                del _YAML_BUFFER_CACHE[path]
+                context.register_mutations(1)
 
 
 def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]:
@@ -972,8 +974,7 @@ def apply_restructure_plan(
             else:
                 output_doc[key] = val
 
-        if not context.settings.dry_run:
-            _write_yaml(context, op.file_path, output_doc)
+        _write_yaml(context, op.file_path, output_doc)
 
         for path, nodes in op.superseded_paths.items():
             if path.is_file():
@@ -994,11 +995,10 @@ def apply_restructure_plan(
                             path.parent.rmdir()
                         if path in _YAML_BUFFER_CACHE:
                             del _YAML_BUFFER_CACHE[path]
-                        context.register_mutations(1)
+                    context.register_mutations(1)
                     logger.info(f"Superseded entire file {path}")
                 else:
-                    if not context.settings.dry_run:
-                        _write_yaml(context, path, existing_data)
+                    _write_yaml(context, path, existing_data)
                     logger.info(f"Migrated doc from {path} -> {op.file_path}")
 
     _ = commit_yamls(context), reload_manifest(context.project)
@@ -1065,12 +1065,11 @@ def _get_member_yaml(context: YamlRefactorContext, member: ResultNode) -> dict[s
     return None
 
 
-def _build_column_knowledge_grap(
+def _build_column_knowledge_graph(
     context: YamlRefactorContext, node: ResultNode
 ) -> dict[str, dict[str, t.Any]]:
     """Generate a column knowledge graph for a dbt model or source node."""
     tree = _build_node_ancestor_tree(context.project.manifest, node)
-    _ = tree.pop("generation_0")
 
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
     for generation in reversed(sorted(tree.keys())):
@@ -1086,7 +1085,7 @@ def _build_column_knowledge_grap(
                 graph_node = column_knowledge_graph.setdefault(name, {})
                 if context.settings.add_progenitor_to_meta:
                     graph_node.setdefault("meta", {}).setdefault(
-                        "osmosis_progenitor", ancestor.name
+                        "osmosis_progenitor", ancestor.unique_id
                     )
 
                 graph_edge = metadata.to_dict()
@@ -1106,12 +1105,12 @@ def _build_column_knowledge_grap(
                         graph_edge["description"] = unrendered_description
 
                 current_tags = graph_node.get("tags", [])
-                if incoming_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
-                    graph_edge["tags"] = list(incoming_tags)
+                if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
+                    graph_edge["tags"] = list(merged_tags)
 
                 current_meta = graph_node.get("meta", {})
-                if incoming_meta := {**current_meta, **graph_edge.pop("meta", {})}:
-                    graph_edge["meta"] = incoming_meta
+                if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
+                    graph_edge["meta"] = merged_meta
 
                 for inheritable in context.settings.add_inheritance_for_specified_keys:
                     current_val = graph_node.get(inheritable)
@@ -1152,13 +1151,13 @@ def inherit_upstream_column_knowledge(
             inheritable.append(extra)
 
     yaml_section = _get_member_yaml(context, node)
-    column_knowledge_graph = _build_column_knowledge_grap(context, node)
+    column_knowledge_graph = _build_column_knowledge_graph(context, node)
     kwargs = None
     for name, node_column in node.columns.items():
         variants: list[str] = [name]
         pm = get_plugin_manager()
         for v in pm.hook.get_candidates(name=name, node=node, context=context.project):
-            variants.extend(v)
+            variants.extend(t.cast(list[str], v))
         for variant in variants:
             kwargs = column_knowledge_graph.get(variant)
             if kwargs is not None:
@@ -1176,12 +1175,6 @@ def inherit_upstream_column_knowledge(
                 column["name"], context.project.config.credentials.type
             )
             if yaml_name == name:
-                if updated_metadata.get("tags") == []:
-                    del updated_metadata["tags"]
-                if updated_metadata.get("meta") == {}:
-                    del updated_metadata["meta"]
-                if updated_metadata.get("description", EMPTY_STRING) in context.placeholders:
-                    _ = updated_metadata.pop("description", None)
                 column.update(**updated_metadata)
 
 
