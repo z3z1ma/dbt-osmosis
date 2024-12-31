@@ -59,6 +59,7 @@ logger.addHandler(rich.logging.RichHandler(level=logging.DEBUG))
 T = t.TypeVar("T")
 
 EMPTY_STRING = ""
+"""A null string constant for use in placeholder lists, this is always considered undocumented"""
 
 SKIP_PATTERNS = "_column_ignore_patterns"
 """This key is used to skip certain column name patterns in dbt-osmosis"""

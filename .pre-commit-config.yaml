@@ -16,21 +16,18 @@ repos:
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks:
-      - id: black
-        args: ["--config", "pyproject.toml"]
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: ["-sp", "pyproject.toml"]
+  # TODO: replace with ruff
+  # - repo: https://github.com/psf/black
+  #   rev: 24.4.2
+  #   hooks:
+  #     - id: black
+  #       args: ["--config", "pyproject.toml"]
+  # - repo: https://github.com/pycqa/isort
+  #   rev: 5.13.2
+  #   hooks:
+  #     - id: isort
+  #       args: ["-sp", "pyproject.toml"]
   - repo: https://github.com/hadolint/hadolint
     rev: v2.13.0-beta
     hooks:
       - id: hadolint-docker
-#  - repo: https://github.com/pycqa/flake8
-#    rev: 4.0.1
-#    hooks:
-#      - id: flake8
