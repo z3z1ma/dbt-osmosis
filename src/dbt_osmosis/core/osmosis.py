@@ -1332,14 +1332,20 @@ class FuzzyPrefixMatching:
         """Get a list of candidate names for a column excluding a prefix."""
         _ = context
         variants = []
-        prefix = t.cast(
-            str,
-            node.meta.get("osmosis_prefix")  # Can be set in the node yml (legacy support)
-            or node.config.extra.get("dbt_osmosis_prefix")  # Or in dbt_project.yml / {{ config() }}
-            or node.unrendered_config.get("dbt_osmosis_prefix"),
+        key = "osmosis_prefix"
+        p = _find_first(
+            (
+                t.cast(str, v)
+                # Can be set in the node yml (legacy support)
+                # Or in dbt_project.yml / {{ config() }}
+                for c in (node.meta, node.config.extra, node.unrendered_config)
+                for k in (key, f"dbt_{key}")
+                for v in (c.get(k), c.get(k.replace("_", "-")))
+            ),
+            lambda v: bool(v),
         )
-        if prefix:
-            variants.append(name.removeprefix(prefix))
+        if p:
+            variants.append(name.removeprefix(p))
         return variants
 
 
