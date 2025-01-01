@@ -68,7 +68,12 @@ SKIP_PATTERNS = "_column_ignore_patterns"
 
 
 def discover_project_dir() -> str:
-    """Return the directory containing a dbt_project.yml if found, else the current dir."""
+    """Return the directory containing a dbt_project.yml if found, else the current dir. Checks DBT_PROJECT_DIR first if set."""
+    if "DBT_PROJECT_DIR" in os.environ:
+        project_dir = Path(os.environ["DBT_PROJECT_DIR"])
+        if project_dir.is_dir():
+            return str(project_dir.resolve())
+        logger.warning(f"DBT_PROJECT_DIR {project_dir} is not a valid directory.")
     cwd = Path.cwd()
     for p in [cwd] + list(cwd.parents):
         if (p / "dbt_project.yml").exists():
@@ -77,7 +82,12 @@ def discover_project_dir() -> str:
 
 
 def discover_profiles_dir() -> str:
-    """Return the directory containing a profiles.yml if found, else ~/.dbt."""
+    """Return the directory containing a profiles.yml if found, else ~/.dbt. Checks DBT_PROFILES_DIR first if set."""
+    if "DBT_PROFILES_DIR" in os.environ:
+        profiles_dir = Path(os.environ["DBT_PROFILES_DIR"])
+        if profiles_dir.is_dir():
+            return str(profiles_dir.resolve())
+        logger.warning(f"DBT_PROFILES_DIR {profiles_dir} is not a valid directory.")
     if (Path.cwd() / "profiles.yml").exists():
         return str(Path.cwd().resolve())
     return str(Path.home() / ".dbt")
@@ -93,25 +103,14 @@ class DbtConfiguration:
     profile: str | None = None
     threads: int = 1
     single_threaded: bool = True
-
-    _vars: str | dict[str, t.Any] = field(default_factory=dict, init=False)
+    vars: dict[str, t.Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         set_invocation_context(get_env())
-        if self.threads != 1:
+        if self.threads > 1:
             self.single_threaded = False
-
-    @property
-    def vars(self) -> dict[str, t.Any]:
-        if isinstance(self._vars, str):
-            return json.loads(self._vars)
-        return self._vars
-
-    @vars.setter
-    def vars(self, value: t.Any) -> None:
-        if not isinstance(value, (str, dict)):
-            raise ValueError("DbtConfiguration.vars must be a string or dict")
-        self._vars = value
+        elif self.threads < 1:
+            raise ValueError("DbtConfiguration.threads must be >= 1")
 
 
 def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
@@ -1366,8 +1365,7 @@ def get_plugin_manager():
 
 
 def run_example_compilation_flow() -> None:
-    config = DbtConfiguration(target="some_target", threads=2)
-    config.vars = {"foo": "bar"}
+    config = DbtConfiguration(target="some_target", threads=2, vars={"foo": "bar"})
     proj_ctx = create_dbt_project_context(config)
 
     node = compile_sql_code(proj_ctx, "select '{{ 1+1 }}' as col")
@@ -1378,8 +1376,9 @@ def run_example_compilation_flow() -> None:
 
 
 if __name__ == "__main__":
-    c = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
-    c.vars = {"dbt-osmosis": {}}
+    c = DbtConfiguration(
+        project_dir="demo_duckdb", profiles_dir="demo_duckdb", vars={"dbt-osmosis": {}}
+    )
 
     project = create_dbt_project_context(c)
     yaml_context = YamlRefactorContext(
