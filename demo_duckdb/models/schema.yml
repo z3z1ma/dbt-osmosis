@@ -12,26 +12,39 @@ models:
 
       - name: first_name
         description: Customer's first name. PII.
-
       - name: last_name
         description: Customer's last name. PII.
-
       - name: first_order
         description: Date (UTC) of a customer's first order
-
       - name: most_recent_order
         description: Date (UTC) of a customer's most recent order
-
       - name: number_of_orders
         description: Count of the number of orders a customer has placed
-
       - name: customer_lifetime_value
         data_type: DOUBLE
-        description: ''
-
       - name: customer_average_value
-        description: ''
         data_type: DECIMAL(18,3)
+  - name: orders_prefix
+    columns:
+      - name: o_order_id
+        data_type: INTEGER
+      - name: o_customer_id
+        data_type: INTEGER
+      - name: o_order_date
+        data_type: DATE
+      - name: o_status
+        description: '{{ doc("orders_status") }}'
+        data_type: VARCHAR
+      - name: o_credit_card_amount
+        data_type: DOUBLE
+      - name: o_coupon_amount
+        data_type: DOUBLE
+      - name: o_bank_transfer_amount
+        data_type: DOUBLE
+      - name: o_gift_card_amount
+        data_type: DOUBLE
+      - name: o_amount
+        data_type: DOUBLE
   - name: orders
     description: This table has basic information about orders, as well as some derived facts based on payments
 
@@ -41,7 +54,6 @@ models:
           - unique
           - not_null
         description: This is a unique identifier for an order
-
       - name: customer_id
         description: Foreign key to the customers table
         tests:
@@ -52,7 +64,6 @@ models:
 
       - name: order_date
         description: Date (UTC) that the order was placed
-
       - name: status
         tests:
           - accepted_values:
@@ -82,32 +93,5 @@ models:
         description: Total amount (AUD) of the order
         tests:
           - not_null
-  - name: orders_prefix
-    columns:
-      - name: o_order_id
-        description: ''
-        data_type: INTEGER
-      - name: o_customer_id
-        description: ''
-        data_type: INTEGER
-      - name: o_order_date
-        description: ''
-        data_type: DATE
-      - name: o_status
-        description: '{{ doc("orders_status") }}'
-        data_type: VARCHAR
-      - name: o_credit_card_amount
-        description: ''
-        data_type: DOUBLE
-      - name: o_coupon_amount
-        description: ''
-        data_type: DOUBLE
-      - name: o_bank_transfer_amount
-        description: ''
-        data_type: DOUBLE
-      - name: o_gift_card_amount
-        description: ''
-        data_type: DOUBLE
-      - name: o_amount
-        description: ''
-        data_type: DOUBLE
+sources: []
+seeds: []
