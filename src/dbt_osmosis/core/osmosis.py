@@ -150,8 +150,8 @@ class DbtProjectContext:
 
     _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
-    _adapter: BaseAdapter | None = None
-    _adapter_created_at: float = 0.0
+    _adapter: BaseAdapter | None = field(default=None, init=False)
+    _adapter_created_at: float = field(default=0.0, init=False)
 
     @property
     def is_adapter_expired(self) -> bool:
@@ -286,18 +286,6 @@ class RestructureDeltaPlan:
     """Stores all the operations needed to restructure the project."""
 
     operations: list[RestructureOperation] = field(default_factory=list)
-
-
-class MissingOsmosisConfig(Exception):
-    """Raised when an osmosis configuration is missing."""
-
-    pass
-
-
-class InvalidOsmosisConfig(Exception):
-    """Raised when an osmosis configuration is invalid."""
-
-    pass
 
 
 @dataclass
@@ -714,6 +702,10 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         reload_manifest(context.project)
 
 
+class MissingOsmosisConfig(Exception):
+    """Raised when an osmosis configuration is missing."""
+
+
 def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> str | None:
     """Get the yaml path template for a dbt model or source node."""
     if node.resource_type == NodeType.Source:
@@ -723,8 +715,8 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
         return def_or_path
     conf = [
         c.get(k)
-        for k in ["dbt-osmosis", "dbt_osmosis"]
-        for c in [node.config.extra, node.unrendered_config]
+        for k in ("dbt-osmosis", "dbt_osmosis")
+        for c in (node.config.extra, node.unrendered_config)
     ]
     path_template = _find_first(t.cast(list[str | None], conf), lambda v: v is not None)
     if not path_template:
@@ -1364,14 +1356,15 @@ def get_plugin_manager():
 # NOTE: usage example of the more FP style module below
 
 
-def run_example_compilation_flow() -> None:
-    config = DbtConfiguration(target="some_target", threads=2, vars={"foo": "bar"})
-    proj_ctx = create_dbt_project_context(config)
+def run_example_compilation_flow(c: DbtConfiguration) -> None:
+    c.vars["foo"] = "bar"
 
-    node = compile_sql_code(proj_ctx, "select '{{ 1+1 }}' as col")
+    context = create_dbt_project_context(c)
+
+    node = compile_sql_code(context, "select '{{ 1+1 }}' as col_{{ var('foo') }}")
     print("Compiled =>", node.compiled_code)
 
-    resp = execute_sql_code(proj_ctx, "select '{{ 1+2 }}' as col")
+    resp = execute_sql_code(context, "select '{{ 1+2 }}' as col_{{ var('foo') }}")
     print("Resp =>", resp)
 
 
@@ -1379,6 +1372,7 @@ if __name__ == "__main__":
     c = DbtConfiguration(
         project_dir="demo_duckdb", profiles_dir="demo_duckdb", vars={"dbt-osmosis": {}}
     )
+    run_example_compilation_flow(c)
 
     project = create_dbt_project_context(c)
     yaml_context = YamlRefactorContext(
