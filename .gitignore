@@ -131,3 +131,6 @@ dmypy.json
 
 # Nix
 .devenv
+
+# Makefile touch target
+.uv-installed-*

@@ -1,13 +1,30 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v4.5.0
     hooks:
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
+      - id: check-ast
       - id: check-json
       - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
       - id: detect-private-key
       - id: debug-statements
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.13.0
+    hooks:
+      - id: commitizen
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff-format
+        args: ["--preview"]
+      - id: ruff
+        args: [--fix]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.1
     hooks:
@@ -16,18 +33,16 @@ repos:
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
-  # TODO: replace with ruff
-  # - repo: https://github.com/psf/black
-  #   rev: 24.4.2
-  #   hooks:
-  #     - id: black
-  #       args: ["--config", "pyproject.toml"]
-  # - repo: https://github.com/pycqa/isort
-  #   rev: 5.13.2
-  #   hooks:
-  #     - id: isort
-  #       args: ["-sp", "pyproject.toml"]
   - repo: https://github.com/hadolint/hadolint
     rev: v2.13.0-beta
     hooks:
       - id: hadolint-docker
+  - repo: local
+    hooks:
+      - id: uv-export-prod
+        name: uv-export-prod
+        entry: uv export -o requirements.txt --no-hashes --frozen
+        language: system
+        types: [file]
+        files: pyproject.toml|uv.lock
+        pass_filenames: false

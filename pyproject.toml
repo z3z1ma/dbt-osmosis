@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dbt-osmosis"
-version = "0.14.0"
+version = "1.0.0"
 description = "A dbt utility for managing YAML to make developing with dbt more delightful."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -24,25 +24,25 @@ classifiers = [
 requires-python = ">=3.9,<3.13"
 
 dependencies = [
-  "click>7",
-  "dbt-core>=1.8,<1.10",
-  "ruamel.yaml>=0.17",
+  "click>7,<9",
+  "dbt-core>=1.8,<=1.10",
+  "ruamel.yaml~=0.18.7",
   "rich>=10",
-  "pluggy>=1.5.0",
+  "pluggy>=1.5.0,<2",
 ]
 
 [project.optional-dependencies]
-duckdb = ["dbt-duckdb>=1.0.0"]
-sqlite = ["dbt-sqlite>=1.0.0"]
-postgres = ["dbt-postgres>=1.0.0"]
+duckdb = ["dbt-duckdb>=1.0.0,<2"]
+sqlite = ["dbt-sqlite>=1.0.0,<2"]
+postgres = ["dbt-postgres>=1.0.0,<2"]
 
 workbench = [
-  "streamlit>=1.20.0",
-  "streamlit-ace>=0.1.0",
-  "ydata-profiling>=3.6.0",
-  "feedparser~=6.0.10",
+  "streamlit>=1.20.0,<1.36.0",
+  "streamlit-ace~=0.1.1",
+  "ydata-profiling~=4.12.1",
+  "feedparser~=6.0.11",
   "streamlit-elements-fluence>=0.1.4",
-  "setuptools~=75.6.0",
+  "setuptools>=70",
 ]
 
 openai = ["openai>0.28.0"]

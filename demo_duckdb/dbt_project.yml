@@ -20,11 +20,14 @@ clean-targets:
 require-dbt-version: [">=1.0.0", "<2.0.0"]
 
 models:
-  +dbt-osmosis: schema.yml
-  jaffle_shop:
+  jaffle_shop_duckdb:
+    +dbt-osmosis: "{node.database}/{node.schema}/{node.name}.yml"
     materialized: table
     staging:
       materialized: view
 
 seeds:
-  +dbt-osmosis: schema.yml
+  jaffle_shop_duckdb:
+    +dbt-osmosis: "{node.database}/{node.schema}/{node.name}.yml"
+
+flags: {}

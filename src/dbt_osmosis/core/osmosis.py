@@ -14,12 +14,15 @@ from collections import OrderedDict
 from collections.abc import Iterable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
+from threading import get_ident
 from types import MappingProxyType
 
 import dbt.flags as dbt_flags
+import dbt.utils as dbt_utils
 import pluggy
 import ruamel.yaml
 from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
@@ -27,6 +30,7 @@ from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.impl import BaseAdapter
 from dbt.adapters.base.relation import BaseRelation
 from dbt.adapters.contracts.connection import AdapterResponse
+from dbt.adapters.contracts.relation import RelationConfig
 from dbt.adapters.factory import get_adapter, register_adapter
 from dbt.config.runtime import RuntimeConfig
 from dbt.context.providers import generate_runtime_macro_context
@@ -39,7 +43,7 @@ from dbt.contracts.graph.nodes import (
     SeedNode,
     SourceDefinition,
 )
-from dbt.contracts.results import CatalogArtifact, ColumnMetadata
+from dbt.contracts.results import CatalogArtifact, CatalogResults, ColumnMetadata
 from dbt.contracts.results import (
     CatalogKey as TableRef,
 )
@@ -47,6 +51,7 @@ from dbt.mp_context import get_mp_context
 from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
+from dbt.task.docs.generate import Catalog
 from dbt.task.sql import SqlCompileRunner
 from dbt.tracking import disable_tracking
 from dbt_common.clients.system import get_env
@@ -120,8 +125,8 @@ def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
     return argparse.Namespace(
         project_dir=cfg.project_dir,
         profiles_dir=cfg.profiles_dir,
-        target=cfg.target,
-        profile=cfg.profile,
+        target=cfg.target or os.getenv("DBT_TARGET"),
+        profile=cfg.profile or os.getenv("DBT_PROFILE"),
         threads=cfg.threads,
         single_threaded=cfg.single_threaded,
         vars=cfg.vars,
@@ -148,26 +153,36 @@ class DbtProjectContext:
     manifest: Manifest
     sql_parser: SqlBlockParser
     macro_parser: SqlMacroParser
-    adapter_ttl: float = 3600.0
+    connection_ttl: float = 3600.0
 
     _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _adapter: BaseAdapter | None = field(default=None, init=False)
-    _adapter_created_at: float = field(default=0.0, init=False)
+    _connection_created_at: dict[int, float] = field(default_factory=dict, init=False)
 
     @property
-    def is_adapter_expired(self) -> bool:
+    def is_connection_expired(self) -> bool:
         """Check if the adapter has expired based on the adapter TTL."""
-        return time.time() - self._adapter_created_at > self.adapter_ttl
+        return (
+            time.time() - self._connection_created_at.setdefault(get_ident(), 0.0)
+            > self.connection_ttl
+        )
 
     @property
     def adapter(self) -> BaseAdapter:
         """Get the adapter instance, creating a new one if the current one has expired."""
         with self._adapter_mutex:
-            if not self._adapter or self.is_adapter_expired:
-                self._adapter = instantiate_adapter(self.config)
-                self._adapter.set_macro_resolver(self.manifest)
-                self._adapter_created_at = time.time()
+            if not self._adapter:
+                adapter = instantiate_adapter(self.config)
+                adapter.set_macro_resolver(self.manifest)
+                _ = adapter.acquire_connection()
+                self._adapter = adapter
+                self._connection_created_at[get_ident()] = time.time()
+            elif self.is_connection_expired:
+                self._adapter.connections.release()
+                self._adapter.connections.clear_thread_connection()
+                _ = self._adapter.acquire_connection()
+                self._connection_created_at[get_ident()] = time.time()
         return self._adapter
 
     @property
@@ -300,8 +315,6 @@ class YamlRefactorSettings:
     """Filter models to action via a file path match."""
     dry_run: bool = False
     """Do not write changes to disk."""
-    catalog_file: str | None = None
-    """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
     skip_add_columns: bool = False
     """Skip adding missing columns in the yaml files."""
     skip_add_tags: bool = False
@@ -324,6 +337,10 @@ class YamlRefactorSettings:
     """Force column name and data type output to lowercase in the yaml files."""
     force_inherit_descriptions: bool = False
     """Force inheritance of descriptions from upstream models, even if node has a valid description."""
+    catalog_path: str | None = None
+    """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
+    create_catalog_if_not_exists: bool = False
+    """Generate the catalog.json for the project if it doesn't exist and use it for introspective queries."""
 
 
 @dataclass
@@ -353,7 +370,7 @@ class YamlRefactorContext:
     )
 
     _mutation_count: int = field(default=0, init=False)
-    _catalog: CatalogArtifact | None = field(default=None, init=False)
+    _catalog: CatalogResults | None = field(default=None, init=False)
 
     def register_mutations(self, count: int) -> None:
         """Increment the mutation count by a specified amount."""
@@ -388,16 +405,13 @@ class YamlRefactorContext:
         )
         return defs.pop(SKIP_PATTERNS, [])
 
-    def read_catalog(self) -> CatalogArtifact | None:
+    def read_catalog(self) -> CatalogResults | None:
         """Read the catalog file if it exists."""
-        if self._catalog:
-            return self._catalog
-        if not self.settings.catalog_file:
-            return None
-        fp = Path(self.settings.catalog_file)
-        if not fp.exists():
-            return None
-        self._catalog = CatalogArtifact.from_dict(json.loads(fp.read_text()))
+        if not self._catalog:
+            catalog = load_catalog(self.settings)
+            if not catalog and self.settings.create_catalog_if_not_exists:
+                catalog = generate_catalog(self.project)
+            self._catalog = catalog
         return self._catalog
 
     def __post_init__(self) -> None:
@@ -405,14 +419,52 @@ class YamlRefactorContext:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
 
 
-def load_catalog(settings: YamlRefactorSettings) -> CatalogArtifact | None:
-    """Load the catalog file if it exists and return a CatalogArtifact instance."""
-    if not settings.catalog_file:
+def load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
+    """Load the catalog file if it exists and return a CatalogResults instance."""
+    if not settings.catalog_path:
         return None
-    fp = Path(settings.catalog_file)
+    fp = Path(settings.catalog_path)
     if not fp.exists():
         return None
-    return CatalogArtifact.from_dict(json.loads(fp.read_text()))
+    return t.cast(CatalogResults, CatalogArtifact.from_dict(json.loads(fp.read_text())))  # pyright: ignore[reportInvalidCast]
+
+
+# NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
+def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
+    """Generate the dbt catalog file for the project."""
+    catalogable_nodes = chain(
+        [
+            t.cast(RelationConfig, node)  # pyright: ignore[reportInvalidCast]
+            for node in context.manifest.nodes.values()
+            if node.is_relational and not node.is_ephemeral_model
+        ],
+        [t.cast(RelationConfig, node) for node in context.manifest.sources.values()],  # pyright: ignore[reportInvalidCast]
+    )
+    table, exceptions = context.adapter.get_filtered_catalog(
+        catalogable_nodes,
+        context.manifest.get_used_schemas(),  # pyright: ignore[reportArgumentType]
+    )
+
+    catalog = Catalog(
+        [dict(zip(table.column_names, map(dbt_utils._coerce_decimal, row))) for row in table]  # pyright: ignore[reportUnknownArgumentType,reportPrivateUsage]
+    )
+
+    errors: list[str] | None = None
+    if exceptions:
+        errors = [str(e) for e in exceptions]
+
+    nodes, sources = catalog.make_unique_id_map(context.manifest)
+    artifact = CatalogArtifact.from_results(  # pyright: ignore[reportAttributeAccessIssue]
+        nodes=nodes,
+        sources=sources,
+        generated_at=datetime.now(timezone.utc),
+        compile_results=None,
+        errors=errors,
+    )
+    artifact.write(  # Cache it same as dbt
+        os.path.join(context.config.project_target_path, "catalog.json")
+    )
+    return t.cast(CatalogResults, artifact)
 
 
 # Basic compile & execute
@@ -1038,22 +1090,18 @@ def sync_node_to_yaml(context: YamlRefactorContext, node: ResultNode | None = No
     if not doc:
         doc = {"version": 2}
 
-    doc.setdefault("models", [])
-    doc.setdefault("sources", [])
-    doc.setdefault("seeds", [])
-
     if node.resource_type == NodeType.Source:
-        sync_list_key = "sources"
+        resource_k = "sources"
     elif node.resource_type == NodeType.Seed:
-        sync_list_key = "seeds"
+        resource_k = "seeds"
     else:
-        sync_list_key = "models"
+        resource_k = "models"
 
     if node.resource_type == NodeType.Source:
         # The doc structure => sources: [ { "name": <source_name>, "tables": [...]}, ... ]
         # Step A: find or create the source
         doc_source: dict[str, t.Any] | None = None
-        for s in doc["sources"]:
+        for s in doc.setdefault(resource_k, []):
             if s.get("name") == node.source_name:
                 doc_source = s
                 break
@@ -1083,7 +1131,7 @@ def sync_node_to_yaml(context: YamlRefactorContext, node: ResultNode | None = No
 
     else:
         # Models or Seeds => doc[ "models" ] or doc[ "seeds" ] is a list of { "name", "description", "columns", ... }
-        doc_list = doc[sync_list_key]
+        doc_list = doc.setdefault(resource_k, [])
         doc_obj: dict[str, t.Any] | None = None
         for item in doc_list:
             if item.get("name") == node.name:
@@ -1097,6 +1145,10 @@ def sync_node_to_yaml(context: YamlRefactorContext, node: ResultNode | None = No
             doc_list.append(doc_obj)
 
         _sync_doc_section(context, node, doc_obj)
+
+    for k in ("models", "sources", "seeds"):
+        if len(doc.get(k, [])) == 0:
+            _ = doc.pop(k, None)
 
     _write_yaml(context, current_path, doc)
 
@@ -1503,6 +1555,8 @@ if __name__ == "__main__":
     # run_example_compilation_flow(c)
 
     project = create_dbt_project_context(c)
+    _ = generate_catalog(project)
+
     yaml_context = YamlRefactorContext(
         project, settings=YamlRefactorSettings(use_unrendered_descriptions=True)
     )

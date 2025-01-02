@@ -1,9 +1,7 @@
-import os
-
-import openai
+# WIP: this will eventually be a class that will handle the LLM process
 
 
-def create_llm_prompt(sql_content, filename):
+def create_llm_prompt(sql_content: str, filename: str) -> list[dict[str, str]]:
     header = """DO NOT ADD A HEADER TO DBT YAML.
 THIS CODE WILL APPEND TO AN EXISTING YAML FILE.
 
