@@ -31,3 +31,14 @@ seeds:
     +dbt-osmosis: "{node.database}/{node.schema}/{node.name}.yml"
 
 flags: {}
+
+vars:
+  dbt-osmosis:
+    yaml_settings:
+      map_indent: 2
+      sequence_indent: 4
+      top_level_colon_align: false
+      brace_single_entry_mapping_in_flow_sequence: true
+      prefix_colon: " "
+      explicit_start: true
+      default_flow_style: ~

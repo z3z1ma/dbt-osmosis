@@ -98,9 +98,6 @@ T = t.TypeVar("T")
 EMPTY_STRING = ""
 """A null string constant for use in placeholder lists, this is always considered undocumented"""
 
-SKIP_PATTERNS = "_column_ignore_patterns"
-"""This key is used to skip certain column name patterns in dbt-osmosis"""
-
 
 # Basic DBT Setup
 # ===============
@@ -465,20 +462,28 @@ class YamlRefactorContext:
     def source_definitions(self) -> dict[str, t.Any]:
         """The source definitions from the dbt project config."""
         c = self.project.config.vars.to_dict()
-        defs = _find_first(
+        toplevel_conf = _find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
         )
-        defs.pop(SKIP_PATTERNS, None)
-        return defs
+        return toplevel_conf.get("sources", {})
 
     @property
-    def skip_patterns(self) -> list[str]:
-        """The column name skip patterns from the dbt project config."""
+    def ignore_patterns(self) -> list[str]:
+        """The column name ignore patterns from the dbt project config."""
         c = self.project.config.vars.to_dict()
-        defs = _find_first(
+        toplevel_conf = _find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
         )
-        return defs.pop(SKIP_PATTERNS, [])
+        return toplevel_conf.get("column_ignore_patterns", [])
+
+    @property
+    def yaml_settings(self) -> dict[str, t.Any]:
+        """The column name ignore patterns from the dbt project config."""
+        c = self.project.config.vars.to_dict()
+        toplevel_conf = _find_first(
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+        )
+        return toplevel_conf.get("yaml_settings", {})
 
     def read_catalog(self) -> CatalogResults | None:
         """Read the catalog file if it exists."""
@@ -497,6 +502,8 @@ class YamlRefactorContext:
         logger.debug(":green_book: Running post-init for YamlRefactorContext.")
         if EMPTY_STRING not in self.placeholders:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
+        for setting, val in self.yaml_settings.items():
+            setattr(self.yaml_handler, setting, val)
 
 
 def _load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
@@ -762,7 +769,7 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
 
     def process_column(col: BaseColumn | ColumnMetadata):
         nonlocal offset
-        if any(re.match(b, col.name) for b in context.skip_patterns):
+        if any(re.match(b, col.name) for b in context.ignore_patterns):
             logger.debug(
                 ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
             )
