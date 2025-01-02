@@ -356,6 +356,8 @@ class YamlRefactorSettings:
     """Skip appending upstream tags in the yaml files."""
     skip_add_data_types: bool = False
     """Skip adding data types in the yaml files."""
+    skip_add_source_columns: bool = False
+    """Skip adding source columns in the yaml files."""
     numeric_precision: bool = False
     """Include numeric precision in the data type."""
     char_length: bool = False
@@ -1577,6 +1579,9 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
         logger.info(":wave: Injecting missing columns for all matched nodes.")
         for _, node in filter_models(context):
             inject_missing_columns(context, node)
+        return
+    if context.settings.skip_add_source_columns and node.resource_type == NodeType.Source:
+        logger.debug(":no_entry_sign: Skipping column injection (skip_add_source_columns=True).")
         return
     current_columns = {
         normalize_column_name(c.name, context.project.config.credentials.type)

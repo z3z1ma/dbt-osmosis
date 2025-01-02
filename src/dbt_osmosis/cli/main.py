@@ -91,6 +91,7 @@ def shared_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
 def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     """Options common to YAML operations."""
 
+    @click.argument("models", nargs=-1)
     @click.option(
         "-f",
         "--fqn",
@@ -139,65 +140,69 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     "-F",
     "--force-inherit-descriptions",
     is_flag=True,
-    help="If specified, forces descriptions to be inherited from an upstream source if possible.",
-)
-@click.option(
-    "--skip-add-columns",
-    is_flag=True,
-    help="If specified, we will skip adding columns to the models. This is useful if you want to document your models without adding columns present in the database.",
-)
-@click.option(
-    "--skip-add-tags",
-    is_flag=True,
-    help="If specified, we will skip adding upstream tags to the model columns.",
-)
-@click.option(
-    "--skip-merge-meta",
-    is_flag=True,
-    help="If specified, we will skip merging upstrean meta keys to the model columns.",
-)
-@click.option(
-    "--skip-add-data-types",
-    is_flag=True,
-    help="If specified, we will skip adding data types to the models.",
-)
-@click.option(
-    "--numeric-precision",
-    is_flag=True,
-    help="If specified, numeric types will have precision and scale, e.g. Number(38, 8).",
-)
-@click.option(
-    "--char-length",
-    is_flag=True,
-    help="If specified, character types will have length, e.g. Varchar(128).",
-)
-@click.option(
-    "--add-progenitor-to-meta",
-    is_flag=True,
-    help="If specified, progenitor information will be added to the meta information of a column. This is useful if you want to know which model is the progenitor (origin) of a specific model's column.",
+    help="Force descriptions to be inherited from an upstream source if possible.",
 )
 @click.option(
     "--use-unrendered-descriptions",
     is_flag=True,
-    help="If specified, will use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
+    help="Use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
+)
+@click.option(
+    "--skip-add-columns",
+    is_flag=True,
+    help="Skip adding missing columns to any yaml. Useful if you want to document your models without adding large volume of columns present in the database.",
+)
+@click.option(
+    "--skip-add-source-columns",
+    is_flag=True,
+    help="Skip adding missing columns to source yamls. Useful if you want to document your models without adding large volume of columns present in the database.",
+)
+@click.option(
+    "--skip-add-tags",
+    is_flag=True,
+    help="Skip adding upstream tags to the model columns.",
+)
+@click.option(
+    "--skip-merge-meta",
+    is_flag=True,
+    help="Skip merging upstrean meta keys to the model columns.",
+)
+@click.option(
+    "--skip-add-data-types",
+    is_flag=True,
+    help="Skip adding data types to the models.",
+)
+@click.option(
+    "--add-progenitor-to-meta",
+    is_flag=True,
+    help="Progenitor information will be added to the meta information of a column. Useful to understand which model is the progenitor (origin) of a specific model's column.",
 )
 @click.option(
     "--add-inheritance-for-specified-keys",
     multiple=True,
     type=click.STRING,
-    help="If specified, will add inheritance for the specified keys. IE policy_tags",
+    help="Add inheritance for the specified keys. IE policy_tags",
+)
+@click.option(
+    "--numeric-precision",
+    is_flag=True,
+    help="Numeric types will have precision and scale, e.g. Number(38, 8).",
+)
+@click.option(
+    "--char-length",
+    is_flag=True,
+    help="Character types will have length, e.g. Varchar(128).",
 )
 @click.option(
     "--output-to-lower",
     is_flag=True,
-    help="If specified, output yaml file columns and data types in lowercase if possible.",
+    help="Output yaml file columns and data types in lowercase if possible.",
 )
 @click.option(
     "--auto-apply",
     is_flag=True,
-    help="If specified, will automatically apply the restructure plan without confirmation.",
+    help="Automatically apply the restructure plan without confirmation.",
 )
-@click.argument("models", nargs=-1)
 def refactor(
     target: str | None = None,
     profile: str | None = None,
@@ -247,7 +252,6 @@ def refactor(
 @yaml.command(context_settings=_CONTEXT)
 @shared_opts
 @yaml_opts
-@click.argument("models", nargs=-1)
 @click.option(
     "--auto-apply",
     is_flag=True,
@@ -299,60 +303,69 @@ def organize(
     "-F",
     "--force-inherit-descriptions",
     is_flag=True,
-    help="If specified, forces descriptions to be inherited from an upstream source if possible.",
-)
-@click.option(
-    "--skip-add-tags",
-    is_flag=True,
-    help="If specified, we will skip adding upstream tags to the model columns.",
-)
-@click.option(
-    "--skip-merge-meta",
-    is_flag=True,
-    help="If specified, we will skip merging upstrean meta keys to the model columns.",
-)
-@click.option(
-    "--skip-add-data-types",
-    is_flag=True,
-    help="If specified, we will skip adding data types to the models.",
-)
-@click.option(
-    "--skip-add-columns",
-    is_flag=True,
-    help="If specified, we will skip adding columns to the models. This is useful if you want to document your models without adding columns present in the database.",
-)
-@click.option(
-    "--numeric-precision",
-    is_flag=True,
-    help="If specified, numeric types will have precision and scale, e.g. Number(38, 8).",
-)
-@click.option(
-    "--char-length",
-    is_flag=True,
-    help="If specified, character types will have length, e.g. Varchar(128).",
-)
-@click.option(
-    "--add-progenitor-to-meta",
-    is_flag=True,
-    help="If specified, progenitor information will be added to the meta information of a column. This is useful if you want to know which model is the progenitor (origin) of a specific model's column.",
+    help="Force descriptions to be inherited from an upstream source if possible.",
 )
 @click.option(
     "--use-unrendered-descriptions",
     is_flag=True,
-    help="If specified, will use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
+    help="Use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
+)
+@click.option(
+    "--skip-add-columns",
+    is_flag=True,
+    help="Skip adding missing columns to any yaml. Useful if you want to document your models without adding large volume of columns present in the database.",
+)
+@click.option(
+    "--skip-add-source-columns",
+    is_flag=True,
+    help="Skip adding missing columns to source yamls. Useful if you want to document your models without adding large volume of columns present in the database.",
+)
+@click.option(
+    "--skip-add-tags",
+    is_flag=True,
+    help="Skip adding upstream tags to the model columns.",
+)
+@click.option(
+    "--skip-merge-meta",
+    is_flag=True,
+    help="Skip merging upstrean meta keys to the model columns.",
+)
+@click.option(
+    "--skip-add-data-types",
+    is_flag=True,
+    help="Skip adding data types to the models.",
+)
+@click.option(
+    "--add-progenitor-to-meta",
+    is_flag=True,
+    help="Progenitor information will be added to the meta information of a column. Useful to understand which model is the progenitor (origin) of a specific model's column.",
 )
 @click.option(
     "--add-inheritance-for-specified-keys",
     multiple=True,
     type=click.STRING,
-    help="If specified, will add inheritance for the specified keys. IE policy_tags",
+    help="Add inheritance for the specified keys. IE policy_tags",
+)
+@click.option(
+    "--numeric-precision",
+    is_flag=True,
+    help="Numeric types will have precision and scale, e.g. Number(38, 8).",
+)
+@click.option(
+    "--char-length",
+    is_flag=True,
+    help="Character types will have length, e.g. Varchar(128).",
 )
 @click.option(
     "--output-to-lower",
     is_flag=True,
-    help="If specified, output yaml file columns and data types in lowercase if possible.",
+    help="Output yaml file columns and data types in lowercase if possible.",
 )
-@click.argument("models", nargs=-1)
+@click.option(
+    "--auto-apply",
+    is_flag=True,
+    help="Automatically apply the restructure plan without confirmation.",
+)
 def document(
     target: str | None = None,
     profile: str | None = None,
