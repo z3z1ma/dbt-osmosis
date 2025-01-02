@@ -33,22 +33,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-duckdb = ["dbt-duckdb>=1.0.0,<2"]
-sqlite = ["dbt-sqlite>=1.0.0,<2"]
-postgres = ["dbt-postgres>=1.0.0,<2"]
-
 workbench = [
   "streamlit>=1.20.0,<1.30.0",
   "streamlit-ace~=0.1.1",
   "ydata-profiling~=4.12.1",
   "feedparser~=6.0.11",
   "streamlit-elements-fluence>=0.1.4",
+  "dbt-duckdb>=1.0.0,<2",
   "setuptools>=70",
 ]
 
 openai = ["openai>0.28.0"]
 
-dev = ["ruff~=0.8.4", "pytest~=8.3.4", "pre-commit>3.0.0"]
+dev = [
+  "ruff~=0.8.4",
+  "pytest~=8.3.4",
+  "pre-commit>3.0.0,<5",
+  "dbt-duckdb>=1.0.0,<2",
+]
 
 [project.scripts]
 "dbt-osmosis" = "dbt_osmosis.cli.main:cli"
