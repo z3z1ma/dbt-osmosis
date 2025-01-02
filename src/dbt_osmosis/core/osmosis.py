@@ -80,12 +80,15 @@ def discover_project_dir() -> str:
     if "DBT_PROJECT_DIR" in os.environ:
         project_dir = Path(os.environ["DBT_PROJECT_DIR"])
         if project_dir.is_dir():
+            logger.info(":mag: DBT_PROJECT_DIR detected => %s", project_dir)
             return str(project_dir.resolve())
-        logger.warning(f"DBT_PROJECT_DIR {project_dir} is not a valid directory.")
+        logger.warning(":warning: DBT_PROJECT_DIR %s is not a valid directory.", project_dir)
     cwd = Path.cwd()
     for p in [cwd] + list(cwd.parents):
         if (p / "dbt_project.yml").exists():
+            logger.info(":mag: Found dbt_project.yml at => %s", p)
             return str(p.resolve())
+    logger.info(":mag: Defaulting to current directory => %s", cwd)
     return str(cwd.resolve())
 
 
@@ -94,11 +97,15 @@ def discover_profiles_dir() -> str:
     if "DBT_PROFILES_DIR" in os.environ:
         profiles_dir = Path(os.environ["DBT_PROFILES_DIR"])
         if profiles_dir.is_dir():
+            logger.info(":mag: DBT_PROFILES_DIR detected => %s", profiles_dir)
             return str(profiles_dir.resolve())
-        logger.warning(f"DBT_PROFILES_DIR {profiles_dir} is not a valid directory.")
+        logger.warning(":warning: DBT_PROFILES_DIR %s is not a valid directory.", profiles_dir)
     if (Path.cwd() / "profiles.yml").exists():
+        logger.info(":mag: Found profiles.yml in current directory.")
         return str(Path.cwd().resolve())
-    return str(Path.home() / ".dbt")
+    home_profiles = str(Path.home() / ".dbt")
+    logger.info(":mag: Defaulting to => %s", home_profiles)
+    return home_profiles
 
 
 @dataclass
@@ -115,6 +122,7 @@ class DbtConfiguration:
     quiet: bool = True
 
     def __post_init__(self) -> None:
+        logger.debug(":bookmark_tabs: Setting invocation context with environment variables.")
         set_invocation_context(get_env())
         if self.threads > 1:
             self.single_threaded = False
@@ -124,6 +132,7 @@ class DbtConfiguration:
 
 def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
     """Convert a DbtConfiguration into a dbt-friendly argparse.Namespace."""
+    logger.debug(":blue_book: Converting DbtConfiguration to argparse.Namespace => %s", cfg)
     return argparse.Namespace(
         project_dir=cfg.project_dir,
         profiles_dir=cfg.profiles_dir,
@@ -166,22 +175,33 @@ class DbtProjectContext:
     @property
     def is_connection_expired(self) -> bool:
         """Check if the adapter has expired based on the adapter TTL."""
-        return (
+        expired = (
             time.time() - self._connection_created_at.setdefault(get_ident(), 0.0)
             > self.connection_ttl
         )
+        logger.debug(":hourglass_flowing_sand: Checking if connection is expired => %s", expired)
+        return expired
 
     @property
     def adapter(self) -> BaseAdapter:
         """Get the adapter instance, creating a new one if the current one has expired."""
         with self._adapter_mutex:
             if not self._adapter:
+                logger.info(":wrench: Instantiating new adapter because none is currently set.")
                 adapter = instantiate_adapter(self.config)
                 adapter.set_macro_resolver(self.manifest)
                 _ = adapter.acquire_connection()
                 self._adapter = adapter
                 self._connection_created_at[get_ident()] = time.time()
+                logger.info(
+                    ":wrench: Successfully acquired new adapter connection for thread => %s",
+                    get_ident(),
+                )
             elif self.is_connection_expired:
+                logger.info(
+                    ":wrench: Adapter connection expired, refreshing connection for thread => %s",
+                    get_ident(),
+                )
                 self._adapter.connections.release()
                 self._adapter.connections.clear_thread_connection()
                 _ = self._adapter.acquire_connection()
@@ -196,19 +216,23 @@ class DbtProjectContext:
 
 def instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
     """Instantiate a dbt adapter based on the runtime configuration."""
+    logger.debug(":mag: Registering adapter for runtime config => %s", runtime_config)
     register_adapter(runtime_config, get_mp_context())
     adapter = get_adapter(runtime_config)
     adapter.set_macro_context_generator(t.cast(t.Any, generate_runtime_macro_context))
     adapter.connections.set_connection_name("dbt-osmosis")
+    logger.debug(":hammer_and_wrench: Adapter instantiated => %s", adapter)
     return t.cast(BaseAdapter, t.cast(t.Any, adapter))
 
 
 def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     """Build a DbtProjectContext from a DbtConfiguration."""
+    logger.info(":wave: Creating DBT project context using config => %s", config)
     args = config_to_namespace(config)
     dbt_flags.set_from_args(args, args)
     runtime_cfg = RuntimeConfig.from_args(args)
 
+    logger.info(":bookmark_tabs: Instantiating adapter as part of project context creation.")
     adapter = instantiate_adapter(runtime_cfg)
     setattr(runtime_cfg, "adapter", adapter)
     loader = ManifestLoader(
@@ -217,12 +241,14 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     )
     manifest = loader.load()
     manifest.build_flat_graph()
+    logger.info(":arrows_counterclockwise: Loaded the dbt project manifest!")
 
     adapter.set_macro_resolver(manifest)
 
     sql_parser = SqlBlockParser(runtime_cfg, manifest, runtime_cfg)
     macro_parser = SqlMacroParser(runtime_cfg, manifest)
 
+    logger.info(":sparkles: DbtProjectContext successfully created!")
     return DbtProjectContext(
         args=args,
         config=runtime_cfg,
@@ -234,11 +260,13 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
 
 def reload_manifest(context: DbtProjectContext) -> None:
     """Reload the dbt project manifest. Useful for picking up mutations."""
+    logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
     loader = ManifestLoader(context.config, context.config.load_dependencies())
     manifest = loader.load()
     manifest.build_flat_graph()
     context.adapter.set_macro_resolver(manifest)
     context.manifest = manifest
+    logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)
 
 
 # YAML + File Data
@@ -255,12 +283,14 @@ def create_yaml_instance(
     encoding: str = "utf-8",
 ) -> ruamel.yaml.YAML:
     """Returns a ruamel.yaml.YAML instance configured with the provided settings."""
+    logger.debug(":notebook: Creating ruamel.yaml.YAML instance with custom formatting.")
     y = ruamel.yaml.YAML()
     y.indent(mapping=indent_mapping, sequence=indent_sequence, offset=indent_offset)
     y.width = width
     y.preserve_quotes = preserve_quotes
     y.default_flow_style = default_flow_style
     y.encoding = encoding
+    logger.debug(":notebook: YAML instance created => %s", y)
     return y
 
 
@@ -275,7 +305,9 @@ class SchemaFileLocation:
     @property
     def is_valid(self) -> bool:
         """Check if the current and target locations are valid."""
-        return self.current == self.target
+        valid = self.current == self.target
+        logger.debug(":white_check_mark: Checking if schema file location is valid => %s", valid)
+        return valid
 
 
 @dataclass
@@ -377,6 +409,11 @@ class YamlRefactorContext:
 
     def register_mutations(self, count: int) -> None:
         """Increment the mutation count by a specified amount."""
+        logger.debug(
+            ":sparkles: Registering %s new mutations. Current count => %s",
+            count,
+            self._mutation_count,
+        )
         self._mutation_count += count
 
     @property
@@ -387,7 +424,9 @@ class YamlRefactorContext:
     @property
     def mutated(self) -> bool:
         """Check if the context has performed any mutations."""
-        return self._mutation_count > 0
+        has_mutated = self._mutation_count > 0
+        logger.debug(":white_check_mark: Has the context mutated anything? => %s", has_mutated)
+        return has_mutated
 
     @property
     def source_definitions(self) -> dict[str, t.Any]:
@@ -410,31 +449,42 @@ class YamlRefactorContext:
 
     def read_catalog(self) -> CatalogResults | None:
         """Read the catalog file if it exists."""
+        logger.debug(":mag: Checking if catalog is already loaded => %s", bool(self._catalog))
         if not self._catalog:
             catalog = load_catalog(self.settings)
             if not catalog and self.settings.create_catalog_if_not_exists:
+                logger.info(
+                    ":bookmark_tabs: No existing catalog found, generating new catalog.json."
+                )
                 catalog = generate_catalog(self.project)
             self._catalog = catalog
         return self._catalog
 
     def __post_init__(self) -> None:
+        logger.debug(":green_book: Running post-init for YamlRefactorContext.")
         if EMPTY_STRING not in self.placeholders:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
 
 
 def load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
     """Load the catalog file if it exists and return a CatalogResults instance."""
+    logger.debug(":mag: Attempting to load catalog from => %s", settings.catalog_path)
     if not settings.catalog_path:
         return None
     fp = Path(settings.catalog_path)
     if not fp.exists():
+        logger.warning(":warning: Catalog path => %s does not exist.", fp)
         return None
+    logger.info(":books: Loading existing catalog => %s", fp)
     return t.cast(CatalogResults, CatalogArtifact.from_dict(json.loads(fp.read_text())))  # pyright: ignore[reportInvalidCast]
 
 
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
 def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
     """Generate the dbt catalog file for the project."""
+    logger.info(
+        ":books: Generating a new catalog for the project => %s", context.config.project_name
+    )
     catalogable_nodes = chain(
         [
             t.cast(RelationConfig, node)  # pyright: ignore[reportInvalidCast]
@@ -448,6 +498,7 @@ def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
         context.manifest.get_used_schemas(),  # pyright: ignore[reportArgumentType]
     )
 
+    logger.debug(":mag_right: Building catalog from returned table => %s", table)
     catalog = Catalog(
         [dict(zip(table.column_names, map(dbt_utils._coerce_decimal, row))) for row in table]  # pyright: ignore[reportUnknownArgumentType,reportPrivateUsage]
     )
@@ -455,6 +506,7 @@ def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
     errors: list[str] | None = None
     if exceptions:
         errors = [str(e) for e in exceptions]
+        logger.warning(":warning: Exceptions encountered in get_filtered_catalog => %s", errors)
 
     nodes, sources = catalog.make_unique_id_map(context.manifest)
     artifact = CatalogArtifact.from_results(  # pyright: ignore[reportAttributeAccessIssue]
@@ -464,9 +516,9 @@ def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
         compile_results=None,
         errors=errors,
     )
-    artifact.write(  # Cache it same as dbt
-        os.path.join(context.config.project_target_path, "catalog.json")
-    )
+    artifact_path = Path(context.config.project_target_path, "catalog.json")
+    logger.info(":bookmark_tabs: Writing fresh catalog => %s", artifact_path)
+    artifact.write(str(artifact_path.resolve()))  # Cache it, same as dbt
     return t.cast(CatalogResults, artifact)
 
 
@@ -476,11 +528,13 @@ def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
 
 def _has_jinja(code: str) -> bool:
     """Check if a code string contains jinja tokens."""
+    logger.debug(":crystal_ball: Checking if code snippet has Jinja => %s", code[:50] + "...")
     return any(token in code for token in ("{{", "}}", "{%", "%}", "{#", "#}"))
 
 
 def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNode:
     """Compile jinja SQL using the context's manifest and adapter."""
+    logger.info(":zap: Compiling SQL code. Possibly with jinja => %s", raw_sql[:75] + "...")
     tmp_id = str(uuid.uuid4())
     with context.manifest_mutex:
         key = f"{NodeType.SqlOperation}.{context.config.project_name}.{tmp_id}"
@@ -488,6 +542,7 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
 
         node = context.sql_parser.parse_remote(raw_sql, tmp_id)
         if not _has_jinja(raw_sql):
+            logger.debug(":scroll: No jinja found in the raw SQL, skipping compile steps.")
             return node
         process_node(context.config, context.manifest, node)
         compiled_node = SqlCompileRunner(
@@ -500,11 +555,13 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
 
         _ = context.manifest.nodes.pop(key, None)
 
+    logger.info(":sparkles: Compilation complete.")
     return compiled_node
 
 
 def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterResponse, Table]:
     """Execute jinja SQL using the context's manifest and adapter."""
+    logger.info(":running: Attempting to execute SQL => %s", raw_sql[:75] + "...")
     if _has_jinja(raw_sql):
         comp = compile_sql_code(context, raw_sql)
         sql_to_exec = comp.compiled_code or comp.raw_code
@@ -512,6 +569,7 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterR
         sql_to_exec = raw_sql
 
     resp, table = context.adapter.execute(sql_to_exec, auto_begin=False, fetch=True)
+    logger.info(":white_check_mark: SQL execution complete => %s rows returned.", len(table.rows))  # pyright: ignore[reportUnknownArgumentType]
     return resp, table
 
 
@@ -521,12 +579,14 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterR
 
 def _is_fqn_match(node: ResultNode, fqns: list[str]) -> bool:
     """Filter models based on the provided fully qualified name matching on partial segments."""
+    logger.debug(":mag_right: Checking if node => %s matches any FQNs => %s", node.unique_id, fqns)
     for fqn_str in fqns:
         parts = fqn_str.split(".")
         segment_match = len(node.fqn[1:]) >= len(parts) and all(
             left == right for left, right in zip(parts, node.fqn[1:])
         )
         if segment_match:
+            logger.debug(":white_check_mark: FQN matched => %s", fqn_str)
             return True
     return False
 
@@ -536,13 +596,16 @@ def _is_file_match(node: ResultNode, paths: list[str]) -> bool:
     node_path = _get_node_path(node)
     for model in paths:
         if node.name == model:
+            logger.debug(":white_check_mark: Name match => %s", model)
             return True
         try_path = Path(model).resolve()
         if try_path.is_dir():
             if node_path and try_path in node_path.parents:
+                logger.debug(":white_check_mark: Directory path match => %s", model)
                 return True
         elif try_path.is_file():
             if node_path and try_path == node_path:
+                logger.debug(":white_check_mark: File path match => %s", model)
                 return True
     return False
 
@@ -550,7 +613,9 @@ def _is_file_match(node: ResultNode, paths: list[str]) -> bool:
 def _get_node_path(node: ResultNode) -> Path | None:
     """Return the path to the node's original file if available."""
     if node.original_file_path and hasattr(node, "root_path"):
-        return Path(getattr(node, "root_path"), node.original_file_path).resolve()
+        path = Path(getattr(node, "root_path"), node.original_file_path).resolve()
+        logger.debug(":file_folder: Resolved node path => %s", path)
+        return path
     return None
 
 
@@ -558,6 +623,10 @@ def filter_models(
     context: YamlRefactorContext,
 ) -> Iterator[tuple[str, ResultNode]]:
     """Iterate over the models in the dbt project manifest applying the filter settings."""
+    logger.debug(
+        ":mag: Filtering nodes (models/sources/seeds) with user-specified settings => %s",
+        context.settings,
+    )
 
     def f(node: ResultNode) -> bool:
         """Closure to filter models based on the context settings."""
@@ -573,6 +642,7 @@ def filter_models(
         if context.settings.fqns:
             if not _is_fqn_match(node, context.settings.fqns):
                 return False
+        logger.debug(":white_check_mark: Node => %s passed filtering logic.", node.unique_id)
         return True
 
     items = chain(context.project.manifest.nodes.items(), context.project.manifest.sources.items())
@@ -608,7 +678,8 @@ def _find_first(
 def normalize_column_name(column: str, credentials_type: str) -> str:
     """Apply case normalization to a column name based on the credentials type."""
     if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
-        return column
+        logger.debug(":snowflake: Column name found with double-quotes => %s", column)
+        return column.strip('"')
     if credentials_type == "snowflake":
         return column.upper()
     return column
@@ -619,6 +690,7 @@ def _maybe_use_precise_dtype(col: BaseColumn, settings: YamlRefactorSettings) ->
     if (col.is_numeric() and settings.numeric_precision) or (
         col.is_string() and settings.char_length
     ):
+        logger.debug(":ruler: Using precise data type => %s", col.data_type)
         return col.data_type
     return col.dtype
 
@@ -642,14 +714,19 @@ _COLUMN_LIST_CACHE = {}
 def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, ColumnMetadata]:
     """Equivalent to get_columns_meta in old code but directly referencing a key, not a node."""
     if ref in _COLUMN_LIST_CACHE:
+        logger.debug(":blue_book: Column list cache HIT => %s", ref)
         return _COLUMN_LIST_CACHE[ref]
 
+    logger.info(":mag_right: Collecting columns for table => %s", ref)
     normalized_cols = OrderedDict()
     offset = 0
 
     def process_column(col: BaseColumn | ColumnMetadata):
         nonlocal offset
         if any(re.match(b, col.name) for b in context.skip_patterns):
+            logger.debug(
+                ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
+            )
             return
         normalized = normalize_column_name(col.name, context.project.config.credentials.type)
         if not isinstance(col, ColumnMetadata):
@@ -664,25 +741,29 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
                 process_column(struct_field)
 
     if catalog := context.read_catalog():
+        logger.debug(":blue_book: Catalog found => Checking for ref => %s", ref)
         catalog_entry = _find_first(
             chain(catalog.nodes.values(), catalog.sources.values()), lambda c: c.key() == ref
         )
         if catalog_entry:
+            logger.info(":books: Found catalog entry for => %s. Using it to process columns.", ref)
             for column in catalog_entry.columns.values():
                 process_column(column)
             return normalized_cols
 
     relation: BaseRelation | None = context.project.adapter.get_relation(*ref)
     if relation is None:
+        logger.warning(":warning: No relation found => %s", ref)
         return normalized_cols
 
     try:
+        logger.info(":mag: Introspecting columns in warehouse for => %s", relation)
         for column in t.cast(
             Iterable[BaseColumn], context.project.adapter.get_columns_in_relation(relation)
         ):
             process_column(column)
     except Exception as ex:
-        logger.warning(f"Could not introspect columns for {ref}: {ex}")
+        logger.warning(":warning: Could not introspect columns for %s: %s", ref, ex)
 
     _COLUMN_LIST_CACHE[ref] = normalized_cols
     return normalized_cols
@@ -698,6 +779,7 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
     This is a useful preprocessing step to ensure that all sources are represented in the dbt project manifest. We
     do not have rich node information for non-existent sources, hence the alternative codepath here to bootstrap them.
     """
+    logger.info(":factory: Creating missing source YAMLs (if any).")
     database: str = context.project.config.credentials.database
 
     did_side_effect: bool = False
@@ -715,6 +797,10 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         if _find_first(
             context.project.manifest.sources.values(), lambda s: s.source_name == source
         ):
+            logger.debug(
+                ":white_check_mark: Source => %s already exists in the manifest, skipping creation.",
+                source,
+            )
             continue
 
         src_yaml_path = Path(
@@ -750,14 +836,16 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
 
         src_yaml_path.parent.mkdir(parents=True, exist_ok=True)
         with src_yaml_path.open("w") as f:
-            logger.info(f"Injecting source {source} => {src_yaml_path}")
+            logger.info(":books: Injecting new source => %s => %s", source["name"], src_yaml_path)
             context.yaml_handler.dump({"version": 2, "sources": [source]}, f)
             context.register_mutations(1)
 
         did_side_effect = True
 
     if did_side_effect:
-        logger.info("Reloading project to pick up new sources.")
+        logger.info(
+            ":arrows_counterclockwise: Some new sources were created, reloading the project."
+        )
         reload_manifest(context.project)
 
 
@@ -782,17 +870,22 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
         raise MissingOsmosisConfig(
             f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
         )
+    logger.debug(":gear: Resolved YAML path template => %s", path_template)
     return path_template
 
 
 def get_current_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path | None:
     """Get the current yaml path for a dbt model or source node."""
     if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
-        return Path(context.project.config.project_root).joinpath(
+        path = Path(context.project.config.project_root).joinpath(
             t.cast(str, node.patch_path).partition("://")[-1]
         )
+        logger.debug(":page_facing_up: Current YAML path => %s", path)
+        return path
     if node.resource_type == NodeType.Source:
-        return Path(context.project.config.project_root, node.path)
+        path = Path(context.project.config.project_root, node.path)
+        logger.debug(":page_facing_up: Current YAML path => %s", path)
+        return path
     return None
 
 
@@ -800,6 +893,7 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
     """Get the target yaml path for a dbt model or source node."""
     tpl = _get_yaml_path_template(context, node)
     if not tpl:
+        logger.warning(":warning: No path template found for => %s", node.unique_id)
         return Path(context.project.config.project_root, node.original_file_path)
 
     rendered = tpl.format(node=node, model=node.name, parent=node.fqn[-2])
@@ -814,13 +908,19 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
         rendered += ".yml"
     segments.append(rendered)
 
-    return Path(context.project.config.project_root, *segments)
+    path = Path(context.project.config.project_root, *segments)
+    logger.debug(":star2: Target YAML path => %s", path)
+    return path
 
 
 def build_yaml_file_mapping(
     context: YamlRefactorContext, create_missing_sources: bool = False
 ) -> dict[str, SchemaFileLocation]:
     """Build a mapping of dbt model and source nodes to their current and target yaml paths."""
+    logger.info(
+        ":globe_with_meridians: Building YAML file mapping. create_missing_sources => %s",
+        create_missing_sources,
+    )
 
     if create_missing_sources:
         create_missing_source_yamls(context)
@@ -833,6 +933,8 @@ def build_yaml_file_mapping(
             current=current_path.resolve() if current_path else None,
             node_type=node.resource_type,
         )
+
+    logger.debug(":card_index_dividers: Built YAML file mapping => %s", out_map)
     return out_map
 
 
@@ -844,7 +946,9 @@ def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
     """Read a yaml file from disk. Adds an entry to the buffer cache so all operations on a path are consistent."""
     if path not in _YAML_BUFFER_CACHE:
         if not path.is_file():
+            logger.debug(":warning: Path => %s is not a file. Returning empty doc.", path)
             return {}
+        logger.debug(":open_file_folder: Reading YAML doc => %s", path)
         with context.yaml_handler_lock:
             _YAML_BUFFER_CACHE[path] = t.cast(dict[str, t.Any], context.yaml_handler.load(path))
     return _YAML_BUFFER_CACHE[path]
@@ -852,6 +956,7 @@ def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
 
 def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]) -> None:
     """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache."""
+    logger.debug(":page_with_curl: Attempting to write YAML to => %s", path)
     if not context.settings.dry_run:
         with context.yaml_handler_lock:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -859,12 +964,12 @@ def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]
             context.yaml_handler.dump(data, staging := io.BytesIO())
             modified = staging.getvalue()
             if modified != original:
-                logger.info(f"Writing {path}")
+                logger.info(":writing_hand: Writing changes to => %s", path)
                 with path.open("wb") as f:
                     _ = f.write(modified)
                     context.register_mutations(1)
             else:
-                logger.debug(f"Skipping {path} (no changes)")
+                logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
             del staging
         if path in _YAML_BUFFER_CACHE:
             del _YAML_BUFFER_CACHE[path]
@@ -872,6 +977,7 @@ def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]
 
 def commit_yamls(context: YamlRefactorContext) -> None:
     """Commit all files in the yaml buffer cache to disk. Clears the buffer cache and registers mutations."""
+    logger.info(":inbox_tray: Committing all YAMLs from buffer cache to disk.")
     if not context.settings.dry_run:
         with context.yaml_handler_lock:
             for path in list(_YAML_BUFFER_CACHE.keys()):
@@ -879,22 +985,25 @@ def commit_yamls(context: YamlRefactorContext) -> None:
                 context.yaml_handler.dump(_YAML_BUFFER_CACHE[path], staging := io.BytesIO())
                 modified = staging.getvalue()
                 if modified != original:
+                    logger.info(":writing_hand: Writing => %s", path)
                     with path.open("wb") as f:
                         logger.info(f"Writing {path}")
                         _ = f.write(modified)
                         context.register_mutations(1)
                 else:
-                    logger.debug(f"Skipping {path} (no changes)")
+                    logger.debug(":white_check_mark: Skipping => %s (no changes)", path)
                 del _YAML_BUFFER_CACHE[path]
 
 
 def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]:
     """Generate a minimal model yaml for a dbt model node."""
+    logger.debug(":baby: Generating minimal yaml for Model/Seed => %s", node.name)
     return {"name": node.name, "columns": []}
 
 
 def _generate_minimal_source_yaml(node: SourceDefinition) -> dict[str, t.Any]:
     """Generate a minimal source yaml for a dbt source node."""
+    logger.debug(":baby: Generating minimal yaml for Source => %s", node.name)
     return {"name": node.source_name, "tables": [{"name": node.name, "columns": []}]}
 
 
@@ -902,9 +1011,10 @@ def _create_operations_for_node(
     context: YamlRefactorContext, uid: str, loc: SchemaFileLocation
 ) -> list[RestructureOperation]:
     """Create restructure operations for a dbt model or source node."""
+    logger.debug(":bricks: Creating restructure operations for => %s", uid)
     node = context.project.manifest.nodes.get(uid) or context.project.manifest.sources.get(uid)
     if not node:
-        logger.warning(f"Node {uid} not found in manifest.")
+        logger.warning(":warning: Node => %s not found in manifest.", uid)
         return []
 
     # If loc.current is None => we are generating a brand new file
@@ -912,6 +1022,7 @@ def _create_operations_for_node(
     ops: list[RestructureOperation] = []
 
     if loc.current is None:
+        logger.info(":sparkles: No current YAML file, building minimal doc => %s", uid)
         if isinstance(node, (ModelNode, SeedNode)):
             minimal = _generate_minimal_model_yaml(node)
             ops.append(
@@ -963,6 +1074,7 @@ def _create_operations_for_node(
 
 def draft_restructure_delta_plan(context: YamlRefactorContext) -> RestructureDeltaPlan:
     """Draft a restructure plan for the dbt project."""
+    logger.info(":bulb: Drafting restructure delta plan for the project.")
     plan = RestructureDeltaPlan()
     lock = threading.Lock()
 
@@ -979,24 +1091,28 @@ def draft_restructure_delta_plan(context: YamlRefactorContext) -> RestructureDel
     for fut in done:
         exc = fut.exception()
         if exc:
+            logger.error(":bomb: Error encountered while drafting plan => %s", exc)
             raise exc
+    logger.info(":star2: Draft plan creation complete => %s operations", len(plan.operations))
     return plan
 
 
 def pretty_print_plan(plan: RestructureDeltaPlan) -> None:
     """Pretty print the restructure plan for the dbt project."""
+    logger.info(":mega: Restructure plan includes => %s operations.", len(plan.operations))
     for op in plan.operations:
         str_content = str(op.content)[:80] + "..."
-        logger.info(f"Processing {str_content}")
+        logger.info(":sparkles: Processing => %s", str_content)
         if not op.superseded_paths:
-            logger.info(f"CREATE or MERGE => {op.file_path}")
+            logger.info(":blue_book: CREATE or MERGE => %s", op.file_path)
         else:
             old_paths = [p.name for p in op.superseded_paths.keys()] or ["UNKNOWN"]
-            logger.info(f"{old_paths} -> {op.file_path}")
+            logger.info(":blue_book: %s -> %s", old_paths, op.file_path)
 
 
 def _remove_models(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
     """Clean up the existing yaml doc by removing models superseded by the restructure plan."""
+    logger.debug(":scissors: Removing superseded models => %s", [n.name for n in nodes])
     to_remove = {n.name for n in nodes if n.resource_type == NodeType.Model}
     keep = []
     for section in existing_doc.get("models", []):
@@ -1007,6 +1123,7 @@ def _remove_models(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> N
 
 def _remove_seeds(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
     """Clean up the existing yaml doc by removing models superseded by the restructure plan."""
+    logger.debug(":scissors: Removing superseded seeds => %s", [n.name for n in nodes])
     to_remove = {n.name for n in nodes if n.resource_type == NodeType.Seed}
     keep = []
     for section in existing_doc.get("seeds", []):
@@ -1020,6 +1137,7 @@ def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> 
     to_remove_sources = {
         (n.source_name, n.name) for n in nodes if n.resource_type == NodeType.Source
     }
+    logger.debug(":scissors: Removing superseded sources => %s", sorted(to_remove_sources))
     keep_sources = []
     for section in existing_doc.get("sources", []):
         keep_tables = []
@@ -1040,6 +1158,7 @@ def _sync_doc_section(
     This includes columns, description, meta, tags, etc.
     We assume node is the single source of truth, so doc_section is replaced.
     """
+    logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
     if node.description:
         doc_section["description"] = node.description
     else:
@@ -1100,12 +1219,16 @@ def sync_node_to_yaml(
     All changes to the Node (columns, metadata, etc.) should happen before calling this function.
     """
     if node is None:
+        logger.info(":wave: No single node specified; synchronizing all matched nodes.")
         for _, node in filter_models(context):
             sync_node_to_yaml(context, node, commit=commit)
         return
 
     current_path = get_current_yaml_path(context, node)
     if not current_path or not current_path.exists():
+        logger.debug(
+            ":warning: Current path does not exist => %s. Using target path instead.", current_path
+        )
         current_path = get_target_yaml_path(context, node)
 
     doc: dict[str, t.Any] = _read_yaml(context, current_path)
@@ -1173,6 +1296,7 @@ def sync_node_to_yaml(
             _ = doc.pop(k, None)
 
     if commit:
+        logger.info(":inbox_tray: Committing YAML doc changes for => %s", node.unique_id)
         _write_yaml(context, current_path, doc)
 
 
@@ -1181,10 +1305,11 @@ def apply_restructure_plan(
 ) -> None:
     """Apply the restructure plan for the dbt project."""
     if not plan.operations:
-        logger.info("No changes needed.")
+        logger.info(":white_check_mark: No changes needed in the restructure plan.")
         return
 
     if confirm:
+        logger.info(":warning: Confirm option set => printing plan and waiting for user input.")
         pretty_print_plan(plan)
 
     while confirm:
@@ -1194,9 +1319,10 @@ def apply_restructure_plan(
         elif response.lower() in ("n", "no", ""):
             logger.info("Skipping restructure plan.")
             return
-        logger.info("Please respond with 'y' or 'n'.")
+        logger.warning(":loudspeaker: Please respond with 'y' or 'n'.")
 
     for op in plan.operations:
+        logger.debug(":arrow_right: Applying restructure operation => %s", op)
         output_doc: dict[str, t.Any] = {"version": 2}
         if op.file_path.exists():
             existing_data = _read_yaml(context, op.file_path)
@@ -1232,11 +1358,16 @@ def apply_restructure_plan(
                         if path in _YAML_BUFFER_CACHE:
                             del _YAML_BUFFER_CACHE[path]
                     context.register_mutations(1)
-                    logger.info(f"Superseded entire file {path}")
+                    logger.info(":heavy_minus_sign: Superseded entire file => %s", path)
                 else:
                     _write_yaml(context, path, existing_data)
-                    logger.info(f"Migrated doc from {path} -> {op.file_path}")
+                    logger.info(
+                        ":arrow_forward: Migrated doc from => %s to => %s", path, op.file_path
+                    )
 
+    logger.info(
+        ":arrows_counterclockwise: Committing all restructure changes and reloading manifest."
+    )
     _ = commit_yamls(context), reload_manifest(context.project)
 
 
@@ -1252,7 +1383,7 @@ def _build_node_ancestor_tree(
     depth: int = 1,
 ) -> dict[str, list[str]]:
     """Build a flat graph of a node and it's ancestors."""
-
+    logger.debug(":seedling: Building ancestor tree/branch for => %s", node.unique_id)
     if tree is None or visited is None:
         visited = set(node.unique_id)
         tree = {"generation_0": [node.unique_id]}
@@ -1312,6 +1443,7 @@ def _build_column_knowledge_graph(
 ) -> dict[str, dict[str, t.Any]]:
     """Generate a column knowledge graph for a dbt model or source node."""
     tree = _build_node_ancestor_tree(context.project.manifest, node)
+    logger.debug(":family_tree: Node ancestor tree => %s", tree)
 
     pm = get_plugin_manager()
     node_column_variants: dict[str, list[str]] = {}
@@ -1394,10 +1526,12 @@ def inherit_upstream_column_knowledge(
 ) -> None:
     """Inherit column level knowledge from the ancestors of a dbt model or source node."""
     if node is None:
+        logger.info(":wave: Inheriting column knowledge across all matched nodes.")
         for _, node in filter_models(context):
             inherit_upstream_column_knowledge(context, node)
         return None
 
+    logger.info(":dna: Inheriting column knowledge for => %s", node.unique_id)
     inheritable = ["description"]
     if not context.settings.skip_add_tags:
         inheritable.append("tags")
@@ -1415,14 +1549,19 @@ def inherit_upstream_column_knowledge(
             continue
 
         updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
+        logger.debug(
+            ":star2: Inheriting updated metadata => %s for column => %s", updated_metadata, name
+        )
         node.columns[name] = node_column.replace(**updated_metadata)
 
 
 def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
     """Add missing columns to a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     if context.settings.skip_add_columns:
+        logger.debug(":no_entry_sign: Skipping column injection (skip_add_columns=True).")
         return
     if node is None:
+        logger.info(":wave: Injecting missing columns for all matched nodes.")
         for _, node in filter_models(context):
             inject_missing_columns(context, node)
         return
@@ -1434,7 +1573,9 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
     for incoming_name, incoming_meta in incoming_columns.items():
         if incoming_name not in node.columns and incoming_name not in current_columns:
             logger.info(
-                f"Detected and reconciling missing column {incoming_name} in node {node.unique_id}"
+                ":heavy_plus_sign: Reconciling missing column => %s in node => %s",
+                incoming_name,
+                node.unique_id,
             )
             gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
             if dtype := incoming_meta.type:
@@ -1447,6 +1588,7 @@ def remove_columns_not_in_database(
 ) -> None:
     """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
+        logger.info(":wave: Removing columns not in DB across all matched nodes.")
         for _, node in filter_models(context):
             remove_columns_not_in_database(context, node)
         return
@@ -1457,7 +1599,11 @@ def remove_columns_not_in_database(
     incoming_columns = get_columns(context, get_table_ref(node))
     extra_columns = current_columns - set(incoming_columns.keys())
     for extra_column in extra_columns:
-        logger.info(f"Detected and removing extra column {extra_column} in node {node.unique_id}")
+        logger.info(
+            ":heavy_minus_sign: Removing extra column => %s in node => %s",
+            extra_column,
+            node.unique_id,
+        )
         _ = node.columns.pop(extra_column, None)
 
 
@@ -1466,9 +1612,11 @@ def sort_columns_as_in_database(
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
+        logger.info(":wave: Sorting columns as they appear in DB across all matched nodes.")
         for _, node in filter_models(context):
             sort_columns_as_in_database(context, node)
         return
+    logger.info(":1234: Sorting columns by warehouse order => %s", node.unique_id)
     incoming_columns = get_columns(context, get_table_ref(node))
 
     def _position(column: dict[str, t.Any]):
@@ -1487,9 +1635,11 @@ def sort_columns_alphabetically(
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section alphabetically. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
+        logger.info(":wave: Sorting columns alphabetically across all matched nodes.")
         for _, node in filter_models(context):
             sort_columns_alphabetically(context, node)
         return
+    logger.info(":alphabet_white: Sorting columns alphabetically => %s", node.unique_id)
     node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
 
 
@@ -1517,6 +1667,7 @@ class FuzzyCaseMatching:
             cc := re.sub("_(.)", lambda m: m.group(1).upper(), name),  # camelCase
             cc[0].upper() + cc[1:],  # PascalCase
         ]
+        logger.debug(":lower_upper_case: FuzzyCaseMatching variants => %s", variants)
         return variants
 
 
@@ -1539,7 +1690,11 @@ class FuzzyPrefixMatching:
             lambda v: bool(v),
         )
         if p:
-            variants.append(name.removeprefix(p))
+            mut_name = name.removeprefix(p)
+            logger.debug(
+                ":scissors: FuzzyPrefixMatching => removing prefix '%s' => %s", p, mut_name
+            )
+            variants.append(mut_name)
         return variants
 
 

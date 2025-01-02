@@ -192,6 +192,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     is_flag=True,
     help="If specified, output yaml file columns and data types in lowercase if possible.",
 )
+@click.option(
+    "--auto-apply",
+    is_flag=True,
+    help="If specified, will automatically apply the restructure plan without confirmation.",
+)
 @click.argument("models", nargs=-1)
 def refactor(
     target: str | None = None,
@@ -215,6 +220,7 @@ def refactor(
     use_unrendered_descriptions: bool = False,
     add_inheritance_for_specified_keys: list[str] | None = None,
     output_to_lower: bool = False,
+    auto_apply: bool = False,
 ) -> None:
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
     directory, reparses the project, then executes document passing down inheritable documentation
@@ -256,7 +262,7 @@ def refactor(
 
     create_missing_source_yamls(context=context)
     apply_restructure_plan(
-        context=context, plan=draft_restructure_delta_plan(context), confirm=False
+        context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
     )
     inject_missing_columns(context=context)
     remove_columns_not_in_database(context=context)
@@ -273,6 +279,11 @@ def refactor(
 @shared_opts
 @yaml_opts
 @click.argument("models", nargs=-1)
+@click.option(
+    "--auto-apply",
+    is_flag=True,
+    help="If specified, will automatically apply the restructure plan without confirmation.",
+)
 def organize(
     target: str | None = None,
     project_dir: str | None = None,
@@ -284,6 +295,7 @@ def organize(
     models: list[str] | None = None,
     profile: str | None = None,
     vars: str | None = None,
+    auto_apply: bool = False,
 ) -> None:
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -313,7 +325,7 @@ def organize(
 
     create_missing_source_yamls(context=context)
     apply_restructure_plan(
-        context=context, plan=draft_restructure_delta_plan(context), confirm=False
+        context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
     )
 
     if check and context.mutated:
