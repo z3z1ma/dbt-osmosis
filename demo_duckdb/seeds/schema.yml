@@ -1,6 +1,0 @@
-version: 2
-seeds:
-  - name: raw_orders
-    columns:
-      - name: status
-        description: '{{ doc("orders_status") }}' # putting this in to test if unrendered propogation works

@@ -1,1246 +1,1762 @@
+# pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportAny=false, reportUnknownMemberType=false
+
+from __future__ import annotations
+
+import argparse
+import io
 import json
 import os
 import re
+import threading
+import time
+import typing as t
+import uuid
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor, wait
+from collections.abc import Iterable, Iterator
+from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
-from threading import Lock
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    MutableMapping,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-)
+from threading import get_ident
+from types import MappingProxyType
 
+import dbt.flags as dbt_flags
+import dbt.utils as dbt_utils
+import pluggy
 import ruamel.yaml
-from dbt.adapters.base.column import Column
-from dbt.contracts.results import CatalogArtifact, CatalogKey, CatalogTable, ColumnMetadata
-
-from dbt_osmosis.core.column_level_knowledge_propagator import ColumnLevelKnowledgePropagator
-from dbt_osmosis.core.exceptions import InvalidOsmosisConfig, MissingOsmosisConfig
-from dbt_osmosis.core.log_controller import logger
-from dbt_osmosis.vendored.dbt_core_interface.project import (
+from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
+from dbt.adapters.base.column import Column as BaseColumn
+from dbt.adapters.base.impl import BaseAdapter
+from dbt.adapters.base.relation import BaseRelation
+from dbt.adapters.contracts.connection import AdapterResponse
+from dbt.adapters.contracts.relation import RelationConfig
+from dbt.adapters.factory import get_adapter, register_adapter
+from dbt.config.runtime import RuntimeConfig
+from dbt.context.providers import generate_runtime_macro_context
+from dbt.contracts.graph.manifest import Manifest
+from dbt.contracts.graph.nodes import (
     ColumnInfo,
-    DbtProject,
-    ManifestNode,
-    NodeType,
+    ManifestSQLNode,
+    ModelNode,
+    ResultNode,
+    SeedNode,
+    SourceDefinition,
 )
+from dbt.contracts.results import CatalogArtifact, CatalogResults, ColumnMetadata
+from dbt.contracts.results import (
+    CatalogKey as TableRef,
+)
+from dbt.mp_context import get_mp_context
+from dbt.node_types import NodeType
+from dbt.parser.manifest import ManifestLoader, process_node
+from dbt.parser.sql import SqlBlockParser, SqlMacroParser
+from dbt.task.docs.generate import Catalog
+from dbt.task.sql import SqlCompileRunner
+from dbt.tracking import disable_tracking
+from dbt_common.clients.system import get_env
+from dbt_common.context import set_invocation_context
 
-as_path = Path
+import dbt_osmosis.core.logger as logger
+
+disable_tracking()
+
+T = t.TypeVar("T")
+
+EMPTY_STRING = ""
+"""A null string constant for use in placeholder lists, this is always considered undocumented"""
+
+SKIP_PATTERNS = "_column_ignore_patterns"
+"""This key is used to skip certain column name patterns in dbt-osmosis"""
 
 
-class YamlHandler(ruamel.yaml.YAML):
-    """A `ruamel.yaml` wrapper to handle dbt YAML files with sane defaults"""
+# Basic DBT Setup
+# ===============
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.indent(mapping=2, sequence=4, offset=2)
-        self.width = 800
-        self.preserve_quotes = True
-        self.default_flow_style = False
-        self.encoding = os.getenv("DBT_OSMOSIS_ENCODING", "utf-8")
+
+def discover_project_dir() -> str:
+    """Return the directory containing a dbt_project.yml if found, else the current dir. Checks DBT_PROJECT_DIR first if set."""
+    if "DBT_PROJECT_DIR" in os.environ:
+        project_dir = Path(os.environ["DBT_PROJECT_DIR"])
+        if project_dir.is_dir():
+            logger.info(":mag: DBT_PROJECT_DIR detected => %s", project_dir)
+            return str(project_dir.resolve())
+        logger.warning(":warning: DBT_PROJECT_DIR %s is not a valid directory.", project_dir)
+    cwd = Path.cwd()
+    for p in [cwd] + list(cwd.parents):
+        if (p / "dbt_project.yml").exists():
+            logger.info(":mag: Found dbt_project.yml at => %s", p)
+            return str(p.resolve())
+    logger.info(":mag: Defaulting to current directory => %s", cwd)
+    return str(cwd.resolve())
+
+
+def discover_profiles_dir() -> str:
+    """Return the directory containing a profiles.yml if found, else ~/.dbt. Checks DBT_PROFILES_DIR first if set."""
+    if "DBT_PROFILES_DIR" in os.environ:
+        profiles_dir = Path(os.environ["DBT_PROFILES_DIR"])
+        if profiles_dir.is_dir():
+            logger.info(":mag: DBT_PROFILES_DIR detected => %s", profiles_dir)
+            return str(profiles_dir.resolve())
+        logger.warning(":warning: DBT_PROFILES_DIR %s is not a valid directory.", profiles_dir)
+    if (Path.cwd() / "profiles.yml").exists():
+        logger.info(":mag: Found profiles.yml in current directory.")
+        return str(Path.cwd().resolve())
+    home_profiles = str(Path.home() / ".dbt")
+    logger.info(":mag: Defaulting to => %s", home_profiles)
+    return home_profiles
+
+
+@dataclass
+class DbtConfiguration:
+    """Configuration for a dbt project."""
+
+    project_dir: str = field(default_factory=discover_project_dir)
+    profiles_dir: str = field(default_factory=discover_profiles_dir)
+    target: str | None = None
+    profile: str | None = None
+    threads: int = 1
+    single_threaded: bool = True
+    vars: dict[str, t.Any] = field(default_factory=dict)
+    quiet: bool = True
+
+    def __post_init__(self) -> None:
+        logger.debug(":bookmark_tabs: Setting invocation context with environment variables.")
+        set_invocation_context(get_env())
+        if self.threads > 1:
+            self.single_threaded = False
+        elif self.threads < 1:
+            raise ValueError("DbtConfiguration.threads must be >= 1")
+
+
+def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
+    """Convert a DbtConfiguration into a dbt-friendly argparse.Namespace."""
+    logger.debug(":blue_book: Converting DbtConfiguration to argparse.Namespace => %s", cfg)
+    return argparse.Namespace(
+        project_dir=cfg.project_dir,
+        profiles_dir=cfg.profiles_dir,
+        target=cfg.target or os.getenv("DBT_TARGET"),
+        profile=cfg.profile or os.getenv("DBT_PROFILE"),
+        threads=cfg.threads,
+        single_threaded=cfg.single_threaded,
+        vars=cfg.vars,
+        which="parse",
+        quiet=cfg.quiet,
+        DEBUG=False,
+        REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES=False,
+    )
+
+
+@dataclass
+class DbtProjectContext:
+    """A data object that includes references to:
+
+    - The loaded dbt config
+    - The manifest
+    - The sql/macro parsers
+
+    With mutexes for thread safety. The adapter is lazily instantiated and has a TTL which allows
+    for re-use across multiple operations in long-running processes. (is the idea)
+    """
+
+    args: argparse.Namespace
+    config: RuntimeConfig
+    manifest: Manifest
+    sql_parser: SqlBlockParser
+    macro_parser: SqlMacroParser
+    connection_ttl: float = 3600.0
+
+    _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _adapter: BaseAdapter | None = field(default=None, init=False)
+    _connection_created_at: dict[int, float] = field(default_factory=dict, init=False)
+
+    @property
+    def is_connection_expired(self) -> bool:
+        """Check if the adapter has expired based on the adapter TTL."""
+        expired = (
+            time.time() - self._connection_created_at.setdefault(get_ident(), 0.0)
+            > self.connection_ttl
+        )
+        logger.debug(":hourglass_flowing_sand: Checking if connection is expired => %s", expired)
+        return expired
+
+    @property
+    def adapter(self) -> BaseAdapter:
+        """Get the adapter instance, creating a new one if the current one has expired."""
+        with self._adapter_mutex:
+            if not self._adapter:
+                logger.info(":wrench: Instantiating new adapter because none is currently set.")
+                adapter = instantiate_adapter(self.config)
+                adapter.set_macro_resolver(self.manifest)
+                _ = adapter.acquire_connection()
+                self._adapter = adapter
+                self._connection_created_at[get_ident()] = time.time()
+                logger.info(
+                    ":wrench: Successfully acquired new adapter connection for thread => %s",
+                    get_ident(),
+                )
+            elif self.is_connection_expired:
+                logger.info(
+                    ":wrench: Adapter connection expired, refreshing connection for thread => %s",
+                    get_ident(),
+                )
+                self._adapter.connections.release()
+                self._adapter.connections.clear_thread_connection()
+                _ = self._adapter.acquire_connection()
+                self._connection_created_at[get_ident()] = time.time()
+        return self._adapter
+
+    @property
+    def manifest_mutex(self) -> threading.Lock:
+        """Return the manifest mutex for thread safety."""
+        return self._manifest_mutex
+
+
+def instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
+    """Instantiate a dbt adapter based on the runtime configuration."""
+    logger.debug(":mag: Registering adapter for runtime config => %s", runtime_config)
+    register_adapter(runtime_config, get_mp_context())
+    adapter = get_adapter(runtime_config)
+    adapter.set_macro_context_generator(t.cast(t.Any, generate_runtime_macro_context))
+    adapter.connections.set_connection_name("dbt-osmosis")
+    logger.debug(":hammer_and_wrench: Adapter instantiated => %s", adapter)
+    return t.cast(BaseAdapter, t.cast(t.Any, adapter))
+
+
+def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
+    """Build a DbtProjectContext from a DbtConfiguration."""
+    logger.info(":wave: Creating DBT project context using config => %s", config)
+    args = config_to_namespace(config)
+    dbt_flags.set_from_args(args, args)
+    runtime_cfg = RuntimeConfig.from_args(args)
+
+    logger.info(":bookmark_tabs: Instantiating adapter as part of project context creation.")
+    adapter = instantiate_adapter(runtime_cfg)
+    setattr(runtime_cfg, "adapter", adapter)
+    loader = ManifestLoader(
+        runtime_cfg,
+        runtime_cfg.load_dependencies(),
+    )
+    manifest = loader.load()
+    manifest.build_flat_graph()
+    logger.info(":arrows_counterclockwise: Loaded the dbt project manifest!")
+
+    adapter.set_macro_resolver(manifest)
+
+    sql_parser = SqlBlockParser(runtime_cfg, manifest, runtime_cfg)
+    macro_parser = SqlMacroParser(runtime_cfg, manifest)
+
+    logger.info(":sparkles: DbtProjectContext successfully created!")
+    return DbtProjectContext(
+        args=args,
+        config=runtime_cfg,
+        manifest=manifest,
+        sql_parser=sql_parser,
+        macro_parser=macro_parser,
+    )
+
+
+def reload_manifest(context: DbtProjectContext) -> None:
+    """Reload the dbt project manifest. Useful for picking up mutations."""
+    logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
+    loader = ManifestLoader(context.config, context.config.load_dependencies())
+    manifest = loader.load()
+    manifest.build_flat_graph()
+    context.adapter.set_macro_resolver(manifest)
+    context.manifest = manifest
+    logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)
+
+
+# YAML + File Data
+# ================
+
+
+def create_yaml_instance(
+    indent_mapping: int = 2,
+    indent_sequence: int = 4,
+    indent_offset: int = 2,
+    width: int = 800,
+    preserve_quotes: bool = True,
+    default_flow_style: bool = False,
+    encoding: str = "utf-8",
+) -> ruamel.yaml.YAML:
+    """Returns a ruamel.yaml.YAML instance configured with the provided settings."""
+    logger.debug(":notebook: Creating ruamel.yaml.YAML instance with custom formatting.")
+    y = ruamel.yaml.YAML()
+    y.indent(mapping=indent_mapping, sequence=indent_sequence, offset=indent_offset)
+    y.width = width
+    y.preserve_quotes = preserve_quotes
+    y.default_flow_style = default_flow_style
+    y.encoding = encoding
+    logger.debug(":notebook: YAML instance created => %s", y)
+    return y
 
 
 @dataclass
 class SchemaFileLocation:
+    """Describes the current and target location of a schema file."""
+
     target: Path
-    current: Optional[Path] = None
+    current: Path | None = None
     node_type: NodeType = NodeType.Model
 
     @property
     def is_valid(self) -> bool:
-        return self.current == self.target
+        """Check if the current and target locations are valid."""
+        valid = self.current == self.target
+        logger.debug(":white_check_mark: Checking if schema file location is valid => %s", valid)
+        return valid
 
 
 @dataclass
 class SchemaFileMigration:
-    output: Dict[str, Any] = field(default_factory=dict)
-    supersede: Dict[Path, List[str]] = field(default_factory=dict)
+    """Describes a schema file migration operation."""
+
+    output: dict[str, t.Any] = field(
+        default_factory=lambda: {"version": 2, "models": [], "sources": []}
+    )
+    supersede: dict[Path, list[ResultNode]] = field(default_factory=dict)
 
 
-class DbtYamlManager(DbtProject):
-    """The DbtYamlManager class handles developer automation tasks surrounding
-    schema yaml files organziation, documentation, and coverage."""
+@dataclass
+class RestructureOperation:
+    """Represents a single operation to perform on a YAML file.
 
-    audit_report = """
-    :white_check_mark: [bold]Audit Report[/bold]
-    -------------------------------
-
-    Database: [bold green]{database}[/bold green]
-    Schema: [bold green]{schema}[/bold green]
-    Table: [bold green]{table}[/bold green]
-
-    Total Columns in Database: {total_columns}
-    Total Documentation Coverage: {coverage}%
-
-    Action Log:
-    Columns Added to dbt: {n_cols_added}
-    Column Knowledge Inherited: {n_cols_doc_inherited}
-    Extra Columns Removed: {n_cols_removed}
+    This might be CREATE, UPDATE, SUPERSEDE, etc. In a more advanced approach,
+    we might unify multiple steps under a single operation with sub-operations.
     """
 
-    # TODO: Let user supply a custom arg / config file / csv of strings which we
-    # consider placeholders which are not valid documentation, these are just my own
-    # We may well drop the placeholder concept too. It is just a convenience for refactors
-    placeholders = [
+    file_path: Path
+    content: dict[str, t.Any]
+    superseded_paths: dict[Path, list[ResultNode]] = field(default_factory=dict)
+
+
+@dataclass
+class RestructureDeltaPlan:
+    """Stores all the operations needed to restructure the project."""
+
+    operations: list[RestructureOperation] = field(default_factory=list)
+
+
+@dataclass
+class YamlRefactorSettings:
+    """Settings for yaml based refactoring operations."""
+
+    fqns: list[str] = field(default_factory=list)
+    """Filter models to action via a fully qualified name match such as returned by `dbt ls`."""
+    models: list[str] = field(default_factory=list)
+    """Filter models to action via a file path match."""
+    dry_run: bool = False
+    """Do not write changes to disk."""
+    skip_add_columns: bool = False
+    """Skip adding missing columns in the yaml files."""
+    skip_add_tags: bool = False
+    """Skip appending upstream tags in the yaml files."""
+    skip_add_data_types: bool = False
+    """Skip adding data types in the yaml files."""
+    numeric_precision: bool = False
+    """Include numeric precision in the data type."""
+    char_length: bool = False
+    """Include character length in the data type."""
+    skip_merge_meta: bool = False
+    """Skip merging upstream meta fields in the yaml files."""
+    add_progenitor_to_meta: bool = False
+    """Add a custom progenitor field to the meta section indicating a column's origin."""
+    use_unrendered_descriptions: bool = False
+    """Use unrendered descriptions preserving things like {{ doc(...) }} which are otherwise pre-rendered in the manifest object"""
+    add_inheritance_for_specified_keys: list[str] = field(default_factory=list)
+    """Include additional keys in the inheritance process."""
+    output_to_lower: bool = False
+    """Force column name and data type output to lowercase in the yaml files."""
+    force_inherit_descriptions: bool = False
+    """Force inheritance of descriptions from upstream models, even if node has a valid description."""
+    catalog_path: str | None = None
+    """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
+    create_catalog_if_not_exists: bool = False
+    """Generate the catalog.json for the project if it doesn't exist and use it for introspective queries."""
+
+
+@dataclass
+class YamlRefactorContext:
+    """A data object that includes references to:
+
+    - The dbt project context
+    - The yaml refactor settings
+    - A thread pool executor
+    - A ruamel.yaml instance
+    - A tuple of placeholder strings
+    - The mutation count incremented during refactoring operations
+    """
+
+    project: DbtProjectContext
+    settings: YamlRefactorSettings = field(default_factory=YamlRefactorSettings)
+    pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
+    yaml_handler: ruamel.yaml.YAML = field(default_factory=create_yaml_instance)
+    yaml_handler_lock: threading.Lock = field(default_factory=threading.Lock)
+
+    placeholders: tuple[str, ...] = (
+        EMPTY_STRING,
         "Pending further documentation",
-        "Pending further documentation.",
         "No description for this column",
-        "No description for this column.",
         "Not documented",
-        "Not documented.",
         "Undefined",
-        "Undefined.",
-        "",  # This is the important one
-    ]
+    )
 
-    # NOTE: we use an arbitrarily large TTL since the YAML manager is not
-    # a long-running service which needs to periodically invalidate and refresh
-    ADAPTER_TTL = 1e9
+    _mutation_count: int = field(default=0, init=False)
+    _catalog: CatalogResults | None = field(default=None, init=False)
 
-    def __init__(
-        self,
-        target: Optional[str] = None,
-        profiles_dir: Optional[str] = None,
-        project_dir: Optional[str] = None,
-        catalog_file: Optional[str] = None,
-        threads: Optional[int] = 1,
-        fqn: Optional[str] = None,
-        dry_run: bool = False,
-        models: Optional[List[str]] = None,
-        skip_add_columns: bool = False,
-        skip_add_tags: bool = False,
-        skip_add_data_types: bool = False,
-        numeric_precision: bool = False,
-        char_length: bool = False,
-        skip_merge_meta: bool = False,
-        add_progenitor_to_meta: bool = False,
-        vars: Optional[str] = None,
-        use_unrendered_descriptions: bool = False,
-        profile: Optional[str] = None,
-        add_inheritance_for_specified_keys: Optional[List[str]] = None,
-        output_to_lower: bool = False,
-    ):
-        """Initializes the DbtYamlManager class."""
-        super().__init__(target, profiles_dir, project_dir, threads, vars=vars, profile=profile)
-        self.fqn = fqn
-        self.models = models or []
-        self.dry_run = dry_run
-        self.catalog_file = catalog_file
-        self._catalog: Optional[CatalogArtifact] = None
-        self.skip_add_columns = skip_add_columns
-        self.skip_add_tags = skip_add_tags
-        self.skip_add_data_types = skip_add_data_types
-        self.numeric_precision = numeric_precision
-        self.char_length = char_length
-        self.skip_merge_meta = skip_merge_meta
-        self.add_progenitor_to_meta = add_progenitor_to_meta
-        self.use_unrendered_descriptions = use_unrendered_descriptions
-        self.add_inheritance_for_specified_keys = add_inheritance_for_specified_keys or []
-        self.output_to_lower = output_to_lower
-
-        if len(list(self.filtered_models())) == 0:
-            logger().warning(
-                "No models found to process. Check your filters: --fqn='%s', pos args %s",
-                fqn,
-                models,
-            )
-            logger().info(
-                "Please supply a valid fqn segment if using --fqn or a valid model name, path, or"
-                " subpath if using positional arguments"
-            )
-            exit(0)
-
-        self.mutex = Lock()
-        self.tpe = ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
-        self.mutations = 0
+    def register_mutations(self, count: int) -> None:
+        """Increment the mutation count by a specified amount."""
+        logger.debug(
+            ":sparkles: Registering %s new mutations. Current count => %s",
+            count,
+            self._mutation_count,
+        )
+        self._mutation_count += count
 
     @property
-    def yaml_handler(self):
-        """Returns a cached instance of the YAML handler."""
-        if not hasattr(self, "_yaml_handler"):
-            self._yaml_handler = YamlHandler()
-        return self._yaml_handler
-
-    def column_casing(self, column: str, output_to_lower: bool) -> str:
-        """Converts a column name to the correct casing for the target database."""
-        # leave column name as is if encapsulated by quotes.
-        if self.config.credentials.type == "snowflake" and '"' == column[0] and '"' == column[-1]:
-            return column
-        elif output_to_lower:
-            return column.lower()
-        elif self.config.credentials.type == "snowflake":
-            return column.upper()
-        return column
-
-    def _filter_model_by_fqn(self, node: ManifestNode) -> bool:
-        """Validates a node as being selected.
-
-        Check FQN length
-        Check FQN matches parts
-        """
-        if not self.fqn:
-            return True
-        fqn = self.fqn or ".".join(node.fqn[1:])
-        fqn_parts = fqn.split(".")
-        return len(node.fqn[1:]) >= len(fqn_parts) and all(
-            left == right for left, right in zip(fqn_parts, node.fqn[1:])
-        )
-
-    def _filter_model_by_models(self, node: ManifestNode) -> bool:
-        """Validates a node as being selected.
-
-        Check if the node name matches a model name
-        Check if the node path matches a model path
-        Check if the node path is a child of a model path
-        """
-        for model in self.models:
-            if node.name == model:
-                return True
-            node_path = self.get_node_path(node)
-            inp_path = as_path(model).resolve()
-            if inp_path.is_dir():
-                if node_path and inp_path in node_path.parents:
-                    return True
-            elif inp_path.is_file():
-                if node_path and inp_path == node_path:
-                    return True
-        return False
-
-    def _filter_model(self, node: ManifestNode) -> bool:
-        """Validates a node as being actionable.
-
-        Check if the node is a model
-        Check if the node is a source
-        Check if the node is a model and not ephemeral
-        Check if the node is a model and matches the fqn or models filter if supplied
-        """
-        if self.models:
-            filter_method = self._filter_model_by_models
-        elif self.fqn:
-            filter_method = self._filter_model_by_fqn
-        else:
-            filter_method = lambda _: True  # noqa: E731
-        return (
-            node.resource_type in (NodeType.Model, NodeType.Source)
-            and node.package_name == self.project_name
-            and not (
-                node.resource_type == NodeType.Model and node.config.materialized == "ephemeral"
-            )
-            and filter_method(node)
-        )
-
-    @staticmethod
-    def get_patch_path(node: ManifestNode) -> Optional[Path]:
-        """Returns the patch path for a node if it exists"""
-        if node is not None and node.patch_path:
-            return as_path(node.patch_path.split("://")[-1])
-
-    def filtered_models(
-        self, subset: Optional[MutableMapping[str, ManifestNode]] = None
-    ) -> Iterator[Tuple[str, ManifestNode]]:
-        """Generates an iterator of valid models"""
-        for unique_id, dbt_node in (
-            subset.items()
-            if subset
-            else chain(self.manifest.nodes.items(), self.manifest.sources.items())
-        ):
-            if self._filter_model(dbt_node):
-                yield unique_id, dbt_node
-
-    def get_osmosis_path_spec(self, node: ManifestNode) -> Optional[str]:
-        """Validates a config string.
-
-        If input is a source, we return the resource type str instead
-        """
-        if node.resource_type == NodeType.Source:
-            source_specs = self.config.vars.vars.get("dbt-osmosis", {})
-            source_spec = source_specs.get(node.source_name)
-            if isinstance(source_spec, dict):
-                return source_spec.get("path")
-            else:
-                return source_spec
-        osmosis_spec = node.unrendered_config.get("dbt-osmosis")
-        if not osmosis_spec:
-            raise MissingOsmosisConfig(
-                f"Config not set for model {node.name}, we recommend setting the config at a"
-                " directory level through the `dbt_project.yml`"
-            )
-        try:
-            return osmosis_spec
-        except ValueError as exc:
-            raise InvalidOsmosisConfig(
-                f"Invalid config for model {node.name}: {osmosis_spec}"
-            ) from exc
-
-    def get_node_path(self, node: ManifestNode):
-        """Resolve absolute file path for a manifest node"""
-        return as_path(self.config.project_root, node.original_file_path).resolve()
-
-    def get_schema_path(self, node: ManifestNode) -> Optional[Path]:
-        """Resolve absolute schema file path for a manifest node"""
-        schema_path = None
-        if node.resource_type == NodeType.Model and node.patch_path:
-            schema_path: str = node.patch_path.partition("://")[-1]
-        elif node.resource_type == NodeType.Source:
-            if hasattr(node, "source_name"):
-                schema_path: str = node.path
-        if schema_path:
-            return as_path(self.project_root).joinpath(schema_path)
-
-    def get_target_schema_path(self, node: ManifestNode) -> Path:
-        """Resolve the correct schema yml target based on the dbt-osmosis
-        config for the model / directory
-        """
-        osmosis_path_spec = self.get_osmosis_path_spec(node)
-        if not osmosis_path_spec:
-            # If no config is set, it is a no-op essentially
-            return as_path(self.config.project_root, node.original_file_path)
-        schema = osmosis_path_spec.format(node=node, model=node.name, parent=node.fqn[-2])
-        parts = []
-
-        # Part 1: path from project root to base model directory
-        if node.resource_type == NodeType.Source:
-            parts += [self.config.model_paths[0]]
-        else:
-            parts += [as_path(node.original_file_path).parent]
-
-        # Part 2: path from base model directory to file
-        parts += [schema if schema.endswith((".yml", ".yaml")) else f"{schema}.yml"]
-
-        # Part 3: join parts relative to project root
-        return as_path(self.config.project_root).joinpath(*parts)
-
-    @staticmethod
-    def get_catalog_key(node: ManifestNode) -> CatalogKey:
-        """Returns CatalogKey for a given node."""
-        if node.resource_type == NodeType.Source:
-            return CatalogKey(node.database, node.schema, getattr(node, "identifier", node.name))
-        return CatalogKey(node.database, node.schema, getattr(node, "alias", node.name))
-
-    def get_base_model(self, node: ManifestNode, output_to_lower: bool) -> Dict[str, Any]:
-        """Construct a base model object with model name, column names populated from database"""
-        columns = self.get_columns(self.get_catalog_key(node), output_to_lower)
-        return {
-            "name": node.name,
-            "columns": [{"name": column_name, "description": ""} for column_name in columns],
-        }
-
-    def augment_existing_model(
-        self, documentation: Dict[str, Any], node: ManifestNode, output_to_lower: bool
-    ) -> Dict[str, Any]:
-        """Injects columns from database into existing model if not found"""
-        model_columns: List[str] = [c["name"] for c in documentation.get("columns", [])]
-        database_columns = self.get_columns(self.get_catalog_key(node), output_to_lower)
-        for column in (
-            c for c in database_columns if not any(c.lower() == m.lower() for m in model_columns)
-        ):
-            logger().info(
-                ":syringe: Injecting column %s into dbt schema for %s",
-                self.column_casing(column, output_to_lower),
-                node.unique_id,
-            )
-            documentation.setdefault("columns", []).append(
-                {
-                    "name": self.column_casing(column, output_to_lower),
-                    "description": getattr(column, "description", ""),
-                }
-            )
-        return documentation
-
-    def get_columns(self, catalog_key: CatalogKey, output_to_lower: bool) -> List[str]:
-        """Get all columns in a list for a model"""
-
-        return list(self.get_columns_meta(catalog_key, output_to_lower).keys())
+    def mutation_count(self) -> int:
+        """Read only property to access the mutation count."""
+        return self._mutation_count
 
     @property
-    def catalog(self) -> Optional[CatalogArtifact]:
-        """Get the catalog data from the catalog file
+    def mutated(self) -> bool:
+        """Check if the context has performed any mutations."""
+        has_mutated = self._mutation_count > 0
+        logger.debug(":white_check_mark: Has the context mutated anything? => %s", has_mutated)
+        return has_mutated
 
-        Catalog data is cached in memory to avoid reading and parsing the file multiple times
-        """
-        if self._catalog:
-            return self._catalog
-        if not self.catalog_file:
-            return None
-        file_path = Path(self.catalog_file)
-        if not file_path.exists():
-            return None
-        self._catalog = CatalogArtifact.from_dict(json.loads(file_path.read_text()))
+    @property
+    def source_definitions(self) -> dict[str, t.Any]:
+        """The source definitions from the dbt project config."""
+        c = self.project.config.vars.to_dict()
+        defs = _find_first(
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+        )
+        defs.pop(SKIP_PATTERNS, None)
+        return defs
+
+    @property
+    def skip_patterns(self) -> list[str]:
+        """The column name skip patterns from the dbt project config."""
+        c = self.project.config.vars.to_dict()
+        defs = _find_first(
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+        )
+        return defs.pop(SKIP_PATTERNS, [])
+
+    def read_catalog(self) -> CatalogResults | None:
+        """Read the catalog file if it exists."""
+        logger.debug(":mag: Checking if catalog is already loaded => %s", bool(self._catalog))
+        if not self._catalog:
+            catalog = load_catalog(self.settings)
+            if not catalog and self.settings.create_catalog_if_not_exists:
+                logger.info(
+                    ":bookmark_tabs: No existing catalog found, generating new catalog.json."
+                )
+                catalog = generate_catalog(self.project)
+            self._catalog = catalog
         return self._catalog
 
-    def _get_column_type(self, column: Column) -> str:
-        if (
-            column.is_numeric()
-            and self.numeric_precision
-            or column.is_string()
-            and self.char_length
-        ):
-            return column.data_type
-        return column.dtype
+    def __post_init__(self) -> None:
+        logger.debug(":green_book: Running post-init for YamlRefactorContext.")
+        if EMPTY_STRING not in self.placeholders:
+            self.placeholders = (EMPTY_STRING, *self.placeholders)
 
-    @lru_cache(maxsize=5000)
-    def get_columns_meta(
-        self, catalog_key: CatalogKey, output_to_lower: bool = False
-    ) -> Dict[str, ColumnMetadata]:
-        """Get all columns in a list for a model"""
-        columns = OrderedDict()
-        blacklist = self.config.vars.vars.get("dbt-osmosis", {}).get("_blacklist", [])
-        # If we provide a catalog, we read from it
-        if self.catalog:
-            matching_models_or_sources: List[CatalogTable] = [
-                model_or_source_values
-                for model_or_source, model_or_source_values in dict(
-                    **self.catalog.nodes, **self.catalog.sources
-                ).items()
-                if model_or_source.split(".")[-1] == catalog_key.name
-            ]
-            if matching_models_or_sources:
-                for col in matching_models_or_sources[0].columns.values():
-                    if any(re.match(pattern, col.name) for pattern in blacklist):
-                        continue
-                    columns[self.column_casing(col.name, output_to_lower)] = ColumnMetadata(
-                        name=self.column_casing(col.name, output_to_lower),
-                        type=col.type,
-                        index=col.index,
-                        comment=col.comment,
-                    )
-            else:
-                return columns
 
-        # If we don't provide a catalog we query the warehouse to get the columns
-        else:
-            with self.adapter.connection_named("dbt-osmosis"):
-                table = self.adapter.get_relation(*catalog_key)
+def load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
+    """Load the catalog file if it exists and return a CatalogResults instance."""
+    logger.debug(":mag: Attempting to load catalog from => %s", settings.catalog_path)
+    if not settings.catalog_path:
+        return None
+    fp = Path(settings.catalog_path)
+    if not fp.exists():
+        logger.warning(":warning: Catalog path => %s does not exist.", fp)
+        return None
+    logger.info(":books: Loading existing catalog => %s", fp)
+    return t.cast(CatalogResults, CatalogArtifact.from_dict(json.loads(fp.read_text())))  # pyright: ignore[reportInvalidCast]
 
-                if not table:
-                    logger().info(
-                        ":cross_mark: Relation %s.%s.%s does not exist in target database,"
-                        " cannot resolve columns",
-                        *catalog_key,
-                    )
-                    return columns
-                try:
-                    for c in self.adapter.get_columns_in_relation(table):
-                        if any(re.match(pattern, c.name) for pattern in blacklist):
-                            continue
-                        columns[self.column_casing(c.name, output_to_lower)] = ColumnMetadata(
-                            name=self.column_casing(c.name, output_to_lower),
-                            type=self._get_column_type(c),
-                            index=None,  # type: ignore
-                            comment=getattr(c, "comment", None),
-                        )
-                        if hasattr(c, "flatten"):
-                            for exp in c.flatten():
-                                if any(re.match(pattern, exp.name) for pattern in blacklist):
-                                    continue
-                                columns[self.column_casing(exp.name, output_to_lower)] = (
-                                    ColumnMetadata(
-                                        name=self.column_casing(exp.name, output_to_lower),
-                                        type=self._get_column_type(exp),
-                                        index=None,  # type: ignore
-                                        comment=getattr(exp, "comment", None),
-                                    )
-                                )
-                except Exception as error:
-                    logger().info(
-                        ":cross_mark: Could not resolve relation %s.%s.%s against database"
-                        " active tables during introspective query: %s",
-                        *catalog_key,
-                        str(error),
-                    )
-        return columns
 
-    def bootstrap_sources(self, output_to_lower: bool = False) -> None:
-        """Bootstrap sources from the dbt-osmosis vars config"""
-        performed_disk_mutation = False
-        blacklist = self.config.vars.vars.get("dbt-osmosis", {}).get("_blacklist", [])
-        for source, spec in self.config.vars.vars.get("dbt-osmosis", {}).items():
-            # Skip blacklist
-            if source == "_blacklist":
-                continue
+# NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
+def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
+    """Generate the dbt catalog file for the project."""
+    logger.info(
+        ":books: Generating a new catalog for the project => %s", context.config.project_name
+    )
+    catalogable_nodes = chain(
+        [
+            t.cast(RelationConfig, node)  # pyright: ignore[reportInvalidCast]
+            for node in context.manifest.nodes.values()
+            if node.is_relational and not node.is_ephemeral_model
+        ],
+        [t.cast(RelationConfig, node) for node in context.manifest.sources.values()],  # pyright: ignore[reportInvalidCast]
+    )
+    table, exceptions = context.adapter.get_filtered_catalog(
+        catalogable_nodes,
+        context.manifest.get_used_schemas(),  # pyright: ignore[reportArgumentType]
+    )
 
-            # Parse source config
-            if isinstance(spec, str):
-                schema = source
-                database = self.config.credentials.database
-                path = spec
-            elif isinstance(spec, dict):
-                schema = spec.get("schema", source)
-                database = spec.get("database", self.config.credentials.database)
-                path = spec["path"]
-            else:
-                raise TypeError(
-                    f"Invalid dbt-osmosis var config for source {source}, must be a string or dict"
-                )
+    logger.debug(":mag_right: Building catalog from returned table => %s", table)
+    catalog = Catalog(
+        [dict(zip(table.column_names, map(dbt_utils._coerce_decimal, row))) for row in table]  # pyright: ignore[reportUnknownArgumentType,reportPrivateUsage]
+    )
 
-            # Check if source exists in manifest
-            dbt_node = next(
-                (s for s in self.manifest.sources.values() if s.source_name == source), None
-            )
+    errors: list[str] | None = None
+    if exceptions:
+        errors = [str(e) for e in exceptions]
+        logger.warning(":warning: Exceptions encountered in get_filtered_catalog => %s", errors)
 
-            if not dbt_node:
-                # Create a source file if it doesn't exist
-                osmosis_schema_path = as_path(self.config.project_root).joinpath(
-                    self.config.model_paths[0], path.lstrip(os.sep)
-                )
-                relations = self.adapter.list_relations(
-                    database=database,
-                    schema=schema,
-                )
-                tables = [
-                    {
-                        "name": relation.identifier,
-                        "description": "",
-                        "columns": (
-                            [
-                                {
-                                    "name": self.column_casing(exp.name, output_to_lower),
-                                    "description": getattr(
-                                        exp, "description", getattr(c, "description", "")
-                                    ),
-                                    "data_type": getattr(exp, "dtype", getattr(c, "dtype", "")),
-                                }
-                                for c in self.adapter.get_columns_in_relation(relation)
-                                for exp in [c] + getattr(c, "flatten", lambda: [])()
-                                if not any(re.match(pattern, exp.name) for pattern in blacklist)
-                            ]
-                            if not self.skip_add_columns
-                            else []
-                        ),
-                    }
-                    for relation in relations
-                ]
-                osmosis_schema_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(osmosis_schema_path, "w") as schema_file:
-                    logger().info(
-                        ":syringe: Injecting source %s into dbt project",
-                        source,
-                    )
-                    self.yaml_handler.dump(
-                        {
-                            "version": 2,
-                            "sources": [
-                                {
-                                    "name": source,
-                                    "database": database,
-                                    "schema": schema,
-                                    "tables": tables,
-                                }
-                            ],
-                        },
-                        schema_file,
-                    )
-                    self.mutations += 1
-                performed_disk_mutation = True
+    nodes, sources = catalog.make_unique_id_map(context.manifest)
+    artifact = CatalogArtifact.from_results(  # pyright: ignore[reportAttributeAccessIssue]
+        nodes=nodes,
+        sources=sources,
+        generated_at=datetime.now(timezone.utc),
+        compile_results=None,
+        errors=errors,
+    )
+    artifact_path = Path(context.config.project_target_path, "catalog.json")
+    logger.info(":bookmark_tabs: Writing fresh catalog => %s", artifact_path)
+    artifact.write(str(artifact_path.resolve()))  # Cache it, same as dbt
+    return t.cast(CatalogResults, artifact)
 
-        if performed_disk_mutation:
-            # Reload project to pick up new sources
-            logger().info("...reloading project to pick up new sources")
-            self.safe_parse_project(reinit=True)
 
-    def build_schema_folder_mapping(self, output_to_lower: bool) -> Dict[str, SchemaFileLocation]:
-        """Builds a mapping of models or sources to their existing and target schema file paths"""
+# Basic compile & execute
+# =======================
 
-        # Resolve target nodes
-        self.bootstrap_sources(output_to_lower)
 
-        # Container for output
-        schema_map = {}
-        logger().info("...building project structure mapping in memory")
+def _has_jinja(code: str) -> bool:
+    """Check if a code string contains jinja tokens."""
+    logger.debug(":crystal_ball: Checking if code snippet has Jinja => %s", code[:50] + "...")
+    return any(token in code for token in ("{{", "}}", "{%", "%}", "{#", "#}"))
 
-        # Iterate over models and resolve current path vs declarative target path
-        for unique_id, dbt_node in self.filtered_models():
-            schema_path = self.get_schema_path(dbt_node)
-            osmosis_schema_path = self.get_target_schema_path(dbt_node)
-            schema_map[unique_id] = SchemaFileLocation(
-                target=osmosis_schema_path.resolve(),
-                current=schema_path.resolve() if schema_path else None,
-                node_type=dbt_node.resource_type,
-            )
 
-        return schema_map
+def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNode:
+    """Compile jinja SQL using the context's manifest and adapter."""
+    logger.info(":zap: Compiling SQL code. Possibly with jinja => %s", raw_sql[:75] + "...")
+    tmp_id = str(uuid.uuid4())
+    with context.manifest_mutex:
+        key = f"{NodeType.SqlOperation}.{context.config.project_name}.{tmp_id}"
+        _ = context.manifest.nodes.pop(key, None)
 
-    def _draft(
-        self,
-        schema_file: SchemaFileLocation,
-        unique_id: str,
-        blueprint: dict,
-        output_to_lower: bool,
-    ) -> None:
-        try:
-            with self.mutex:
-                blueprint.setdefault(
-                    schema_file.target,
-                    SchemaFileMigration(
-                        output={"version": 2, "models": [], "sources": []}, supersede={}
-                    ),
-                )
-            if schema_file.node_type == NodeType.Model:
-                node = self.manifest.nodes[unique_id]
-            elif schema_file.node_type == NodeType.Source:
-                node = self.manifest.sources[unique_id]
-            else:
-                return
-            if schema_file.current is None:
-                # Bootstrapping undocumented NodeType.Model
-                # NodeType.Source files are guaranteed to exist by this point
-                with self.mutex:
-                    assert schema_file.node_type == NodeType.Model
-                    blueprint[schema_file.target].output["models"].append(
-                        self.get_base_model(node, output_to_lower)
-                    )
-            else:
-                # Sanity check that the file exists before we try to load it, this should never be false
-                assert schema_file.current.exists(), f"File {schema_file.current} does not exist"
-                # Model/Source Is Documented but Must be Migrated
-                with self.mutex:
-                    schema = self.yaml_handler.load(schema_file.current)
-                models_in_file: Sequence[Dict[str, Any]] = schema.get("models", [])
-                sources_in_file: Sequence[Dict[str, Any]] = schema.get("sources", [])
-                for documented_model in (
-                    model for model in models_in_file if model["name"] == node.name
-                ):
-                    # Augment Documented Model
-                    augmented_model = self.augment_existing_model(
-                        documented_model, node, output_to_lower
-                    )
-                    with self.mutex:
-                        blueprint[schema_file.target].output["models"].append(augmented_model)
-                        # Target to supersede current
-                        blueprint[schema_file.target].supersede.setdefault(
-                            schema_file.current, []
-                        ).append(node)
-                    break
-                for documented_model, i in (
-                    (table, j)
-                    for j, source in enumerate(sources_in_file)
-                    if source["name"] == node.source_name
-                    for table in source["tables"]
-                    if table["name"] == node.name
-                ):
-                    # Augment Documented Source
-                    augmented_model = self.augment_existing_model(
-                        documented_model, node, output_to_lower
-                    )
-                    with self.mutex:
-                        if not any(
-                            s["name"] == node.source_name
-                            for s in blueprint[schema_file.target].output["sources"]
-                        ):
-                            # Add the source if it doesn't exist in the blueprint
-                            blueprint[schema_file.target].output["sources"].append(
-                                sources_in_file[i]
-                            )
-                        # Find source in blueprint
-                        for src in blueprint[schema_file.target].output["sources"]:
-                            if src["name"] == node.source_name:
-                                # Find table in blueprint
-                                for tbl in src["tables"]:
-                                    if tbl["name"] == node.name:
-                                        # Augment table
-                                        tbl = augmented_model
-                                        break
-                                break
-                        else:
-                            # This should never happen
-                            raise RuntimeError(f"Source {node.source_name} not found in blueprint?")
-                        # Target to supersede current
-                        blueprint[schema_file.target].supersede.setdefault(
-                            schema_file.current, []
-                        ).append(node)
-                    break
+        node = context.sql_parser.parse_remote(raw_sql, tmp_id)
+        if not _has_jinja(raw_sql):
+            logger.debug(":scroll: No jinja found in the raw SQL, skipping compile steps.")
+            return node
+        process_node(context.config, context.manifest, node)
+        compiled_node = SqlCompileRunner(
+            context.config,
+            context.adapter,
+            node=node,
+            node_index=1,
+            num_nodes=1,
+        ).compile(context.manifest)
 
-        except Exception as e:
-            with self.mutex:
-                logger().error(
-                    "Failed to draft project structure update plan for %s: %s", unique_id, e
-                )
-            raise e
+        _ = context.manifest.nodes.pop(key, None)
 
-    def draft_project_structure_update_plan(
-        self, output_to_lower: bool = False
-    ) -> Dict[Path, SchemaFileMigration]:
-        """Build project structure update plan based on `dbt-osmosis:` configs set across
-        dbt_project.yml and model files. The update plan includes injection of undocumented models.
-        Unless this plan is constructed and executed by the `commit_project_restructure` function,
-        dbt-osmosis will only operate on models it is aware of through the existing documentation.
+    logger.info(":sparkles: Compilation complete.")
+    return compiled_node
 
-        Returns:
-            MutableMapping: Update plan where dict keys consist of targets and contents consist of
-                outputs which match the contents of the `models` to be output in the
-            target file and supersede lists of what files are superseded by a migration
-        """
 
-        # Container for output
-        blueprint: Dict[Path, SchemaFileMigration] = {}
-        logger().info(
-            ":chart_increasing: Searching project stucture for required updates and building action"
-            " plan"
+def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterResponse, Table]:
+    """Execute jinja SQL using the context's manifest and adapter."""
+    logger.info(":running: Attempting to execute SQL => %s", raw_sql[:75] + "...")
+    if _has_jinja(raw_sql):
+        comp = compile_sql_code(context, raw_sql)
+        sql_to_exec = comp.compiled_code or comp.raw_code
+    else:
+        sql_to_exec = raw_sql
+
+    resp, table = context.adapter.execute(sql_to_exec, auto_begin=False, fetch=True)
+    logger.info(":white_check_mark: SQL execution complete => %s rows returned.", len(table.rows))  # pyright: ignore[reportUnknownArgumentType]
+    return resp, table
+
+
+# Node filtering
+# ==============
+
+
+def _is_fqn_match(node: ResultNode, fqns: list[str]) -> bool:
+    """Filter models based on the provided fully qualified name matching on partial segments."""
+    logger.debug(":mag_right: Checking if node => %s matches any FQNs => %s", node.unique_id, fqns)
+    for fqn_str in fqns:
+        parts = fqn_str.split(".")
+        segment_match = len(node.fqn[1:]) >= len(parts) and all(
+            left == right for left, right in zip(parts, node.fqn[1:])
         )
-        futs = []
-        with self.adapter.connection_named("dbt-osmosis"):
-            for unique_id, schema_file in self.build_schema_folder_mapping(output_to_lower).items():
-                if not schema_file.is_valid:
-                    futs.append(
-                        self.tpe.submit(
-                            self._draft, schema_file, unique_id, blueprint, output_to_lower
-                        )
-                    )
-            wait(futs)
-        return blueprint
+        if segment_match:
+            logger.debug(":white_check_mark: FQN matched => %s", fqn_str)
+            return True
+    return False
 
-    def cleanup_blueprint(self, blueprint: dict) -> None:
-        with self.mutex:
-            for k in list(blueprint.keys()):
-                # Remove if sources or models are empty
-                if blueprint[k].output.get("sources", None) == []:
-                    del blueprint[k].output["sources"]
-                if blueprint[k].output.get("models", None) == []:
-                    del blueprint[k].output["models"]
-        return blueprint
 
-    def commit_project_restructure_to_disk(
-        self,
-        blueprint: Optional[Dict[Path, SchemaFileMigration]] = None,
-        output_to_lower: bool = False,
-    ) -> bool:
-        """Given a project restrucure plan of pathlib Paths to a mapping of output and supersedes
-        which is in itself a mapping of Paths to model names, commit changes to filesystem to
-        conform project to defined structure as code fully or partially superseding existing models
-        as needed.
+def _is_file_match(node: ResultNode, paths: list[str]) -> bool:
+    """Check if a node's file path matches any of the provided file paths or names."""
+    node_path = _get_node_path(node)
+    for model in paths:
+        if node.name == model:
+            logger.debug(":white_check_mark: Name match => %s", model)
+            return True
+        try_path = Path(model).resolve()
+        if try_path.is_dir():
+            if node_path and try_path in node_path.parents:
+                logger.debug(":white_check_mark: Directory path match => %s", model)
+                return True
+        elif try_path.is_file():
+            if node_path and try_path == node_path:
+                logger.debug(":white_check_mark: File path match => %s", model)
+                return True
+    return False
 
-        Args:
-            blueprint (Dict[Path, SchemaFileMigration]): Project restructure plan as typically
-                created by `build_project_structure_update_plan`
-            output_to_lower (bool): Set column casing to lowercase.
 
-        Returns:
-            bool: True if the project was restructured, False if no action was required
-        """
+def _get_node_path(node: ResultNode) -> Path | None:
+    """Return the path to the node's original file if available."""
+    if node.original_file_path and hasattr(node, "root_path"):
+        path = Path(getattr(node, "root_path"), node.original_file_path).resolve()
+        logger.debug(":file_folder: Resolved node path => %s", path)
+        return path
+    return None
 
-        # Build blueprint if not user supplied
-        if not blueprint:
-            blueprint = self.draft_project_structure_update_plan(output_to_lower)
 
-        blueprint = self.cleanup_blueprint(blueprint)
+def filter_models(
+    context: YamlRefactorContext,
+) -> Iterator[tuple[str, ResultNode]]:
+    """Iterate over the models in the dbt project manifest applying the filter settings."""
+    logger.debug(
+        ":mag: Filtering nodes (models/sources/seeds) with user-specified settings => %s",
+        context.settings,
+    )
 
-        # Verify we have actions in the plan
-        if not blueprint:
-            logger().info(":1st_place_medal: Project structure approved")
+    def f(node: ResultNode) -> bool:
+        """Closure to filter models based on the context settings."""
+        if node.resource_type not in (NodeType.Model, NodeType.Source, NodeType.Seed):
             return False
-
-        # Print plan for user auditability
-        self.pretty_print_restructure_plan(blueprint)
-
-        logger().info(
-            ":construction_worker: Executing action plan and conforming projecting schemas to"
-            " defined structure"
-        )
-        for target, structure in blueprint.items():
-            if not target.exists():
-                # Build File
-                logger().info(":construction: Building schema file %s", target.name)
-                if not self.dry_run:
-                    target.parent.mkdir(exist_ok=True, parents=True)
-                    target.touch()
-                    self.yaml_handler.dump(structure.output, target)
-                    self.mutations += 1
-
-            else:
-                # Update File
-                logger().info(":toolbox: Updating schema file %s", target.name)
-                target_schema: Optional[Dict[str, Any]] = self.yaml_handler.load(target)
-                # Add version if not present
-                if not target_schema:
-                    target_schema = {"version": 2}
-                elif "version" not in target_schema:
-                    target_schema["version"] = 2
-                # Add models and sources (if available) to target schema
-                if structure.output["models"]:
-                    target_schema.setdefault("models", []).extend(structure.output["models"])
-                if structure.output.get("sources") is not None:
-                    target_schema.setdefault("sources", []).extend(structure.output["sources"])
-                if not self.dry_run:
-                    self.yaml_handler.dump(target_schema, target)
-                    self.mutations += 1
-
-            # Clean superseded schema files
-            for dir, nodes in structure.supersede.items():
-                raw_schema: Dict[str, Any] = self.yaml_handler.load(dir)
-                # Gather models and sources marked for superseding
-                models_marked_for_superseding = set(
-                    node.name for node in nodes if node.resource_type == NodeType.Model
-                )
-                sources_marked_for_superseding = set(
-                    (node.source_name, node.name)
-                    for node in nodes
-                    if node.resource_type == NodeType.Source
-                )
-                # Gather models and sources in schema file
-                models_in_schema = set(m["name"] for m in raw_schema.get("models", []))
-                sources_in_schema = set(
-                    (s["name"], t["name"])
-                    for s in raw_schema.get("sources", [])
-                    for t in s.get("tables", [])
-                )
-                # Set difference to determine non-superseded models and sources
-                non_superseded_models = models_in_schema - models_marked_for_superseding
-                non_superseded_sources = sources_in_schema - sources_marked_for_superseding
-                if len(non_superseded_models) + len(non_superseded_sources) == 0:
-                    logger().info(":rocket: Superseded schema file %s", dir.name)
-                    if not self.dry_run:
-                        dir.unlink(missing_ok=True)
-                        if len(list(dir.parent.iterdir())) == 0:
-                            dir.parent.rmdir()
-                else:
-                    # Preserve non-superseded models
-                    preserved_models = []
-                    for model in raw_schema.get("models", []):
-                        if model["name"] in non_superseded_models:
-                            preserved_models.append(model)
-                    raw_schema["models"] = preserved_models
-                    # Preserve non-superseded sources
-                    ix = []
-                    for i, source in enumerate(raw_schema.get("sources", [])):
-                        for j, table in enumerate(source.get("tables", [])):
-                            if (source["name"], table["name"]) not in non_superseded_sources:
-                                ix.append((i, j))
-                    for i, j in reversed(ix):
-                        raw_schema["sources"][i]["tables"].pop(j)
-                    ix = []
-                    for i, source in enumerate(raw_schema.get("sources", [])):
-                        if not source["tables"]:
-                            ix.append(i)
-                    for i in reversed(ix):
-                        if not raw_schema["sources"][i]["tables"]:
-                            raw_schema["sources"].pop(i)
-                    if not self.dry_run:
-                        self.yaml_handler.dump(raw_schema, dir)
-                        self.mutations += 1
-                    logger().info(
-                        ":satellite: Model documentation migrated from %s to %s",
-                        dir.name,
-                        target.name,
-                    )
+        if node.package_name != context.project.config.project_name:
+            return False
+        if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
+            return False
+        if context.settings.models:
+            if not _is_file_match(node, context.settings.models):
+                return False
+        if context.settings.fqns:
+            if not _is_fqn_match(node, context.settings.fqns):
+                return False
+        logger.debug(":white_check_mark: Node => %s passed filtering logic.", node.unique_id)
         return True
 
-    @staticmethod
-    def pretty_print_restructure_plan(blueprint: Dict[Path, SchemaFileMigration]) -> None:
-        logger().info(
-            list(
-                map(
-                    lambda plan: (
-                        [s.name for s in blueprint[plan].supersede] or "CREATE",
-                        "->",
-                        plan,
-                    ),
-                    blueprint.keys(),
-                )
-            )
-        )
+    items = chain(context.project.manifest.nodes.items(), context.project.manifest.sources.items())
+    for uid, dbt_node in items:
+        if f(dbt_node):
+            yield uid, dbt_node
 
-    @staticmethod
-    def get_column_sets(
-        database_columns: Iterable[str],
-        yaml_columns: Iterable[str],
-        documented_columns: Iterable[str],
-    ) -> Tuple[List[str], List[str], List[str]]:
-        """Returns:
-        missing_columns: Columns in database not in dbt -- will be injected into schema file
-        undocumented_columns: Columns missing documentation -- descriptions will be inherited and
-            injected into schema file where prior knowledge exists
-        extra_columns: Columns in schema file not in database -- will be removed from schema file
-        """
-        missing_columns = [
-            x for x in database_columns if x.lower() not in (y.lower() for y in yaml_columns)
-        ]
-        undocumented_columns = [
-            x for x in database_columns if x.lower() not in (y.lower() for y in documented_columns)
-        ]
-        extra_columns = [
-            x for x in yaml_columns if x.lower() not in (y.lower() for y in database_columns)
-        ]
-        return missing_columns, undocumented_columns, extra_columns
 
-    def _run(
-        self,
-        unique_id: str,
-        node: ManifestNode,
-        schema_map: Dict[str, SchemaFileLocation],
-        force_inheritance: bool = False,
-        output_to_lower: bool = False,
+# Introspection
+# =============
+
+
+@t.overload
+def _find_first(coll: Iterable[T], predicate: t.Callable[[T], bool], default: T) -> T: ...
+
+
+@t.overload
+def _find_first(
+    coll: Iterable[T], predicate: t.Callable[[T], bool], default: None = ...
+) -> T | None: ...
+
+
+def _find_first(
+    coll: Iterable[T], predicate: t.Callable[[T], bool], default: T | None = None
+) -> T | None:
+    """Find the first item in a container that satisfies a predicate."""
+    for item in coll:
+        if predicate(item):
+            return item
+    return default
+
+
+def normalize_column_name(column: str, credentials_type: str) -> str:
+    """Apply case normalization to a column name based on the credentials type."""
+    if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
+        logger.debug(":snowflake: Column name found with double-quotes => %s", column)
+        return column.strip('"')
+    if credentials_type == "snowflake":
+        return column.upper()
+    return column
+
+
+def _maybe_use_precise_dtype(col: BaseColumn, settings: YamlRefactorSettings) -> str:
+    """Use the precise data type if enabled in the settings."""
+    if (col.is_numeric() and settings.numeric_precision) or (
+        col.is_string() and settings.char_length
     ):
-        try:
-            with self.mutex:
-                logger().info(":point_right: Processing model: [bold]%s[/bold]", unique_id)
-            # Get schema file path, must exist to propagate documentation
-            schema_path: Optional[SchemaFileLocation] = schema_map.get(unique_id)
-            if schema_path is None or schema_path.current is None:
-                with self.mutex:
-                    logger().info(
-                        ":bow: No valid schema file found for model %s", unique_id
-                    )  # We can't take action
-                    return
+        logger.debug(":ruler: Using precise data type => %s", col.data_type)
+        return col.data_type
+    return col.dtype
 
-            # Build Sets
-            logger().info(":mag: Resolving columns in database")
-            database_columns_ordered = self.get_columns(self.get_catalog_key(node), output_to_lower)
-            columns_db_meta = self.get_columns_meta(self.get_catalog_key(node), output_to_lower)
-            database_columns: Set[str] = set(database_columns_ordered)
-            yaml_columns_ordered = [column for column in node.columns]
-            yaml_columns: Set[str] = set(yaml_columns_ordered)
 
-            if not database_columns:
-                with self.mutex:
-                    logger().info(
-                        ":safety_vest: Unable to resolve columns in database, falling back to"
-                        " using yaml columns as base column set for model %s",
-                        unique_id,
-                    )
-                database_columns_ordered = yaml_columns_ordered
-                database_columns = yaml_columns
+def get_table_ref(node: ResultNode | BaseRelation) -> TableRef:
+    """Make an appropriate table ref for a dbt node or relation."""
+    if isinstance(node, BaseRelation):
+        assert node.schema, "Schema must be set for a BaseRelation to generate a TableRef"
+        assert node.identifier, "Identifier must be set for a BaseRelation to generate a TableRef"
+        return TableRef(node.database, node.schema, node.identifier)
+    elif node.resource_type == NodeType.Source:
+        return TableRef(node.database, node.schema, node.identifier or node.name)
+    else:
+        return TableRef(node.database, node.schema, node.name)
 
-            # Get documentated columns
-            documented_columns: Set[str] = set(
-                column
-                for column, info in node.columns.items()
-                if info.description and info.description not in self.placeholders
+
+_COLUMN_LIST_CACHE = {}
+"""Cache for column lists to avoid redundant introspection."""
+
+
+def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, ColumnMetadata]:
+    """Equivalent to get_columns_meta in old code but directly referencing a key, not a node."""
+    if ref in _COLUMN_LIST_CACHE:
+        logger.debug(":blue_book: Column list cache HIT => %s", ref)
+        return _COLUMN_LIST_CACHE[ref]
+
+    logger.info(":mag_right: Collecting columns for table => %s", ref)
+    normalized_cols = OrderedDict()
+    offset = 0
+
+    def process_column(col: BaseColumn | ColumnMetadata):
+        nonlocal offset
+        if any(re.match(b, col.name) for b in context.skip_patterns):
+            logger.debug(
+                ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
             )
-
-            # Queue
-            missing_columns, undocumented_columns, extra_columns = self.get_column_sets(
-                database_columns, yaml_columns, documented_columns
+            return
+        normalized = normalize_column_name(col.name, context.project.config.credentials.type)
+        if not isinstance(col, ColumnMetadata):
+            dtype = _maybe_use_precise_dtype(col, context.settings)
+            col = ColumnMetadata(
+                name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
             )
+        normalized_cols[normalized] = col
+        offset += 1
+        if hasattr(col, "flatten"):
+            for struct_field in t.cast(Iterable[BaseColumn], getattr(col, "flatten")()):
+                process_column(struct_field)
 
-            if force_inheritance:
-                # Consider all columns "undocumented" so that inheritance is not selective
-                undocumented_columns = database_columns
+    if catalog := context.read_catalog():
+        logger.debug(":blue_book: Catalog found => Checking for ref => %s", ref)
+        catalog_entry = _find_first(
+            chain(catalog.nodes.values(), catalog.sources.values()), lambda c: c.key() == ref
+        )
+        if catalog_entry:
+            logger.info(":books: Found catalog entry for => %s. Using it to process columns.", ref)
+            for column in catalog_entry.columns.values():
+                process_column(column)
+            return normalized_cols
 
-            # Engage
-            n_cols_added = 0
-            n_cols_doc_inherited = 0
-            n_cols_removed = 0
-            n_cols_data_type_changed = 0
-            n_cols_description_changed = 0
+    relation: BaseRelation | None = context.project.adapter.get_relation(*ref)
+    if relation is None:
+        logger.warning(":warning: No relation found => %s", ref)
+        return normalized_cols
 
-            with self.mutex:
-                schema_file = self.yaml_handler.load(schema_path.current)
-                section = self.maybe_get_section_from_schema_file(schema_file, node)
-                if section is None:  # If we can't find the section, we can't take action
-                    logger().info(":thumbs_up: No actions needed for %s", node.unique_id)
-                    return
+    try:
+        logger.info(":mag: Introspecting columns in warehouse for => %s", relation)
+        for column in t.cast(
+            Iterable[BaseColumn], context.project.adapter.get_columns_in_relation(relation)
+        ):
+            process_column(column)
+    except Exception as ex:
+        logger.warning(":warning: Could not introspect columns for %s: %s", ref, ex)
 
-                should_dump = False
-                (
-                    n_cols_added,
-                    n_cols_doc_inherited,
-                    n_cols_removed,
-                    n_cols_data_type_changed,
-                    n_cols_description_changed,
-                ) = (0, 0, 0, 0, 0)
-                if len(missing_columns) > 0 or len(undocumented_columns) or len(extra_columns) > 0:
-                    # Update schema file
-                    (
-                        n_cols_added,
-                        n_cols_doc_inherited,
-                        n_cols_removed,
-                        n_cols_data_type_changed,
-                        n_cols_description_changed,
-                    ) = self.update_schema_file_and_node(
-                        missing_columns,
-                        undocumented_columns,
-                        extra_columns,
-                        node,
-                        section,
-                        columns_db_meta,
-                        output_to_lower,
-                    )
-                if (
-                    n_cols_added
-                    + n_cols_doc_inherited
-                    + n_cols_removed
-                    + n_cols_data_type_changed
-                    + n_cols_description_changed
-                    > 0
-                ):
-                    should_dump = True
-                if tuple(database_columns_ordered) != tuple(yaml_columns_ordered):
-                    # Sort columns in schema file to match database
-                    logger().info(
-                        ":wrench: Reordering columns in schema file for model %s", unique_id
-                    )
+    _COLUMN_LIST_CACHE[ref] = normalized_cols
+    return normalized_cols
 
-                    last_ix: int = int(
-                        1e6
-                    )  # Arbitrary starting value which increments, ensuring sort order
 
-                    def _sort_columns(column_info: dict) -> int:
-                        nonlocal last_ix
-                        try:
-                            normalized_name = self.column_casing(
-                                column_info["name"], output_to_lower
-                            )
-                            return database_columns_ordered.index(normalized_name)
-                        except IndexError:
-                            last_ix += 1
-                            return last_ix
+# Restructuring Logic
+# ===================
 
-                    section["columns"].sort(key=_sort_columns)
-                    should_dump = True
-                if should_dump and not self.dry_run:
-                    # Dump the mutated schema file back to the disk
-                    self.yaml_handler.dump(schema_file, schema_path.current)
-                    self.mutations += 1
-                    logger().info(
-                        ":sparkles: Schema file %s updated",
-                        schema_path.current,
-                    )
-                else:
-                    logger().info(
-                        ":sparkles: Schema file is up to date for model %s",
-                        unique_id,
-                    )
 
-            # Print Audit Report
-            n_cols = float(len(database_columns))
-            n_cols_documented = float(len(documented_columns)) + n_cols_doc_inherited
-            perc_coverage = (
-                min(100.0 * round(n_cols_documented / n_cols, 3), 100.0)
-                if n_cols > 0
-                else "Unable to Determine"
+def create_missing_source_yamls(context: YamlRefactorContext) -> None:
+    """Create source files for sources defined in the dbt_project.yml dbt-osmosis var which don't exist as nodes.
+
+    This is a useful preprocessing step to ensure that all sources are represented in the dbt project manifest. We
+    do not have rich node information for non-existent sources, hence the alternative codepath here to bootstrap them.
+    """
+    logger.info(":factory: Creating missing source YAMLs (if any).")
+    database: str = context.project.config.credentials.database
+
+    did_side_effect: bool = False
+    for source, spec in context.source_definitions.items():
+        if isinstance(spec, str):
+            schema = source
+            src_yaml_path = spec
+        elif isinstance(spec, dict):
+            database = t.cast(str, spec.get("database", database))
+            schema = t.cast(str, spec.get("schema", source))
+            src_yaml_path = t.cast(str, spec["path"])
+        else:
+            continue
+
+        if _find_first(
+            context.project.manifest.sources.values(), lambda s: s.source_name == source
+        ):
+            logger.debug(
+                ":white_check_mark: Source => %s already exists in the manifest, skipping creation.",
+                source,
             )
-            if logger().level <= 10:
-                with self.mutex:
-                    logger().debug(
-                        self.audit_report.format(
-                            database=node.database,
-                            schema=node.schema,
-                            table=node.name,
-                            total_columns=n_cols,
-                            n_cols_added=n_cols_added,
-                            n_cols_doc_inherited=n_cols_doc_inherited,
-                            n_cols_removed=n_cols_removed,
-                            coverage=perc_coverage,
-                        )
-                    )
-        except Exception as e:
-            with self.mutex:
-                logger().error("Error occurred while processing model %s: %s", unique_id, e)
-            raise e
+            continue
 
-    def propagate_documentation_downstream(
-        self, force_inheritance: bool = False, output_to_lower: bool = False
-    ) -> None:
-        schema_map = self.build_schema_folder_mapping(output_to_lower)
-        futs = []
-        with self.adapter.connection_named("dbt-osmosis"):
-            for unique_id, node in self.filtered_models():
-                futs.append(
-                    self.tpe.submit(
-                        self._run, unique_id, node, schema_map, force_inheritance, output_to_lower
-                    )
-                )
-            wait(futs)
+        src_yaml_path = Path(
+            context.project.config.project_root,
+            context.project.config.model_paths[0],
+            src_yaml_path.lstrip(os.sep),
+        )
 
-    @staticmethod
-    def remove_columns_not_in_database(
-        extra_columns: Iterable[str],
-        node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
-    ) -> int:
-        """Removes columns found in dbt model that do not exist in database from both node
-        and model simultaneously
-        THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
-        changes_committed = 0
-        for column in extra_columns:
-            node.columns.pop(column, None)
-            yaml_file_model_section["columns"] = [
-                c for c in yaml_file_model_section["columns"] if c["name"] != column
-            ]
-            changes_committed += 1
-            logger().info(
-                ":wrench: Removing column %s from dbt schema for model %s", column, node.unique_id
-            )
-        return changes_committed
-
-    def update_columns_attribute(
-        self,
-        node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
-        attribute_name: str,
-        meta_key: str,
-        skip_attribute_update: Any,
-        output_to_lower: bool = False,
-    ) -> int:
-        changes_committed = 0
-        if (skip_attribute_update is True) or (skip_attribute_update is None):
-            return changes_committed
-        for column in columns_db_meta:
-            cased_column_name = self.column_casing(column, output_to_lower)
-            if cased_column_name in node.columns:
-                column_meta_obj = columns_db_meta.get(cased_column_name)
-                if column_meta_obj:
-                    column_meta = getattr(column_meta_obj, meta_key, "")
-                    if column_meta is None:
-                        column_meta = ""
-                    current_value = getattr(node.columns[cased_column_name], attribute_name, "")
-                    if current_value == column_meta:
-                        continue
-                    setattr(node.columns[cased_column_name], attribute_name, column_meta)
-                    for model_column in yaml_file_model_section["columns"]:
-                        if (
-                            self.column_casing(model_column["name"], output_to_lower)
-                            == cased_column_name
-                        ):
-                            if output_to_lower:
-                                model_column.update({attribute_name: column_meta.lower()})
-                            else:
-                                model_column.update({attribute_name: column_meta})
-                            changes_committed += 1
-        return changes_committed
-
-    @staticmethod
-    def add_missing_cols_to_node_and_model(
-        missing_columns: Iterable,
-        node: ManifestNode,
-        yaml_file_model_section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
-        output_to_lower: bool,
-    ) -> int:
-        """Add missing columns to node and model simultaneously
-        THIS MUTATES THE NODE AND MODEL OBJECTS so that state is always accurate"""
-        changes_committed = 0
-        for column in missing_columns:
-            if output_to_lower:
-                node.columns[column] = ColumnInfo.from_dict(
+        def _describe(rel: BaseRelation) -> dict[str, t.Any]:
+            return {
+                "name": rel.identifier,
+                "description": "",
+                "columns": [
                     {
-                        "name": column.lower(),
-                        "description": columns_db_meta[column].comment or "",
-                        "data_type": columns_db_meta[column].type.lower(),
+                        "name": name,
+                        "description": meta.comment or "",
+                        "data_type": meta.type.lower()
+                        if context.settings.output_to_lower
+                        else meta.type,
                     }
-                )
-                yaml_file_model_section.setdefault("columns", []).append(
-                    {
-                        "name": column.lower(),
-                        "description": columns_db_meta[column].comment or "",
-                        "data_type": columns_db_meta[column].type.lower(),
-                    }
-                )
+                    for name, meta in get_columns(context, get_table_ref(rel)).items()
+                ],
+            }
+
+        tables = [
+            schema
+            for schema in context.pool.map(
+                _describe,
+                context.project.adapter.list_relations(database=database, schema=schema),
+            )
+        ]
+        source = {"name": source, "database": database, "schema": schema, "tables": tables}
+
+        src_yaml_path.parent.mkdir(parents=True, exist_ok=True)
+        with src_yaml_path.open("w") as f:
+            logger.info(":books: Injecting new source => %s => %s", source["name"], src_yaml_path)
+            context.yaml_handler.dump({"version": 2, "sources": [source]}, f)
+            context.register_mutations(1)
+
+        did_side_effect = True
+
+    if did_side_effect:
+        logger.info(
+            ":arrows_counterclockwise: Some new sources were created, reloading the project."
+        )
+        reload_manifest(context.project)
+
+
+class MissingOsmosisConfig(Exception):
+    """Raised when an osmosis configuration is missing."""
+
+
+def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> str | None:
+    """Get the yaml path template for a dbt model or source node."""
+    if node.resource_type == NodeType.Source:
+        def_or_path = context.source_definitions.get(node.source_name)
+        if isinstance(def_or_path, dict):
+            return def_or_path.get("path")
+        return def_or_path
+    conf = [
+        c.get(k)
+        for k in ("dbt-osmosis", "dbt_osmosis")
+        for c in (node.config.extra, node.unrendered_config)
+    ]
+    path_template = _find_first(t.cast(list[str | None], conf), lambda v: v is not None)
+    if not path_template:
+        raise MissingOsmosisConfig(
+            f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
+        )
+    logger.debug(":gear: Resolved YAML path template => %s", path_template)
+    return path_template
+
+
+def get_current_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path | None:
+    """Get the current yaml path for a dbt model or source node."""
+    if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
+        path = Path(context.project.config.project_root).joinpath(
+            t.cast(str, node.patch_path).partition("://")[-1]
+        )
+        logger.debug(":page_facing_up: Current YAML path => %s", path)
+        return path
+    if node.resource_type == NodeType.Source:
+        path = Path(context.project.config.project_root, node.path)
+        logger.debug(":page_facing_up: Current YAML path => %s", path)
+        return path
+    return None
+
+
+def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path:
+    """Get the target yaml path for a dbt model or source node."""
+    tpl = _get_yaml_path_template(context, node)
+    if not tpl:
+        logger.warning(":warning: No path template found for => %s", node.unique_id)
+        return Path(context.project.config.project_root, node.original_file_path)
+
+    rendered = tpl.format(node=node, model=node.name, parent=node.fqn[-2])
+    segments: list[Path | str] = []
+
+    if node.resource_type == NodeType.Source:
+        segments.append(context.project.config.model_paths[0])
+    else:
+        segments.append(Path(node.original_file_path).parent)
+
+    if not (rendered.endswith(".yml") or rendered.endswith(".yaml")):
+        rendered += ".yml"
+    segments.append(rendered)
+
+    path = Path(context.project.config.project_root, *segments)
+    logger.debug(":star2: Target YAML path => %s", path)
+    return path
+
+
+def build_yaml_file_mapping(
+    context: YamlRefactorContext, create_missing_sources: bool = False
+) -> dict[str, SchemaFileLocation]:
+    """Build a mapping of dbt model and source nodes to their current and target yaml paths."""
+    logger.info(
+        ":globe_with_meridians: Building YAML file mapping. create_missing_sources => %s",
+        create_missing_sources,
+    )
+
+    if create_missing_sources:
+        create_missing_source_yamls(context)
+
+    out_map: dict[str, SchemaFileLocation] = {}
+    for uid, node in filter_models(context):
+        current_path = get_current_yaml_path(context, node)
+        out_map[uid] = SchemaFileLocation(
+            target=get_target_yaml_path(context, node).resolve(),
+            current=current_path.resolve() if current_path else None,
+            node_type=node.resource_type,
+        )
+
+    logger.debug(":card_index_dividers: Built YAML file mapping => %s", out_map)
+    return out_map
+
+
+_YAML_BUFFER_CACHE: dict[Path, t.Any] = {}
+"""Cache for yaml file buffers to avoid redundant disk reads/writes and simplify edits."""
+
+
+def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
+    """Read a yaml file from disk. Adds an entry to the buffer cache so all operations on a path are consistent."""
+    if path not in _YAML_BUFFER_CACHE:
+        if not path.is_file():
+            logger.debug(":warning: Path => %s is not a file. Returning empty doc.", path)
+            return {}
+        logger.debug(":open_file_folder: Reading YAML doc => %s", path)
+        with context.yaml_handler_lock:
+            _YAML_BUFFER_CACHE[path] = t.cast(dict[str, t.Any], context.yaml_handler.load(path))
+    return _YAML_BUFFER_CACHE[path]
+
+
+def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]) -> None:
+    """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache."""
+    logger.debug(":page_with_curl: Attempting to write YAML to => %s", path)
+    if not context.settings.dry_run:
+        with context.yaml_handler_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            original = path.read_bytes() if path.is_file() else b""
+            context.yaml_handler.dump(data, staging := io.BytesIO())
+            modified = staging.getvalue()
+            if modified != original:
+                logger.info(":writing_hand: Writing changes to => %s", path)
+                with path.open("wb") as f:
+                    _ = f.write(modified)
+                    context.register_mutations(1)
             else:
-                node.columns[column] = ColumnInfo.from_dict(
-                    {
-                        "name": column,
-                        "description": columns_db_meta[column].comment or "",
-                        "data_type": columns_db_meta[column].type,
-                    }
+                logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
+            del staging
+        if path in _YAML_BUFFER_CACHE:
+            del _YAML_BUFFER_CACHE[path]
+
+
+def commit_yamls(context: YamlRefactorContext) -> None:
+    """Commit all files in the yaml buffer cache to disk. Clears the buffer cache and registers mutations."""
+    logger.info(":inbox_tray: Committing all YAMLs from buffer cache to disk.")
+    if not context.settings.dry_run:
+        with context.yaml_handler_lock:
+            for path in list(_YAML_BUFFER_CACHE.keys()):
+                original = path.read_bytes() if path.is_file() else b""
+                context.yaml_handler.dump(_YAML_BUFFER_CACHE[path], staging := io.BytesIO())
+                modified = staging.getvalue()
+                if modified != original:
+                    logger.info(":writing_hand: Writing => %s", path)
+                    with path.open("wb") as f:
+                        logger.info(f"Writing {path}")
+                        _ = f.write(modified)
+                        context.register_mutations(1)
+                else:
+                    logger.debug(":white_check_mark: Skipping => %s (no changes)", path)
+                del _YAML_BUFFER_CACHE[path]
+
+
+def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]:
+    """Generate a minimal model yaml for a dbt model node."""
+    logger.debug(":baby: Generating minimal yaml for Model/Seed => %s", node.name)
+    return {"name": node.name, "columns": []}
+
+
+def _generate_minimal_source_yaml(node: SourceDefinition) -> dict[str, t.Any]:
+    """Generate a minimal source yaml for a dbt source node."""
+    logger.debug(":baby: Generating minimal yaml for Source => %s", node.name)
+    return {"name": node.source_name, "tables": [{"name": node.name, "columns": []}]}
+
+
+def _create_operations_for_node(
+    context: YamlRefactorContext, uid: str, loc: SchemaFileLocation
+) -> list[RestructureOperation]:
+    """Create restructure operations for a dbt model or source node."""
+    logger.debug(":bricks: Creating restructure operations for => %s", uid)
+    node = context.project.manifest.nodes.get(uid) or context.project.manifest.sources.get(uid)
+    if not node:
+        logger.warning(":warning: Node => %s not found in manifest.", uid)
+        return []
+
+    # If loc.current is None => we are generating a brand new file
+    # If loc.current => we unify it with the new location
+    ops: list[RestructureOperation] = []
+
+    if loc.current is None:
+        logger.info(":sparkles: No current YAML file, building minimal doc => %s", uid)
+        if isinstance(node, (ModelNode, SeedNode)):
+            minimal = _generate_minimal_model_yaml(node)
+            ops.append(
+                RestructureOperation(
+                    file_path=loc.target,
+                    content={"version": 2, f"{node.resource_type}s": [minimal]},
                 )
-                yaml_file_model_section.setdefault("columns", []).append(
-                    {
-                        "name": column,
-                        "description": columns_db_meta[column].comment or "",
-                        "data_type": columns_db_meta[column].type,
-                    }
-                )
-            changes_committed += 1
-            logger().info(
-                ":syringe: Injecting column %s into dbt schema for model %s", column, node.unique_id
-            )
-        return changes_committed
-
-    def update_schema_file_and_node(
-        self,
-        missing_columns: Iterable[str],
-        undocumented_columns: Iterable[str],
-        extra_columns: Iterable[str],
-        node: ManifestNode,
-        section: Dict[str, Any],
-        columns_db_meta: Dict[str, ColumnMetadata],
-        output_to_lower: bool,
-    ) -> Tuple[int, int, int, int, int]:
-        """Take action on a schema file mirroring changes in the node."""
-        logger().info(":microscope: Looking for actions for %s", node.unique_id)
-        n_cols_added = 0
-        if not self.skip_add_columns:
-            n_cols_added = self.add_missing_cols_to_node_and_model(
-                missing_columns, node, section, columns_db_meta, output_to_lower
-            )
-
-        knowledge = ColumnLevelKnowledgePropagator.get_node_columns_with_inherited_knowledge(
-            self.manifest,
-            node,
-            self.placeholders,
-            self.base_config.project_dir,
-            self.use_unrendered_descriptions,
-        )
-        n_cols_doc_inherited = (
-            ColumnLevelKnowledgePropagator.update_undocumented_columns_with_prior_knowledge(
-                undocumented_columns,
-                node,
-                section,
-                knowledge,
-                self.skip_add_tags,
-                self.skip_merge_meta,
-                self.add_progenitor_to_meta,
-                self.add_inheritance_for_specified_keys,
-            )
-        )
-        n_cols_data_type_updated = self.update_columns_attribute(
-            node,
-            section,
-            columns_db_meta,
-            "data_type",
-            "type",
-            self.skip_add_data_types,
-            self.output_to_lower,
-        )
-        n_cols_description_updated = self.update_columns_attribute(
-            node,
-            section,
-            columns_db_meta,
-            "description",
-            "comment",
-            self.catalog_file,
-            self.output_to_lower,
-        )
-        n_cols_removed = self.remove_columns_not_in_database(extra_columns, node, section)
-        return (
-            n_cols_added,
-            n_cols_doc_inherited,
-            n_cols_removed,
-            n_cols_data_type_updated,
-            n_cols_description_updated,
-        )
-
-    @staticmethod
-    def maybe_get_section_from_schema_file(
-        yaml_file: Dict[str, Any], node: ManifestNode
-    ) -> Optional[Dict[str, Any]]:
-        """Get the section of a schema file that corresponds to a node."""
-        if node.resource_type == NodeType.Source:
-            section = next(
-                (
-                    table
-                    for source in yaml_file["sources"]
-                    if node.source_name == source["name"]
-                    for table in source["tables"]
-                    if table["name"] == node.name
-                ),
-                None,
             )
         else:
-            section = next(
-                (s for s in yaml_file["models"] if s["name"] == node.name),
-                None,
+            minimal = _generate_minimal_source_yaml(t.cast(SourceDefinition, node))
+            ops.append(
+                RestructureOperation(
+                    file_path=loc.target,
+                    content={"version": 2, "sources": [minimal]},
+                )
             )
-        return section
+    else:
+        existing = _read_yaml(context, loc.current)
+        injectable: dict[str, t.Any] = {"version": 2}
+        injectable.setdefault("models", [])
+        injectable.setdefault("sources", [])
+        injectable.setdefault("seeds", [])
+        if loc.node_type == NodeType.Model:
+            assert isinstance(node, ModelNode)
+            for obj in existing.get("models", []):
+                if obj["name"] == node.name:
+                    injectable["models"].append(obj)
+                    break
+        elif loc.node_type == NodeType.Source:
+            assert isinstance(node, SourceDefinition)
+            for src in existing.get("sources", []):
+                if src["name"] == node.source_name:
+                    injectable["sources"].append(src)
+                    break
+        elif loc.node_type == NodeType.Seed:
+            assert isinstance(node, SeedNode)
+            for seed in existing.get("seeds", []):
+                if seed["name"] == node.name:
+                    injectable["seeds"].append(seed)
+        ops.append(
+            RestructureOperation(
+                file_path=loc.target,
+                content=injectable,
+                superseded_paths={loc.current: [node]},
+            )
+        )
+    return ops
+
+
+def draft_restructure_delta_plan(context: YamlRefactorContext) -> RestructureDeltaPlan:
+    """Draft a restructure plan for the dbt project."""
+    logger.info(":bulb: Drafting restructure delta plan for the project.")
+    plan = RestructureDeltaPlan()
+    lock = threading.Lock()
+
+    def _job(uid: str, loc: SchemaFileLocation) -> None:
+        ops = _create_operations_for_node(context, uid, loc)
+        with lock:
+            plan.operations.extend(ops)
+
+    futs: list[Future[None]] = []
+    for uid, loc in build_yaml_file_mapping(context).items():
+        if not loc.is_valid:
+            futs.append(context.pool.submit(_job, uid, loc))
+    done, _ = wait(futs, return_when=FIRST_EXCEPTION)
+    for fut in done:
+        exc = fut.exception()
+        if exc:
+            logger.error(":bomb: Error encountered while drafting plan => %s", exc)
+            raise exc
+    logger.info(":star2: Draft plan creation complete => %s operations", len(plan.operations))
+    return plan
+
+
+def pretty_print_plan(plan: RestructureDeltaPlan) -> None:
+    """Pretty print the restructure plan for the dbt project."""
+    logger.info(":mega: Restructure plan includes => %s operations.", len(plan.operations))
+    for op in plan.operations:
+        str_content = str(op.content)[:80] + "..."
+        logger.info(":sparkles: Processing => %s", str_content)
+        if not op.superseded_paths:
+            logger.info(":blue_book: CREATE or MERGE => %s", op.file_path)
+        else:
+            old_paths = [p.name for p in op.superseded_paths.keys()] or ["UNKNOWN"]
+            logger.info(":blue_book: %s -> %s", old_paths, op.file_path)
+
+
+def _remove_models(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
+    """Clean up the existing yaml doc by removing models superseded by the restructure plan."""
+    logger.debug(":scissors: Removing superseded models => %s", [n.name for n in nodes])
+    to_remove = {n.name for n in nodes if n.resource_type == NodeType.Model}
+    keep = []
+    for section in existing_doc.get("models", []):
+        if section.get("name") not in to_remove:
+            keep.append(section)
+    existing_doc["models"] = keep
+
+
+def _remove_seeds(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
+    """Clean up the existing yaml doc by removing models superseded by the restructure plan."""
+    logger.debug(":scissors: Removing superseded seeds => %s", [n.name for n in nodes])
+    to_remove = {n.name for n in nodes if n.resource_type == NodeType.Seed}
+    keep = []
+    for section in existing_doc.get("seeds", []):
+        if section.get("name") not in to_remove:
+            keep.append(section)
+    existing_doc["seeds"] = keep
+
+
+def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> None:
+    """Clean up the existing yaml doc by removing sources superseded by the restructure plan."""
+    to_remove_sources = {
+        (n.source_name, n.name) for n in nodes if n.resource_type == NodeType.Source
+    }
+    logger.debug(":scissors: Removing superseded sources => %s", sorted(to_remove_sources))
+    keep_sources = []
+    for section in existing_doc.get("sources", []):
+        keep_tables = []
+        for tbl in section.get("tables", []):
+            if (section["name"], tbl["name"]) not in to_remove_sources:
+                keep_tables.append(tbl)
+        if keep_tables:
+            section["tables"] = keep_tables
+            keep_sources.append(section)
+    existing_doc["sources"] = keep_sources
+
+
+def _sync_doc_section(
+    context: YamlRefactorContext, node: ResultNode, doc_section: dict[str, t.Any]
+) -> None:
+    """Helper function that overwrites 'doc_section' with data from 'node'.
+
+    This includes columns, description, meta, tags, etc.
+    We assume node is the single source of truth, so doc_section is replaced.
+    """
+    logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
+    if node.description:
+        doc_section["description"] = node.description
+    else:
+        doc_section.pop("description", None)
+
+    current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
+    incoming_columns: list[dict[str, t.Any]] = []
+
+    current_map = {}
+    for c in current_columns:
+        norm_name = normalize_column_name(c["name"], context.project.config.credentials.type)
+        current_map[norm_name] = c
+
+    for name, meta in node.columns.items():
+        cdict = meta.to_dict()
+        cdict["name"] = name
+        norm_name = normalize_column_name(name, context.project.config.credentials.type)
+
+        current_yaml = t.cast(dict[str, t.Any], current_map.get(norm_name, {}))
+        merged = dict(current_yaml)
+
+        for k, v in cdict.items():
+            if k == "description" and not v:
+                merged.pop("description", None)
+            else:
+                merged[k] = v
+
+        if not merged.get("description"):
+            merged.pop("description", None)
+        if merged.get("tags") == []:
+            merged.pop("tags", None)
+        if merged.get("meta") == {}:
+            merged.pop("meta", None)
+
+        for k in list(merged.keys()):
+            if not merged[k]:
+                merged.pop(k)
+
+        incoming_columns.append(merged)
+
+    doc_section["columns"] = incoming_columns
+
+
+def sync_node_to_yaml(
+    context: YamlRefactorContext, node: ResultNode | None = None, *, commit: bool = True
+) -> None:
+    """Synchronize a single node's columns, description, tags, meta, etc. from the manifest into its corresponding YAML file.
+
+    We assume the manifest node is the single source of truth, so the YAML file is overwritten to match.
+
+    - If the YAML file doesn't exist yet, we create it with minimal structure.
+    - If the YAML file exists, we read it from the file/ cache, locate the node's section,
+      and then overwrite that section to match the node's current columns, meta, etc.
+
+    This is a one-way sync:
+        Manifest Node => YAML
+
+    All changes to the Node (columns, metadata, etc.) should happen before calling this function.
+    """
+    if node is None:
+        logger.info(":wave: No single node specified; synchronizing all matched nodes.")
+        for _, node in filter_models(context):
+            sync_node_to_yaml(context, node, commit=commit)
+        return
+
+    current_path = get_current_yaml_path(context, node)
+    if not current_path or not current_path.exists():
+        logger.debug(
+            ":warning: Current path does not exist => %s. Using target path instead.", current_path
+        )
+        current_path = get_target_yaml_path(context, node)
+
+    doc: dict[str, t.Any] = _read_yaml(context, current_path)
+    if not doc:
+        doc = {"version": 2}
+
+    if node.resource_type == NodeType.Source:
+        resource_k = "sources"
+    elif node.resource_type == NodeType.Seed:
+        resource_k = "seeds"
+    else:
+        resource_k = "models"
+
+    if node.resource_type == NodeType.Source:
+        # The doc structure => sources: [ { "name": <source_name>, "tables": [...]}, ... ]
+        # Step A: find or create the source
+        doc_source: dict[str, t.Any] | None = None
+        for s in doc.setdefault(resource_k, []):
+            if s.get("name") == node.source_name:
+                doc_source = s
+                break
+        if not doc_source:
+            doc_source = {
+                "name": node.source_name,
+                "tables": [],
+            }
+            doc["sources"].append(doc_source)
+
+        # Step B: find or create the table
+        doc_table: dict[str, t.Any] | None = None
+        for t_ in doc_source["tables"]:
+            if t_.get("name") == node.name:
+                doc_table = t_
+                break
+        if not doc_table:
+            doc_table = {
+                "name": node.name,
+                "columns": [],
+            }
+            doc_source["tables"].append(doc_table)
+
+        # We'll store the columns & description on "doc_table"
+        # For source, "description" is stored at table-level in the Node
+        _sync_doc_section(context, node, doc_table)
+
+    else:
+        # Models or Seeds => doc[ "models" ] or doc[ "seeds" ] is a list of { "name", "description", "columns", ... }
+        doc_list = doc.setdefault(resource_k, [])
+        doc_obj: dict[str, t.Any] | None = None
+        for item in doc_list:
+            if item.get("name") == node.name:
+                doc_obj = item
+                break
+        if not doc_obj:
+            doc_obj = {
+                "name": node.name,
+                "columns": [],
+            }
+            doc_list.append(doc_obj)
+
+        _sync_doc_section(context, node, doc_obj)
+
+    for k in ("models", "sources", "seeds"):
+        if len(doc.get(k, [])) == 0:
+            _ = doc.pop(k, None)
+
+    if commit:
+        logger.info(":inbox_tray: Committing YAML doc changes for => %s", node.unique_id)
+        _write_yaml(context, current_path, doc)
+
+
+def apply_restructure_plan(
+    context: YamlRefactorContext, plan: RestructureDeltaPlan, *, confirm: bool = False
+) -> None:
+    """Apply the restructure plan for the dbt project."""
+    if not plan.operations:
+        logger.info(":white_check_mark: No changes needed in the restructure plan.")
+        return
+
+    if confirm:
+        logger.info(":warning: Confirm option set => printing plan and waiting for user input.")
+        pretty_print_plan(plan)
+
+    while confirm:
+        response = input("Apply the restructure plan? [y/N]: ")
+        if response.lower() in ("y", "yes"):
+            break
+        elif response.lower() in ("n", "no", ""):
+            logger.info("Skipping restructure plan.")
+            return
+        logger.warning(":loudspeaker: Please respond with 'y' or 'n'.")
+
+    for op in plan.operations:
+        logger.debug(":arrow_right: Applying restructure operation => %s", op)
+        output_doc: dict[str, t.Any] = {"version": 2}
+        if op.file_path.exists():
+            existing_data = _read_yaml(context, op.file_path)
+            output_doc.update(existing_data)
+
+        for key, val in op.content.items():
+            if isinstance(val, list):
+                output_doc.setdefault(key, []).extend(val)
+            elif isinstance(val, dict):
+                output_doc.setdefault(key, {}).update(val)
+            else:
+                output_doc[key] = val
+
+        _write_yaml(context, op.file_path, output_doc)
+
+        for path, nodes in op.superseded_paths.items():
+            if path.is_file():
+                existing_data = _read_yaml(context, path)
+
+                if "models" in existing_data:
+                    _remove_models(existing_data, nodes)
+                if "sources" in existing_data:
+                    _remove_sources(existing_data, nodes)
+                if "seeds" in existing_data:
+                    _remove_seeds(existing_data, nodes)
+
+                keys = set(existing_data.keys()) - {"version"}
+                if all(len(existing_data.get(k, [])) == 0 for k in keys):
+                    if not context.settings.dry_run:
+                        path.unlink(missing_ok=True)
+                        if path.parent.exists() and not any(path.parent.iterdir()):
+                            path.parent.rmdir()
+                        if path in _YAML_BUFFER_CACHE:
+                            del _YAML_BUFFER_CACHE[path]
+                    context.register_mutations(1)
+                    logger.info(":heavy_minus_sign: Superseded entire file => %s", path)
+                else:
+                    _write_yaml(context, path, existing_data)
+                    logger.info(
+                        ":arrow_forward: Migrated doc from => %s to => %s", path, op.file_path
+                    )
+
+    logger.info(
+        ":arrows_counterclockwise: Committing all restructure changes and reloading manifest."
+    )
+    _ = commit_yamls(context), reload_manifest(context.project)
+
+
+# Inheritance Logic
+# =================
+
+
+def _build_node_ancestor_tree(
+    manifest: Manifest,
+    node: ResultNode,
+    tree: dict[str, list[str]] | None = None,
+    visited: set[str] | None = None,
+    depth: int = 1,
+) -> dict[str, list[str]]:
+    """Build a flat graph of a node and it's ancestors."""
+    logger.debug(":seedling: Building ancestor tree/branch for => %s", node.unique_id)
+    if tree is None or visited is None:
+        visited = set(node.unique_id)
+        tree = {"generation_0": [node.unique_id]}
+        depth = 1
+
+    if not hasattr(node, "depends_on"):
+        return tree
+
+    for dep in getattr(node.depends_on, "nodes", []):
+        if not dep.startswith(("model.", "seed.", "source.")):
+            continue
+        if dep not in visited:
+            visited.add(dep)
+            member = manifest.nodes.get(dep, manifest.sources.get(dep))
+            if member:
+                tree.setdefault(f"generation_{depth}", []).append(dep)
+                _ = _build_node_ancestor_tree(manifest, member, tree, visited, depth + 1)
+
+    for generation in tree.values():
+        generation.sort()  # For deterministic ordering
+
+    return tree
+
+
+def _get_node_yaml(
+    context: YamlRefactorContext, member: ResultNode
+) -> MappingProxyType[str, t.Any] | None:
+    """Get a read-only view of the parsed YAML for a dbt model or source node."""
+    project_dir = Path(context.project.config.project_root)
+
+    if isinstance(member, SourceDefinition):
+        if not member.original_file_path:
+            return None
+        path = project_dir.joinpath(member.original_file_path)
+        sources = t.cast(list[dict[str, t.Any]], _read_yaml(context, path).get("sources", []))
+        source = _find_first(sources, lambda s: s["name"] == member.source_name, {})
+        tables = source.get("tables", [])
+        maybe_doc = _find_first(tables, lambda tbl: tbl["name"] == member.name)
+        if maybe_doc is not None:
+            return MappingProxyType(maybe_doc)
+
+    elif isinstance(member, (ModelNode, SeedNode)):
+        if not member.patch_path:
+            return None
+        path = project_dir.joinpath(member.patch_path.split("://")[-1])
+        section = f"{member.resource_type}s"
+        models = t.cast(list[dict[str, t.Any]], _read_yaml(context, path).get(section, []))
+        maybe_doc = _find_first(models, lambda model: model["name"] == member.name)
+        if maybe_doc is not None:
+            return MappingProxyType(maybe_doc)
+
+    return None
+
+
+def _build_column_knowledge_graph(
+    context: YamlRefactorContext, node: ResultNode
+) -> dict[str, dict[str, t.Any]]:
+    """Generate a column knowledge graph for a dbt model or source node."""
+    tree = _build_node_ancestor_tree(context.project.manifest, node)
+    logger.debug(":family_tree: Node ancestor tree => %s", tree)
+
+    pm = get_plugin_manager()
+    node_column_variants: dict[str, list[str]] = {}
+    for column_name, _ in node.columns.items():
+        variants = node_column_variants.setdefault(column_name, [column_name])
+        for v in pm.hook.get_candidates(name=column_name, node=node, context=context.project):
+            variants.extend(t.cast(list[str], v))
+
+    column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
+    for generation in reversed(sorted(tree.keys())):
+        ancestors = tree[generation]
+        for ancestor_uid in ancestors:
+            ancestor = context.project.manifest.nodes.get(
+                ancestor_uid, context.project.manifest.sources.get(ancestor_uid)
+            )
+            if not isinstance(ancestor, (SourceDefinition, SeedNode, ModelNode)):
+                continue
+
+            for name, _ in node.columns.items():
+                graph_node = column_knowledge_graph.setdefault(name, {})
+                for variant in node_column_variants[name]:
+                    incoming = ancestor.columns.get(variant)
+                    if incoming is not None:
+                        break
+                else:
+                    continue
+                graph_edge = incoming.to_dict()
+
+                if context.settings.add_progenitor_to_meta:
+                    graph_node.setdefault("meta", {}).setdefault(
+                        "osmosis_progenitor", ancestor.unique_id
+                    )
+
+                if context.settings.use_unrendered_descriptions:
+                    raw_yaml = _get_node_yaml(context, ancestor) or {}
+                    raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
+                    raw_column_metadata = _find_first(
+                        raw_columns,
+                        lambda c: normalize_column_name(
+                            c["name"], context.project.config.credentials.type
+                        )
+                        in node_column_variants[name],
+                        {},
+                    )
+                    if unrendered_description := raw_column_metadata.get("description"):
+                        graph_edge["description"] = unrendered_description
+
+                current_tags = graph_node.get("tags", [])
+                if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
+                    graph_edge["tags"] = list(merged_tags)
+
+                current_meta = graph_node.get("meta", {})
+                if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
+                    graph_edge["meta"] = merged_meta
+
+                for inheritable in context.settings.add_inheritance_for_specified_keys:
+                    current_val = graph_node.get(inheritable)
+                    if incoming_val := graph_edge.pop(inheritable, current_val):
+                        graph_edge[inheritable] = incoming_val
+
+                if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
+                    generation == "generation_0" and context.settings.force_inherit_descriptions
+                ):
+                    _ = graph_edge.pop("description", None)
+                if graph_edge.get("tags") == []:
+                    del graph_edge["tags"]
+                if graph_edge.get("meta") == {}:
+                    del graph_edge["meta"]
+                for k in list(graph_edge.keys()):
+                    if graph_edge[k] is None:
+                        graph_edge.pop(k)
+
+                graph_node.update(graph_edge)
+
+    return column_knowledge_graph
+
+
+def inherit_upstream_column_knowledge(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Inherit column level knowledge from the ancestors of a dbt model or source node."""
+    if node is None:
+        logger.info(":wave: Inheriting column knowledge across all matched nodes.")
+        for _, node in filter_models(context):
+            inherit_upstream_column_knowledge(context, node)
+        return None
+
+    logger.info(":dna: Inheriting column knowledge for => %s", node.unique_id)
+    inheritable = ["description"]
+    if not context.settings.skip_add_tags:
+        inheritable.append("tags")
+    if not context.settings.skip_merge_meta:
+        inheritable.append("meta")
+    for extra in context.settings.add_inheritance_for_specified_keys:
+        if extra not in inheritable:
+            inheritable.append(extra)
+
+    column_knowledge_graph = _build_column_knowledge_graph(context, node)
+    kwargs = None
+    for name, node_column in node.columns.items():
+        kwargs = column_knowledge_graph.get(name)
+        if kwargs is None:
+            continue
+
+        updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
+        logger.debug(
+            ":star2: Inheriting updated metadata => %s for column => %s", updated_metadata, name
+        )
+        node.columns[name] = node_column.replace(**updated_metadata)
+
+
+def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
+    """Add missing columns to a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
+    if context.settings.skip_add_columns:
+        logger.debug(":no_entry_sign: Skipping column injection (skip_add_columns=True).")
+        return
+    if node is None:
+        logger.info(":wave: Injecting missing columns for all matched nodes.")
+        for _, node in filter_models(context):
+            inject_missing_columns(context, node)
+        return
+    current_columns = {
+        normalize_column_name(c.name, context.project.config.credentials.type)
+        for c in node.columns.values()
+    }
+    incoming_columns = get_columns(context, get_table_ref(node))
+    for incoming_name, incoming_meta in incoming_columns.items():
+        if incoming_name not in node.columns and incoming_name not in current_columns:
+            logger.info(
+                ":heavy_plus_sign: Reconciling missing column => %s in node => %s",
+                incoming_name,
+                node.unique_id,
+            )
+            gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
+            if dtype := incoming_meta.type:
+                gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
+            node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
+
+
+def remove_columns_not_in_database(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
+    if node is None:
+        logger.info(":wave: Removing columns not in DB across all matched nodes.")
+        for _, node in filter_models(context):
+            remove_columns_not_in_database(context, node)
+        return
+    current_columns = {
+        normalize_column_name(c.name, context.project.config.credentials.type)
+        for c in node.columns.values()
+    }
+    incoming_columns = get_columns(context, get_table_ref(node))
+    extra_columns = current_columns - set(incoming_columns.keys())
+    for extra_column in extra_columns:
+        logger.info(
+            ":heavy_minus_sign: Removing extra column => %s in node => %s",
+            extra_column,
+            node.unique_id,
+        )
+        _ = node.columns.pop(extra_column, None)
+
+
+def sort_columns_as_in_database(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
+    if node is None:
+        logger.info(":wave: Sorting columns as they appear in DB across all matched nodes.")
+        for _, node in filter_models(context):
+            sort_columns_as_in_database(context, node)
+        return
+    logger.info(":1234: Sorting columns by warehouse order => %s", node.unique_id)
+    incoming_columns = get_columns(context, get_table_ref(node))
+
+    def _position(column: dict[str, t.Any]):
+        db_info = incoming_columns.get(column["name"])
+        if db_info is None:
+            return 99999
+        return db_info.index
+
+    node.columns = {
+        k: v for k, v in sorted(node.columns.items(), key=lambda i: _position(i[1].to_dict()))
+    }
+
+
+def sort_columns_alphabetically(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Sort columns in a dbt node and it's corresponding yaml section alphabetically. Changes are implicitly buffered until commit_yamls is called."""
+    if node is None:
+        logger.info(":wave: Sorting columns alphabetically across all matched nodes.")
+        for _, node in filter_models(context):
+            sort_columns_alphabetically(context, node)
+        return
+    logger.info(":alphabet_white: Sorting columns alphabetically => %s", node.unique_id)
+    node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
+
+
+# Fuzzy Plugins
+# =============
+
+_hookspec = pluggy.HookspecMarker("dbt-osmosis")
+hookimpl = pluggy.HookimplMarker("dbt-osmosis")
+
+
+@_hookspec
+def get_candidates(name: str, node: ResultNode, context: DbtProjectContext) -> list[str]:  # pyright: ignore[reportUnusedParameter]
+    """Get a list of candidate names for a column."""
+    raise NotImplementedError
+
+
+class FuzzyCaseMatching:
+    @hookimpl
+    def get_candidates(self, name: str, node: ResultNode, context: DbtProjectContext) -> list[str]:
+        """Get a list of candidate names for a column based on case variants."""
+        _ = node, context
+        variants = [
+            name.lower(),  # lowercase
+            name.upper(),  # UPPERCASE
+            cc := re.sub("_(.)", lambda m: m.group(1).upper(), name),  # camelCase
+            cc[0].upper() + cc[1:],  # PascalCase
+        ]
+        logger.debug(":lower_upper_case: FuzzyCaseMatching variants => %s", variants)
+        return variants
+
+
+class FuzzyPrefixMatching:
+    @hookimpl
+    def get_candidates(self, name: str, node: ResultNode, context: DbtProjectContext) -> list[str]:
+        """Get a list of candidate names for a column excluding a prefix."""
+        _ = context
+        variants = []
+        key = "osmosis_prefix"
+        p = _find_first(
+            (
+                t.cast(str, v)
+                # Can be set in the node yml (legacy support)
+                # Or in dbt_project.yml / {{ config() }}
+                for c in (node.meta, node.config.extra, node.unrendered_config)
+                for k in (key, f"dbt_{key}")
+                for v in (c.get(k), c.get(k.replace("_", "-")))
+            ),
+            lambda v: bool(v),
+        )
+        if p:
+            mut_name = name.removeprefix(p)
+            logger.debug(
+                ":scissors: FuzzyPrefixMatching => removing prefix '%s' => %s", p, mut_name
+            )
+            variants.append(mut_name)
+        return variants
+
+
+@lru_cache(maxsize=None)
+def get_plugin_manager():
+    """Get the pluggy plugin manager for dbt-osmosis."""
+    manager = pluggy.PluginManager("dbt-osmosis")
+    _ = manager.register(FuzzyCaseMatching())
+    _ = manager.register(FuzzyPrefixMatching())
+    _ = manager.load_setuptools_entrypoints("dbt-osmosis")
+    return manager
+
+
+# NOTE: usage example of the more FP style module below
+
+
+def run_example_compilation_flow(c: DbtConfiguration) -> None:
+    c.vars["foo"] = "bar"
+
+    context = create_dbt_project_context(c)
+
+    node = compile_sql_code(context, "select '{{ 1+1 }}' as col_{{ var('foo') }}")
+    print("Compiled =>", node.compiled_code)
+
+    resp, t_ = execute_sql_code(context, "select '{{ 1+2 }}' as col_{{ var('foo') }}")
+    print("Resp =>", resp)
+
+    t_.print_csv()
+
+
+if __name__ == "__main__":
+    # Kitchen sink
+    c = DbtConfiguration(
+        project_dir="demo_duckdb", profiles_dir="demo_duckdb", vars={"dbt-osmosis": {}}
+    )
+
+    run_example_compilation_flow(c)
+
+    project = create_dbt_project_context(c)
+    _ = generate_catalog(project)
+
+    yaml_context = YamlRefactorContext(
+        project, settings=YamlRefactorSettings(use_unrendered_descriptions=True)
+    )
+
+    plan = draft_restructure_delta_plan(yaml_context)
+    steps = (
+        (create_missing_source_yamls, (yaml_context,), {}),
+        (apply_restructure_plan, (yaml_context, plan), {"confirm": True}),
+        (inject_missing_columns, (yaml_context,), {}),
+        (remove_columns_not_in_database, (yaml_context,), {}),
+        (inherit_upstream_column_knowledge, (yaml_context,), {}),
+        (sort_columns_as_in_database, (yaml_context,), {}),
+        (sync_node_to_yaml, (yaml_context,), {}),
+        (commit_yamls, (yaml_context,), {}),
+    )
+    steps = iter(t.cast(t.Any, steps))
+
+    DONE = object()
+    nr = 1
+    while (step := next(steps, DONE)) is not DONE:
+        step, args, kwargs = step  # pyright: ignore[reportGeneralTypeIssues]
+        step(*args, **kwargs)
+        logger.info("Completed step %d (%s).", nr, getattr(t.cast(object, step), "__name__"))
+        nr += 1

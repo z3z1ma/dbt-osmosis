@@ -1,5 +1,5 @@
 from streamlit import session_state as state
-from streamlit_elements_fluence import extras, html, mui
+from streamlit_elements_fluence import html, mui
 
 from .dashboard import Dashboard
 
