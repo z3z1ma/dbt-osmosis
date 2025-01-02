@@ -52,18 +52,21 @@ class TestDbtYamlManager:
                 "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
                 "name": "first_order",
                 "description": "Date (UTC) of a customer's first order",
+                "data_type": "DATE",
                 "constraints": [],
             },
             "most_recent_order": {
                 "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
                 "name": "most_recent_order",
                 "description": "Date (UTC) of a customer's most recent order",
+                "data_type": "DATE",
                 "constraints": [],
             },
             "number_of_orders": {
                 "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.customers"},
                 "name": "number_of_orders",
                 "description": "Count of the number of orders a customer has placed",
+                "data_type": "BIGINT",
                 "constraints": [],
             },
             "customer_lifetime_value": {

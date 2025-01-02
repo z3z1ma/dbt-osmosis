@@ -1,3 +1,5 @@
+{{ config(dbt_osmosis_output_to_lower = true) }}
+
 with source as (
 
     {#-

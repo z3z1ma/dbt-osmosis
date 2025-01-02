@@ -1,6 +1,8 @@
 version: 2
 seeds:
   - name: raw_customers
+    meta:
+      foo: bar
     columns:
       - name: id
         data_type: INTEGER

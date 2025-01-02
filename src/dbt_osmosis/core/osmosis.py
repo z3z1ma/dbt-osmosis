@@ -16,7 +16,7 @@ from collections.abc import Iterable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from functools import lru_cache
+from functools import lru_cache, partial
 from itertools import chain
 from pathlib import Path
 from threading import get_ident
@@ -59,6 +59,37 @@ from dbt_common.clients.system import get_env
 from dbt_common.context import set_invocation_context
 
 import dbt_osmosis.core.logger as logger
+
+__all__ = [
+    "discover_project_dir",
+    "discover_profiles_dir",
+    "DbtConfiguration",
+    "DbtProjectContext",
+    "create_dbt_project_context",
+    "create_yaml_instance",
+    "YamlRefactorSettings",
+    "YamlRefactorContext",
+    "compile_sql_code",
+    "execute_sql_code",
+    "normalize_column_name",
+    "get_table_ref",
+    "get_columns",
+    "create_missing_source_yamls",
+    "get_current_yaml_path",
+    "get_target_yaml_path",
+    "build_yaml_file_mapping",
+    "commit_yamls",
+    "draft_restructure_delta_plan",
+    "pretty_print_plan",
+    "sync_node_to_yaml",
+    "apply_restructure_plan",
+    "inherit_upstream_column_knowledge",
+    "inject_missing_columns",
+    "remove_columns_not_in_database",
+    "sort_columns_as_in_database",
+    "sort_columns_alphabetically",
+    "synchronize_data_types",
+]
 
 disable_tracking()
 
@@ -188,7 +219,7 @@ class DbtProjectContext:
         with self._adapter_mutex:
             if not self._adapter:
                 logger.info(":wrench: Instantiating new adapter because none is currently set.")
-                adapter = instantiate_adapter(self.config)
+                adapter = _instantiate_adapter(self.config)
                 adapter.set_macro_resolver(self.manifest)
                 _ = adapter.acquire_connection()
                 self._adapter = adapter
@@ -199,7 +230,7 @@ class DbtProjectContext:
                 )
             elif self.is_connection_expired:
                 logger.info(
-                    ":wrench: Adapter connection expired, refreshing connection for thread => %s",
+                    ":wrench: Refreshing db connection for thread => %s",
                     get_ident(),
                 )
                 self._adapter.connections.release()
@@ -214,7 +245,7 @@ class DbtProjectContext:
         return self._manifest_mutex
 
 
-def instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
+def _instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
     """Instantiate a dbt adapter based on the runtime configuration."""
     logger.debug(":mag: Registering adapter for runtime config => %s", runtime_config)
     register_adapter(runtime_config, get_mp_context())
@@ -233,7 +264,7 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     runtime_cfg = RuntimeConfig.from_args(args)
 
     logger.info(":bookmark_tabs: Instantiating adapter as part of project context creation.")
-    adapter = instantiate_adapter(runtime_cfg)
+    adapter = _instantiate_adapter(runtime_cfg)
     setattr(runtime_cfg, "adapter", adapter)
     loader = ManifestLoader(
         runtime_cfg,
@@ -258,7 +289,7 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     )
 
 
-def reload_manifest(context: DbtProjectContext) -> None:
+def _reload_manifest(context: DbtProjectContext) -> None:
     """Reload the dbt project manifest. Useful for picking up mutations."""
     logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
     loader = ManifestLoader(context.config, context.config.load_dependencies())
@@ -350,6 +381,8 @@ class YamlRefactorSettings:
     """Filter models to action via a file path match."""
     dry_run: bool = False
     """Do not write changes to disk."""
+    skip_merge_meta: bool = False
+    """Skip merging upstream meta fields in the yaml files."""
     skip_add_columns: bool = False
     """Skip adding missing columns in the yaml files."""
     skip_add_tags: bool = False
@@ -357,23 +390,21 @@ class YamlRefactorSettings:
     skip_add_data_types: bool = False
     """Skip adding data types in the yaml files."""
     skip_add_source_columns: bool = False
-    """Skip adding source columns in the yaml files."""
-    numeric_precision: bool = False
-    """Include numeric precision in the data type."""
-    char_length: bool = False
-    """Include character length in the data type."""
-    skip_merge_meta: bool = False
-    """Skip merging upstream meta fields in the yaml files."""
+    """Skip adding columns in the source yaml files specifically."""
     add_progenitor_to_meta: bool = False
     """Add a custom progenitor field to the meta section indicating a column's origin."""
+    numeric_precision_and_scale: bool = False
+    """Include numeric precision in the data type."""
+    string_length: bool = False
+    """Include character length in the data type."""
+    force_inherit_descriptions: bool = False
+    """Force inheritance of descriptions from upstream models, even if node has a valid description."""
     use_unrendered_descriptions: bool = False
     """Use unrendered descriptions preserving things like {{ doc(...) }} which are otherwise pre-rendered in the manifest object"""
     add_inheritance_for_specified_keys: list[str] = field(default_factory=list)
     """Include additional keys in the inheritance process."""
     output_to_lower: bool = False
     """Force column name and data type output to lowercase in the yaml files."""
-    force_inherit_descriptions: bool = False
-    """Force inheritance of descriptions from upstream models, even if node has a valid description."""
     catalog_path: str | None = None
     """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
     create_catalog_if_not_exists: bool = False
@@ -453,12 +484,12 @@ class YamlRefactorContext:
         """Read the catalog file if it exists."""
         logger.debug(":mag: Checking if catalog is already loaded => %s", bool(self._catalog))
         if not self._catalog:
-            catalog = load_catalog(self.settings)
+            catalog = _load_catalog(self.settings)
             if not catalog and self.settings.create_catalog_if_not_exists:
                 logger.info(
                     ":bookmark_tabs: No existing catalog found, generating new catalog.json."
                 )
-                catalog = generate_catalog(self.project)
+                catalog = _generate_catalog(self.project)
             self._catalog = catalog
         return self._catalog
 
@@ -468,7 +499,7 @@ class YamlRefactorContext:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
 
 
-def load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
+def _load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
     """Load the catalog file if it exists and return a CatalogResults instance."""
     logger.debug(":mag: Attempting to load catalog from => %s", settings.catalog_path)
     if not settings.catalog_path:
@@ -482,7 +513,7 @@ def load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
 
 
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
-def generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
+def _generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
     """Generate the dbt catalog file for the project."""
     logger.info(
         ":books: Generating a new catalog for the project => %s", context.config.project_name
@@ -621,7 +652,7 @@ def _get_node_path(node: ResultNode) -> Path | None:
     return None
 
 
-def filter_models(
+def _iter_candidate_nodes(
     context: YamlRefactorContext,
 ) -> Iterator[tuple[str, ResultNode]]:
     """Iterate over the models in the dbt project manifest applying the filter settings."""
@@ -687,11 +718,17 @@ def normalize_column_name(column: str, credentials_type: str) -> str:
     return column
 
 
-def _maybe_use_precise_dtype(col: BaseColumn, settings: YamlRefactorSettings) -> str:
+def _maybe_use_precise_dtype(
+    col: BaseColumn, settings: YamlRefactorSettings, node: ResultNode | None = None
+) -> str:
     """Use the precise data type if enabled in the settings."""
-    if (col.is_numeric() and settings.numeric_precision) or (
-        col.is_string() and settings.char_length
-    ):
+    use_num_prec = _get_setting_for_node(
+        "numeric-precision-and-scale", node, col.name, fallback=settings.numeric_precision_and_scale
+    )
+    use_chr_prec = _get_setting_for_node(
+        "string-length", node, col.name, fallback=settings.string_length
+    )
+    if (col.is_numeric() and use_num_prec) or (col.is_string() and use_chr_prec):
         logger.debug(":ruler: Using precise data type => %s", col.data_type)
         return col.data_type
     return col.dtype
@@ -771,6 +808,85 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
     return normalized_cols
 
 
+def _get_setting_for_node(
+    opt: str,
+    /,
+    node: ResultNode | None = None,
+    col: str | None = None,
+    *,
+    fallback: t.Any | None = None,
+) -> t.Any:
+    """Get a configuration value for a dbt node from the node's meta and config.
+
+    models: # dbt_project
+      project:
+        staging:
+          +dbt-osmosis: path/spec.yml
+          +dbt-osmosis-options:
+            string-length: true
+            numeric-precision-and-scale: true
+            skip-add-columns: true
+          +dbt-osmosis-skip-add-tags: true
+
+    models: # schema
+      - name: foo
+        meta:
+          string-length: false
+          prefix: user_ # we strip this prefix to inherit from columns upstream, useful in staging models that prefix everything
+        columns:
+          - bar:
+            meta:
+              dbt-osmosis-skip-meta-merge: true # per-column options
+              dbt-osmosis-options:
+                output-to-lower: true
+
+    {{ config(..., dbt_osmosis_options={"prefix": "account_"}) }} -- sql
+
+    We check for
+    From node column meta
+    - <key>
+    - dbt-osmosis-<key>
+    - dbt-osmosis-options.<key>
+    From node meta
+    - <key>
+    - dbt-osmosis-<key>
+    - dbt-osmosis-options.<key>
+    From node config
+    - dbt-osmosis-<key>
+    - dbt-osmosis-options.<key>
+    - dbt_osmosis_<key> # allows use in {{ config(...) }} by being a valid python identifier
+    - dbt_osmosis_options.<key> # allows use in {{ config(...) }} by being a valid python identifier
+    """
+    if node is None:
+        return fallback
+    k, identifier = opt.replace("_", "-"), opt.replace("-", "_")
+    sources = [
+        node.meta,
+        node.meta.get("dbt-osmosis-options", {}),
+        node.meta.get("dbt_osmosis_options", {}),
+        node.config.extra,
+        node.config.extra.get("dbt-osmosis-options", {}),
+        node.config.extra.get("dbt_osmosis_options", {}),
+    ]
+    if col and (column := node.columns.get(col)):
+        sources = [
+            column.meta,
+            column.meta.get("dbt-osmosis-options", {}),
+            column.meta.get("dbt_osmosis_options", {}),
+            *sources,
+        ]
+    for source in sources:
+        for variation in (f"dbt-osmosis-{k}", f"dbt_osmosis_{identifier}"):
+            if variation in source:
+                return source[variation]
+        if source is not node.config.extra:
+            if k in source:
+                return source[k]
+            if identifier in source:
+                return source[identifier]
+    return fallback
+
+
 # Restructuring Logic
 # ===================
 
@@ -783,6 +899,7 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
     """
     logger.info(":factory: Creating missing source YAMLs (if any).")
     database: str = context.project.config.credentials.database
+    lowercase: bool = context.settings.output_to_lower
 
     did_side_effect: bool = False
     for source, spec in context.source_definitions.items():
@@ -817,11 +934,9 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
                 "description": "",
                 "columns": [
                     {
-                        "name": name.lower() if context.settings.output_to_lower else name,
+                        "name": name.lower() if lowercase else name,
                         "description": meta.comment or "",
-                        "data_type": meta.type.lower()
-                        if context.settings.output_to_lower
-                        else meta.type,
+                        "data_type": meta.type.lower() if lowercase else meta.type,
                     }
                     for name, meta in get_columns(context, get_table_ref(rel)).items()
                 ],
@@ -852,7 +967,7 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         logger.info(
             ":arrows_counterclockwise: Some new sources were created, reloading the project."
         )
-        reload_manifest(context.project)
+        _reload_manifest(context.project)
 
 
 class MissingOsmosisConfig(Exception):
@@ -932,7 +1047,7 @@ def build_yaml_file_mapping(
         create_missing_source_yamls(context)
 
     out_map: dict[str, SchemaFileLocation] = {}
-    for uid, node in filter_models(context):
+    for uid, node in _iter_candidate_nodes(context):
         current_path = get_current_yaml_path(context, node)
         out_map[uid] = SchemaFileLocation(
             target=get_target_yaml_path(context, node).resolve(),
@@ -1186,14 +1301,13 @@ def _sync_doc_section(
         current_yaml = t.cast(dict[str, t.Any], current_map.get(norm_name, {}))
         merged = dict(current_yaml)
 
+        skip_add_types = _get_setting_for_node(
+            "skip-add-data-types", node, name, fallback=context.settings.skip_add_data_types
+        )
         for k, v in cdict.items():
             if k == "description" and not v:
                 merged.pop("description", None)
-            elif (
-                k == "data_type"
-                and merged.get("data_type") is None
-                and context.settings.skip_add_data_types
-            ):
+            elif k == "data_type" and skip_add_types and merged.get("data_type") is None:
                 pass
             else:
                 merged[k] = v
@@ -1209,7 +1323,9 @@ def _sync_doc_section(
             if not merged[k]:
                 merged.pop(k)
 
-        if context.settings.output_to_lower:
+        if _get_setting_for_node(
+            "output-to-lower", node, name, fallback=context.settings.output_to_lower
+        ):
             merged["name"] = merged["name"].lower()
 
         incoming_columns.append(merged)
@@ -1235,7 +1351,7 @@ def sync_node_to_yaml(
     """
     if node is None:
         logger.info(":wave: No single node specified; synchronizing all matched nodes.")
-        for _, node in filter_models(context):
+        for _, node in _iter_candidate_nodes(context):
             sync_node_to_yaml(context, node, commit=commit)
         return
 
@@ -1383,7 +1499,7 @@ def apply_restructure_plan(
     logger.info(
         ":arrows_counterclockwise: Committing all restructure changes and reloading manifest."
     )
-    _ = commit_yamls(context), reload_manifest(context.project)
+    _ = commit_yamls(context), _reload_manifest(context.project)
 
 
 # Inheritance Logic
@@ -1487,12 +1603,22 @@ def _build_column_knowledge_graph(
                     continue
                 graph_edge = incoming.to_dict()
 
-                if context.settings.add_progenitor_to_meta:
+                if _get_setting_for_node(
+                    "add-progenitor-to-meta",
+                    node,
+                    name,
+                    fallback=context.settings.add_progenitor_to_meta,
+                ):
                     graph_node.setdefault("meta", {}).setdefault(
                         "osmosis_progenitor", ancestor.unique_id
                     )
 
-                if context.settings.use_unrendered_descriptions:
+                if _get_setting_for_node(
+                    "use-unrendered-descriptions",
+                    node,
+                    name,
+                    fallback=context.settings.use_unrendered_descriptions,
+                ):
                     raw_yaml = _get_node_yaml(context, ancestor) or {}
                     raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
                     raw_column_metadata = _find_first(
@@ -1514,13 +1640,24 @@ def _build_column_knowledge_graph(
                 if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
                     graph_edge["meta"] = merged_meta
 
-                for inheritable in context.settings.add_inheritance_for_specified_keys:
+                for inheritable in _get_setting_for_node(
+                    "add-inheritance-for-specified-keys",
+                    node,
+                    name,
+                    fallback=context.settings.add_inheritance_for_specified_keys,
+                ):
                     current_val = graph_node.get(inheritable)
                     if incoming_val := graph_edge.pop(inheritable, current_val):
                         graph_edge[inheritable] = incoming_val
 
                 if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
-                    generation == "generation_0" and context.settings.force_inherit_descriptions
+                    generation == "generation_0"
+                    and _get_setting_for_node(
+                        "force_inherit_descriptions",
+                        node,
+                        name,
+                        fallback=context.settings.force_inherit_descriptions,
+                    )
                 ):
                     _ = graph_edge.pop("description", None)
                 if graph_edge.get("tags") == []:
@@ -1542,19 +1679,14 @@ def inherit_upstream_column_knowledge(
     """Inherit column level knowledge from the ancestors of a dbt model or source node."""
     if node is None:
         logger.info(":wave: Inheriting column knowledge across all matched nodes.")
-        for _, node in filter_models(context):
-            inherit_upstream_column_knowledge(context, node)
-        return None
+        for _ in context.pool.map(
+            partial(inherit_upstream_column_knowledge, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
+        return
 
     logger.info(":dna: Inheriting column knowledge for => %s", node.unique_id)
-    inheritable = ["description"]
-    if not context.settings.skip_add_tags:
-        inheritable.append("tags")
-    if not context.settings.skip_merge_meta:
-        inheritable.append("meta")
-    for extra in context.settings.add_inheritance_for_specified_keys:
-        if extra not in inheritable:
-            inheritable.append(extra)
 
     column_knowledge_graph = _build_column_knowledge_graph(context, node)
     kwargs = None
@@ -1562,6 +1694,23 @@ def inherit_upstream_column_knowledge(
         kwargs = column_knowledge_graph.get(name)
         if kwargs is None:
             continue
+        inheritable = ["description"]
+        if not _get_setting_for_node(
+            "skip-add-tags", node, name, fallback=context.settings.skip_add_tags
+        ):
+            inheritable.append("tags")
+        if not _get_setting_for_node(
+            "skip-merge-meta", node, name, fallback=context.settings.skip_merge_meta
+        ):
+            inheritable.append("meta")
+        for extra in _get_setting_for_node(
+            "add-inheritance-for-specified-keys",
+            node,
+            name,
+            fallback=context.settings.add_inheritance_for_specified_keys,
+        ):
+            if extra not in inheritable:
+                inheritable.append(extra)
 
         updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
         logger.debug(
@@ -1572,15 +1721,23 @@ def inherit_upstream_column_knowledge(
 
 def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
     """Add missing columns to a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
-    if context.settings.skip_add_columns:
+    if _get_setting_for_node("skip-add-columns", node, fallback=context.settings.skip_add_columns):
         logger.debug(":no_entry_sign: Skipping column injection (skip_add_columns=True).")
         return
     if node is None:
         logger.info(":wave: Injecting missing columns for all matched nodes.")
-        for _, node in filter_models(context):
-            inject_missing_columns(context, node)
+        for _ in context.pool.map(
+            partial(inject_missing_columns, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
         return
-    if context.settings.skip_add_source_columns and node.resource_type == NodeType.Source:
+    if (
+        _get_setting_for_node(
+            "skip-add-source-columns", node, fallback=context.settings.skip_add_source_columns
+        )
+        and node.resource_type == NodeType.Source
+    ):
         logger.debug(":no_entry_sign: Skipping column injection (skip_add_source_columns=True).")
         return
     current_columns = {
@@ -1596,7 +1753,9 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
                 node.unique_id,
             )
             gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
-            if (dtype := incoming_meta.type) and not context.settings.skip_add_data_types:
+            if (dtype := incoming_meta.type) and not _get_setting_for_node(
+                "skip-add-data-types", node, fallback=context.settings.skip_add_data_types
+            ):
                 gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
             node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
 
@@ -1607,8 +1766,11 @@ def remove_columns_not_in_database(
     """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
         logger.info(":wave: Removing columns not in DB across all matched nodes.")
-        for _, node in filter_models(context):
-            remove_columns_not_in_database(context, node)
+        for _ in context.pool.map(
+            partial(remove_columns_not_in_database, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
         return
     current_columns = {
         normalize_column_name(c.name, context.project.config.credentials.type)
@@ -1631,8 +1793,11 @@ def sort_columns_as_in_database(
     """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
         logger.info(":wave: Sorting columns as they appear in DB across all matched nodes.")
-        for _, node in filter_models(context):
-            sort_columns_as_in_database(context, node)
+        for _ in context.pool.map(
+            partial(sort_columns_as_in_database, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
         return
     logger.info(":1234: Sorting columns by warehouse order => %s", node.unique_id)
     incoming_columns = get_columns(context, get_table_ref(node))
@@ -1654,11 +1819,41 @@ def sort_columns_alphabetically(
     """Sort columns in a dbt node and it's corresponding yaml section alphabetically. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
         logger.info(":wave: Sorting columns alphabetically across all matched nodes.")
-        for _, node in filter_models(context):
-            sort_columns_alphabetically(context, node)
+        for _ in context.pool.map(
+            partial(sort_columns_alphabetically, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
         return
     logger.info(":alphabet_white: Sorting columns alphabetically => %s", node.unique_id)
     node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
+
+
+def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
+    """Populate data types for columns in a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
+    if node is None:
+        logger.info(":wave: Populating data types across all matched nodes.")
+        for _ in context.pool.map(
+            partial(synchronize_data_types, context), (n for _, n in _iter_candidate_nodes(context))
+        ):
+            ...
+        return
+    logger.info(":1234: Synchronizing data types => %s", node.unique_id)
+    incoming_columns = get_columns(context, get_table_ref(node))
+    if _get_setting_for_node("skip-add-data-types", node, fallback=False):
+        return
+    for name, column in node.columns.items():
+        if _get_setting_for_node(
+            "skip-add-data-types", node, name, fallback=context.settings.skip_add_data_types
+        ):
+            continue
+        lowercase = _get_setting_for_node(
+            "output-to-lower", node, name, fallback=context.settings.output_to_lower
+        )
+        if inc_c := incoming_columns.get(name):
+            is_lower = column.data_type and column.data_type.islower()
+            if inc_c.type:
+                column.data_type = inc_c.type.lower() if lowercase or is_lower else inc_c.type
 
 
 # Fuzzy Plugins
@@ -1695,18 +1890,7 @@ class FuzzyPrefixMatching:
         """Get a list of candidate names for a column excluding a prefix."""
         _ = context
         variants = []
-        key = "osmosis_prefix"
-        p = _find_first(
-            (
-                t.cast(str, v)
-                # Can be set in the node yml (legacy support)
-                # Or in dbt_project.yml / {{ config() }}
-                for c in (node.meta, node.config.extra, node.unrendered_config)
-                for k in (key, f"dbt_{key}")
-                for v in (c.get(k), c.get(k.replace("_", "-")))
-            ),
-            lambda v: bool(v),
-        )
+        p = _get_setting_for_node("prefix", node, name)
         if p:
             mut_name = name.removeprefix(p)
             logger.debug(
@@ -1752,7 +1936,7 @@ if __name__ == "__main__":
     run_example_compilation_flow(c)
 
     project = create_dbt_project_context(c)
-    _ = generate_catalog(project)
+    _ = _generate_catalog(project)
 
     yaml_context = YamlRefactorContext(
         project, settings=YamlRefactorSettings(use_unrendered_descriptions=True)
@@ -1766,6 +1950,7 @@ if __name__ == "__main__":
         (remove_columns_not_in_database, (yaml_context,), {}),
         (inherit_upstream_column_knowledge, (yaml_context,), {}),
         (sort_columns_as_in_database, (yaml_context,), {}),
+        (synchronize_data_types, (yaml_context,), {}),
         (sync_node_to_yaml, (yaml_context,), {}),
         (commit_yamls, (yaml_context,), {}),
     )

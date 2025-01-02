@@ -27,6 +27,7 @@ from dbt_osmosis.core.osmosis import (
     remove_columns_not_in_database,
     sort_columns_as_in_database,
     sync_node_to_yaml,
+    synchronize_data_types,
 )
 
 T = t.TypeVar("T")
@@ -184,12 +185,12 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="Add inheritance for the specified keys. IE policy_tags",
 )
 @click.option(
-    "--numeric-precision",
+    "--numeric-precision-and-scale",
     is_flag=True,
     help="Numeric types will have precision and scale, e.g. Number(38, 8).",
 )
 @click.option(
-    "--char-length",
+    "--string-length",
     is_flag=True,
     help="Character types will have length, e.g. Varchar(128).",
 )
@@ -229,7 +230,9 @@ def refactor(
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
-        settings=YamlRefactorSettings(**kwargs, create_catalog_if_not_exists=False),
+        settings=YamlRefactorSettings(
+            **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
+        ),
     )
     if vars:
         settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
@@ -242,6 +245,7 @@ def refactor(
     remove_columns_not_in_database(context=context)
     inherit_upstream_column_knowledge(context=context)
     sort_columns_as_in_database(context=context)
+    synchronize_data_types(context=context)
     sync_node_to_yaml(context=context)
     commit_yamls(context=context)
 
@@ -282,7 +286,9 @@ def organize(
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
-        settings=YamlRefactorSettings(**kwargs, create_catalog_if_not_exists=False),
+        settings=YamlRefactorSettings(
+            **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
+        ),
     )
     if vars:
         settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
@@ -347,12 +353,12 @@ def organize(
     help="Add inheritance for the specified keys. IE policy_tags",
 )
 @click.option(
-    "--numeric-precision",
+    "--numeric-precision-and-scale",
     is_flag=True,
     help="Numeric types will have precision and scale, e.g. Number(38, 8).",
 )
 @click.option(
-    "--char-length",
+    "--string-length",
     is_flag=True,
     help="Character types will have length, e.g. Varchar(128).",
 )
@@ -390,7 +396,9 @@ def document(
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
-        settings=YamlRefactorSettings(**kwargs, create_catalog_if_not_exists=False),
+        settings=YamlRefactorSettings(
+            **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
+        ),
     )
     if vars:
         settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]

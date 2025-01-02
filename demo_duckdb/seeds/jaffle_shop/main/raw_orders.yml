@@ -10,3 +10,4 @@ seeds:
         data_type: DATE
       - name: status
         description: '{{ doc("orders_status") }}'
+        data_type: VARCHAR

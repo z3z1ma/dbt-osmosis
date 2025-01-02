@@ -10,16 +10,22 @@ models:
           - unique
           - not_null
 
+        data_type: INTEGER
       - name: first_name
         description: Customer's first name. PII.
+        data_type: VARCHAR
       - name: last_name
         description: Customer's last name. PII.
+        data_type: VARCHAR
       - name: first_order
         description: Date (UTC) of a customer's first order
+        data_type: DATE
       - name: most_recent_order
         description: Date (UTC) of a customer's most recent order
+        data_type: DATE
       - name: number_of_orders
         description: Count of the number of orders a customer has placed
+        data_type: BIGINT
       - name: customer_lifetime_value
         data_type: DOUBLE
       - name: customer_average_value

@@ -6,6 +6,7 @@ from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
     YamlRefactorContext,
     YamlRefactorSettings,
+    _reload_manifest,
     apply_restructure_plan,
     create_dbt_project_context,
     create_missing_source_yamls,
@@ -13,7 +14,6 @@ from dbt_osmosis.core.osmosis import (
     get_columns,
     get_table_ref,
     inherit_upstream_column_knowledge,
-    reload_manifest,
 )
 
 
@@ -33,7 +33,7 @@ def yaml_context() -> YamlRefactorContext:
 
 
 def test_reload_manifest(yaml_context: YamlRefactorContext):
-    reload_manifest(yaml_context.project)
+    _reload_manifest(yaml_context.project)
 
 
 def test_create_missing_source_yamls(yaml_context: YamlRefactorContext):
@@ -89,7 +89,7 @@ def test_get_columns_meta_char_length():
         project=create_dbt_project_context(
             DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
         ),
-        settings=YamlRefactorSettings(char_length=True, dry_run=True),
+        settings=YamlRefactorSettings(string_length=True, dry_run=True),
     )
     with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
         assert _customer_column_types(yaml_context) == {
@@ -110,7 +110,7 @@ def test_get_columns_meta_numeric_precision():
         project=create_dbt_project_context(
             DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
         ),
-        settings=YamlRefactorSettings(numeric_precision=True, dry_run=True),
+        settings=YamlRefactorSettings(numeric_precision_and_scale=True, dry_run=True),
     )
     with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
         assert _customer_column_types(yaml_context) == {
