@@ -1,8 +1,1 @@
-# STREAMLIT DEMO APP DEPENDENCIES
-
-# Database adapter
-dbt-duckdb>=1.8.0,<2.0.0
-dbt-sqlite>=1.8.0,<2.0.0
-
-# dbt Osmosis
-dbt-osmosis[workbench]
+dbt-osmosis[workbench,duckdb]
