@@ -14,9 +14,10 @@ from dbt_osmosis.core.osmosis import (
     YamlRefactorContext,
     YamlRefactorSettings,
     _build_node_ancestor_tree,
-    _get_member_yaml,
+    _get_node_yaml,
     create_dbt_project_context,
     inherit_upstream_column_knowledge,
+    sync_node_to_yaml,
 )
 
 dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip_matcher=True))
@@ -195,7 +196,8 @@ def test_inherit_upstream_column_knowledge_with_mutations(yaml_context: YamlRefa
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         inherit_upstream_column_knowledge(yaml_context, target_node)
-        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node)
+        yaml_file_model_section = _get_node_yaml(yaml_context, target_node)
 
     target_node_customer_id = target_node.columns["customer_id"]
     assert target_node_customer_id.description == "THIS COLUMN IS UPDATED FOR TESTING"
@@ -254,7 +256,8 @@ def test_inherit_upstream_column_knowledge_skip_add_tags(yaml_context: YamlRefac
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         inherit_upstream_column_knowledge(yaml_context, target_node)
-        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node)
+        yaml_file_model_section = _get_node_yaml(yaml_context, target_node)
 
     target_node_customer_id = target_node.columns["customer_id"]
     assert target_node_customer_id.description == "THIS COLUMN IS UPDATED FOR TESTING"
@@ -269,11 +272,7 @@ def test_inherit_upstream_column_knowledge_skip_add_tags(yaml_context: YamlRefac
         yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
     )
     assert yaml_file_model_section["columns"][0]["meta"] == {"my_key": "my_value"}
-    # TODO: consider a function which synchronizes a node with its yaml buffer, and then consider if inherit_upstream_column_knowledge should sync nodes
-    # in which case it would pick up manual mutations to the node and apply them to the yaml buffer (which could be useful I think)
-    assert (
-        yaml_file_model_section["columns"][0].get("tags", []) == []
-    )  # NOTE: yaml tags do not exist in buffer because we added them artificially to the node and skip_add_tags is True
+    assert yaml_file_model_section["columns"][0]["tags"] == ["my_tag3", "my_tag4"]
 
 
 def test_update_undocumented_columns_with_prior_knowledge_skip_merge_meta(
@@ -300,7 +299,8 @@ def test_update_undocumented_columns_with_prior_knowledge_skip_merge_meta(
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         inherit_upstream_column_knowledge(yaml_context, target_node)
-        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node)
+        yaml_file_model_section = _get_node_yaml(yaml_context, target_node)
 
     assert target_node_columns["customer_id"].description == "THIS COLUMN IS UPDATED FOR TESTING"
     assert (
@@ -318,11 +318,7 @@ def test_update_undocumented_columns_with_prior_knowledge_skip_merge_meta(
     assert (
         yaml_file_model_section["columns"][0]["description"] == "THIS COLUMN IS UPDATED FOR TESTING"
     )
-    # TODO: consider a function which synchronizes a node with its yaml buffer, and then consider if inherit_upstream_column_knowledge should sync nodes
-    # in which case it would pick up manual mutations to the node and apply them to the yaml buffer (which could be useful I think)
-    assert (
-        yaml_file_model_section["columns"][0].get("meta", {}) == {}
-    )  # NOTE: yaml meta does not exist in buffer because we added it artificially to the node and skip_merge_meta is True
+    assert yaml_file_model_section["columns"][0]["meta"] == {"my_key": "my_value"}
     assert sorted(yaml_file_model_section["columns"][0]["tags"]) == [
         "my_tag1",
         "my_tag2",
@@ -357,7 +353,8 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         inherit_upstream_column_knowledge(yaml_context, target_node)
-        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node)
+        yaml_file_model_section = _get_node_yaml(yaml_context, target_node)
 
     # 4) Validate the Node
     cid = target_node.columns["customer_id"]
@@ -423,7 +420,8 @@ def test_update_undocumented_columns_with_prior_knowledge_with_osmosis_keep_desc
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         inherit_upstream_column_knowledge(yaml_context, target_node)
-        yaml_file_model_section = _get_member_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node)
+        yaml_file_model_section = _get_node_yaml(yaml_context, target_node)
 
     # 4) Assert Node
     cid = target_node.columns["customer_id"]
@@ -477,7 +475,8 @@ def test_update_undocumented_columns_with_prior_knowledge_add_progenitor_to_meta
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         inherit_upstream_column_knowledge(yaml_context, target_node)
-        model_section = _get_member_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node)
+        model_section = _get_node_yaml(yaml_context, target_node)
 
     # 4) Assert Node
     cid = target_node.columns["customer_id"]
@@ -541,7 +540,8 @@ def test_update_undocumented_columns_with_prior_knowledge_with_add_inheritance_f
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         inherit_upstream_column_knowledge(yaml_context, target_node)
-        section = _get_member_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node)
+        section = _get_node_yaml(yaml_context, target_node)
 
     # 4) Assert Node
     cid = target_node.columns["customer_id"]
