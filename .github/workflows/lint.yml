@@ -20,7 +20,7 @@ jobs:
       - name: Install pre-commit hooks
         run: |
           pip install -U pip==23.1.0
-          pip install -U pre-commit==3.4.0
+          pip install -U pre-commit==3.4.0 uv==0.5.13
           pre-commit install
       - name: Run pre-commit hooks
         run: |
