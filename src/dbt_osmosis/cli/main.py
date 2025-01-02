@@ -1,4 +1,4 @@
-# pyright: reportUnreachable=false
+# pyright: reportUnreachable=false, reportAny=false
 import functools
 import io
 import subprocess
@@ -200,27 +200,13 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
 @click.argument("models", nargs=-1)
 def refactor(
     target: str | None = None,
+    profile: str | None = None,
     project_dir: str | None = None,
     profiles_dir: str | None = None,
-    catalog_path: str | None = None,
-    fqn: list[str] | None = None,
-    force_inherit_descriptions: bool = False,
-    dry_run: bool = False,
-    check: bool = False,
-    skip_add_columns: bool = False,
-    skip_add_tags: bool = False,
-    skip_add_data_types: bool = False,
-    numeric_precision: bool = False,
-    char_length: bool = False,
-    skip_merge_meta: bool = False,
-    add_progenitor_to_meta: bool = False,
-    models: list[str] | None = None,
-    profile: str | None = None,
     vars: str | None = None,
-    use_unrendered_descriptions: bool = False,
-    add_inheritance_for_specified_keys: list[str] | None = None,
-    output_to_lower: bool = False,
     auto_apply: bool = False,
+    check: bool = False,
+    **kwargs: t.Any,
 ) -> None:
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
     directory, reparses the project, then executes document passing down inheritable documentation
@@ -238,24 +224,7 @@ def refactor(
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
-        settings=YamlRefactorSettings(
-            fqns=fqn or [],
-            models=models or [],
-            dry_run=dry_run,
-            skip_add_columns=skip_add_columns,
-            skip_add_tags=skip_add_tags,
-            skip_merge_meta=skip_merge_meta,
-            skip_add_data_types=skip_add_data_types,
-            numeric_precision=numeric_precision,
-            char_length=char_length,
-            add_progenitor_to_meta=add_progenitor_to_meta,
-            use_unrendered_descriptions=use_unrendered_descriptions,
-            add_inheritance_for_specified_keys=add_inheritance_for_specified_keys or [],
-            output_to_lower=output_to_lower,
-            force_inherit_descriptions=force_inherit_descriptions,
-            catalog_path=catalog_path,
-            create_catalog_if_not_exists=False,  # TODO: allow enabling if ready
-        ),
+        settings=YamlRefactorSettings(**kwargs, create_catalog_if_not_exists=False),
     )
     if vars:
         settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
@@ -288,14 +257,11 @@ def organize(
     target: str | None = None,
     project_dir: str | None = None,
     profiles_dir: str | None = None,
-    catalog_path: str | None = None,
-    fqn: list[str] | None = None,
-    dry_run: bool = False,
     check: bool = False,
-    models: list[str] | None = None,
     profile: str | None = None,
     vars: str | None = None,
     auto_apply: bool = False,
+    **kwargs: t.Any,
 ) -> None:
     """Organizes schema ymls based on config and injects undocumented models
 
@@ -312,13 +278,7 @@ def organize(
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
-        settings=YamlRefactorSettings(
-            fqns=fqn or [],
-            models=models or [],
-            dry_run=dry_run,
-            catalog_path=catalog_path,
-            create_catalog_if_not_exists=False,
-        ),
+        settings=YamlRefactorSettings(**kwargs, create_catalog_if_not_exists=False),
     )
     if vars:
         settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
@@ -395,37 +355,18 @@ def organize(
 @click.argument("models", nargs=-1)
 def document(
     target: str | None = None,
+    profile: str | None = None,
     project_dir: str | None = None,
     profiles_dir: str | None = None,
-    models: list[str] | None = None,
-    fqn: list[str] | None = None,
-    dry_run: bool = False,
-    check: bool = False,
-    skip_merge_meta: bool = False,
-    skip_add_tags: bool = False,
-    skip_add_data_types: bool = False,
-    skip_add_columns: bool = False,
-    add_progenitor_to_meta: bool = False,
-    add_inheritance_for_specified_keys: list[str] | None = None,
-    use_unrendered_descriptions: bool = False,
-    force_inherit_descriptions: bool = False,
-    output_to_lower: bool = False,
-    char_length: bool = False,
-    numeric_precision: bool = False,
-    catalog_path: str | None = None,
     vars: str | None = None,
-    profile: str | None = None,
+    check: bool = False,
+    **kwargs: t.Any,
 ) -> None:
     """Column level documentation inheritance for existing models
 
     \f
     This command will conform schema ymls in your project as outlined in `dbt_project.yml` &
     bootstrap undocumented dbt models
-
-    Args:
-        target (Optional[str]): Profile target. Defaults to default target set in profile yml
-        project_dir (Optional[str], optional): Dbt project directory. Defaults to working directory.
-        profiles_dir (Optional[str], optional): Dbt profile directory. Defaults to ~/.dbt
     """
     logger.info(":water_wave: Executing dbt-osmosis\n")
     settings = DbtConfiguration(
@@ -436,23 +377,7 @@ def document(
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
-        settings=YamlRefactorSettings(
-            fqns=fqn or [],
-            models=models or [],
-            dry_run=dry_run,
-            skip_add_tags=skip_add_tags,
-            skip_merge_meta=skip_merge_meta,
-            skip_add_data_types=skip_add_data_types,
-            skip_add_columns=skip_add_columns,
-            numeric_precision=numeric_precision,
-            char_length=char_length,
-            add_progenitor_to_meta=add_progenitor_to_meta,
-            use_unrendered_descriptions=use_unrendered_descriptions,
-            add_inheritance_for_specified_keys=add_inheritance_for_specified_keys or [],
-            output_to_lower=output_to_lower,
-            force_inherit_descriptions=force_inherit_descriptions,
-            catalog_path=catalog_path,
-        ),
+        settings=YamlRefactorSettings(**kwargs, create_catalog_if_not_exists=False),
     )
     if vars:
         settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]

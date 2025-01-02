@@ -344,7 +344,7 @@ class RestructureDeltaPlan:
 class YamlRefactorSettings:
     """Settings for yaml based refactoring operations."""
 
-    fqns: list[str] = field(default_factory=list)
+    fqn: list[str] = field(default_factory=list)
     """Filter models to action via a fully qualified name match such as returned by `dbt ls`."""
     models: list[str] = field(default_factory=list)
     """Filter models to action via a file path match."""
@@ -639,8 +639,8 @@ def filter_models(
         if context.settings.models:
             if not _is_file_match(node, context.settings.models):
                 return False
-        if context.settings.fqns:
-            if not _is_fqn_match(node, context.settings.fqns):
+        if context.settings.fqn:
+            if not _is_fqn_match(node, context.settings.fqn):
                 return False
         logger.debug(":white_check_mark: Node => %s passed filtering logic.", node.unique_id)
         return True
