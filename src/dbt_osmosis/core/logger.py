@@ -73,7 +73,7 @@ LOGGER = get_logger()
 class LogMethod(t.Protocol):
     """Protocol for logger methods"""
 
-    def __call__(self, msg: str, /, *args: t.Any, **kwds: t.Any) -> t.Any: ...
+    def __call__(self, msg: t.Any, /, *args: t.Any, **kwds: t.Any) -> t.Any: ...
 
 
 def __getattr__(name: str) -> LogMethod:

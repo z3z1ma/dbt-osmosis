@@ -112,6 +112,7 @@ class DbtConfiguration:
     threads: int = 1
     single_threaded: bool = True
     vars: dict[str, t.Any] = field(default_factory=dict)
+    quiet: bool = True
 
     def __post_init__(self) -> None:
         set_invocation_context(get_env())
@@ -132,6 +133,7 @@ def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
         single_threaded=cfg.single_threaded,
         vars=cfg.vars,
         which="parse",
+        quiet=cfg.quiet,
         DEBUG=False,
         REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES=False,
     )
