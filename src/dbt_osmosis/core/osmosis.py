@@ -22,6 +22,7 @@ from types import MappingProxyType
 import dbt.flags as dbt_flags
 import pluggy
 import ruamel.yaml
+from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.impl import BaseAdapter
 from dbt.adapters.base.relation import BaseRelation
@@ -447,7 +448,7 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
     return compiled_node
 
 
-def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> AdapterResponse:
+def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterResponse, Table]:
     """Execute jinja SQL using the context's manifest and adapter."""
     if _has_jinja(raw_sql):
         comp = compile_sql_code(context, raw_sql)
@@ -455,8 +456,8 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> AdapterRespons
     else:
         sql_to_exec = raw_sql
 
-    resp, _ = context.adapter.execute(sql_to_exec, auto_begin=False, fetch=True)
-    return resp
+    resp, table = context.adapter.execute(sql_to_exec, auto_begin=False, fetch=True)
+    return resp, table
 
 
 # Node filtering
@@ -1490,7 +1491,7 @@ def run_example_compilation_flow(c: DbtConfiguration) -> None:
     node = compile_sql_code(context, "select '{{ 1+1 }}' as col_{{ var('foo') }}")
     print("Compiled =>", node.compiled_code)
 
-    resp = execute_sql_code(context, "select '{{ 1+2 }}' as col_{{ var('foo') }}")
+    resp, _ = execute_sql_code(context, "select '{{ 1+2 }}' as col_{{ var('foo') }}")
     print("Resp =>", resp)
 
 
