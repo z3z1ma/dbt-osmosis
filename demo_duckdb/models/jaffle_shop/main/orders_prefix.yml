@@ -1,16 +1,24 @@
 ---
 version: 2
 models:
-  - name : orders_prefix
-    columns :
-      - {name : o_order_id, data_type : INTEGER}
-      - {name : o_customer_id, data_type : INTEGER}
-      - {name : o_order_date, data_type : DATE}
-      - name : o_status
-        description : '{{ doc("orders_status") }}'
-        data_type : VARCHAR
-      - {name : o_credit_card_amount, data_type : DOUBLE}
-      - {name : o_coupon_amount, data_type : DOUBLE}
-      - {name : o_bank_transfer_amount, data_type : DOUBLE}
-      - {name : o_gift_card_amount, data_type : DOUBLE}
-      - {name : o_amount, data_type : DOUBLE}
+  - name: orders_prefix
+    columns:
+      - name: o_order_id
+        data_type: INTEGER
+      - name: o_customer_id
+        data_type: INTEGER
+      - name: o_order_date
+        data_type: DATE
+      - name: o_status
+        description: '{{ doc("orders_status") }}'
+        data_type: VARCHAR
+      - name: o_credit_card_amount
+        data_type: DOUBLE
+      - name: o_coupon_amount
+        data_type: DOUBLE
+      - name: o_bank_transfer_amount
+        data_type: DOUBLE
+      - name: o_gift_card_amount
+        data_type: DOUBLE
+      - name: o_amount
+        data_type: DOUBLE

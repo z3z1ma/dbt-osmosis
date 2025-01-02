@@ -1,17 +1,19 @@
 ---
 version: 2
 models:
-  - name : stg_payments
-    columns :
-      - name : payment_id
-        tests :
+  - name: stg_payments
+    columns:
+      - name: payment_id
+        tests:
           - unique
           - not_null
-        data_type : integer
-      - {name : order_id, data_type : integer}
-      - name : payment_method
-        tests :
-          - accepted_values :
-              values : ["credit_card", "coupon", "bank_transfer", "gift_card"]
-        data_type : varchar
-      - {name : amount, data_type : double}
+        data_type: integer
+      - name: order_id
+        data_type: integer
+      - name: payment_method
+        tests:
+          - accepted_values:
+              values: ["credit_card", "coupon", "bank_transfer", "gift_card"]
+        data_type: varchar
+      - name: amount
+        data_type: double

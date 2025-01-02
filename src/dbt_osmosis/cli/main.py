@@ -58,7 +58,7 @@ def sql():
     """Execute and compile dbt SQL statements"""
 
 
-def shared_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
+def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     """Options common across subcommands"""
 
     @click.option(
@@ -81,6 +81,12 @@ def shared_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         "--target",
         type=click.STRING,
         help="Which target to load. Overrides default target in the profiles.yml.",
+    )
+    @click.option(
+        "--threads",
+        type=click.INT,
+        envvar="DBT_THREADS",
+        help="How many threads to use when executing.",
     )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -135,7 +141,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
 
 
 @yaml.command(context_settings=_CONTEXT)
-@shared_opts
+@dbt_opts
 @yaml_opts
 @click.option(
     "-F",
@@ -212,6 +218,7 @@ def refactor(
     vars: str | None = None,
     auto_apply: bool = False,
     check: bool = False,
+    threads: int | None = None,
     **kwargs: t.Any,
 ) -> None:
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
@@ -227,6 +234,7 @@ def refactor(
         profiles_dir=t.cast(str, profiles_dir),
         target=target,
         profile=profile,
+        threads=threads,
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
@@ -254,7 +262,7 @@ def refactor(
 
 
 @yaml.command(context_settings=_CONTEXT)
-@shared_opts
+@dbt_opts
 @yaml_opts
 @click.option(
     "--auto-apply",
@@ -269,6 +277,7 @@ def organize(
     profile: str | None = None,
     vars: str | None = None,
     auto_apply: bool = False,
+    threads: int | None = None,
     **kwargs: t.Any,
 ) -> None:
     """Organizes schema ymls based on config and injects undocumented models
@@ -283,6 +292,7 @@ def organize(
         profiles_dir=t.cast(str, profiles_dir),
         target=target,
         profile=profile,
+        threads=threads,
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
@@ -303,7 +313,7 @@ def organize(
 
 
 @yaml.command(context_settings=_CONTEXT)
-@shared_opts
+@dbt_opts
 @yaml_opts
 @click.option(
     "-F",
@@ -379,6 +389,7 @@ def document(
     profiles_dir: str | None = None,
     vars: str | None = None,
     check: bool = False,
+    threads: int | None = None,
     **kwargs: t.Any,
 ) -> None:
     """Column level documentation inheritance for existing models
@@ -393,6 +404,7 @@ def document(
         profiles_dir=t.cast(str, profiles_dir),
         target=target,
         profile=profile,
+        threads=threads,
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
@@ -500,7 +512,7 @@ def workbench(
 
 
 @sql.command(context_settings=_CONTEXT)
-@shared_opts
+@dbt_opts
 @click.argument("sql")
 def run(
     sql: str = "",
@@ -526,7 +538,7 @@ def run(
 
 
 @sql.command(context_settings=_CONTEXT)
-@shared_opts
+@dbt_opts
 @click.argument("sql")
 def compile(
     sql: str = "",

@@ -144,24 +144,22 @@ class DbtConfiguration:
     profiles_dir: str = field(default_factory=discover_profiles_dir)
     target: str | None = None
     profile: str | None = None
-    threads: int = 1
-    single_threaded: bool = True
+    threads: int | None = None
+    single_threaded: bool | None = None
     vars: dict[str, t.Any] = field(default_factory=dict)
     quiet: bool = True
 
     def __post_init__(self) -> None:
         logger.debug(":bookmark_tabs: Setting invocation context with environment variables.")
         set_invocation_context(get_env())
-        if self.threads > 1:
+        if self.threads and self.threads > 1:
             self.single_threaded = False
-        elif self.threads < 1:
-            raise ValueError("DbtConfiguration.threads must be >= 1")
 
 
 def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
     """Convert a DbtConfiguration into a dbt-friendly argparse.Namespace."""
     logger.debug(":blue_book: Converting DbtConfiguration to argparse.Namespace => %s", cfg)
-    return argparse.Namespace(
+    ns = argparse.Namespace(
         project_dir=cfg.project_dir,
         profiles_dir=cfg.profiles_dir,
         target=cfg.target or os.getenv("DBT_TARGET"),
@@ -174,6 +172,7 @@ def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
         DEBUG=False,
         REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES=False,
     )
+    return ns
 
 
 @dataclass
@@ -504,6 +503,11 @@ class YamlRefactorContext:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
         for setting, val in self.yaml_settings.items():
             setattr(self.yaml_handler, setting, val)
+        self.pool._max_workers = self.project.config.threads
+        logger.info(
+            ":notebook: Osmosis ThreadPoolExecutor max_workers synced with dbt => %s",
+            self.pool._max_workers,
+        )
 
 
 def _load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
@@ -1072,12 +1076,12 @@ _YAML_BUFFER_CACHE: dict[Path, t.Any] = {}
 
 def _read_yaml(context: YamlRefactorContext, path: Path) -> dict[str, t.Any]:
     """Read a yaml file from disk. Adds an entry to the buffer cache so all operations on a path are consistent."""
-    if path not in _YAML_BUFFER_CACHE:
-        if not path.is_file():
-            logger.debug(":warning: Path => %s is not a file. Returning empty doc.", path)
-            return {}
-        logger.debug(":open_file_folder: Reading YAML doc => %s", path)
-        with context.yaml_handler_lock:
+    with context.yaml_handler_lock:
+        if path not in _YAML_BUFFER_CACHE:
+            if not path.is_file():
+                logger.debug(":warning: Path => %s is not a file. Returning empty doc.", path)
+                return _YAML_BUFFER_CACHE.setdefault(path, {})
+            logger.debug(":open_file_folder: Reading YAML doc => %s", path)
             _YAML_BUFFER_CACHE[path] = t.cast(dict[str, t.Any], context.yaml_handler.load(path))
     return _YAML_BUFFER_CACHE[path]
 
@@ -1099,8 +1103,8 @@ def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]
             else:
                 logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
             del staging
-        if path in _YAML_BUFFER_CACHE:
-            del _YAML_BUFFER_CACHE[path]
+            if path in _YAML_BUFFER_CACHE:
+                del _YAML_BUFFER_CACHE[path]
 
 
 def commit_yamls(context: YamlRefactorContext) -> None:
@@ -1358,8 +1362,11 @@ def sync_node_to_yaml(
     """
     if node is None:
         logger.info(":wave: No single node specified; synchronizing all matched nodes.")
-        for _, node in _iter_candidate_nodes(context):
-            sync_node_to_yaml(context, node, commit=commit)
+        for _ in context.pool.map(
+            partial(sync_node_to_yaml, context, commit=commit),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
         return
 
     current_path = get_current_yaml_path(context, node)

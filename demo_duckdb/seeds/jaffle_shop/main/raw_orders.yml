@@ -1,11 +1,14 @@
 ---
 version: 2
 seeds:
-  - name : raw_orders
-    columns :
-      - {name : id, data_type : INTEGER}
-      - {name : user_id, data_type : INTEGER}
-      - {name : order_date, data_type : DATE}
-      - name : status
-        description : '{{ doc("orders_status") }}'
-        data_type : VARCHAR
+  - name: raw_orders
+    columns:
+      - name: id
+        data_type: INTEGER
+      - name: user_id
+        data_type: INTEGER
+      - name: order_date
+        data_type: DATE
+      - name: status
+        description: '{{ doc("orders_status") }}'
+        data_type: VARCHAR

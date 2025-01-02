@@ -1,58 +1,60 @@
 ---
 version: 2
 models:
-  - name : orders
-    description : This table has basic information about orders, as well as some derived facts based on payments
+  - name: orders
+    description: This table has basic information about orders, as well as some derived facts based on payments
 
-    columns :
-      - name : order_id
-        tests :
+    columns:
+      - name: order_id
+        tests:
           - unique
           - not_null
-        description : This is a unique identifier for an order
-        data_type : INTEGER
-      - name : customer_id
-        description : Foreign key to the customers table
-        tests :
+        description: This is a unique identifier for an order
+        data_type: INTEGER
+      - name: customer_id
+        description: Foreign key to the customers table
+        tests:
           - not_null
-          - relationships :
-              to : ref('customers')
-              field : customer_id
+          - relationships:
+              to: ref('customers')
+              field: customer_id
 
-        data_type : INTEGER
-      - {name : order_date, description : Date (UTC) that the order was placed, data_type : DATE}
-      - name : status
-        tests :
-          - accepted_values :
-              values : ['placed', 'shipped', 'completed', 'return_pending', 'returned']
+        data_type: INTEGER
+      - name: order_date
+        description: Date (UTC) that the order was placed
+        data_type: DATE
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
 
-        description : '{{ doc("orders_status") }}'
-        data_type : VARCHAR
-      - name : credit_card_amount
-        description : Amount of the order (AUD) paid for by credit card
-        tests :
-          - not_null
-
-        data_type : DOUBLE
-      - name : coupon_amount
-        description : Amount of the order (AUD) paid for by coupon
-        tests :
+        description: '{{ doc("orders_status") }}'
+        data_type: VARCHAR
+      - name: credit_card_amount
+        description: Amount of the order (AUD) paid for by credit card
+        tests:
           - not_null
 
-        data_type : DOUBLE
-      - name : bank_transfer_amount
-        description : Amount of the order (AUD) paid for by bank transfer
-        tests :
+        data_type: DOUBLE
+      - name: coupon_amount
+        description: Amount of the order (AUD) paid for by coupon
+        tests:
           - not_null
 
-        data_type : DOUBLE
-      - name : gift_card_amount
-        description : Amount of the order (AUD) paid for by gift card
-        tests :
+        data_type: DOUBLE
+      - name: bank_transfer_amount
+        description: Amount of the order (AUD) paid for by bank transfer
+        tests:
           - not_null
-        data_type : DOUBLE
-      - name : amount
-        description : Total amount (AUD) of the order
-        tests :
+
+        data_type: DOUBLE
+      - name: gift_card_amount
+        description: Amount of the order (AUD) paid for by gift card
+        tests:
           - not_null
-        data_type : DOUBLE
+        data_type: DOUBLE
+      - name: amount
+        description: Total amount (AUD) of the order
+        tests:
+          - not_null
+        data_type: DOUBLE

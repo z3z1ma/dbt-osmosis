@@ -1,19 +1,21 @@
 ---
 version: 2
 models:
-  - name : stg_orders
-    columns :
-      - name : order_id
-        tests :
+  - name: stg_orders
+    columns:
+      - name: order_id
+        tests:
           - unique
           - not_null
-        data_type : INTEGER
-      - {name : customer_id, data_type : INTEGER}
-      - {name : order_date, data_type : DATE}
-      - name : status
-        tests :
-          - accepted_values :
-              values : ['placed', 'shipped', 'completed', 'return_pending', 'returned']
+        data_type: INTEGER
+      - name: customer_id
+        data_type: INTEGER
+      - name: order_date
+        data_type: DATE
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
 
-        data_type : VARCHAR
-        description : '{{ doc("orders_status") }}'
+        data_type: VARCHAR
+        description: '{{ doc("orders_status") }}'
