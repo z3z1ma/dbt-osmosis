@@ -80,7 +80,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
         "first_name": {
             "name": "first_name",
@@ -90,7 +89,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
         "last_name": {
             "name": "last_name",
@@ -100,7 +98,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
         "first_order": {
             "name": "first_order",
@@ -110,7 +107,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
         "most_recent_order": {
             "name": "most_recent_order",
@@ -120,7 +116,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
         "number_of_orders": {
             "name": "number_of_orders",
@@ -130,7 +125,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
         "customer_lifetime_value": {
             "name": "customer_lifetime_value",
@@ -140,7 +134,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
         "customer_average_value": {
             "name": "customer_average_value",
@@ -150,7 +143,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
             "constraints": [],
             "quote": None,
             "tags": [],
-            "granularity": None,
         },
     }
     if dbt_version >= Version("1.9.0"):

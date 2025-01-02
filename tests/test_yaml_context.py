@@ -60,8 +60,8 @@ def _customer_column_types(yaml_context: YamlRefactorContext) -> dict[str, str]:
     node = next(n for n in yaml_context.project.manifest.nodes.values() if n.name == "customers")
     assert node
 
-    catalog_key = get_table_ref(node)
-    columns = get_columns(yaml_context, catalog_key)
+    ref = get_table_ref(node)
+    columns = get_columns(yaml_context, ref)
     assert columns
 
     column_types = dict({name: meta.type for name, meta in columns.items()})
