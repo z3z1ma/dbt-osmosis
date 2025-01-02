@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.26.3"]  # hatch-vcs
 build-backend = "hatchling.build"
 
 [project]
 name = "dbt-osmosis"
-version = "1.0.0"
+version = "1.0.1"
 description = "A dbt utility for managing YAML to make developing with dbt more delightful."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -38,7 +38,7 @@ sqlite = ["dbt-sqlite>=1.0.0,<2"]
 postgres = ["dbt-postgres>=1.0.0,<2"]
 
 workbench = [
-  "streamlit>=1.20.0,<1.36.0",
+  "streamlit>=1.20.0,<1.30.0",
   "streamlit-ace~=0.1.1",
   "ydata-profiling~=4.12.1",
   "feedparser~=6.0.11",

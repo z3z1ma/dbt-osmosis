@@ -810,12 +810,12 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         )
 
         def _describe(rel: BaseRelation) -> dict[str, t.Any]:
-            return {
+            s = {
                 "name": rel.identifier,
                 "description": "",
                 "columns": [
                     {
-                        "name": name,
+                        "name": name.lower() if context.settings.output_to_lower else name,
                         "description": meta.comment or "",
                         "data_type": meta.type.lower()
                         if context.settings.output_to_lower
@@ -824,6 +824,10 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
                     for name, meta in get_columns(context, get_table_ref(rel)).items()
                 ],
             }
+            if context.settings.skip_add_data_types:
+                for col in t.cast(list[dict[str, t.Any]], s["columns"]):
+                    _ = col.pop("data_type", None)
+            return s
 
         tables = [
             schema
@@ -1183,6 +1187,12 @@ def _sync_doc_section(
         for k, v in cdict.items():
             if k == "description" and not v:
                 merged.pop("description", None)
+            elif (
+                k == "data_type"
+                and merged.get("data_type") is None
+                and context.settings.skip_add_data_types
+            ):
+                pass
             else:
                 merged[k] = v
 
@@ -1196,6 +1206,9 @@ def _sync_doc_section(
         for k in list(merged.keys()):
             if not merged[k]:
                 merged.pop(k)
+
+        if context.settings.output_to_lower:
+            merged["name"] = merged["name"].lower()
 
         incoming_columns.append(merged)
 
@@ -1578,7 +1591,7 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
                 node.unique_id,
             )
             gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
-            if dtype := incoming_meta.type:
+            if (dtype := incoming_meta.type) and not context.settings.skip_add_data_types:
                 gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
             node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
 

@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-set -ex
-export COMPOSE_DOCKER_CLI_BUILD=1
-export DOCKER_BUILDKIT=1
-my_path="$( cd "$(dirname "$0")"; pwd -P)"
-"${my_path}/shutdown"
-${1:-docker-compose} -f "${my_path}/docker-compose.yml" build
-${1:-docker-compose} -f "${my_path}/docker-compose.yml" up -d

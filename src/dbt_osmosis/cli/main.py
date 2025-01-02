@@ -157,7 +157,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="If specified, we will skip merging upstrean meta keys to the model columns.",
 )
 @click.option(
-    "--skip-add-data-types",  # TODO: make sure this is implemented
+    "--skip-add-data-types",
     is_flag=True,
     help="If specified, we will skip adding data types to the models.",
 )
@@ -188,7 +188,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="If specified, will add inheritance for the specified keys. IE policy_tags",
 )
 @click.option(
-    "--output-to-lower",  # TODO: validate this is implemented
+    "--output-to-lower",
     is_flag=True,
     help="If specified, output yaml file columns and data types in lowercase if possible.",
 )
@@ -352,7 +352,7 @@ def organize(
     help="If specified, we will skip merging upstrean meta keys to the model columns.",
 )
 @click.option(
-    "--skip-add-data-types",  # TODO: make sure this is implemented
+    "--skip-add-data-types",
     is_flag=True,
     help="If specified, we will skip adding data types to the models.",
 )
@@ -388,7 +388,7 @@ def organize(
     help="If specified, will add inheritance for the specified keys. IE policy_tags",
 )
 @click.option(
-    "--output-to-lower",  # TODO: validate this is implemented
+    "--output-to-lower",
     is_flag=True,
     help="If specified, output yaml file columns and data types in lowercase if possible.",
 )
