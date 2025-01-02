@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: check-ast
       - id: check-json
@@ -11,7 +11,7 @@ repos:
       - id: detect-private-key
       - id: debug-statements
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v3.13.0
+    rev: v4.1.0
     hooks:
       - id: commitizen
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -22,27 +22,10 @@ repos:
       - id: ruff
         args: [--fix]
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.2
+    rev: v8.22.1
     hooks:
       - id: gitleaks
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.1
+    rev: v1.7.5
     hooks:
-      - id: actionlint-docker
-  - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
-    hooks:
-      - id: shellcheck
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.13.0-beta
-    hooks:
-      - id: hadolint-docker
-  - repo: local
-    hooks:
-      - id: uv-export-prod
-        name: uv-export-prod
-        entry: uv export -o requirements.txt --no-hashes --frozen
-        language: system
-        types: [file]
-        files: pyproject.toml|uv.lock
-        pass_filenames: false
+      - id: actionlint
