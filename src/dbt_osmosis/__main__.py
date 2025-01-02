@@ -1,6 +1,6 @@
 import sys
 
-import dbt_osmosis.main
+from dbt_osmosis.cli.main import cli
 
 if __name__ == "__main__":
-    dbt_osmosis.main.cli(sys.argv[1:])
+    cli(sys.argv[1:])

@@ -1,0 +1,12 @@
+version: 2
+seeds:
+  - name: raw_payments
+    columns:
+      - name: id
+        data_type: INTEGER
+      - name: order_id
+        data_type: INTEGER
+      - name: payment_method
+        data_type: VARCHAR
+      - name: amount
+        data_type: INTEGER

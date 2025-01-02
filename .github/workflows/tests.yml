@@ -29,23 +29,23 @@ jobs:
           pip install --constraint=.github/workflows/constraints.txt pip
           pip --version
 
-      - name: Install Poetry
+      - name: Install uv
         run: |
-          pip install --constraint=.github/workflows/constraints.txt poetry
-          poetry --version
-
-      - name: Install dbt-core
-        run: |
-          poetry add dbt-core==${{ matrix.dbt-version }}
+          pip install --constraint=.github/workflows/constraints.txt uv
+          uv --version
 
       - name: Install required packages
         run: | # install duckdb extras to be able to parse manifest
-          poetry install -E duckdb
+          uv sync --extra duckdb --extra dev
+
+      - name: Install dbt-core
+        run: |
+          uv pip install dbt-core==${{ matrix.dbt-version }}
 
       - name: Parse manifest
         run: |
-          poetry run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
 
       - name: Run pytest
         run: |
-          poetry run python -m pytest
+          uv run pytest

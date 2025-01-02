@@ -54,7 +54,7 @@ class Renderer(Dashboard.Item):
                     key=(
                         md5(
                             state.w.compiled_sql.encode("utf-8")
-                            + state.target_profile.encode("utf-8")
+                            + state.w.target_profile.encode("utf-8")
                         ).hexdigest()
                         if state.w.compiled_sql
                         else "__empty__"

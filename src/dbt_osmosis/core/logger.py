@@ -1,26 +1,22 @@
+# pyright: reportAny=false
+"""Logging module for dbt-osmosis. The module itself can be used as a logger as it proxies calls to the default LOGGER instance."""
+
+from __future__ import annotations
+
 import logging
+import typing as t
 from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional, Union
 
 from rich.logging import RichHandler
 
-# Log File Format
-LOG_FILE_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
-
-# Log File Path
-LOG_PATH = Path.home().absolute() / ".dbt-osmosis" / "logs"
-
-# Console Output Level
-LOGGING_LEVEL = logging.INFO
+_LOG_FILE_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
+_LOG_PATH = Path.home().absolute() / ".dbt-osmosis" / "logs"
+_LOGGING_LEVEL = logging.INFO
 
 
-def rotating_log_handler(
-    name: str,
-    path: Path,
-    formatter: str,
-) -> RotatingFileHandler:
+def get_rotating_log_handler(name: str, path: Path, formatter: str) -> RotatingFileHandler:
     """This handler writes warning and higher level outputs to logs in a home .dbt-osmosis directory rotating them as needed"""
     path.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
@@ -34,13 +30,14 @@ def rotating_log_handler(
 
 
 @lru_cache(maxsize=10)
-def logger(
+def get_logger(
     name: str = "dbt-osmosis",
-    level: Optional[Union[int, str]] = None,
-    path: Optional[Path] = None,
-    formatter: Optional[str] = None,
+    level: int | str = _LOGGING_LEVEL,
+    path: Path = _LOG_PATH,
+    formatter: str = _LOG_FILE_FORMAT,
 ) -> logging.Logger:
     """Builds and caches loggers. Can be configured with module level attributes or on a call by call basis.
+
     Simplifies logger management without having to instantiate separate pointers in each module.
 
     Args:
@@ -54,16 +51,10 @@ def logger(
     """
     if isinstance(level, str):
         level = getattr(logging, level, logging.INFO)
-    if level is None:
-        level = LOGGING_LEVEL
-    if path is None:
-        path = LOG_PATH
-    if formatter is None:
-        formatter = LOG_FILE_FORMAT
-    _logger = logging.getLogger(name)
-    _logger.setLevel(level)
-    _logger.addHandler(rotating_log_handler(name, path, formatter))
-    _logger.addHandler(
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(get_rotating_log_handler(name, path, formatter))
+    logger.addHandler(
         RichHandler(
             level=level,
             rich_tracebacks=True,
@@ -71,5 +62,20 @@ def logger(
             show_time=False,
         )
     )
-    _logger.propagate = False
-    return _logger
+    logger.propagate = False
+    return logger
+
+
+LOGGER = get_logger()
+"""Default logger for dbt-osmosis"""
+
+
+class LogMethod(t.Protocol):
+    """Protocol for logger methods"""
+
+    def __call__(self, msg: t.Any, /, *args: t.Any, **kwds: t.Any) -> t.Any: ...
+
+
+def __getattr__(name: str) -> LogMethod:
+    func = getattr(LOGGER, name)
+    return func

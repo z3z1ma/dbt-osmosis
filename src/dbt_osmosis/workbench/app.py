@@ -1,7 +1,9 @@
+# pyright: reportMissingTypeStubs=false, reportAny=false, reportUnusedCallResult=false, reportUnknownMemberType=false, reportUntypedFunctionDecorator=false
 import argparse
 import decimal
 import os
 import sys
+import typing as t
 from collections import OrderedDict
 from datetime import date, datetime
 from textwrap import dedent
@@ -15,18 +17,27 @@ import ydata_profiling
 from streamlit import session_state as state
 from streamlit_elements_fluence import elements, event, sync
 
-from dbt_osmosis.components.dashboard import Dashboard
-from dbt_osmosis.components.editor import Editor
-from dbt_osmosis.components.editor import Tabs as EditorTabs
-from dbt_osmosis.components.feed import RssFeed
-from dbt_osmosis.components.preview import Preview
-from dbt_osmosis.components.profiler import Profiler
-from dbt_osmosis.components.renderer import Renderer
-from dbt_osmosis.vendored.dbt_core_interface import (
-    DbtProject,
-    default_profiles_dir,
-    default_project_dir,
+from dbt_osmosis.core.osmosis import (
+    DbtConfiguration,
+    compile_sql_code,
+    create_dbt_project_context,
+    discover_profiles_dir,
+    discover_project_dir,
+    execute_sql_code,
+    reload_manifest,
 )
+from dbt_osmosis.core.osmosis import (
+    DbtProjectContext as DbtProject,
+)
+from dbt_osmosis.workbench.components.dashboard import Dashboard
+from dbt_osmosis.workbench.components.editor import Editor
+from dbt_osmosis.workbench.components.editor import Tabs as EditorTabs
+from dbt_osmosis.workbench.components.feed import RssFeed
+from dbt_osmosis.workbench.components.preview import Preview
+from dbt_osmosis.workbench.components.profiler import Profiler
+from dbt_osmosis.workbench.components.renderer import Renderer
+
+st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
 
 default_prompt = (
     "-- This is a scratch model\n-- it will not persist if you jump to another model\n-- you can"
@@ -98,12 +109,12 @@ def _get_demo_query() -> str:
     )
 
 
-def _parse_args() -> dict:
+def _parse_args() -> dict[str, t.Any]:
     """Parse command line arguments"""
     try:
         parser = argparse.ArgumentParser(description="dbt osmosis workbench")
-        parser.add_argument("--profiles-dir", help="dbt profile directory")
-        parser.add_argument("--project-dir", help="dbt project directory")
+        _ = parser.add_argument("--profiles-dir", help="dbt profile directory")
+        _ = parser.add_argument("--project-dir", help="dbt project directory")
         args = vars(parser.parse_args(sys.argv[1:]))
     except Exception:
         args = {}
@@ -113,10 +124,10 @@ def _parse_args() -> dict:
 def change_target() -> None:
     """Change the target profile"""
     ctx: DbtProject = state.w.ctx
-    if ctx.config.target_name != state.target_profile:
-        print(f"Changing target to {state.target_profile}")
-        ctx.base_config.target = state.target_profile
-        ctx.safe_parse_project(reinit=True)
+    if ctx.config.target_name != state.w.target_profile:
+        print(f"Changing target to {state.w.target_profile}")
+        ctx.config.target_name = state.w.target_profile
+        reload_manifest(ctx)
         state.w.raw_sql += " "  # invalidate cache on next compile?
         state.w.cache_version += 1
 
@@ -125,7 +136,7 @@ def inject_model() -> None:
     """Inject model into editor"""
     ctx: DbtProject = state.w.ctx
     if state.model is not None and state.model != "SCRATCH":
-        path = os.path.join(ctx.project_root, state.model.original_file_path)
+        path = os.path.join(ctx.config.project_root, state.model.original_file_path)
         with open(path, "r") as f:
             state.w.raw_sql = f.read()
         state.w.editor.update_content("SQL", state.w.raw_sql)
@@ -138,9 +149,9 @@ def save_model() -> None:
     """Save model to disk"""
     ctx: DbtProject = state.w.ctx
     if state.model is not None and state.model != "SCRATCH":
-        path = os.path.join(ctx.project_root, state.model.original_file_path)
+        path = os.path.join(ctx.config.project_root, state.model.original_file_path)
         with open(path, "w") as f:
-            f.write(state.w.editor.get_content("SQL"))
+            _ = f.write(state.w.editor.get_content("SQL"))
         print(f"Saved model to {path}")
 
 
@@ -148,8 +159,7 @@ def sidebar(ctx: DbtProject) -> None:
     # Model selector
     with st.sidebar.expander("💡 Models", expanded=True):
         st.caption(
-            "Select a model to use as a starting point for your query. The filter supports"
-            " typeahead. All changes are ephemeral unless you save the model."
+            "Select a model to use as a starting point for your query. The filter supports typeahead. All changes are ephemeral unless you save the model."
         )
         state.w.model = st.selectbox(
             "Select a model",
@@ -166,8 +176,7 @@ def sidebar(ctx: DbtProject) -> None:
     # Profile selector
     with st.sidebar.expander("💁 Profiles", expanded=True):
         st.caption(
-            "Select a profile used for materializing, compiling, and testing models.\n\nIf you"
-            " change profiles, you may need to modify the workbench query to invalidate the cache."
+            "Select a profile used for materializing, compiling, and testing models.\n\nIf you change profiles, you may need to modify the workbench query to invalidate the cache."
         )
         state.w.target_profile = st.radio(
             f"Loaded profiles from {ctx.config.profile_name}",
@@ -180,8 +189,7 @@ def sidebar(ctx: DbtProject) -> None:
     # Query template
     with st.sidebar.expander("📝 Query Template"):
         st.caption(
-            "This is a template query that will be used when executing SQL. The {sql} variable will"
-            " be replaced with the compiled SQL."
+            "This is a template query that will be used when executing SQL. The {sql} variable will be replaced with the compiled SQL."
         )
         state.w.sql_template = st.text_area(
             "SQL Template",
@@ -192,22 +200,20 @@ def sidebar(ctx: DbtProject) -> None:
     # Refresh instructions
     st.sidebar.write("Notes")
     st.sidebar.caption(
-        "Refresh the page to reparse dbt. This is useful if any updated models or macros in your"
-        " physical project     on disk have changed and are not yet reflected in the workbench as"
-        " refable or updated."
+        "Refresh the page to reparse dbt. This is useful if any updated models or macros in your physical project     on disk have changed and are not yet reflected in the workbench as refable or updated."
     )
 
 
 def compile(ctx: DbtProject, sql: str) -> str:
     """Compile SQL using dbt context."""
     try:
-        with ctx.adapter.connection_named("__sql_workbench__"):
-            return ctx.compile_code(sql).compiled_code
+        return compile_sql_code(ctx, sql).compiled_code or ""
     except Exception as e:
         return str(e)
 
 
-def ser(x):
+def ser(x: t.Any) -> t.Any:
+    """Serialize a value for JSON."""
     if isinstance(x, decimal.Decimal):
         return float(x)
     if isinstance(x, date):
@@ -226,28 +232,25 @@ def run_query() -> None:
     sql = state.w.compiled_sql
     try:
         state.w.sql_query_state = "running"
-        with ctx.adapter.connection_named("__sql_workbench__"):
-            result = ctx.execute_code(state.w.sql_template.format(sql=sql))
+        resp, table = execute_sql_code(ctx, state.w.sql_template.format(sql=sql))
     except Exception as error:
         state.w.sql_query_state = "error"
         state.w.sql_adapter_resp = str(error)
         state.w.sql_result_columns = []
     else:
         state.w.sql_query_state = "success"
-        state.w.sql_adapter_resp = result.adapter_response
-        output = [
-            OrderedDict(zip(result.table.column_names, (ser(v) for v in row)))
-            for row in result.table.rows
-        ]
+        state.w.sql_adapter_resp = resp
+        output = [OrderedDict(zip(table.column_names, (ser(v) for v in row))) for row in table.rows]  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
         state.w.sql_result_df = pd.DataFrame(output)
         state.w.sql_result_columns = [
-            {"field": c, "headerName": c.upper()} for c in result.table.column_names
+            {"field": c, "headerName": c.upper()} for c in t.cast(tuple[str], table.column_names)
         ]
         state.w.sql_result_rows = output
 
 
-@st.cache
-def convert_df_to_csv(dataframe: pd.DataFrame) -> bytes:
+# TODO: is this used?
+@st.cache_data
+def convert_df_to_csv(_: pd.DataFrame) -> bytes:
     """Convert a dataframe to a CSV file."""
     return state.w.sql_result_df.to_csv().encode("utf-8")
 
@@ -266,7 +269,7 @@ def convert_profile_report_to_html(profile: ydata_profiling.ProfileReport) -> st
     return profile.to_html()
 
 
-def run_profile(minimal: bool = True) -> str:
+def run_profile(minimal: bool = True) -> None:
     """Run a profile report and return the HTML report."""
     if not state.w.sql_result_df.empty:
         state.w.profile_html = convert_profile_report_to_html(build_profile_report(minimal))
@@ -289,8 +292,8 @@ def main():
             profiler=Profiler(board, 0, 20, 8, 9, minW=3, minH=3),
             feed=RssFeed(board, 8, 20, 4, 9, minW=3, minH=3),
             # Base Args
-            project_dir=args.get("project_dir") or str(default_project_dir()),
-            profiles_dir=args.get("profiles_dir") or str(default_profiles_dir()),
+            project_dir=args.get("project_dir") or discover_project_dir(),
+            profiles_dir=args.get("profiles_dir") or discover_profiles_dir(),
             # SQL Editor
             compiled_sql="",
             raw_sql="",
@@ -320,16 +323,15 @@ def main():
         else:
             w.raw_sql = default_prompt
         # Initialize dbt context
-        w.ctx = DbtProject(
-            project_dir=w.project_dir,
-            profiles_dir=w.profiles_dir,
+        w.ctx = create_dbt_project_context(
+            config=DbtConfiguration(project_dir=w.project_dir, profiles_dir=w.profiles_dir)
         )
         w.target_profile = w.ctx.config.target_name
         # Demo compilation hook + seed editor
         w.editor.tabs[EditorTabs.SQL]["content"] = w.raw_sql
         w.compiled_sql = compile(w.ctx, w.raw_sql) if w.raw_sql else ""
         # Grab nodes
-        model_nodes = []
+        model_nodes: list[t.Any] = []
         for node in w.ctx.manifest.nodes.values():
             if node.resource_type == "model" and node.package_name == w.ctx.config.project_name:
                 model_nodes.append(node)
@@ -340,7 +342,7 @@ def main():
         # Update editor content
         w.editor.update_content("SQL", w.raw_sql)
         # Generate RSS feed
-        feed = feedparser.parse("https://news.ycombinator.com/rss")
+        feed = t.cast(t.Any, feedparser.parse("https://news.ycombinator.com/rss"))
         feed_contents = []
         for entry in feed.entries:
             feed_contents.append(
@@ -356,7 +358,7 @@ def main():
             """
                 )
             )
-        w.feed_contents = "".join(feed_contents)
+        w.feed_contents = "".join(t.cast(list[str], feed_contents))
     else:
         # Load state
         w = state.w
@@ -367,7 +369,7 @@ def main():
     sidebar(ctx)
 
     # Render Interface
-    with elements("dashboard"):
+    with elements("dashboard"):  # pyright: ignore[reportGeneralTypeIssues]
         # Bind hotkeys, maybe one day we can figure out how to override Monaco's cmd+enter binding
         event.Hotkey("ctrl+enter", sync(), bindInputs=True, overrideDefault=True)
         event.Hotkey("command+s", sync(), bindInputs=True, overrideDefault=True)
@@ -384,5 +386,4 @@ def main():
 
 
 if __name__ == "__main__":
-    st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout="wide")
     main()
