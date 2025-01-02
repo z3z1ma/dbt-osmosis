@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -309,8 +310,8 @@ class RestructureDeltaPlan:
 class YamlRefactorSettings:
     """Settings for yaml based refactoring operations."""
 
-    fqn: str | None = None
-    """Filter models to action via a fully qualified name match."""
+    fqns: list[str] = field(default_factory=list)
+    """Filter models to action via a fully qualified name match such as returned by `dbt ls`."""
     models: list[str] = field(default_factory=list)
     """Filter models to action via a file path match."""
     dry_run: bool = False
@@ -516,14 +517,16 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterR
 # ==============
 
 
-def _is_fqn_match(node: ResultNode, fqn_str: str) -> bool:
+def _is_fqn_match(node: ResultNode, fqns: list[str]) -> bool:
     """Filter models based on the provided fully qualified name matching on partial segments."""
-    if not fqn_str:
-        return True
-    parts = fqn_str.split(".")
-    return len(node.fqn[1:]) >= len(parts) and all(
-        left == right for left, right in zip(parts, node.fqn[1:])
-    )
+    for fqn_str in fqns:
+        parts = fqn_str.split(".")
+        segment_match = len(node.fqn[1:]) >= len(parts) and all(
+            left == right for left, right in zip(parts, node.fqn[1:])
+        )
+        if segment_match:
+            return True
+    return False
 
 
 def _is_file_match(node: ResultNode, paths: list[str]) -> bool:
@@ -565,8 +568,8 @@ def filter_models(
         if context.settings.models:
             if not _is_file_match(node, context.settings.models):
                 return False
-        elif context.settings.fqn:
-            if not _is_fqn_match(node, context.settings.fqn):
+        if context.settings.fqns:
+            if not _is_fqn_match(node, context.settings.fqns):
                 return False
         return True
 
@@ -747,9 +750,9 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         with src_yaml_path.open("w") as f:
             logger.info(f"Injecting source {source} => {src_yaml_path}")
             context.yaml_handler.dump({"version": 2, "sources": [source]}, f)
+            context.register_mutations(1)
 
         did_side_effect = True
-        context.register_mutations(1)
 
     if did_side_effect:
         logger.info("Reloading project to pick up new sources.")
@@ -831,7 +834,6 @@ def build_yaml_file_mapping(
     return out_map
 
 
-# TODO: detect if something is dirty to minimize disk writes on commits
 _YAML_BUFFER_CACHE: dict[Path, t.Any] = {}
 """Cache for yaml file buffers to avoid redundant disk reads/writes and simplify edits."""
 
@@ -851,10 +853,19 @@ def _write_yaml(context: YamlRefactorContext, path: Path, data: dict[str, t.Any]
     if not context.settings.dry_run:
         with context.yaml_handler_lock:
             path.parent.mkdir(parents=True, exist_ok=True)
-            context.yaml_handler.dump(data, path)
+            original = path.read_bytes() if path.is_file() else b""
+            context.yaml_handler.dump(data, staging := io.BytesIO())
+            modified = staging.getvalue()
+            if modified != original:
+                logger.info(f"Writing {path}")
+                with path.open("wb") as f:
+                    _ = f.write(modified)
+                    context.register_mutations(1)
+            else:
+                logger.debug(f"Skipping {path} (no changes)")
+            del staging
         if path in _YAML_BUFFER_CACHE:
             del _YAML_BUFFER_CACHE[path]
-    context.register_mutations(1)
 
 
 def commit_yamls(context: YamlRefactorContext) -> None:
@@ -862,10 +873,17 @@ def commit_yamls(context: YamlRefactorContext) -> None:
     if not context.settings.dry_run:
         with context.yaml_handler_lock:
             for path in list(_YAML_BUFFER_CACHE.keys()):
-                with path.open("w") as f:
-                    context.yaml_handler.dump(_YAML_BUFFER_CACHE[path], f)
+                original = path.read_bytes() if path.is_file() else b""
+                context.yaml_handler.dump(_YAML_BUFFER_CACHE[path], staging := io.BytesIO())
+                modified = staging.getvalue()
+                if modified != original:
+                    with path.open("wb") as f:
+                        logger.info(f"Writing {path}")
+                        _ = f.write(modified)
+                        context.register_mutations(1)
+                else:
+                    logger.debug(f"Skipping {path} (no changes)")
                 del _YAML_BUFFER_CACHE[path]
-                context.register_mutations(1)
 
 
 def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]:
@@ -1063,7 +1081,9 @@ def _sync_doc_section(
     doc_section["columns"] = incoming_columns
 
 
-def sync_node_to_yaml(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
+def sync_node_to_yaml(
+    context: YamlRefactorContext, node: ResultNode | None = None, *, commit: bool = True
+) -> None:
     """Synchronize a single node's columns, description, tags, meta, etc. from the manifest into its corresponding YAML file.
 
     We assume the manifest node is the single source of truth, so the YAML file is overwritten to match.
@@ -1079,7 +1099,7 @@ def sync_node_to_yaml(context: YamlRefactorContext, node: ResultNode | None = No
     """
     if node is None:
         for _, node in filter_models(context):
-            sync_node_to_yaml(context, node)
+            sync_node_to_yaml(context, node, commit=commit)
         return
 
     current_path = get_current_yaml_path(context, node)
@@ -1150,7 +1170,8 @@ def sync_node_to_yaml(context: YamlRefactorContext, node: ResultNode | None = No
         if len(doc.get(k, [])) == 0:
             _ = doc.pop(k, None)
 
-    _write_yaml(context, current_path, doc)
+    if commit:
+        _write_yaml(context, current_path, doc)
 
 
 def apply_restructure_plan(
@@ -1457,7 +1478,6 @@ def sort_columns_as_in_database(
     node.columns = {
         k: v for k, v in sorted(node.columns.items(), key=lambda i: _position(i[1].to_dict()))
     }
-    context.register_mutations(1)
 
 
 def sort_columns_alphabetically(
@@ -1469,7 +1489,6 @@ def sort_columns_alphabetically(
             sort_columns_alphabetically(context, node)
         return
     node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
-    context.register_mutations(1)
 
 
 # Fuzzy Plugins
@@ -1543,16 +1562,19 @@ def run_example_compilation_flow(c: DbtConfiguration) -> None:
     node = compile_sql_code(context, "select '{{ 1+1 }}' as col_{{ var('foo') }}")
     print("Compiled =>", node.compiled_code)
 
-    resp, _ = execute_sql_code(context, "select '{{ 1+2 }}' as col_{{ var('foo') }}")
+    resp, t_ = execute_sql_code(context, "select '{{ 1+2 }}' as col_{{ var('foo') }}")
     print("Resp =>", resp)
+
+    t_.print_csv()
 
 
 if __name__ == "__main__":
+    # Kitchen sink
     c = DbtConfiguration(
         project_dir="demo_duckdb", profiles_dir="demo_duckdb", vars={"dbt-osmosis": {}}
     )
 
-    # run_example_compilation_flow(c)
+    run_example_compilation_flow(c)
 
     project = create_dbt_project_context(c)
     _ = generate_catalog(project)

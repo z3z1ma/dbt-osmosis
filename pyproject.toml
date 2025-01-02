@@ -29,6 +29,7 @@ dependencies = [
   "ruamel.yaml~=0.18.7",
   "rich>=10",
   "pluggy>=1.5.0,<2",
+  "typing-extensions~=4.12.2 ; python_version < '3.10'",
 ]
 
 [project.optional-dependencies]
@@ -50,7 +51,7 @@ openai = ["openai>0.28.0"]
 dev = ["ruff~=0.8.4", "pytest~=8.3.4", "pre-commit>3.0.0"]
 
 [project.scripts]
-"dbt-osmosis" = "dbt_osmosis.main:cli"
+"dbt-osmosis" = "dbt_osmosis.cli.main:cli"
 
 [tool.black]
 line-length = 100
