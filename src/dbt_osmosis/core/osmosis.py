@@ -88,6 +88,7 @@ __all__ = [
     "remove_columns_not_in_database",
     "sort_columns_as_in_database",
     "sort_columns_alphabetically",
+    "sort_columns_as_configured",
     "synchronize_data_types",
 ]
 
@@ -876,6 +877,9 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
     return normalized_cols
 
 
+# TODO: instead of getting specific keys, perhaps we get a NodeConfigContext object scoped to a node / node+column
+# and internally the __getitem__ or similar handles the complex resolution of keys (under the hood, we can
+# probably use a ChainMap)
 def _get_setting_for_node(
     opt: str,
     /,
@@ -1900,6 +1904,27 @@ def sort_columns_alphabetically(
     node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
 
 
+def sort_columns_as_configured(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    if node is None:
+        logger.info(":wave: Sorting columns alphabetically across all matched nodes.")
+        for _ in context.pool.map(
+            partial(sort_columns_alphabetically, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
+        return
+    logger.info(":alphabet_white: Sorting columns alphabetically => %s", node.unique_id)
+    sort_by = _get_setting_for_node("sort-by", node, fallback="database")
+    if sort_by == "database":
+        sort_columns_as_in_database(context, node)
+    elif sort_by == "alphabetical":
+        sort_columns_alphabetically(context, node)
+    else:
+        raise ValueError(f"Invalid sort-by value: {sort_by} for node: {node.unique_id}")
+
+
 def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
     """Populate data types for columns in a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
@@ -2004,16 +2029,16 @@ def synthesize_missing_documentation_with_openai(
                 table_name=node.relation_name or node.name,
                 upstream_docs=upstream_docs,
             )
-        for column_name, col in node.columns.items():
-            if not col.description or col.description in context.placeholders:
+        for column_name, column in node.columns.items():
+            if not column.description or column.description in context.placeholders:
                 logger.info(
                     ":robot: Synthesizing documentation for column => %s in node => %s",
                     column_name,
                     node.unique_id,
                 )
-                col.description = generate_column_doc(
+                column.description = generate_column_doc(
                     column_name,
-                    existing_context=f"DataType={col.data_type or 'unknown'}>\nColumnParent={node.unique_id}\nTableDescription={node.description}",
+                    existing_context=f"DataType={column.data_type or 'unknown'}>\nColumnParent={node.unique_id}\nTableDescription={node.description}",
                     table_name=node.relation_name or node.name,
                     upstream_docs=upstream_docs,
                     temperature=0.7,

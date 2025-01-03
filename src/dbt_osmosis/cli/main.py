@@ -25,7 +25,7 @@ from dbt_osmosis.core.osmosis import (
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     remove_columns_not_in_database,
-    sort_columns_as_in_database,
+    sort_columns_as_configured,
     sync_node_to_yaml,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
@@ -259,7 +259,7 @@ def refactor(
     inject_missing_columns(context=context)
     remove_columns_not_in_database(context=context)
     inherit_upstream_column_knowledge(context=context)
-    sort_columns_as_in_database(context=context)
+    sort_columns_as_configured(context=context)
     synchronize_data_types(context=context)
     if synthesize:
         synthesize_missing_documentation_with_openai(context=context)
@@ -432,7 +432,7 @@ def document(
 
     inject_missing_columns(context=context)
     inherit_upstream_column_knowledge(context=context)
-    sort_columns_as_in_database(context=context)
+    sort_columns_as_configured(context=context)
     if synthesize:
         synthesize_missing_documentation_with_openai(context=context)
     sync_node_to_yaml(context=context)
