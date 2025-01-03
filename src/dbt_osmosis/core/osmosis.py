@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import io
 import json
 import os
@@ -1771,6 +1772,156 @@ def _build_column_knowledge_graph(
     return column_knowledge_graph
 
 
+# Operations
+# ==========
+
+
+@dataclass
+class TransformOperation:
+    """An operation to be run on a dbt manifest node."""
+
+    func: t.Callable[..., t.Any]
+    name: str
+
+    _result: t.Any | None = field(init=False, default=None)
+    _context: YamlRefactorContext | None = field(init=False, default=None)
+    _node: ResultNode | None = field(init=False, default=None)
+    _metadata: dict[str, t.Any] = field(init=False, default_factory=dict)
+
+    @property
+    def result(self) -> t.Any:
+        """The result of the operation or None."""
+        return self._result
+
+    @property
+    def metadata(self) -> MappingProxyType[str, t.Any]:
+        """Metadata about the operation."""
+        return MappingProxyType(self._metadata)
+
+    def __call__(
+        self, context: YamlRefactorContext, node: ResultNode | None = None
+    ) -> TransformOperation:
+        """Run the operation and store the result."""
+        self._context = context
+        self._node = node
+        self._metadata["started"] = True
+        try:
+            self.func(context, node)
+            self._metadata["success"] = True
+        except Exception as e:
+            self._metadata["error"] = str(e)
+            raise
+        return self
+
+    def __rshift__(self, next_op: TransformOperation) -> TransformPipeline:
+        """Chain operations together."""
+        return TransformPipeline([self]) >> next_op
+
+    def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
+        return f"<Operation: {self.name} (success={self.metadata.get('success', False)})>"
+
+
+@dataclass
+class TransformPipeline:
+    """A pipeline of transform operations to be run on a dbt manifest node."""
+
+    operations: list[TransformOperation] = field(default_factory=list)
+    commit_mode: t.Literal["none", "batch", "atomic", "defer"] = "batch"
+
+    _metadata: dict[str, t.Any] = field(init=False, default_factory=dict)
+
+    @property
+    def metadata(self) -> MappingProxyType[str, t.Any]:
+        """Metadata about the pipeline."""
+        return MappingProxyType(self._metadata)
+
+    def __rshift__(self, next_op: TransformOperation | t.Callable[..., t.Any]) -> TransformPipeline:
+        """Chain operations together."""
+        if isinstance(next_op, TransformOperation):
+            self.operations.append(next_op)
+        elif callable(next_op):
+            self.operations.append(TransformOperation(next_op, next_op.__name__))
+        else:
+            raise ValueError(f"Cannot chain non-callable: {next_op}")  # pyright: ignore[reportUnreachable]
+        return self
+
+    def __call__(
+        self, context: YamlRefactorContext, node: ResultNode | None = None
+    ) -> TransformPipeline:
+        """Run all operations in the pipeline."""
+        logger.info(
+            "\n:gear: [b]Running pipeline[/b] with => %s operations %s \n",
+            len(self.operations),
+            [op.name for op in self.operations],
+        )
+
+        self._metadata["started_at"] = (pipeline_start := time.time())
+        for op in self.operations:
+            logger.info(
+                ":gear:  [b]Starting to[/b] [yellow]%s[/yellow]",
+                op.name,
+            )
+            step_start = time.time()
+            _ = op(context, node)
+            step_end = time.time()
+            logger.info(
+                ":sparkles: [b]Done with[/b] [green]%s[/green] in %.2fs \n",
+                op.name,
+                step_end - step_start,
+            )
+            self._metadata.setdefault("steps", []).append({
+                **op.metadata,
+                "duration": step_end - step_start,
+            })
+            if self.commit_mode == "atomic":
+                logger.info(
+                    ":hourglass: [b]Committing[/b] Operation => [green]%s[/green]",
+                    op.name,
+                )
+                sync_node_to_yaml(context, node, commit=True)
+                logger.info(":checkered_flag: [b]Committed[/b] \n")
+        self._metadata["completed_at"] = (pipeline_end := time.time())
+
+        logger.info(
+            ":checkered_flag: [b]Manifest transformation pipeline [green]completed[/green] in => %.2fs[/b]",
+            pipeline_end - pipeline_start,
+        )
+
+        def _commit() -> None:
+            logger.info(":hourglass: Committing all changes to YAML files in batch.")
+            _commit_start = time.time()
+            sync_node_to_yaml(context, node, commit=True)
+            _commit_end = time.time()
+            logger.info(
+                ":checkered_flag: YAML commits completed in => %.2fs", _commit_end - _commit_start
+            )
+
+        if self.commit_mode == "batch":
+            _commit()
+        elif self.commit_mode == "defer":
+            _ = atexit.register(_commit)
+
+        return self
+
+    def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
+        steps = [op.name for op in self.operations]
+        return f"<OperationPipeline: {len(self.operations)} operations, steps={steps!r}>"
+
+
+def _transform_op(
+    name: str | None = None,
+) -> t.Callable[[t.Callable[[YamlRefactorContext, ResultNode | None], None]], TransformOperation]:
+    """Decorator to create a TransformOperation from a function."""
+
+    def decorator(
+        func: t.Callable[[YamlRefactorContext, ResultNode | None], None],
+    ) -> TransformOperation:
+        return TransformOperation(func, name=name or func.__name__)
+
+    return decorator
+
+
+@_transform_op("Inherit Upstream Column Knowledge")
 def inherit_upstream_column_knowledge(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
@@ -1817,6 +1968,7 @@ def inherit_upstream_column_knowledge(
         node.columns[name] = node_column.replace(**updated_metadata)
 
 
+@_transform_op("Inject Missing Columns")
 def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
     """Add missing columns to a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     if _get_setting_for_node("skip-add-columns", node, fallback=context.settings.skip_add_columns):
@@ -1858,6 +2010,7 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
             node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
 
 
+@_transform_op("Remove Extra Columns")
 def remove_columns_not_in_database(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
@@ -1891,6 +2044,7 @@ def remove_columns_not_in_database(
         _ = node.columns.pop(extra_column, None)
 
 
+@_transform_op("Sort Columns in DB Order")
 def sort_columns_as_in_database(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
@@ -1923,6 +2077,7 @@ def sort_columns_as_in_database(
     }
 
 
+@_transform_op("Sort Columns Alphabetically")
 def sort_columns_alphabetically(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
@@ -1939,6 +2094,7 @@ def sort_columns_alphabetically(
     node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
 
 
+@_transform_op("Sort Columns")
 def sort_columns_as_configured(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
@@ -1952,13 +2108,14 @@ def sort_columns_as_configured(
         return
     sort_by = _get_setting_for_node("sort-by", node, fallback="database")
     if sort_by == "database":
-        sort_columns_as_in_database(context, node)
+        _ = sort_columns_as_in_database(context, node)
     elif sort_by == "alphabetical":
-        sort_columns_alphabetically(context, node)
+        _ = sort_columns_alphabetically(context, node)
     else:
         raise ValueError(f"Invalid sort-by value: {sort_by} for node: {node.unique_id}")
 
 
+@_transform_op("Synchronize Data Types")
 def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None = None) -> None:
     """Populate data types for columns in a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     if node is None:
@@ -1986,6 +2143,7 @@ def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None
                 column.data_type = inc_c.type.lower() if lowercase or is_lower else inc_c.type
 
 
+@_transform_op("Synthesize Missing Documentation")
 def synthesize_missing_documentation_with_openai(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
@@ -2008,7 +2166,7 @@ def synthesize_missing_documentation_with_openai(
         return
     # since we are topologically sorted, we continually pass down synthesized knowledge leveraging our inheritance system
     # which minimizes synthesis requests -- in some cases by an order of magnitude while increasing accuracy
-    inherit_upstream_column_knowledge(context, node)
+    _ = inherit_upstream_column_knowledge(context, node)
     total = len(node.columns)
     if total == 0:
         logger.info(
@@ -2165,24 +2323,17 @@ if __name__ == "__main__":
         project, settings=YamlRefactorSettings(use_unrendered_descriptions=True)
     )
 
-    plan = draft_restructure_delta_plan(yaml_context)
-    steps = (
-        (create_missing_source_yamls, (yaml_context,), {}),
-        (apply_restructure_plan, (yaml_context, plan), {"confirm": True}),
-        (inject_missing_columns, (yaml_context,), {}),
-        (remove_columns_not_in_database, (yaml_context,), {}),
-        (inherit_upstream_column_knowledge, (yaml_context,), {}),
-        (sort_columns_as_in_database, (yaml_context,), {}),
-        (synchronize_data_types, (yaml_context,), {}),
-        (sync_node_to_yaml, (yaml_context,), {}),
-        (commit_yamls, (yaml_context,), {}),
-    )
-    steps = iter(t.cast(t.Any, steps))
+    create_missing_source_yamls(yaml_context)
 
-    DONE = object()
-    nr = 1
-    while (step := next(steps, DONE)) is not DONE:
-        step, args, kwargs = step  # pyright: ignore[reportGeneralTypeIssues]
-        step(*args, **kwargs)
-        logger.info("Completed step %d (%s).", nr, getattr(t.cast(object, step), "__name__"))
-        nr += 1
+    plan = draft_restructure_delta_plan(yaml_context)
+    apply_restructure_plan(yaml_context, plan, confirm=True)
+
+    pipeline = (
+        inject_missing_columns
+        >> remove_columns_not_in_database
+        >> inherit_upstream_column_knowledge
+        >> sort_columns_as_configured
+        >> synchronize_data_types
+    )
+    pipeline.commit_mode = "atomic"
+    _ = pipeline(context=yaml_context)

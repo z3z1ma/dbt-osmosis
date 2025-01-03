@@ -548,7 +548,7 @@ def test_apply_restructure_plan_confirm_prompt(
     with mock.patch("builtins.input", side_effect=["n"]):
         apply_restructure_plan(yaml_context, plan, confirm=True)
         captured = capsys.readouterr()
-        assert "Skipping restructure plan." in captured.out
+        assert "Skipping restructure plan." in captured.err
 
 
 def test_apply_restructure_plan_confirm_yes(
@@ -570,7 +570,7 @@ def test_apply_restructure_plan_confirm_yes(
     with mock.patch("builtins.input", side_effect=["y"]):
         apply_restructure_plan(yaml_context, plan, confirm=True)
         captured = capsys.readouterr()
-        assert "Committing all restructure changes and reloading" in captured.out
+        assert "Committing all restructure changes and reloading" in captured.err
         # We don't expect "Skipping restructure plan."
         # Instead, it should apply
 

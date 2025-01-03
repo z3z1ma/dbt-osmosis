@@ -14,7 +14,6 @@ from dbt_osmosis.core.osmosis import (
     YamlRefactorContext,
     YamlRefactorSettings,
     apply_restructure_plan,
-    commit_yamls,
     compile_sql_code,
     create_dbt_project_context,
     create_missing_source_yamls,
@@ -26,7 +25,6 @@ from dbt_osmosis.core.osmosis import (
     inject_missing_columns,
     remove_columns_not_in_database,
     sort_columns_as_configured,
-    sync_node_to_yaml,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
 )
@@ -264,15 +262,18 @@ def refactor(
     apply_restructure_plan(
         context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
     )
-    inject_missing_columns(context=context)
-    remove_columns_not_in_database(context=context)
-    inherit_upstream_column_knowledge(context=context)
-    sort_columns_as_configured(context=context)
-    synchronize_data_types(context=context)
+
+    transform = (
+        inject_missing_columns
+        >> remove_columns_not_in_database
+        >> inherit_upstream_column_knowledge
+        >> sort_columns_as_configured
+        >> synchronize_data_types
+    )
     if synthesize:
-        synthesize_missing_documentation_with_openai(context=context)
-    sync_node_to_yaml(context=context)
-    commit_yamls(context=context)
+        transform >>= synthesize_missing_documentation_with_openai
+
+    _ = transform(context=context)
 
     if check and context.mutated:
         exit(1)
@@ -397,11 +398,6 @@ def organize(
     help="Output yaml file columns and data types in lowercase if possible.",
 )
 @click.option(
-    "--auto-apply",
-    is_flag=True,
-    help="Automatically apply the restructure plan without confirmation.",
-)
-@click.option(
     "--synthesize",
     is_flag=True,
     help="Automatically synthesize missing documentation with OpenAI.",
@@ -442,13 +438,13 @@ def document(
     if vars:
         settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
 
-    inject_missing_columns(context=context)
-    inherit_upstream_column_knowledge(context=context)
-    sort_columns_as_configured(context=context)
+    transform = (
+        inject_missing_columns >> inherit_upstream_column_knowledge >> sort_columns_as_configured
+    )
     if synthesize:
-        synthesize_missing_documentation_with_openai(context=context)
-    sync_node_to_yaml(context=context)
-    commit_yamls(context=context)
+        transform >>= synthesize_missing_documentation_with_openai
+
+    _ = transform(context=context)
 
     if check and context.mutated:
         exit(1)
@@ -548,10 +544,14 @@ def run(
     project_dir: str | None = None,
     profiles_dir: str | None = None,
     target: str | None = None,
+    **kwargs: t.Any,
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""
     settings = DbtConfiguration(
-        project_dir=t.cast(str, project_dir), profiles_dir=t.cast(str, profiles_dir), target=target
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        **kwargs,
     )
     project = create_dbt_project_context(settings)
     _, table = execute_sql_code(project, sql)
@@ -574,10 +574,14 @@ def compile(
     project_dir: str | None = None,
     profiles_dir: str | None = None,
     target: str | None = None,
+    **kwargs: t.Any,
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""
     settings = DbtConfiguration(
-        project_dir=t.cast(str, project_dir), profiles_dir=t.cast(str, profiles_dir), target=target
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        **kwargs,
     )
     project = create_dbt_project_context(settings)
     node = compile_sql_code(project, sql)
