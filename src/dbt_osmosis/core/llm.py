@@ -12,6 +12,7 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 __all__ = [
     "generate_model_spec_as_json",
     "generate_column_doc",
+    "generate_table_doc",
 ]
 
 
@@ -123,6 +124,45 @@ def _create_llm_prompt_for_column(
     ]
 
 
+def _create_llm_prompt_for_table(
+    sql_content: str, table_name: str, upstream_docs: list[str] | None = None
+) -> list[dict[str, t.Any]]:
+    """Builds a system + user prompt instructing the model to produce a string description describing a single model."""
+    if upstream_docs is None:
+        upstream_docs = []
+
+    system_prompt = dedent(f"""
+    You are a helpful SQL Developer and an Expert in dbt.
+    Your job is to produce a concise documentation string
+    for a table named {table_name}.
+
+    IMPORTANT RULES:
+    1. DO NOT output extra commentary or Markdown fences.
+    2. Provide only the column description text, nothing else.
+    3. If upstream docs exist, you may incorporate them. If none exist,
+       a short placeholder is acceptable.
+    4. Avoid speculation. Keep it short and relevant.
+    """)
+
+    user_message = dedent(f"""
+    The SQL for the model is:
+
+    >>> SQL CODE START
+    {sql_content}
+    >>> SQL CODE END
+
+    The upstream documentation is:
+    {os.linesep.join(upstream_docs)}
+
+    Please return only the text suitable for the "description" field.
+    """)
+
+    return [
+        {"role": "system", "content": system_prompt.strip()},
+        {"role": "user", "content": user_message.strip()},
+    ]
+
+
 def generate_model_spec_as_json(
     sql_content: str,
     upstream_docs: list[str] | None = None,
@@ -195,6 +235,38 @@ def generate_column_doc(
     messages = _create_llm_prompt_for_column(
         column_name, existing_context, table_name, upstream_docs
     )
+    response = openai.chat.completions.create(
+        model=model_engine,
+        messages=messages,  # pyright: ignore[reportArgumentType]
+        temperature=temperature,
+    )
+
+    content = response.choices[0].message.content
+    if not content:
+        raise ValueError("OpenAI returned an empty response")
+    return content.strip()
+
+
+def generate_table_doc(
+    sql_content: str,
+    table_name: str,
+    upstream_docs: list[str] | None = None,
+    model_engine: str = "gpt-4o",
+    temperature: float = 0.7,
+) -> str:
+    """Calls OpenAI to generate documentation for a single column in a table.
+
+    Args:
+        sql_content (str): The SQL code for the table
+        table_name (str | None): Name of the table/model (optional)
+        upstream_docs (list[str] | None): Optional docs or references you might have
+        model_engine (str): The OpenAI model to use (e.g., 'gpt-3.5-turbo')
+        temperature (float): OpenAI completion temperature
+
+    Returns:
+        str: A short docstring suitable for a "description" field
+    """
+    messages = _create_llm_prompt_for_table(sql_content, table_name, upstream_docs)
     response = openai.chat.completions.create(
         model=model_engine,
         messages=messages,  # pyright: ignore[reportArgumentType]
