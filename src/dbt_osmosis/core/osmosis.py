@@ -794,10 +794,10 @@ def normalize_column_name(column: str, credentials_type: str) -> str:
     """Apply case normalization to a column name based on the credentials type."""
     if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
         logger.debug(":snowflake: Column name found with double-quotes => %s", column)
-        return column.strip('"')
-    if credentials_type == "snowflake":
+        pass
+    elif credentials_type == "snowflake":
         return column.upper()
-    return column
+    return column.strip('"').strip("`").strip("[]")
 
 
 def _maybe_use_precise_dtype(

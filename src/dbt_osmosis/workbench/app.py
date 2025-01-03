@@ -124,9 +124,9 @@ def _parse_args() -> dict[str, t.Any]:
 def change_target() -> None:
     """Change the target profile"""
     ctx: DbtProject = state.w.ctx
-    if ctx.config.target_name != state.w.target_profile:
+    if ctx.runtime_cfg.target_name != state.w.target_profile:
         print(f"Changing target to {state.w.target_profile}")
-        ctx.config.target_name = state.w.target_profile
+        ctx.runtime_cfg.target_name = state.w.target_profile
         _reload_manifest(ctx)
         state.w.raw_sql += " "  # invalidate cache on next compile?
         state.w.cache_version += 1
@@ -136,7 +136,7 @@ def inject_model() -> None:
     """Inject model into editor"""
     ctx: DbtProject = state.w.ctx
     if state.model is not None and state.model != "SCRATCH":
-        path = os.path.join(ctx.config.project_root, state.model.original_file_path)
+        path = os.path.join(ctx.runtime_cfg.project_root, state.model.original_file_path)
         with open(path, "r") as f:
             state.w.raw_sql = f.read()
         state.w.editor.update_content("SQL", state.w.raw_sql)
@@ -149,7 +149,7 @@ def save_model() -> None:
     """Save model to disk"""
     ctx: DbtProject = state.w.ctx
     if state.model is not None and state.model != "SCRATCH":
-        path = os.path.join(ctx.config.project_root, state.model.original_file_path)
+        path = os.path.join(ctx.runtime_cfg.project_root, state.model.original_file_path)
         with open(path, "w") as f:
             _ = f.write(state.w.editor.get_content("SQL"))
         print(f"Saved model to {path}")
@@ -179,8 +179,11 @@ def sidebar(ctx: DbtProject) -> None:
             "Select a profile used for materializing, compiling, and testing models.\n\nIf you change profiles, you may need to modify the workbench query to invalidate the cache."
         )
         state.w.target_profile = st.radio(
-            f"Loaded profiles from {ctx.config.profile_name}",
-            [target for target in state.w.raw_profiles[ctx.config.profile_name].get("outputs", [])],
+            f"Loaded profiles from {ctx.runtime_cfg.profile_name}",
+            [
+                target
+                for target in state.w.raw_profiles[ctx.runtime_cfg.profile_name].get("outputs", [])
+            ],
             on_change=change_target,
             key="target_profile",
         )
@@ -326,14 +329,17 @@ def main():
         w.ctx = create_dbt_project_context(
             config=DbtConfiguration(project_dir=w.project_dir, profiles_dir=w.profiles_dir)
         )
-        w.target_profile = w.ctx.config.target_name
+        w.target_profile = w.ctx.runtime_cfg.target_name
         # Demo compilation hook + seed editor
         w.editor.tabs[EditorTabs.SQL]["content"] = w.raw_sql
         w.compiled_sql = compile(w.ctx, w.raw_sql) if w.raw_sql else ""
         # Grab nodes
         model_nodes: list[t.Any] = []
         for node in w.ctx.manifest.nodes.values():
-            if node.resource_type == "model" and node.package_name == w.ctx.config.project_name:
+            if (
+                node.resource_type == "model"
+                and node.package_name == w.ctx.runtime_cfg.project_name
+            ):
                 model_nodes.append(node)
         w.model_nodes = model_nodes
         w.model_opts = ["SCRATCH"] + [node for node in model_nodes]
