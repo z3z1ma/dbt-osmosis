@@ -7,6 +7,7 @@ import io
 import json
 import os
 import re
+import textwrap
 import threading
 import time
 import typing as t
@@ -2005,6 +2006,9 @@ def synthesize_missing_documentation_with_openai(
         ):
             ...
         return
+    # since we are topologically sorted, we continually pass down synthesized knowledge leveraging our inheritance system
+    # which minimizes synthesis requests -- in some cases by an order of magnitude while increasing accuracy
+    inherit_upstream_column_knowledge(context, node)
     total = len(node.columns)
     if total == 0:
         logger.info(
@@ -2020,13 +2024,29 @@ def synthesize_missing_documentation_with_openai(
         t.cast(dict[str, ResultNode], context.project.manifest.nodes),
         t.cast(dict[str, ResultNode], context.project.manifest.sources),
     )
-    upstream_docs: list[str] = []
-    for uid in node.depends_on_nodes:
-        dep = node_map.get(t.cast(str, uid))
+    upstream_docs: list[str] = ["# The following is not exhaustive, but provides some context."]
+    depends_on_nodes = t.cast(list[str], node.depends_on_nodes)
+    for i, uid in enumerate(depends_on_nodes):
+        dep = node_map.get(uid)
         if dep is not None:
-            upstream_docs.append(f"{uid}: {dep.description}")
-    if (  # NOTE a semi-arbitrary limit by which its probably better to one shot the table versus many smaller requests
-        total - documented > 10
+            oneline_desc = dep.description.replace("\n", " ")
+            upstream_docs.append(f"{uid}: # {oneline_desc}")
+            for j, (name, meta) in enumerate(dep.columns.items()):
+                if meta.description and meta.description not in context.placeholders:
+                    upstream_docs.append(f"- {name}: |\n{textwrap.indent(meta.description, '  ')}")
+                if j > 20:
+                    # just a small amount of this supplementary context is sufficient
+                    upstream_docs.append("- (omitting additional columns for brevity)")
+                    break
+        # ensure our context window is bounded, semi-arbitrary
+        if len(upstream_docs) > 100 and i < len(depends_on_nodes) - 1:
+            upstream_docs.append(f"# remaining nodes are: {', '.join(depends_on_nodes[i:])}")
+            break
+    if len(upstream_docs) == 1:
+        upstream_docs[0] = "(no upstream documentation found)"
+    if (
+        total - documented
+        > 10  # a semi-arbitrary limit by which its probably better to one shot the table versus many smaller requests
     ):
         logger.info(
             ":robot: Synthesizing bulk documentation for => %s columns in node => %s",
@@ -2132,30 +2152,11 @@ def get_plugin_manager():
     return manager
 
 
-# NOTE: usage example of the more FP style module below
-
-
-def run_example_compilation_flow(c: DbtConfiguration) -> None:
-    c.vars["foo"] = "bar"
-
-    context = create_dbt_project_context(c)
-
-    node = compile_sql_code(context, "select '{{ 1+1 }}' as col_{{ var('foo') }}")
-    print("Compiled =>", node.compiled_code)
-
-    resp, t_ = execute_sql_code(context, "select '{{ 1+2 }}' as col_{{ var('foo') }}")
-    print("Resp =>", resp)
-
-    t_.print_csv()
-
-
 if __name__ == "__main__":
     # Kitchen sink
     c = DbtConfiguration(
         project_dir="demo_duckdb", profiles_dir="demo_duckdb", vars={"dbt-osmosis": {}}
     )
-
-    run_example_compilation_flow(c)
 
     project = create_dbt_project_context(c)
     _ = _generate_catalog(project)

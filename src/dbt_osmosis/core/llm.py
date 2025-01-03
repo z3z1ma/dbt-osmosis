@@ -142,6 +142,7 @@ def _create_llm_prompt_for_table(
     3. If upstream docs exist, you may incorporate them. If none exist,
        a short placeholder is acceptable.
     4. Avoid speculation. Keep it short and relevant.
+    5. DO NOT list out the columns. Only provide a high-level description.
     """)
 
     user_message = dedent(f"""
