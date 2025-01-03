@@ -1980,7 +1980,7 @@ def synthesize_missing_documentation_with_openai(
                 node, "raw_code", f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}"
             ),
             upstream_docs=upstream_docs,
-            existing_context=f"{node.unique_id} -- {node.description}",
+            existing_context=f"NodeId={node.unique_id}\nTableDescription={node.description}",
             temperature=0.4,
         )
         if not node.description or node.description in context.placeholders:
@@ -2013,7 +2013,7 @@ def synthesize_missing_documentation_with_openai(
                 )
                 col.description = generate_column_doc(
                     column_name,
-                    existing_context=f"{node.unique_id} -- {node.description}",
+                    existing_context=f"DataType={col.data_type or 'unknown'}>\nColumnParent={node.unique_id}\nTableDescription={node.description}",
                     table_name=node.relation_name or node.name,
                     upstream_docs=upstream_docs,
                     temperature=0.7,
