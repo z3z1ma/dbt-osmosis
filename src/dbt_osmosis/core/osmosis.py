@@ -1870,6 +1870,66 @@ def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None
                 column.data_type = inc_c.type.lower() if lowercase or is_lower else inc_c.type
 
 
+def synthesize_missing_documentation_with_openai(
+    context: YamlRefactorContext, node: ResultNode | None = None
+) -> None:
+    """Synthesize missing documentation for a dbt node using OpenAI's GPT-4o API."""
+    try:
+        from dbt_osmosis.core.llm import generate_column_doc, generate_model_spec_as_json
+    except ImportError:
+        raise ImportError("Please install the 'dbt-osmosis[openai]' extra to use this feature.")
+    if node is None:
+        logger.info(":wave: Synthesizing missing documentation across all matched nodes.")
+        for _ in context.pool.map(
+            partial(synthesize_missing_documentation_with_openai, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
+        return
+    total = len(node.columns)
+    if total == 0:
+        logger.info(
+            ":no_entry_sign: No columns to synthesize documentation for => %s", node.unique_id
+        )
+        return
+    documented = len([n for n in node.columns.values() if n.description])
+    if total - documented > 10:
+        logger.info(
+            ":robot: Synthesizing bulk documentation for => %s columns in node => %s",
+            total - documented,
+            node.unique_id,
+        )
+        spec = generate_model_spec_as_json(
+            getattr(
+                node, "raw_code", f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}"
+            ),
+            [context.project.manifest.nodes[n].description for n in node.depends_on_nodes],
+            f"{node.name} ({node.resource_type}) -- {node.description}",
+            temperature=0.4,
+        )
+        if not node.description or node.description in context.placeholders:
+            node.description = spec.get("description", node.description)
+        for synth_col in spec.get("columns", []):
+            cur_col = node.columns.get(synth_col["name"])
+            if cur_col and (not cur_col.description or cur_col.description in context.placeholders):
+                cur_col.description = synth_col.get("description", cur_col.description)
+    else:
+        for col_name, col in node.columns.items():
+            if not col.description or col.description in context.placeholders:
+                logger.info(
+                    ":robot: Synthesizing documentation for column => %s in node => %s",
+                    col_name,
+                    node.unique_id,
+                )
+                col.description = generate_column_doc(
+                    col_name,
+                    f"{node.name} ({node.resource_type}) -- {node.description}",
+                    node.relation_name or node.name,
+                    [context.project.manifest.nodes[n].description for n in node.depends_on_nodes],
+                    temperature=0.7,
+                )
+
+
 # Fuzzy Plugins
 # =============
 

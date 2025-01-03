@@ -429,7 +429,7 @@ requires-dist = [
     { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1.0.0,<2" },
     { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1.0.0,<2" },
     { name = "feedparser", marker = "extra == 'workbench'", specifier = "~=6.0.11" },
-    { name = "openai", marker = "extra == 'openai'", specifier = ">0.28.0" },
+    { name = "openai", marker = "extra == 'openai'", specifier = "~=1.58.1" },
     { name = "pluggy", specifier = ">=1.5.0,<2" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">3.0.0,<5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "~=8.3.4" },

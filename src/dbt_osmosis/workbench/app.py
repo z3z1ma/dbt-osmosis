@@ -19,12 +19,12 @@ from streamlit_elements_fluence import elements, event, sync
 
 from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
+    _reload_manifest,
     compile_sql_code,
     create_dbt_project_context,
     discover_profiles_dir,
     discover_project_dir,
     execute_sql_code,
-    reload_manifest,
 )
 from dbt_osmosis.core.osmosis import (
     DbtProjectContext as DbtProject,
@@ -127,7 +127,7 @@ def change_target() -> None:
     if ctx.config.target_name != state.w.target_profile:
         print(f"Changing target to {state.w.target_profile}")
         ctx.config.target_name = state.w.target_profile
-        reload_manifest(ctx)
+        _reload_manifest(ctx)
         state.w.raw_sql += " "  # invalidate cache on next compile?
         state.w.cache_version += 1
 

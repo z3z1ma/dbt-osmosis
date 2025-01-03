@@ -28,6 +28,7 @@ from dbt_osmosis.core.osmosis import (
     sort_columns_as_in_database,
     sync_node_to_yaml,
     synchronize_data_types,
+    synthesize_missing_documentation_with_openai,
 )
 
 T = t.TypeVar("T")
@@ -210,6 +211,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     is_flag=True,
     help="Automatically apply the restructure plan without confirmation.",
 )
+@click.option(
+    "--synthesize",
+    is_flag=True,
+    help="Automatically synthesize missing documentation with OpenAI.",
+)
 def refactor(
     target: str | None = None,
     profile: str | None = None,
@@ -219,6 +225,7 @@ def refactor(
     auto_apply: bool = False,
     check: bool = False,
     threads: int | None = None,
+    synthesize: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Executes organize which syncs yaml files with database schema and organizes the dbt models
@@ -254,6 +261,8 @@ def refactor(
     inherit_upstream_column_knowledge(context=context)
     sort_columns_as_in_database(context=context)
     synchronize_data_types(context=context)
+    if synthesize:
+        synthesize_missing_documentation_with_openai(context=context)
     sync_node_to_yaml(context=context)
     commit_yamls(context=context)
 
@@ -382,6 +391,11 @@ def organize(
     is_flag=True,
     help="Automatically apply the restructure plan without confirmation.",
 )
+@click.option(
+    "--synthesize",
+    is_flag=True,
+    help="Automatically synthesize missing documentation with OpenAI.",
+)
 def document(
     target: str | None = None,
     profile: str | None = None,
@@ -390,6 +404,7 @@ def document(
     vars: str | None = None,
     check: bool = False,
     threads: int | None = None,
+    synthesize: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Column level documentation inheritance for existing models
@@ -418,6 +433,8 @@ def document(
     inject_missing_columns(context=context)
     inherit_upstream_column_knowledge(context=context)
     sort_columns_as_in_database(context=context)
+    if synthesize:
+        synthesize_missing_documentation_with_openai(context=context)
     sync_node_to_yaml(context=context)
     commit_yamls(context=context)
 
