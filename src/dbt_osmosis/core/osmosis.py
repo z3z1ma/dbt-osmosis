@@ -149,6 +149,7 @@ class DbtConfiguration:
     single_threaded: bool | None = None
     vars: dict[str, t.Any] = field(default_factory=dict)
     quiet: bool = True
+    disable_introspection: bool = False  # Internal
 
     def __post_init__(self) -> None:
         logger.debug(":bookmark_tabs: Setting invocation context with environment variables.")
@@ -188,12 +189,18 @@ class DbtProjectContext:
     for re-use across multiple operations in long-running processes. (is the idea)
     """
 
-    args: argparse.Namespace
-    config: RuntimeConfig
+    config: DbtConfiguration
+    """The configuration for the dbt project used to initialize the runtime cfg and manifest"""
+    runtime_cfg: RuntimeConfig
+    """The dbt project runtime config associated with the context"""
     manifest: Manifest
+    """The dbt project manifest"""
     sql_parser: SqlBlockParser
+    """Parser for dbt Jinja SQL blocks"""
     macro_parser: SqlMacroParser
+    """Parser for dbt Jinja macros"""
     connection_ttl: float = 3600.0
+    """Max time in seconds to keep a db connection alive before recycling it, mostly useful for very long runs"""
 
     _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
@@ -216,7 +223,7 @@ class DbtProjectContext:
         with self._adapter_mutex:
             if not self._adapter:
                 logger.info(":wrench: Instantiating new adapter because none is currently set.")
-                adapter = _instantiate_adapter(self.config)
+                adapter = _instantiate_adapter(self.runtime_cfg)
                 adapter.set_macro_resolver(self.manifest)
                 _ = adapter.acquire_connection()
                 self._adapter = adapter
@@ -245,7 +252,6 @@ class DbtProjectContext:
 def _instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
     """Instantiate a dbt adapter based on the runtime configuration."""
     logger.debug(":mag: Registering adapter for runtime config => %s", runtime_config)
-    register_adapter(runtime_config, get_mp_context())
     adapter = get_adapter(runtime_config)
     adapter.set_macro_context_generator(t.cast(t.Any, generate_runtime_macro_context))
     adapter.connections.set_connection_name("dbt-osmosis")
@@ -260,9 +266,9 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     dbt_flags.set_from_args(args, args)
     runtime_cfg = RuntimeConfig.from_args(args)
 
-    logger.info(":bookmark_tabs: Instantiating adapter as part of project context creation.")
-    adapter = _instantiate_adapter(runtime_cfg)
-    setattr(runtime_cfg, "adapter", adapter)
+    logger.info(":bookmark_tabs: Registering adapter as part of project context creation.")
+    register_adapter(runtime_cfg, get_mp_context())
+
     loader = ManifestLoader(
         runtime_cfg,
         runtime_cfg.load_dependencies(),
@@ -271,15 +277,18 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     manifest.build_flat_graph()
     logger.info(":arrows_counterclockwise: Loaded the dbt project manifest!")
 
-    adapter.set_macro_resolver(manifest)
+    if not config.disable_introspection:
+        adapter = _instantiate_adapter(runtime_cfg)
+        setattr(runtime_cfg, "adapter", adapter)
+        adapter.set_macro_resolver(manifest)
 
     sql_parser = SqlBlockParser(runtime_cfg, manifest, runtime_cfg)
     macro_parser = SqlMacroParser(runtime_cfg, manifest)
 
     logger.info(":sparkles: DbtProjectContext successfully created!")
     return DbtProjectContext(
-        args=args,
-        config=runtime_cfg,
+        config=config,
+        runtime_cfg=runtime_cfg,
         manifest=manifest,
         sql_parser=sql_parser,
         macro_parser=macro_parser,
@@ -289,10 +298,11 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
 def _reload_manifest(context: DbtProjectContext) -> None:
     """Reload the dbt project manifest. Useful for picking up mutations."""
     logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
-    loader = ManifestLoader(context.config, context.config.load_dependencies())
+    loader = ManifestLoader(context.runtime_cfg, context.runtime_cfg.load_dependencies())
     manifest = loader.load()
     manifest.build_flat_graph()
-    context.adapter.set_macro_resolver(manifest)
+    if not context.config.disable_introspection:
+        context.adapter.set_macro_resolver(manifest)
     context.manifest = manifest
     logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)
 
@@ -461,7 +471,7 @@ class YamlRefactorContext:
     @property
     def source_definitions(self) -> dict[str, t.Any]:
         """The source definitions from the dbt project config."""
-        c = self.project.config.vars.to_dict()
+        c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = _find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
         )
@@ -470,7 +480,7 @@ class YamlRefactorContext:
     @property
     def ignore_patterns(self) -> list[str]:
         """The column name ignore patterns from the dbt project config."""
-        c = self.project.config.vars.to_dict()
+        c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = _find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
         )
@@ -479,7 +489,7 @@ class YamlRefactorContext:
     @property
     def yaml_settings(self) -> dict[str, t.Any]:
         """The column name ignore patterns from the dbt project config."""
-        c = self.project.config.vars.to_dict()
+        c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = _find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
         )
@@ -504,7 +514,7 @@ class YamlRefactorContext:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
         for setting, val in self.yaml_settings.items():
             setattr(self.yaml_handler, setting, val)
-        self.pool._max_workers = self.project.config.threads
+        self.pool._max_workers = self.project.runtime_cfg.threads
         logger.info(
             ":notebook: Osmosis ThreadPoolExecutor max_workers synced with dbt => %s",
             self.pool._max_workers,
@@ -527,8 +537,11 @@ def _load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
 def _generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
     """Generate the dbt catalog file for the project."""
+    if context.config.disable_introspection:
+        logger.warning(":warning: Introspection is disabled, cannot generate catalog.")
+        return
     logger.info(
-        ":books: Generating a new catalog for the project => %s", context.config.project_name
+        ":books: Generating a new catalog for the project => %s", context.runtime_cfg.project_name
     )
     catalogable_nodes = chain(
         [
@@ -561,7 +574,7 @@ def _generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
         compile_results=None,
         errors=errors,
     )
-    artifact_path = Path(context.config.project_target_path, "catalog.json")
+    artifact_path = Path(context.runtime_cfg.project_target_path, "catalog.json")
     logger.info(":bookmark_tabs: Writing fresh catalog => %s", artifact_path)
     artifact.write(str(artifact_path.resolve()))  # Cache it, same as dbt
     return t.cast(CatalogResults, artifact)
@@ -582,16 +595,16 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
     logger.info(":zap: Compiling SQL code. Possibly with jinja => %s", raw_sql[:75] + "...")
     tmp_id = str(uuid.uuid4())
     with context.manifest_mutex:
-        key = f"{NodeType.SqlOperation}.{context.config.project_name}.{tmp_id}"
+        key = f"{NodeType.SqlOperation}.{context.runtime_cfg.project_name}.{tmp_id}"
         _ = context.manifest.nodes.pop(key, None)
 
         node = context.sql_parser.parse_remote(raw_sql, tmp_id)
         if not _has_jinja(raw_sql):
             logger.debug(":scroll: No jinja found in the raw SQL, skipping compile steps.")
             return node
-        process_node(context.config, context.manifest, node)
+        process_node(context.runtime_cfg, context.manifest, node)
         compiled_node = SqlCompileRunner(
-            context.config,
+            context.runtime_cfg,
             context.adapter,
             node=node,
             node_index=1,
@@ -730,7 +743,7 @@ def _iter_candidate_nodes(
         """Closure to filter models based on the context settings."""
         if node.resource_type not in (NodeType.Model, NodeType.Source, NodeType.Seed):
             return False
-        if node.package_name != context.project.config.project_name:
+        if node.package_name != context.project.runtime_cfg.project_name:
             return False
         if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
             return False
@@ -836,7 +849,7 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
                 ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
             )
             return
-        normalized = normalize_column_name(col.name, context.project.config.credentials.type)
+        normalized = normalize_column_name(col.name, context.project.runtime_cfg.credentials.type)
         if not isinstance(col, ColumnMetadata):
             dtype = _maybe_use_precise_dtype(col, context.settings)
             col = ColumnMetadata(
@@ -858,6 +871,12 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
             for column in catalog_entry.columns.values():
                 process_column(column)
             return normalized_cols
+
+    if context.project.config.disable_introspection:
+        logger.warning(
+            ":warning: Introspection is disabled, cannot introspect columns and no catalog entry."
+        )
+        return normalized_cols
 
     relation: BaseRelation | None = context.project.adapter.get_relation(*ref)
     if relation is None:
@@ -969,8 +988,11 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
     This is a useful preprocessing step to ensure that all sources are represented in the dbt project manifest. We
     do not have rich node information for non-existent sources, hence the alternative codepath here to bootstrap them.
     """
+    if context.project.config.disable_introspection:
+        logger.warning(":warning: Introspection is disabled, cannot create missing source YAMLs.")
+        return
     logger.info(":factory: Creating missing source YAMLs (if any).")
-    database: str = context.project.config.credentials.database
+    database: str = context.project.runtime_cfg.credentials.database
     lowercase: bool = context.settings.output_to_lower
 
     did_side_effect: bool = False
@@ -995,8 +1017,8 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
             continue
 
         src_yaml_path = Path(
-            context.project.config.project_root,
-            context.project.config.model_paths[0],
+            context.project.runtime_cfg.project_root,
+            context.project.runtime_cfg.model_paths[0],
             src_yaml_path.lstrip(os.sep),
         )
 
@@ -1070,13 +1092,13 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
 def get_current_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path | None:
     """Get the current yaml path for a dbt model or source node."""
     if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
-        path = Path(context.project.config.project_root).joinpath(
+        path = Path(context.project.runtime_cfg.project_root).joinpath(
             t.cast(str, node.patch_path).partition("://")[-1]
         )
         logger.debug(":page_facing_up: Current YAML path => %s", path)
         return path
     if node.resource_type == NodeType.Source:
-        path = Path(context.project.config.project_root, node.path)
+        path = Path(context.project.runtime_cfg.project_root, node.path)
         logger.debug(":page_facing_up: Current YAML path => %s", path)
         return path
     return None
@@ -1087,13 +1109,13 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
     tpl = _get_yaml_path_template(context, node)
     if not tpl:
         logger.warning(":warning: No path template found for => %s", node.unique_id)
-        return Path(context.project.config.project_root, node.original_file_path)
+        return Path(context.project.runtime_cfg.project_root, node.original_file_path)
 
     rendered = tpl.format(node=node, model=node.name, parent=node.fqn[-2])
     segments: list[Path | str] = []
 
     if node.resource_type == NodeType.Source:
-        segments.append(context.project.config.model_paths[0])
+        segments.append(context.project.runtime_cfg.model_paths[0])
     else:
         segments.append(Path(node.original_file_path).parent)
 
@@ -1101,7 +1123,7 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
         rendered += ".yml"
     segments.append(rendered)
 
-    path = Path(context.project.config.project_root, *segments)
+    path = Path(context.project.runtime_cfg.project_root, *segments)
     logger.debug(":star2: Target YAML path => %s", path)
     return path
 
@@ -1362,13 +1384,13 @@ def _sync_doc_section(
 
     current_map = {}
     for c in current_columns:
-        norm_name = normalize_column_name(c["name"], context.project.config.credentials.type)
+        norm_name = normalize_column_name(c["name"], context.project.runtime_cfg.credentials.type)
         current_map[norm_name] = c
 
     for name, meta in node.columns.items():
         cdict = meta.to_dict()
         cdict["name"] = name
-        norm_name = normalize_column_name(name, context.project.config.credentials.type)
+        norm_name = normalize_column_name(name, context.project.runtime_cfg.credentials.type)
 
         current_yaml = t.cast(dict[str, t.Any], current_map.get(norm_name, {}))
         merged = dict(current_yaml)
@@ -1618,7 +1640,7 @@ def _get_node_yaml(
     context: YamlRefactorContext, member: ResultNode
 ) -> MappingProxyType[str, t.Any] | None:
     """Get a read-only view of the parsed YAML for a dbt model or source node."""
-    project_dir = Path(context.project.config.project_root)
+    project_dir = Path(context.project.runtime_cfg.project_root)
 
     if isinstance(member, SourceDefinition):
         if not member.original_file_path:
@@ -1699,7 +1721,7 @@ def _build_column_knowledge_graph(
                     raw_column_metadata = _find_first(
                         raw_columns,
                         lambda c: normalize_column_name(
-                            c["name"], context.project.config.credentials.type
+                            c["name"], context.project.runtime_cfg.credentials.type
                         )
                         in node_column_variants[name],
                         {},
@@ -1816,7 +1838,7 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
         logger.debug(":no_entry_sign: Skipping column injection (skip_add_source_columns=True).")
         return
     current_columns = {
-        normalize_column_name(c.name, context.project.config.credentials.type)
+        normalize_column_name(c.name, context.project.runtime_cfg.credentials.type)
         for c in node.columns.values()
     }
     incoming_columns = get_columns(context, get_table_ref(node))
@@ -1848,10 +1870,16 @@ def remove_columns_not_in_database(
             ...
         return
     current_columns = {
-        normalize_column_name(c.name, context.project.config.credentials.type)
+        normalize_column_name(c.name, context.project.runtime_cfg.credentials.type)
         for c in node.columns.values()
     }
     incoming_columns = get_columns(context, get_table_ref(node))
+    if not incoming_columns:
+        logger.info(
+            ":no_entry_sign: No columns discovered for node => %s, skipping cleanup.",
+            node.unique_id,
+        )
+        return
     extra_columns = current_columns - set(incoming_columns.keys())
     for extra_column in extra_columns:
         logger.info(
@@ -1876,6 +1904,12 @@ def sort_columns_as_in_database(
         return
     logger.info(":1234: Sorting columns by warehouse order => %s", node.unique_id)
     incoming_columns = get_columns(context, get_table_ref(node))
+    if not incoming_columns:
+        logger.info(
+            ":no_entry_sign: No columns discovered for node => %s, skipping db order sorting.",
+            node.unique_id,
+        )
+        return
 
     def _position(column: dict[str, t.Any]):
         db_info = incoming_columns.get(column["name"])
@@ -1900,7 +1934,7 @@ def sort_columns_alphabetically(
         ):
             ...
         return
-    logger.info(":alphabet_white: Sorting columns alphabetically => %s", node.unique_id)
+    logger.info(":abcd: Sorting columns alphabetically => %s", node.unique_id)
     node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
 
 
@@ -1908,14 +1942,13 @@ def sort_columns_as_configured(
     context: YamlRefactorContext, node: ResultNode | None = None
 ) -> None:
     if node is None:
-        logger.info(":wave: Sorting columns alphabetically across all matched nodes.")
+        logger.info(":wave: Sorting columns as configured across all matched nodes.")
         for _ in context.pool.map(
-            partial(sort_columns_alphabetically, context),
+            partial(sort_columns_as_configured, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
             ...
         return
-    logger.info(":alphabet_white: Sorting columns alphabetically => %s", node.unique_id)
     sort_by = _get_setting_for_node("sort-by", node, fallback="database")
     if sort_by == "database":
         sort_columns_as_in_database(context, node)

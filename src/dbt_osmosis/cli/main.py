@@ -66,10 +66,7 @@ def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         "--project-dir",
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
         default=discover_project_dir,
-        help=(
-            "Which directory to look in for the dbt_project.yml file. Default is the current"
-            " working directory and its parents."
-        ),
+        help="Which directory to look in for the dbt_project.yml file. Default is the current working directory and its parents.",
     )
     @click.option(
         "--profiles-dir",
@@ -105,24 +102,24 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         "--fqn",
         multiple=True,
         type=click.STRING,
-        help="Specify models based on dbt's FQN. Mostly useful when combined with dbt ls.",
+        help="Specify models based on dbt's FQN. Mostly useful when combined with dbt ls and command interpolation.",
     )
     @click.option(
         "-d",
         "--dry-run",
         is_flag=True,
-        help="If specified, no changes are committed to disk.",
+        help="No changes are committed to disk. Works well with --check as check will still exit with a code.",
     )
     @click.option(
         "-C",
         "--check",
         is_flag=True,
-        help="If specified, will return a non-zero exit code if any files are changed or would have changed.",
+        help="Return a non-zero exit code if any files are changed or would have changed.",
     )
     @click.option(
         "--catalog-path",
         type=click.Path(exists=True),
-        help="If specified, will read the list of columns from the catalog.json file instead of querying the warehouse.",
+        help="Read the list of columns from the catalog.json file instead of querying the warehouse.",
     )
     @click.option(
         "--profile",
@@ -132,10 +129,19 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @click.option(
         "--vars",
         type=click.STRING,
-        help='Supply variables to the project. This argument overrides variables defined in your dbt_project.yml file. This argument should be a YAML string, eg. \'{"foo": "bar"}\'',
+        help='Supply variables to the project. Override variables defined in your dbt_project.yml file. This argument should be a YAML string, eg. \'{"foo": "bar"}\'',
+    )
+    @click.option(
+        "--disable-introspection",
+        is_flag=True,
+        help="Allows running the program without a database connection, it is recommended to use the --catalog-path option if using this.",
     )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        if kwargs.get("disable_introspection") and not kwargs.get("catalog_path"):
+            logger.warning(
+                ":construction: You have disabled introspection without providing a catalog path. This will result in some features not working as expected."
+            )
         return func(*args, **kwargs)
 
     return wrapper
@@ -225,6 +231,7 @@ def refactor(
     auto_apply: bool = False,
     check: bool = False,
     threads: int | None = None,
+    disable_introspection: bool = False,
     synthesize: bool = False,
     **kwargs: t.Any,
 ) -> None:
@@ -242,6 +249,7 @@ def refactor(
         target=target,
         profile=profile,
         threads=threads,
+        disable_introspection=disable_introspection,
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
@@ -287,6 +295,7 @@ def organize(
     vars: str | None = None,
     auto_apply: bool = False,
     threads: int | None = None,
+    disable_introspection: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Organizes schema ymls based on config and injects undocumented models
@@ -302,6 +311,7 @@ def organize(
         target=target,
         profile=profile,
         threads=threads,
+        disable_introspection=disable_introspection,
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
@@ -404,6 +414,7 @@ def document(
     vars: str | None = None,
     check: bool = False,
     threads: int | None = None,
+    disable_introspection: bool = False,
     synthesize: bool = False,
     **kwargs: t.Any,
 ) -> None:
@@ -420,6 +431,7 @@ def document(
         target=target,
         profile=profile,
         threads=threads,
+        disable_introspection=disable_introspection,
     )
     context = YamlRefactorContext(
         project=create_dbt_project_context(settings),
