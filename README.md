@@ -19,6 +19,10 @@ Please check it out for a more in-depth introduction to dbt-osmosis. 👇
 
 [![dbt-osmosis](/screenshots/docs_site.png)](https://z3z1ma.github.io/dbt-osmosis/)
 
+## Migrating from 0.x.x to 1.x.x?
+
+We have a [migration guide](https://z3z1ma.github.io/dbt-osmosis/docs/migrating) to help you out. 🚀
+
 ## What is dbt-osmosis?
 
 Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this through providing 4 core features:
@@ -31,15 +35,15 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
     1b. `dbt-osmosis yaml organize --project-dir ... --profiles-dir ...`
 
-    > Organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules
+    > Organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules (no documentation changes)
 
     1c. `dbt-osmosis yaml document --project-dir ... --profiles-dir ...`
 
-    > Automatically generate documentation based on upstream documented columns
+    > Automatically generate documentation based on upstream documented columns (no reorganization)
 
 2. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install "dbt-osmosis[workbench]"`).
 
-    3a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
+    2a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
 
     > Spins up a streamlit app. This workbench offers similar functionality to the osmosis server + power-user combo without a reliance on VS code. Realtime compilation, query execution, pandas profiling all via copying and pasting whatever you are working on into the workbenchat your leisure. Spin it up and down as needed.
 
@@ -52,11 +56,10 @@ You can use dbt-osmosis as a pre-commit hook. This will run the `dbt-osmosis yam
 ```yaml title=".pre-commit-config.yaml"
 repos:
   - repo: https://github.com/z3z1ma/dbt-osmosis
-    rev: v1.0.1 # verify the latest version
+    rev: v1.1.5 # verify the latest version
     hooks:
       - id: dbt-osmosis
         files: ^models/
-        # you'd normally run this against your prod target, you can use any target though
         args: [--target=prod]
         additional_dependencies: [dbt-<adapter>]
 ```

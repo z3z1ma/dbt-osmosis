@@ -1,7 +1,6 @@
 ---
 sidebar_position: 2
 ---
-
 # CLI Overview
 
 Below is a high-level overview of the commands currently provided by dbt-osmosis. Each command also supports additional options such as:

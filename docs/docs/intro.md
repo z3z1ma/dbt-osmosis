@@ -1,7 +1,6 @@
 ---
 sidebar_position: 1
 ---
-
 # dbt-osmosis Intro
 
 Let's discover **dbt-osmosis** in less than 5 minutes.
