@@ -317,7 +317,7 @@ def create_yaml_instance(
     indent_mapping: int = 2,
     indent_sequence: int = 4,
     indent_offset: int = 2,
-    width: int = 800,
+    width: int = 100,
     preserve_quotes: bool = True,
     default_flow_style: bool = False,
     encoding: str = "utf-8",
@@ -330,6 +330,14 @@ def create_yaml_instance(
     y.preserve_quotes = preserve_quotes
     y.default_flow_style = default_flow_style
     y.encoding = encoding
+
+    def str_representer(dumper: t.Any, data: t.Any) -> t.Any:
+        if len(data.splitlines()) > 1:  # check for multiline string
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+    y.representer.add_representer(str, str_representer)
+
     logger.debug(":notebook: YAML instance created => %s", y)
     return y
 

@@ -587,5 +587,5 @@ def test_create_yaml_instance_settings():
     assert y.map_indent == 4
     assert y.sequence_indent == 2
     assert y.sequence_dash_offset == 0
-    assert y.width == 800  # default
+    assert y.width == 100  # default
     assert y.preserve_quotes is True
