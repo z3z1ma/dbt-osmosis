@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # dbt-osmosis Intro
 
-Let's discover **dbt-osmosis in less than 5 minutes**.
+Let's discover **dbt-osmosis** in less than 5 minutes.
 
 ## Getting Started
 
@@ -14,7 +14,7 @@ Get started by **running dbt-osmosis**.
 
 - [Python](https://www.python.org/downloads/) (3.8+)
 - [dbt](https://docs.getdbt.com/docs/core/installation) (1.0.0+)
-- [pipx](https://pypa.github.io/pipx/installation/)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 - An existing dbt project (or you can play with it using [jaffle shop](https://github.com/dbt-labs/jaffle_shop_duckdb))
 
 ## Configure dbt-osmosis
@@ -29,10 +29,18 @@ models:
 
 ## Run dbt-osmosis
 
-Run dbt-osmosis with the following command to automatically perform a refactoring of your dbt project YAML files. Run this command from the root of your dbt project. Ensure your git repository is clean before running this command. Replace `<adapter>` with the name of your dbt adapter (e.g. `snowflake`, `bigquery`, `redshift`, `postgres`, `athena`, `spark`, `trino`, `sqlite`, `duckdb`, `oracle`, `sqlserver`).
+If using uv(x):
 
 ```bash
-pipx run --pip-args="dbt-<adapter>" dbt-osmosis yaml refactor
+uvx --with='dbt-<adapter>==1.9.0' dbt-osmosis yaml refactor
 ```
+
+Or, if installed in your Python environment:
+
+```bash
+dbt-osmosis yaml refactor
+```
+
+Run this command from the root of your dbt project. Ensure your git repository is clean before running. Replace `<adapter>` with the name of your dbt adapter (e.g. `snowflake`, `bigquery`, `redshift`, `postgres`, `athena`, `spark`, `trino`, `sqlite`, `duckdb`, `oracle`, `sqlserver`).
 
 Watch the magic unfold. ✨

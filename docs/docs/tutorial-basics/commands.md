@@ -4,111 +4,117 @@ sidebar_position: 2
 
 # CLI Overview
 
-This section describes the commands available in dbt-osmosis.
+Below is a high-level overview of the commands currently provided by dbt-osmosis. Each command also supports additional options such as:
+
+- `--dry-run` to prevent writing changes to disk
+- `--check` to exit with a non-zero code if changes would have been made
+- `--fqn` to filter nodes by [dbt's FQN](https://docs.getdbt.com/reference/node-selection/syntax#the-fqn-method) segments
+- `--disable-introspection` to run without querying the warehouse (helpful if you are offline), often paired with `--catalog-path`
+- `--catalog-path` to read columns from a prebuilt `catalog.json`
+
+Other helpful flags are described in each command below.
 
 ## YAML Management
 
-These commands are used to manage the YAML files in your dbt project. Please read the [YAML configuration](/docs/tutorial-yaml/configuration) section to understand the minimum required configuration to use these commands.
-
-### Document
-
-This command will document your dbt project YAML files. Specifically it will:
-
-- Reorder columns in your YAML files to match the order of the columns in your database
-- Add columns to your YAML files that are present in your database
-- Remove columns from your YAML files that are missing from your database
-- Pass down column level documentation from upstream models to downstream models (if the downstream model does not have documentation for that column)
-
-```bash
-dbt-osmosis yaml document [--project-dir] [--profiles-dir] [--target]
-```
+**All of the following commands live under** `dbt-osmosis yaml <command>`.
 
 ### Organize
 
-This command will organize your dbt project YAML files. Specifically it will:
+Restructures your schema YAML files based on the **declarative** configuration in `dbt_project.yml`. Specifically, it:
 
-- Bootstrap sources if they do not exist based on the `dbt-osmosis` **var** in your `dbt_project.yml` file.
-- Migrate your YAML files based on the dbt-osmosis **config** (ideally) set in your `dbt_project.yml` file.
-- Ensures that your project matches a declarative specification (i.e. your YAML files are in the correct location and have the correct name).
+- Bootstraps missing YAML files for any undocumented models or sources
+- Moves or merges existing YAML files according to your configured rules (the `+dbt-osmosis:` keys)
 
 ```bash
-dbt-osmosis yaml organize [--project-dir] [--profiles-dir] [--target]
+dbt-osmosis yaml organize [--project-dir] [--profiles-dir] [--target] [--fqn ...] [--dry-run] [--check]
 ```
+
+Options often used:
+
+- `--auto-apply` to apply all file location changes without asking for confirmation
+- `--disable-introspection` + `--catalog-path=/path/to/catalog.json` if not connected to a warehouse
+
+### Document
+
+Passes down column-level documentation from upstream nodes to downstream nodes (a deep inheritance). Specifically, it can:
+
+- Add columns that are present in the database (or `catalog.json`) but missing from your YAML
+- Remove columns missing from your database (optional, if used with other steps)
+- Reorder columns (optional, if combined with your sorting preference—see below)
+- Inherit tags, descriptions, and meta fields from upstream models
+
+```bash
+dbt-osmosis yaml document [--project-dir] [--profiles-dir] [--target] [--fqn ...] [--dry-run] [--check]
+```
+
+Options often used:
+
+- `--force-inherit-descriptions` to override *existing* descriptions if they are placeholders
+- `--use-unrendered-descriptions` so that you can propagate Jinja-based docs (like `{{ doc(...) }}`)
+- `--skip-add-columns`, `--skip-add-data-types`, `--skip-merge-meta`, `--skip-add-tags`, etc., if you want to limit changes
+- `--synthesize` to autogenerate missing documentation with ChatGPT/OpenAI (see *Synthesis* below)
 
 ### Refactor
 
-This command will refactor your dbt project YAML files. Specifically it will:
+The **combination** of both `organize` and `document` in the correct order. Typically the recommended command to run:
 
-- Bootstrap sources if they do not exist based on the `dbt-osmosis` **var** in your `dbt_project.yml` file.
-- Migrate your YAML files based on the dbt-osmosis **config** (ideally) set in your `dbt_project.yml` file.
-- Ensures that your project matches a declarative specification (i.e. your YAML files are in the correct location and have the correct name).
-- Reorder columns in your YAML files to match the order of the columns in your database
-- Add columns to your YAML files that are present in your database
-- Remove columns from your YAML files that are missing from your database
-- Pass down column level documentation from upstream models to downstream models (if the downstream model does not have documentation for that column)
-
-This command is a combination of the `document` and `organize` commands run in the correct order.
+- Creates or moves YAML files to match your `dbt_project.yml` rules
+- Ensures columns are up to date with warehouse or catalog
+- Inherits descriptions and metadata
+- Reorders columns if desired
 
 ```bash
-dbt-osmosis yaml refactor [--project-dir] [--profiles-dir] [--target]
+dbt-osmosis yaml refactor [--project-dir] [--profiles-dir] [--target] [--fqn ...] [--dry-run] [--check]
 ```
 
-## Server
+Options often used:
 
-dbt-osmosis ships with a server that can be used to drive 3rd party tools. This server is a zero dependency WSGI server powered by [bottle](https://bottlepy.org/docs/dev/). It provides high performance endpoints that leverage the plumbing in dbt-osmosis to provide a fast and reliable API. The server is "multi-tenant" in that it can serve multiple dbt projects at once. The server is not intended to be run on a public facing network. dbt-osmosis is essentially providing a thin CLI wrapper over dbt-core-interface where the server is actually implemented.
+- `--auto-apply`
+- `--force-inherit-descriptions`, `--use-unrendered-descriptions`
+- `--skip-add-data-types`, `--skip-add-columns`, etc.
+- `--synthesize` to autogenerate missing documentation with ChatGPT/OpenAI
 
-### Serve
+### Commonly Used Flags in YAML Commands
 
-This command will start the dbt-osmosis server. The server will be available at `http://localhost:8581` by default.
-
-```bash
-dbt-osmosis server serve [--host] [--port]
-```
-
-### Register Project
-
-This command will register a dbt project with the dbt-osmosis server.
-
-```bash
-dbt-osmosis server register-project --project-dir /path/to/dbt/project
-```
-
-### Unregister Project
-
-This command will unregister a dbt project with the dbt-osmosis server.
-
-```bash
-dbt-osmosis server unregister-project --project-dir /path/to/dbt/project
-```
+- `--fqn=staging.some_subfolder` to limit to a particular subfolder or results of dbt ls
+- `--check` to fail your CI if dbt-osmosis *would* make changes
+- `--dry-run` to preview changes without writing them to disk
+- `--catalog-path=target/catalog.json` to avoid live queries
+- `--disable-introspection` to skip warehouse queries entirely
+- `--auto-apply` to skip manual confirmation for file moves
 
 ## SQL
 
-These commands provide two unique and interesting ways to interact with dbt models. Both of these commands support stdin as an input source. This allows you to pipe a SQL query into the command or `cat` a dbt model into the command.
+These commands let you compile or run SQL snippets (including Jinja) directly:
 
 ### Run
 
-This command will run a dbt model and return the results as a JSON object. This command is useful for testing dbt models in a REPL environment.
+Runs a SQL statement or a dbt Jinja-based query.
 
 ```bash
-dbt-osmosis sql run [--project-dir] [--profiles-dir] [--target] "select * from {{ ref('my_model') }}"
+dbt-osmosis sql run "select * from {{ ref('my_model') }} limit 50"
 ```
+
+Returns results in tabular format to stdout. Use `--threads` to run multiple queries in parallel (though typically you’d run one statement at a time).
 
 ### Compile
 
-This command will compile a dbt model and return the results as a JSON object. This command is useful for testing dbt models in a REPL environment.
+Compiles a SQL statement (including Jinja) but doesn’t run it. Useful for quickly validating macros, refs, or Jinja logic:
 
 ```bash
-dbt-osmosis sql compile [--project-dir] [--profiles-dir] [--target] "select * from {{ ref('my_model') }}"
+dbt-osmosis sql compile "select * from {{ ref('my_model') }}"
 ```
+
+Prints the compiled SQL to stdout.
 
 ## Workbench
 
-This command starts a [streamlit](https://streamlit.io/) workbench. The workbench is a REPL environment that allows you to run dbt models, provides realtime side by side compilation, and lets you explore the results.
+Launches a [Streamlit](https://streamlit.io/) application that:
+
+- Lets you explore and run queries against your dbt models in a REPL-like environment
+- Provides side-by-side compiled SQL
+- Offers real-time iteration on queries
 
 ```bash
-dbt-osmosis workbench [--project-dir] [--profiles-dir] [--target] [--host] [--port]
+dbt-osmosis workbench [--project-dir] [--profiles-dir] [--host] [--port]
 ```
-
-## Diff
-
-This command will diff a dbt model across git commits. This command is useful for understanding how a model has changed over time. Currently this feature is under development. 🚧
