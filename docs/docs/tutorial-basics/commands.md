@@ -83,6 +83,16 @@ Options often used:
 - `--disable-introspection` to skip warehouse queries entirely
 - `--auto-apply` to skip manual confirmation for file moves
 
+### Synthesis (Experimental)
+
+If you pass the `--synthesize` flag to `dbt-osmosis yaml refactor` (or `document`), dbt-osmosis will attempt to **generate missing documentation** using OpenAI's API (like ChatGPT). You will need to have installed with the `[openai]` extra:
+
+```bash
+pip install "dbt-osmosis[openai]"
+```
+
+This feature can make large-scale doc scaffolding easier, but always review and refine any auto-generated text!
+
 ## SQL
 
 These commands let you compile or run SQL snippets (including Jinja) directly:

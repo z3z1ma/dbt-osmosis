@@ -1,7 +1,6 @@
 ---
 sidebar_position: 2
 ---
-
 # Context Variables
 
 dbt-osmosis provides three primary variables—`{model}`, `{node}`, and `{parent}`—that can be referenced in your `+dbt-osmosis:` path configurations. These variables let you build **powerful** and **dynamic** rules for where your YAML files should live, all while staying **DRY** (don’t repeat yourself).
@@ -147,7 +146,7 @@ models:
 So if you have a model `super_warehouse/snapshots/payment_stats.sql` with `materialized='table'` and a first tag of `'billing'`, it might produce:
 
 ```
-super_warehouse/snapshots/table/billing_payment_stats.yml
+super_warehouse/models/table/billing_payment_stats.yml
 ```
 
 This approach ensures your YAML files reflect **both** how your code is organized (folder structure) **and** the model’s metadata (materialization, tags, etc.), with minimal manual overhead.
