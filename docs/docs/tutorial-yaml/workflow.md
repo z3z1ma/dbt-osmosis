@@ -5,81 +5,128 @@ sidebar_position: 5
 
 ## YAML Files
 
+dbt-osmosis **manages** your YAML files in a **declarative** manner based on the configuration in your `dbt_project.yml`. In many cases, you don’t even have to manually create YAML files; dbt-osmosis will generate them on your behalf if they don’t exist. Once established, any changes you make to these config rules are automatically enforced—dbt-osmosis will move or merge YAML files accordingly.
+
 ### Sources
 
-dbt-osmosis will manage synchronizing your sources regardless of if you specify them in the vars.dbt-osmosis key your `dbt_project.yml` or not. That key, as seen in the example below, only serves to **declaratively** tell dbt-osmosis where the source file _should_ live.
+By default, **dbt-osmosis** watches your sources from the **dbt manifest**. If you declare specific source paths under `vars: dbt-osmosis: sources`, dbt-osmosis can:
 
-The advantage of this approach is that you can use dbt-osmosis to manage your sources without having to scaffold the YAML file yourself. You simply add a key value to the dictionary in the vars.dbt-osmosis key and dbt-osmosis will create the YAML file for you on next execution. It also hardens it against changes that violate the declarative nature of dbt-osmosis since it will simply migrate the file back to its original state on next execution unless you explicitly change it.
+- **Create** those YAML files if they don’t exist yet (bootstrapping).
+- **Synchronize** them with the **actual** database schema (pulling in missing columns unless you specify `--skip-add-source-columns`).
+- **Migrate** them if you change where they’re supposed to live (e.g., if you update `path: "some/new/location.yml"` in `dbt_project.yml`, dbt-osmosis will move it).
 
-As a reminder, the vars.dbt-osmosis key is a dictionary where the key is the name of the source and the value is the path to the YAML file. The path is relative to the root of your dbt project models directory.
+**Key benefit**: You never have to scaffold source YAML by hand. Merely define the path under `vars: dbt-osmosis:` (and optionally a custom schema). If your source changes (columns, new tables), dbt-osmosis can detect and update the YAML to match.
 
 ```yaml title="dbt_project.yml"
 vars:
   dbt-osmosis:
-    <source_name>: <path>
-    <source_name>:
-      path: <path>
-      schema: <schema>
+    sources:
+      salesforce:
+        path: "staging/salesforce/source.yml"
+        schema: "salesforce_v2"
+      marketo: "staging/customer/marketo.yml"
 ```
-
-There is no need to specify the schema if it matches the source name. dbt-osmosis will assume that the schema is the same as the source name if the schema key is not specified. You can have multiple sources pointing at the same file if you like if you want them to all live there, but you cannot have multiple sources with the same name. The dictionary implicitly enforces this.
 
 ### Models
 
-dbt-osmosis will manage synchronizing your models, but it is required it **knows** what to do with them. This is done by specifying the `+dbt-osmosis` configuration at various levels of the hierarchy in the configuration file. These levels match your folder structure exactly. It helps to be familiar with how dbt configuration works. It makes grokking this section extremely easy.
+Similarly, **models** are managed based on your `+dbt-osmosis` directives in `dbt_project.yml`. For each folder (or subfolder) of models:
 
 ```yaml title="dbt_project.yml"
 models:
-  <your_project_name>:
-    +dbt-osmosis: <path>
-    <staging_dir>:
-      +dbt-osmosis: <path>
-    <intermediate_dir>:
-      +dbt-osmosis: <path>
+  my_project:
+    +dbt-osmosis: "{parent}.yml"
 
-    <some_other_dir>:
-      +dbt-osmosis: <path>
+    intermediate:
+      +dbt-osmosis: "{node.config[materialized]}/{model}.yml"
 
-      <some_nested_dir>:
-        +dbt-osmosis: <path>
+    # etc.
+
+seeds:
+  my_project:
+    # DON'T FORGET: seeds need a +dbt-osmosis rule too!
+    +dbt-osmosis: "_schema.yml"
 ```
+
+When you run `dbt-osmosis yaml` commands (like `refactor`, `organize`, `document`):
+
+- **Missing** YAML files are automatically **bootstrapped**.
+- dbt-osmosis merges or updates any **existing** ones.
+- If you rename or move a model to a different folder (and thus a different `+dbt-osmosis` rule), dbt-osmosis merges or moves the corresponding YAML to match.
+
+Because dbt-osmosis enforces your declared file paths, you **won’t** inadvertently end up with duplicate or out-of-date YAML references.
+
+---
 
 ## Running dbt-osmosis
 
-I will step through 3 ways to run dbt-osmosis. These are not mutually exclusive. You can use any combination of these approaches to get the most out of dbt-osmosis. They are ordered based on the amount of effort required to get started and by the overall scalability as model count increases.
+Whether you are focusing on daily doc updates or large-scale refactors, dbt-osmosis can be triggered in **three** common ways. You can pick whichever method suits your team’s workflow best; they’re not mutually exclusive.
 
-### On-demand ⭐️
+### 1. On-demand ⭐️
 
-The easiest way to take advantage of dbt-osmosis is to run it periodically. This simply takes aligment from the development team on the configuration / rules and then a single developer can run it and commit the changes if they like them. This can be done weekly, monthly, quarterly, etc. It is up to the team to decide how often they want to run it. This is by far the simplest as a single execution provides significant value. (this is what I do today)
+**Simplest approach**: occasionally run dbt-osmosis when you want to tidy things up or ensure docs are current. For instance:
 
-### Pre-commit hook ⭐️⭐️
+```bash
+# Example: refactor and see if changes occur
+dbt-osmosis yaml refactor --target prod --check
+```
 
-We now include a pre-commit hook for dbt-osmosis! This is a great way to keep documentation up to date. It will only run on models that have changed.
+**Recommended usage**:
+
+- **Monthly or quarterly** “cleanups”
+- Ad hoc runs on a **feature branch** (review & merge the changes if they look good)
+- Let developers manually run it whenever they have significantly changed schemas
+
+A single execution often yields **substantial** value by updating or reorganizing everything according to your rules.
+
+### 2. Pre-commit hook ⭐️⭐️
+
+To **automate** doc and schema alignment, you can add dbt-osmosis to your team’s **pre-commit** hooks. It will run automatically whenever you commit any `.sql` files in, say, `models/`.
 
 ```yaml title=".pre-commit-config.yaml"
 repos:
   - repo: https://github.com/z3z1ma/dbt-osmosis
-    rev: v0.11.11 # verify the latest version
+    rev: v1.1.5
     hooks:
       - id: dbt-osmosis
         files: ^models/
-        # you'd normally run this against your prod target, you can use any target though
+        # Optionally specify any arguments, e.g. production target:
         args: [--target=prod]
         additional_dependencies: [dbt-<adapter>]
 ```
 
-### CI/CD ⭐️⭐️⭐️
+**Pro**: Docs never go stale because every commit updates them.
+**Con**: Slight overhead on each commit, but typically manageable if you filter only changed models.
 
-You can also run dbt-osmosis as part of your CI/CD pipeline. The best way to do this is to simply clone the repo, run dbt-osmosis, and then commit the changes. Preferably, you would do this in a separate branch and then open a PR. This is the most robust approach since it ensures that the changes are reviewed and approved by a human before they are merged into the main branch whilst taking the load off of developer machines.
+### 3. CI/CD ⭐️⭐️⭐️
+
+You can also integrate dbt-osmosis into your **continuous integration** pipeline. For example, a GitHub Action or a standalone script might:
+
+1. Clone your repo into a CI environment.
+2. Run `dbt-osmosis yaml refactor`.
+3. Commit any resulting changes back to a branch or open a pull request.
 
 ```bash title="example.sh"
-# this only exists to provide color, in the future we may add a preconfigured GHA to do this
 git clone https://github.com/my-org/my-dbt-project.git
+cd my-dbt-project
 git checkout -b dbt-osmosis-refactor
 
 dbt-osmosis yaml refactor --target=prod
 
-git commit -am “✨ Refactor yaml files”
+git commit -am "✨ dbt-osmosis refactor"
 git push origin -f
 gh pr create
 ```
+
+**Pros**:
+
+- Automated and **reviewable** in a PR.
+- Takes the load off dev machines by running it in a controlled environment.
+
+**Cons**:
+
+- Requires some CI setup.
+- Devs must remember to review and merge the PR.
+
+---
+
+**In summary**, dbt-osmosis fits a wide range of workflows. Whether you run it on-demand, as a pre-commit hook, or integrated into a CI pipeline, you’ll enjoy a consistent, automated approach to maintaining and updating your dbt YAML files for both **sources** and **models**.

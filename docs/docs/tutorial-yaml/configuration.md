@@ -73,33 +73,29 @@ vars:
 
 Beyond **where** to place files, dbt-osmosis provides many **tunable options** for how it handles column injection, data types, inheritance, etc. You can specify these in **multiple levels**—globally, folder-level, node-level, or even per-column. dbt-osmosis merges them in a chain, so the most specific setting “wins.”
 
-### 1. Global Options in `dbt_project.yml`
+### 1. Global Options via Command Line Flags
 
-Under `vars: dbt-osmosis` (or `vars: dbt_osmosis`), you can declare project-wide defaults:
+You can declare project-wide defaults using command line flags when running the dbt-osmosis CLI:
 
-```yaml title="dbt_project.yml"
-vars:
-  dbt-osmosis:
-    skip-add-columns: false
-    skip-add-data-types: false
-    skip-merge-meta: false
-    skip-add-tags: false
-    numeric-precision-and-scale: true
-    string-length: true
-    force-inherit-descriptions: false
-    output-to-lower: false
-    add-progenitor-to-meta: false
-
-    # Optionally specify that columns should be sorted in the db order or alphabetically
-    # (You can override on a folder or node level, too.)
-    sort-by: "database"
+```sh
+dbt-osmosis yaml refactor \
+  --skip-add-columns \
+  --skip-add-data-types \
+  --skip-merge-meta \
+  --skip-add-tags \
+  --numeric-precision-and-scale \
+  --string-length \
+  --force-inherit-descriptions \
+  --output-to-lower \
+  --add-progenitor-to-meta \
+  --sort-by=database
 ```
 
 These **global** settings apply to **all** models and sources unless overridden at a lower level.
 
 ### 2. Folder-Level +dbt-osmosis-options
 
-Inside `dbt_project.yml`, you can attach `+dbt-osmosis-options` to a subfolder:
+This is the canonical approach in 1.1 forward. Inside `dbt_project.yml`, you can attach `+dbt-osmosis-options` to a subfolder:
 
 ```yaml title="dbt_project.yml"
 models:
@@ -120,6 +116,7 @@ models:
       +dbt-osmosis-options:
         skip-add-tags: true
         output-to-lower: true
+      +dbt-osmosis-sort-by: "alphabetical" # Flat keys work too
 ```
 
 This means everything in the `staging` folder will skip adding **new** columns from the database, reorder existing columns alphabetically, but **won’t** skip data types (the default from the global level stands). Meanwhile, `intermediate` models skip adding tags and convert all columns/data types to lowercase.
@@ -199,7 +196,7 @@ And much more. Many flags also exist as **command-line** arguments (`--skip-add-
 **dbt-osmosis** configuration is highly **modular**. You:
 
 1. **Always** specify a `+dbt-osmosis: "<some_path>.yml"` directive per folder (so osmosis knows where to place YAML).
-2. Set **options** (like skipping columns, adding data types, etc.) **globally** via `vars`, **folder-level** with `+dbt-osmosis-options`, **node-level** in `.sql`, or **column-level** in metadata.
+2. Set **options** (like skipping columns, adding data types, etc.) **globally** via either cli flags, a more granular **folder-level** with `+dbt-osmosis-options`, **node-level** in `.sql`, or **column-level** in metadata.
 3. Let dbt-osmosis handle the merging and logic so that the final outcome respects your most **specific** settings.
 
 With this approach, you can achieve everything from a simple one-YAML-per-model style to a more advanced structure that merges doc from multiple upstream sources while selectively skipping columns or data types.
