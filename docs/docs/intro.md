@@ -12,9 +12,9 @@ Get started by **running dbt-osmosis**.
 
 ### What you'll need
 
-- [Python](https://www.python.org/downloads/) (3.8+)
-- [dbt](https://docs.getdbt.com/docs/core/installation) (1.0.0+)
-- [uv](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
+- [Python](https://www.python.org/downloads/) (3.9+)
+- [dbt](https://docs.getdbt.com/docs/core/installation) (1.8.0+)
+- or [uv](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 - An existing dbt project (or you can play with it using [jaffle shop](https://github.com/dbt-labs/jaffle_shop_duckdb))
 
 ## Configure dbt-osmosis
@@ -25,6 +25,9 @@ Add the following to your `dbt_project.yml` file. This example configuration tel
 models:
   your_project_name:
     +dbt-osmosis: "_{model}.yml"
+seeds:
+  your_project_name:
+    +dbt-osmosis: "_schema.yml"
 ```
 
 ## Run dbt-osmosis
