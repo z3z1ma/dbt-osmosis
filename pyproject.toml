@@ -35,12 +35,12 @@ dependencies = [
 
 [project.optional-dependencies]
 workbench = [
-  "streamlit>=1.20.0,<1.30.0",
+  "streamlit>=1.20.0,<1.34.0",
   "streamlit-ace~=0.1.1",
   "ydata-profiling~=4.12.1",
   "feedparser~=6.0.11",
   "streamlit-elements-fluence>=0.1.4",
-  "dbt-duckdb>=1.0.0,<2",
+  "dbt-duckdb>=1.8.0,<=1.10",
   "setuptools>=70",
 ]
 
@@ -55,6 +55,9 @@ dev = [
 
 [project.scripts]
 "dbt-osmosis" = "dbt_osmosis.cli.main:cli"
+
+[tool.uv]
+override-dependencies = ["protobuf>=5.0,<6.0"]
 
 [tool.black]
 line-length = 100

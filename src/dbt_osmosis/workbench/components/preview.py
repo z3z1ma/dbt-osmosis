@@ -1,11 +1,32 @@
+# pyright: reportAny=false, reportMissingTypeStubs=false, reportImplicitOverride=false
+import typing as t
+
 from streamlit import session_state as state
 from streamlit_elements_fluence import JSCallback, mui
 
 from .dashboard import Dashboard
 
 
+@t.final
 class Preview(Dashboard.Item):
-    def __call__(self, query_run_fn):
+    @staticmethod
+    def initial_state() -> dict[str, t.Any]:
+        import pandas as pd
+
+        return {
+            "query_adapter_resp": None,
+            "query_result_df": pd.DataFrame(),
+            "query_result_columns": [],
+            "query_result_rows": [],
+            "query_state": "test",
+            "query_template": "select * from ({sql}) as _query limit 200",
+        }
+
+    def __init__(self, *args: t.Any, query_action: t.Callable[[], None], **kwargs: t.Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._query_action = query_action
+
+    def __call__(self, **props: t.Any) -> None:
         with mui.Paper(
             key=self._key,
             sx={
@@ -17,28 +38,28 @@ class Preview(Dashboard.Item):
             elevation=1,
         ):
             with self.title_bar(padding="10px 15px 10px 15px", dark_switcher=False):
-                mui.icon.ViewCompact()
-                mui.Typography("Query Preview")
-                if state.w.sql_query_state == "success":
-                    mui.Typography(
-                        "Adapter Response: {}".format(state.w.sql_adapter_resp),
+                _ = mui.icon.ViewCompact()
+                _ = mui.Typography("Query Preview")
+                if state.app.query_state == "success":
+                    _ = mui.Typography(
+                        "Adapter Response: {}".format(state.app.query_adapter_resp),
                         sx={"marginRight": "auto", "color": "text.secondary"},
                     )
 
             with mui.Box(sx={"flex": 1, "minHeight": 0}):
-                if state.w.sql_query_state == "running":
-                    mui.CircularProgress(sx={"padding": "25px"})
-                elif state.w.sql_query_state == "error":
-                    mui.Typography(
-                        "Error running query\n\n{}".format(state.w.sql_adapter_resp),
+                if state.app.query_state == "running":
+                    _ = mui.CircularProgress(sx={"padding": "25px"})
+                elif state.app.query_state == "error":
+                    _ = mui.Typography(
+                        "Error running query\n\n{}".format(state.app.query_adapter_resp),
                         sx={"padding": "25px"},
                     )
-                elif not state.w.sql_result_columns:
-                    mui.Typography("No results to show...", sx={"padding": "25px"})
+                elif not state.app.query_result_columns:
+                    _ = mui.Typography("No results to show...", sx={"padding": "25px"})
                 else:
-                    mui.DataGrid(
-                        columns=state.w.sql_result_columns,
-                        rows=state.w.sql_result_rows,
+                    _ = mui.DataGrid(
+                        columns=state.app.query_result_columns,
+                        rows=state.app.query_result_rows,
                         pageSize=20,
                         rowsPerPageOptions=[20, 50, 100],
                         checkboxSelection=False,
@@ -47,10 +68,10 @@ class Preview(Dashboard.Item):
                     )
 
             with mui.Stack(direction="row", spacing=2, alignItems="center", sx={"padding": "10px"}):
-                mui.Button(
+                run_keybind = "Ctrl+Shift+Enter"
+                _ = mui.Button(
                     "Run Query",
                     variant="contained",
-                    onClick=lambda: query_run_fn(),
+                    onClick=lambda: self._query_action(),
                 )
-                key = "Ctrl+Shift+Enter"
-                mui.Typography(f"Or press {key}", sx={"flex": 1})
+                _ = mui.Typography(f"Or press {run_keybind}", sx={"flex": 1})

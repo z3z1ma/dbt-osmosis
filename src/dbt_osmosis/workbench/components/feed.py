@@ -1,14 +1,20 @@
+# pyright: reportAny=false, reportImplicitOverride=false
+import typing as t
+
 from streamlit import session_state as state
-from streamlit_elements_fluence import extras, mui
+from streamlit_elements_fluence import extras, mui  # pyright: ignore[reportMissingTypeStubs]
 
 from .dashboard import Dashboard
 
 
+@t.final
 class RssFeed(Dashboard.Item):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    @staticmethod
+    def initial_state() -> dict[str, t.Any]:
+        return {"feed_html": ""}
 
-        self._dark_theme = False
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        super().__init__(*args, **kwargs)
         self._editor_box_style = {
             "flex": 1,
             "minHeight": 0,
@@ -17,7 +23,7 @@ class RssFeed(Dashboard.Item):
             "borderColor": "divider",
         }
 
-    def __call__(self, **options):
+    def __call__(self, **props: t.Any) -> None:
         with mui.Paper(
             key=self._key,
             sx={
@@ -29,9 +35,8 @@ class RssFeed(Dashboard.Item):
             elevation=1,
         ):
             with self.title_bar("12px 15px 12px 15px", dark_switcher=False):
-                mui.icon.Feed()
-                mui.Typography("Hacker News Feed")
+                _ = mui.icon.Feed()
+                _ = mui.Typography("Hacker News Feed")
 
-            # Render hacker news feed
             with mui.Box(sx={"flex": 1, "minHeight": 0}):
-                extras.InnerHTML(state.w.feed_contents)
+                extras.InnerHTML(state.app.feed_html, **props)  # pyright: ignore[reportUnknownMemberType]
