@@ -2,7 +2,9 @@
 version: 2
 models:
   - name: orders
-    description: This table has basic information about orders, as well as some derived facts based on payments
+    description: >-
+      This table has basic information about orders, as well as some derived facts based on payments
+
 
     columns:
       - name: order_id
@@ -26,7 +28,7 @@ models:
       - name: status
         tests:
           - accepted_values:
-              values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
+              values: [placed, shipped, completed, return_pending, returned]
 
         description: '{{ doc("orders_status") }}'
         data_type: VARCHAR

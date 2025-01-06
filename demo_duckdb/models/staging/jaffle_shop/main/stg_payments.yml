@@ -13,7 +13,7 @@ models:
       - name: payment_method
         tests:
           - accepted_values:
-              values: ["credit_card", "coupon", "bank_transfer", "gift_card"]
+              values: [credit_card, coupon, bank_transfer, gift_card]
         data_type: varchar
       - name: amount
         data_type: double

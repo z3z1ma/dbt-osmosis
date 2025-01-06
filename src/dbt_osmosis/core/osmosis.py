@@ -318,7 +318,7 @@ def create_yaml_instance(
     indent_sequence: int = 4,
     indent_offset: int = 2,
     width: int = 100,
-    preserve_quotes: bool = True,
+    preserve_quotes: bool = False,
     default_flow_style: bool = False,
     encoding: str = "utf-8",
 ) -> ruamel.yaml.YAML:
@@ -331,8 +331,11 @@ def create_yaml_instance(
     y.default_flow_style = default_flow_style
     y.encoding = encoding
 
-    def str_representer(dumper: t.Any, data: t.Any) -> t.Any:
-        if len(data.splitlines()) > 1:  # check for multiline string
+    def str_representer(dumper: ruamel.yaml.RoundTripDumper, data: str) -> t.Any:
+        newlines = len(data.splitlines())
+        if newlines == 1 and len(data) > width - len(f"description{y.prefix_colon}: "):
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=">")
+        if newlines > 1:
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
         return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
