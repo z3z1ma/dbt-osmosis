@@ -838,7 +838,7 @@ def get_table_ref(node: ResultNode | BaseRelation) -> TableRef:
     elif node.resource_type == NodeType.Source:
         return TableRef(node.database, node.schema, node.identifier or node.name)
     else:
-        return TableRef(node.database, node.schema, node.name)
+        return TableRef(node.database, node.schema, node.alias or node.name)
 
 
 _COLUMN_LIST_CACHE = {}
