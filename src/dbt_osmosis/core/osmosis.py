@@ -1684,6 +1684,17 @@ def _build_column_knowledge_graph(
         for v in pm.hook.get_candidates(name=column_name, node=node, context=context.project):
             variants.extend(t.cast(list[str], v))
 
+    def _get_unrendered(k: str, ancestor: ResultNode) -> t.Any:
+        raw_yaml = _get_node_yaml(context, ancestor) or {}
+        raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
+        raw_column_metadata = _find_first(
+            raw_columns,
+            lambda c: normalize_column_name(c["name"], context.project.runtime_cfg.credentials.type)
+            in node_column_variants[name],
+            {},
+        )
+        return raw_column_metadata.get(k)
+
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
     for generation in reversed(sorted(tree.keys())):
         ancestors = tree[generation]
@@ -1720,17 +1731,7 @@ def _build_column_knowledge_graph(
                     name,
                     fallback=context.settings.use_unrendered_descriptions,
                 ):
-                    raw_yaml = _get_node_yaml(context, ancestor) or {}
-                    raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
-                    raw_column_metadata = _find_first(
-                        raw_columns,
-                        lambda c: normalize_column_name(
-                            c["name"], context.project.runtime_cfg.credentials.type
-                        )
-                        in node_column_variants[name],
-                        {},
-                    )
-                    if unrendered_description := raw_column_metadata.get("description"):
+                    if unrendered_description := _get_unrendered("description", ancestor):
                         graph_edge["description"] = unrendered_description
 
                 current_tags = graph_node.get("tags", [])
@@ -1748,7 +1749,9 @@ def _build_column_knowledge_graph(
                     fallback=context.settings.add_inheritance_for_specified_keys,
                 ):
                     current_val = graph_node.get(inheritable)
-                    if incoming_val := graph_edge.pop(inheritable, current_val):
+                    if incoming_unrendered_val := _get_unrendered(inheritable, ancestor):
+                        graph_edge[inheritable] = incoming_unrendered_val
+                    elif incoming_val := graph_edge.pop(inheritable, current_val):
                         graph_edge[inheritable] = incoming_val
 
                 if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
