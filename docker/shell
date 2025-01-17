@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# shellcheck disable=SC2034
-my_path="$( cd "$(dirname "$0")" || exit ; pwd -P)"
-${1:-docker} compose -f docker/docker-compose.yml exec app bash -c "SHELL=bash poetry shell"

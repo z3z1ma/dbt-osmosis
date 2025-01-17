@@ -1,24 +1,20 @@
 ---
 sidebar_position: 1
 ---
-
 # Installation
 
-## Install with pipx
-
-If you  will install dbt-osmosis and its dependencies in a virtual environment, and make it available as a command-line tool.
+## Install with uv
 
 ```bash
-pipx install dbt-osmosis
-pipx inject dbt-osmosis dbt-<adapter>
+uv tool install --with="dbt-<adapter>~=1.9.0" dbt-osmosis
 ```
 
-## Install with pip
+This will install `dbt-osmosis` and its dependencies in a virtual environment, and make it available as a command-line tool via `dbt-osmosis`. You can also use `uvx` like in the intro to run it directly in a more ephemeral way.
 
-This will install dbt-osmosis and its dependencies in your global Python environment or your active virtual environment.
+## Install with pip
 
 ```bash
 pip install dbt-osmosis dbt-<adapter>
 ```
 
-Naturally, you can also install dbt-osmosis using your favorite package manager. `dbt-osmosis` is available on [PyPI](https://pypi.org/project/dbt-osmosis/).
+(This installs `dbt-osmosis` into your current Python environment.)

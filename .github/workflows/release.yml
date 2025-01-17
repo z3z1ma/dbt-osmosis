@@ -25,10 +25,10 @@ jobs:
           pip install --constraint=.github/workflows/constraints.txt pip
           pip --version
 
-      - name: Install Poetry
+      - name: Install uv
         run: |
-          pip install --constraint=.github/workflows/constraints.txt poetry
-          poetry --version
+          pip install --constraint=.github/workflows/constraints.txt uv
+          uv --version
 
       - name: Check if there is a parent commit
         id: check-parent-commit
@@ -42,33 +42,31 @@ jobs:
         uses: salsify/action-detect-and-tag-new-version@v2.0.3
         with:
           version-command: |
-            bash -o pipefail -c "poetry version | awk '{ print \$2 }'"
+            sed -nE 's/^version = "([^"]+)"/\1/p' pyproject.toml
 
       - name: Bump version for developmental release
         if: "! steps.check-version.outputs.tag"
         run: |
-          poetry version patch &&
-          version="$(poetry version | awk '{ print $2 }')" &&
-          poetry version "${version:?}.dev.$(date +%s)"
+          sed -i -E "s/^version\s*=\s*\"[^\"]+\"/version = \"1.0.0.dev.$(date +%Y%m%d)\"/" pyproject.toml
 
       - name: Build package
         run: |
-          poetry build --ansi
+          uvx --from=hatchling==1.26.3 hatchling build
 
       - name: Publish package on PyPI
         if: steps.check-version.outputs.tag
-        uses: pypa/gh-action-pypi-publish@v1.8.3
+        uses: pypa/gh-action-pypi-publish@v1.12.3
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
 
-      - name: Publish package on TestPyPI
-        if: "! steps.check-version.outputs.tag"
-        uses: pypa/gh-action-pypi-publish@v1.8.3
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
+      # - name: Publish package on TestPyPI
+      #   if: "! steps.check-version.outputs.tag"
+      #   uses: pypa/gh-action-pypi-publish@v1.12.3
+      #   with:
+      #     user: __token__
+      #     password: ${{ secrets.TEST_PYPI_TOKEN }}
+      #     repository_url: https://test.pypi.org/legacy/
 
       - name: Publish the release notes
         uses: release-drafter/release-drafter@v5.23.0

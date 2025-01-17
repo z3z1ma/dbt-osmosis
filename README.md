@@ -6,8 +6,7 @@
 [![Downloads](https://static.pepy.tech/badge/dbt-osmosis)](https://pepy.tech/project/dbt-osmosis)
 ![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)
 ![black](https://img.shields.io/badge/code%20style-black-000000.svg)
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-v2-i0ico9.streamlit.app/)
-
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://dbt-osmosis-playground.streamlit.app/)
 
 [![Scc Count Badge](https://sloc.xyz/github/z3z1ma/dbt-osmosis/)](https://github.com/z3z1ma/dbt-osmosis/)
 [![Scc Count Badge](https://sloc.xyz/github/z3z1ma/dbt-osmosis/?category=cocomo)](https://github.com/z3z1ma/dbt-osmosis/)
@@ -19,6 +18,10 @@ We now have a spiffy [dbt-osmosis documentation site](https://z3z1ma.github.io/d
 Please check it out for a more in-depth introduction to dbt-osmosis. 👇
 
 [![dbt-osmosis](/screenshots/docs_site.png)](https://z3z1ma.github.io/dbt-osmosis/)
+
+## Migrating from 0.x.x to 1.x.x?
+
+We have a [migration guide](https://z3z1ma.github.io/dbt-osmosis/docs/migrating) to help you out. 🚀
 
 ## What is dbt-osmosis?
 
@@ -32,29 +35,17 @@ Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-os
 
     1b. `dbt-osmosis yaml organize --project-dir ... --profiles-dir ...`
 
-    > Organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules
+    > Organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules (no documentation changes)
 
     1c. `dbt-osmosis yaml document --project-dir ... --profiles-dir ...`
 
-    > Automatically generate documentation based on upstream documented columns
+    > Automatically generate documentation based on upstream documented columns (no reorganization)
 
-2. A highly performant dbt server which integrates with tools such as dbt-power-user for VS Code to enable interactive querying + realtime compilation from your IDE
+2. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install "dbt-osmosis[workbench]"`).
 
-    2a. `dbt-osmosis server serve --project-dir ... --profiles-dir ...`
-
-    > Spins up a WSGI server. Can be passed --register-project to automatically register your local project
-
-3. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install "dbt-osmosis[workbench]"`).
-
-    3a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
+    2a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
 
     > Spins up a streamlit app. This workbench offers similar functionality to the osmosis server + power-user combo without a reliance on VS code. Realtime compilation, query execution, pandas profiling all via copying and pasting whatever you are working on into the workbenchat your leisure. Spin it up and down as needed.
-
-4. Diffs for data model outputs to model outputs across git revisions (🚧 this is in development)
-
-    4a. `dbt-osmosis diff -m some_model  --project-dir ... --profiles-dir ...`
-
-    > Run diffs on models dynamically. This pulls the state of the model before changes from your git history, injects it as a node to the dbt manifest, compiles the old and modified nodes, and diffs their query results optionally writing nodes to temp tables before running the diff query for warehouses with performance or query complexity limits (👀 bigquery)
 
 ____
 
@@ -65,11 +56,10 @@ You can use dbt-osmosis as a pre-commit hook. This will run the `dbt-osmosis yam
 ```yaml title=".pre-commit-config.yaml"
 repos:
   - repo: https://github.com/z3z1ma/dbt-osmosis
-    rev: v0.11.11 # verify the latest version
+    rev: v1.1.5 # verify the latest version
     hooks:
       - id: dbt-osmosis
         files: ^models/
-        # you'd normally run this against your prod target, you can use any target though
         args: [--target=prod]
         additional_dependencies: [dbt-<adapter>]
 ```
@@ -84,8 +74,7 @@ I also expect there is some untapped value in the workbench that is only pending
 
 Demo the workbench 👇
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://z3z1ma-dbt-osmosis-srcdbt-osmosisapp-v2-i0ico9.streamlit.app/)
-
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://dbt-osmosis-playground.streamlit.app/)
 
 ```sh
 # NOTE this requires the workbench extra as you can see
@@ -97,7 +86,6 @@ dbt-osmosis workbench
 
 Press "r" to reload the workbench at any time.
 
-
 ✔️ dbt Editor with instant dbt compilation side-by-side or pivoted
 
 ✔️ Full control over model and workbench theme, light and dark mode
@@ -105,7 +93,6 @@ Press "r" to reload the workbench at any time.
 ✔️ Query Tester, test the model you are working on for instant feedback
 
 ✔️ Data Profiler (leverages pandas-profiling)
-
 
 **Editor**
 
@@ -116,7 +103,6 @@ The editor is able to compile models with control+enter or dynamically as you ty
 You can pivot the editor for a fuller view while workbenching some dbt SQL.
 
 ![pivot](/screenshots/osmosis_editor_pivot.png?raw=true "dbt-osmosis Pivot Layout")
-
 
 **Test Query**
 
@@ -130,13 +116,11 @@ Profile your datasets on the fly while you develop without switching context. Al
 
 ![profile-data](/screenshots/osmosis_profile.png?raw=true "dbt-osmosis Profile Data")
 
-
 **Useful Links and RSS Feed**
 
 Some useful links and RSS feeds at the bottom. 🤓
 
 ![profile-data](/screenshots/osmosis_links.png?raw=true "dbt-osmosis Profile Data")
-
 
 ___
 
