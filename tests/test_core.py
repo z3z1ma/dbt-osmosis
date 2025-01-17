@@ -22,7 +22,6 @@ from dbt_osmosis.core.osmosis import (
     YamlRefactorContext,
     YamlRefactorSettings,
     _find_first,
-    _get_node_path,
     _get_setting_for_node,
     _maybe_use_precise_dtype,
     _reload_manifest,
@@ -267,14 +266,6 @@ def test_topological_sort():
     sorted_nodes = _topological_sort(input_list)
     # We expect node_c -> node_b -> node_a
     assert [uid for uid, _ in sorted_nodes] == ["node_c", "node_b", "node_a"]
-
-
-def test_get_node_path():
-    node = mock.MagicMock()
-    node.original_file_path = "models/some_model.sql"
-    node.root_path = "/path/to/root"
-    path = _get_node_path(node)
-    assert str(path) == "/path/to/root/models/some_model.sql"
 
 
 @pytest.mark.parametrize(

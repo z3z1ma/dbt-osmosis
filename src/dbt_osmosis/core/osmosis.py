@@ -397,7 +397,7 @@ class YamlRefactorSettings:
 
     fqn: list[str] = field(default_factory=list)
     """Filter models to action via a fully qualified name match such as returned by `dbt ls`."""
-    models: list[str] = field(default_factory=list)
+    models: list[Path | str] = field(default_factory=list)
     """Filter models to action via a file path match."""
     dry_run: bool = False
     """Do not write changes to disk."""
@@ -544,7 +544,7 @@ def _load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
         logger.warning(":warning: Catalog path => %s does not exist.", fp)
         return None
     logger.info(":books: Loading existing catalog => %s", fp)
-    return t.cast(CatalogResults, CatalogArtifact.from_dict(json.loads(fp.read_text())))  # pyright: ignore[reportInvalidCast]
+    return t.cast(CatalogResults, CatalogArtifact.from_dict(json.loads(fp.read_text())))
 
 
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
@@ -580,7 +580,7 @@ def _generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
         logger.warning(":warning: Exceptions encountered in get_filtered_catalog => %s", errors)
 
     nodes, sources = catalog.make_unique_id_map(context.manifest)
-    artifact = CatalogArtifact.from_results(  # pyright: ignore[reportAttributeAccessIssue]
+    artifact = CatalogArtifact.from_results(
         nodes=nodes,
         sources=sources,
         generated_at=datetime.now(timezone.utc),
@@ -662,32 +662,23 @@ def _is_fqn_match(node: ResultNode, fqns: list[str]) -> bool:
     return False
 
 
-def _is_file_match(node: ResultNode, paths: list[str]) -> bool:
+def _is_file_match(node: ResultNode, paths: list[Path | str], root: Path | str) -> bool:
     """Check if a node's file path matches any of the provided file paths or names."""
-    node_path = _get_node_path(node)
-    for model in paths:
-        if node.name == model:
-            logger.debug(":white_check_mark: Name match => %s", model)
+    node_path = Path(root, node.original_file_path).resolve()
+    for model_or_dir in paths:
+        model_or_dir = Path(model_or_dir).resolve()
+        if node.name == model_or_dir.stem:
+            logger.debug(":white_check_mark: Name match => %s", model_or_dir)
             return True
-        try_path = Path(model).resolve()
-        if try_path.is_dir():
-            if node_path and try_path in node_path.parents:
-                logger.debug(":white_check_mark: Directory path match => %s", model)
+        if model_or_dir.is_dir():
+            if model_or_dir in node_path.parents:
+                logger.debug(":white_check_mark: Directory path match => %s", model_or_dir)
                 return True
-        elif try_path.is_file():
-            if node_path and try_path == node_path:
-                logger.debug(":white_check_mark: File path match => %s", model)
+        if model_or_dir.is_file():
+            if model_or_dir.samefile(node_path):
+                logger.debug(":white_check_mark: File path match => %s", model_or_dir)
                 return True
     return False
-
-
-def _get_node_path(node: ResultNode) -> Path | None:
-    """Return the path to the node's original file if available."""
-    if node.original_file_path and hasattr(node, "root_path"):
-        path = Path(getattr(node, "root_path"), node.original_file_path).resolve()
-        logger.debug(":file_folder: Resolved node path => %s", path)
-        return path
-    return None
 
 
 def _topological_sort(
@@ -761,7 +752,9 @@ def _iter_candidate_nodes(
         if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
             return False
         if context.settings.models:
-            if not _is_file_match(node, context.settings.models):
+            if not _is_file_match(
+                node, context.settings.models, context.project.runtime_cfg.project_root
+            ):
                 return False
         if context.settings.fqn:
             if not _is_fqn_match(node, context.settings.fqn):
