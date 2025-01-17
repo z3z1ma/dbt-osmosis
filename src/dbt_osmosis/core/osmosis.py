@@ -1387,10 +1387,8 @@ def _sync_doc_section(
     We assume node is the single source of truth, so doc_section is replaced.
     """
     logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
-    if node.description:
+    if node.description and not doc_section.get("description"):
         doc_section["description"] = node.description
-    else:
-        doc_section.pop("description", None)
 
     current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
     incoming_columns: list[dict[str, t.Any]] = []
