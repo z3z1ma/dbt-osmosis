@@ -665,17 +665,20 @@ def _is_fqn_match(node: ResultNode, fqns: list[str]) -> bool:
 def _is_file_match(node: ResultNode, paths: list[Path | str], root: Path | str) -> bool:
     """Check if a node's file path matches any of the provided file paths or names."""
     node_path = Path(root, node.original_file_path).resolve()
+    yaml_path = None
+    if node.patch_path:
+        yaml_path = Path(root, node.patch_path.partition("://")[-1]).resolve()
     for model_or_dir in paths:
         model_or_dir = Path(model_or_dir).resolve()
         if node.name == model_or_dir.stem:
             logger.debug(":white_check_mark: Name match => %s", model_or_dir)
             return True
         if model_or_dir.is_dir():
-            if model_or_dir in node_path.parents:
+            if model_or_dir in node_path.parents or yaml_path and model_or_dir in yaml_path.parents:
                 logger.debug(":white_check_mark: Directory path match => %s", model_or_dir)
                 return True
         if model_or_dir.is_file():
-            if model_or_dir.samefile(node_path):
+            if model_or_dir.samefile(node_path) or yaml_path and model_or_dir.samefile(yaml_path):
                 logger.debug(":white_check_mark: File path match => %s", model_or_dir)
                 return True
     return False
