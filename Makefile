@@ -54,6 +54,3 @@ scan-new-baseline: .uv-installed-$(PY_VERSION)
 
 scan-without-baseline: .uv-installed-$(PY_VERSION)
 	@uvx bandit -r src
-
-requirements.txt: .uv-installed-$(PY_VERSION)
-	@uv export -o requirements.txt --no-hashes --frozen
