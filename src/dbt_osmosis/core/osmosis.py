@@ -1515,8 +1515,17 @@ def sync_node_to_yaml(
         doc_obj: dict[str, t.Any] | None = None
         for item in doc_list:
             if item.get("name") == node.name:
-                doc_obj = item
-                break
+                # check if model is versioned
+                # versions have to be defined in yaml meaning
+                # there'll always be an existing properties yaml file
+                if isinstance(node, ModelNode) and node.version is not None:
+                    for version in item.get("versions", []):
+                        if version.get("v") == node.version:
+                            doc_obj = version
+                            break
+                else:
+                    doc_obj = item
+                    break
         if not doc_obj:
             doc_obj = {
                 "name": node.name,
