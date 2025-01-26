@@ -1,0 +1,71 @@
+# See https://taskfile.dev/installation/ for installation
+version: "3"
+
+env:
+  UV_PYTHON:
+    sh: cat .python-version
+
+tasks:
+  default:
+    desc: By default, run format, lint, test
+    cmds:
+      - task: format
+      - task: lint
+      - defer: { task: dev }
+      - task: test
+
+  lint:
+    desc: Run ruff to check code for linting issues
+    cmds:
+      - uvx ruff check
+
+  format:
+    desc: Auto-fix imports, then format code with ruff
+    cmds:
+      - uvx ruff check --fix --select I
+      - uvx ruff format --preview
+
+  dev:
+    desc: Sets up dev environment (.venv + pre-commit), syncs dev extra
+    deps: [venv, pre-commit]
+    cmds:
+      - uv -q sync --extra=dev
+
+  venv:
+    desc: Creates the virtual environment via uv
+    internal: true
+    sources:
+      - .python-version
+    generates:
+      - .venv/bin/python
+    cmds:
+      - uv venv .venv
+
+  pre-commit:
+    desc: Installs pre-commit hooks in .git/hooks/pre-commit
+    internal: true
+    cmds:
+      - uv tool install pre-commit
+      - uv tool run pre-commit install
+    status:
+      - test -f .git/hooks/pre-commit
+
+  test:
+    desc: Run tests against supported python and dbt versions
+    env:
+      UV_FROZEN: 1
+      UV_NO_SYNC: 1
+      UV_NO_PROGRESS: 1
+    cmds:
+      - for:
+          matrix:
+            python_version: ["3.10", "3.11", "3.12"]
+            dbt_version: ["1.8.0", "1.9.0"]
+        cmd: |
+          echo -e "\033[32mtask: [test] uv run pytest (python=={{.ITEM.python_version}} and dbt~={{.ITEM.dbt_version}})\033[0m"
+          export UV_PYTHON={{.ITEM.python_version}}
+          uv -q sync --extra dev
+          uv -q pip install --reinstall dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_version}}
+          uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          uv run pytest
+        silent: true

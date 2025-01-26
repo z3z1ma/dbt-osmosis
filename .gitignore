@@ -134,3 +134,6 @@ dmypy.json
 
 # Makefile touch target
 .uv-installed-*
+
+# Taskfile hashes
+.task
