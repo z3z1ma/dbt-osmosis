@@ -1,3 +1,0 @@
-kind: Added
-body: Match on corresponding node when passing yaml file path(s) in positional selectors ie like with pre-commit
-time: 2025-01-18T01:43:36.154626-07:00
