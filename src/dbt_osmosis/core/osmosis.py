@@ -853,26 +853,31 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
     normalized_cols = OrderedDict()
     offset = 0
 
-    def process_column(col: BaseColumn | ColumnMetadata):
+    def process_column(col: BaseColumn | ColumnMetadata) -> None:
         nonlocal offset
-        if any(re.match(b, col.name) for b in context.ignore_patterns):
-            logger.debug(
-                ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
-            )
-            return
-        normalized = normalize_column_name(col.name, context.project.runtime_cfg.credentials.type)
-        if isinstance(col, ColumnMetadata):
-            col_meta = col
-        else:
-            dtype = _maybe_use_precise_dtype(col, context.settings)
-            col_meta = ColumnMetadata(
-                name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
-            )
-        normalized_cols[normalized] = col_meta
-        offset += 1
+
         if hasattr(col, "flatten"):
-            for struct_field in t.cast(Iterable[BaseColumn], getattr(col, "flatten")()):
-                process_column(struct_field)
+            # flatten bq structs
+            cols = getattr(col, "flatten")()
+        else:
+            cols = [col]
+
+        for col in cols:
+            if any(re.match(b, col.name) for b in context.ignore_patterns):
+                logger.debug(
+                    ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
+                )
+                return
+            normalized = normalize_column_name(
+                col.name, context.project.runtime_cfg.credentials.type
+            )
+            if not isinstance(col, ColumnMetadata):
+                dtype = _maybe_use_precise_dtype(col, context.settings)
+                col = ColumnMetadata(
+                    name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
+                )
+            normalized_cols[normalized] = col
+            offset += 1
 
     if catalog := context.read_catalog():
         logger.debug(":blue_book: Catalog found => Checking for ref => %s", ref)
