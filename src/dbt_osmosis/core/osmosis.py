@@ -822,6 +822,8 @@ def _maybe_use_precise_dtype(
     if (col.is_numeric() and use_num_prec) or (col.is_string() and use_chr_prec):
         logger.debug(":ruler: Using precise data type => %s", col.data_type)
         return col.data_type
+    if hasattr(col, "mode"):
+        return col.data_type
     return col.dtype
 
 
@@ -859,12 +861,14 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
             )
             return
         normalized = normalize_column_name(col.name, context.project.runtime_cfg.credentials.type)
-        if not isinstance(col, ColumnMetadata):
+        if isinstance(col, ColumnMetadata):
+            col_meta = col
+        else:
             dtype = _maybe_use_precise_dtype(col, context.settings)
-            col = ColumnMetadata(
+            col_meta = ColumnMetadata(
                 name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
             )
-        normalized_cols[normalized] = col
+        normalized_cols[normalized] = col_meta
         offset += 1
         if hasattr(col, "flatten"):
             for struct_field in t.cast(Iterable[BaseColumn], getattr(col, "flatten")()):
