@@ -853,14 +853,12 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
     normalized_cols = OrderedDict()
     offset = 0
 
-    def process_column(col: BaseColumn | ColumnMetadata) -> None:
+    def process_column(c: BaseColumn | ColumnMetadata, /) -> None:
         nonlocal offset
 
-        if hasattr(col, "flatten"):
-            # flatten bq structs
-            cols = getattr(col, "flatten")()
-        else:
-            cols = [col]
+        cols = [c]
+        if hasattr(c, "flatten"):
+            cols.extend(getattr(c, "flatten")())
 
         for col in cols:
             if any(re.match(b, col.name) for b in context.ignore_patterns):
