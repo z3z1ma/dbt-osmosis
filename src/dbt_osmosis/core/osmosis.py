@@ -1134,6 +1134,9 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
 
     if node.resource_type == NodeType.Source:
         segments.append(context.project.runtime_cfg.model_paths[0])
+    elif rendered.startswith("/"):
+        segments.append(context.project.runtime_cfg.model_paths[0])
+        rendered = rendered.lstrip("/")
     else:
         segments.append(Path(node.original_file_path).parent)
 
