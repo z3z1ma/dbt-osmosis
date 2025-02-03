@@ -25,12 +25,13 @@ requires-python = ">=3.9,<3.13"
 
 dependencies = [
   "click>7,<9",
-  "dbt-core>=1.8,<=1.10",
+  "dbt-core>=1.8,<2",
   "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
   "pluggy>=1.5.0,<2",
   "typing-extensions~=4.12.2 ; python_version < '3.10'",
   "mysql-mimic>=2.5.7",
+  "sqlglot[rs]>=24",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,7 @@ workbench = [
   "ydata-profiling~=4.12.1",
   "feedparser~=6.0.11",
   "streamlit-elements-fluence>=0.1.4",
-  "dbt-duckdb>=1.8.0,<=1.10",
+  "dbt-duckdb>=1.8.0,<=2",
   "setuptools>=70",
 ]
 
@@ -50,7 +51,7 @@ dev = [
   "ruff~=0.8.4",
   "pytest~=8.3.4",
   "pre-commit>3.0.0,<5",
-  "dbt-duckdb>=1.0.0,<2",
+  "dbt-duckdb>=1.8.0,<2",
 ]
 
 [project.scripts]

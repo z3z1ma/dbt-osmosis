@@ -28,6 +28,8 @@ import dbt.flags as dbt_flags
 import dbt.utils as dbt_utils
 import pluggy
 import ruamel.yaml
+import sqlglot as sg
+import sqlglot.lineage as sgl
 from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.impl import BaseAdapter
@@ -1696,8 +1698,12 @@ def _build_column_knowledge_graph(
     context: YamlRefactorContext, node: ResultNode
 ) -> dict[str, dict[str, t.Any]]:
     """Generate a column knowledge graph for a dbt model or source node."""
-    tree = _build_node_ancestor_tree(context.project.manifest, node)
-    logger.debug(":family_tree: Node ancestor tree => %s", tree)
+    column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
+
+    nodes = t.cast(  # pyright: ignore[reportInvalidCast]
+        dict[str, ResultNode],
+        ChainMap[str, t.Any]({}, context.project.manifest.sources, context.project.manifest.nodes),
+    )
 
     pm = get_plugin_manager()
     node_column_variants: dict[str, list[str]] = {}
@@ -1717,13 +1723,122 @@ def _build_column_knowledge_graph(
         )
         return raw_column_metadata.get(k)
 
-    column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
+    if isinstance(node, ModelNode):
+        # NOTE: experimental sqlglot based upstream metadata fetching approach
+
+        dialect = context.project.runtime_cfg.credentials.type
+        processed_node = compile_sql_code(context.project, node.raw_code)
+        ast = sg.parse_one(t.cast(str, processed_node.compiled_code), dialect=dialect)
+
+        sources, schema = {}, {}
+        for ancestor_uid in node.depends_on_nodes:
+            ancestor = nodes[ancestor_uid]
+            schema.setdefault(ancestor.database, {}).setdefault(ancestor.schema, {})[
+                ancestor.identifier
+            ] = {c: meta.data_type or "UNKNOWN" for c, meta in ancestor.columns.items()}
+            sources[(ancestor.database, ancestor.schema, ancestor.identifier)] = ancestor
+
+        for name in node.columns:
+            parents = [
+                ast_node
+                for ast_node in sgl.lineage(
+                    name, ast, schema, dialect=dialect, trim_selects=True
+                ).walk()
+                if not ast_node.downstream
+                and (p_tbl := ast_node.expression.find(sg.exp.Table))
+                and tuple(map(str, p_tbl.parts)) in sources
+            ]
+
+            if len(parents) == 0:
+                logger.debug(":warning: No upstream dbt lineage found for column => %s", name)
+                continue
+            elif len(parents) > 1:
+                logger.debug(":warning: Cannot determine singular parent for column => %s", name)
+                continue
+            else:
+                parent = parents[0]
+
+            p_col = sg.exp.to_column(parent.name).name
+            p_tbl = t.cast(sg.exp.Table, parent.expression.find(sg.exp.Table))
+
+            ancestor = t.cast(ResultNode, sources.get(tuple(map(str, p_tbl.parts))))
+            if not ancestor or p_col not in ancestor.columns:
+                continue
+
+            # TODO: code copied from the default dbt-osmosis approach, make this DRY
+            graph_node = column_knowledge_graph.setdefault(name, {})
+            for incoming in (ancestor.columns[p_col], node.columns[name]):
+                graph_edge = incoming.to_dict()
+
+                if _get_setting_for_node(
+                    "add-progenitor-to-meta",
+                    node,
+                    name,
+                    fallback=context.settings.add_progenitor_to_meta,
+                ):
+                    graph_node.setdefault("meta", {})["osmosis_progenitor"] = ancestor.unique_id
+
+                if _get_setting_for_node(
+                    "use-unrendered-descriptions",
+                    node,
+                    name,
+                    fallback=context.settings.use_unrendered_descriptions,
+                ):
+                    if unrendered_description := _get_unrendered("description", ancestor):
+                        graph_edge["description"] = unrendered_description
+
+                current_tags = graph_node.get("tags", [])
+                if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
+                    graph_edge["tags"] = list(merged_tags)
+
+                current_meta = graph_node.get("meta", {})
+                if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
+                    graph_edge["meta"] = merged_meta
+
+                for inheritable in _get_setting_for_node(
+                    "add-inheritance-for-specified-keys",
+                    node,
+                    name,
+                    fallback=context.settings.add_inheritance_for_specified_keys,
+                ):
+                    current_val = graph_node.get(inheritable)
+                    if incoming_unrendered_val := _get_unrendered(inheritable, ancestor):
+                        graph_edge[inheritable] = incoming_unrendered_val
+                    elif incoming_val := graph_edge.pop(inheritable, current_val):
+                        graph_edge[inheritable] = incoming_val
+
+                if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
+                    incoming is node.columns[name]
+                    and _get_setting_for_node(
+                        "force_inherit_descriptions",
+                        node,
+                        name,
+                        fallback=context.settings.force_inherit_descriptions,
+                    )
+                ):
+                    _ = graph_edge.pop("description", None)
+                if graph_edge.get("tags") == []:
+                    del graph_edge["tags"]
+                if graph_edge.get("meta") == {}:
+                    del graph_edge["meta"]
+                for k in list(graph_edge.keys()):
+                    if graph_edge[k] is None:
+                        graph_edge.pop(k)
+
+                graph_node.update(graph_edge)
+
+        print(column_knowledge_graph)
+        return column_knowledge_graph
+
+    # NOTE: default dbt-osmosis fuzzing approach
+
+    tree = _build_node_ancestor_tree(context.project.manifest, node)
+    logger.debug(":family_tree: Node ancestor tree => %s", tree)
+
     for generation in reversed(sorted(tree.keys())):
         ancestors = tree[generation]
         for ancestor_uid in ancestors:
-            ancestor = context.project.manifest.nodes.get(
-                ancestor_uid, context.project.manifest.sources.get(ancestor_uid)
-            )
+            ancestor = nodes.get(ancestor_uid)
             if not isinstance(ancestor, (SourceDefinition, SeedNode, ModelNode)):
                 continue
 
@@ -2292,7 +2407,7 @@ hookimpl = pluggy.HookimplMarker("dbt-osmosis")
 
 @_hookspec
 def get_candidates(name: str, node: ResultNode, context: DbtProjectContext) -> list[str]:  # pyright: ignore[reportUnusedParameter]
-    """Get a list of candidate names for a column."""
+    """Get a list of candidate names for a column for use with simple inheritance."""
     raise NotImplementedError
 
 
