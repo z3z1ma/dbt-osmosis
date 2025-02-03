@@ -30,7 +30,7 @@ from dbt_osmosis.core.osmosis import (
 )
 
 T = t.TypeVar("T")
-if sys.version_info >= (3, 9):
+if sys.version_info >= (3, 10):
     P = t.ParamSpec("P")
 else:
     import typing_extensions as te
