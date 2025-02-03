@@ -52,8 +52,8 @@ from dbt.contracts.results import (
 )
 from dbt.mp_context import get_mp_context
 from dbt.node_types import NodeType
-from dbt.parser.models import ModelParser
 from dbt.parser.manifest import ManifestLoader, process_node
+from dbt.parser.models import ModelParser
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.docs.generate import Catalog
 from dbt.task.sql import SqlCompileRunner
@@ -251,6 +251,7 @@ class DbtProjectContext:
         """Return the manifest mutex for thread safety."""
         return self._manifest_mutex
 
+
 def _add_cross_project_references(manifest, dbt_loom, project_name):
     """Add cross-project references to the dbt manifest from dbt-loom defined manifests."""
     loomnodes = []
@@ -263,12 +264,14 @@ def _add_cross_project_references(manifest, dbt_loom, project_name):
             for _, node in loom_manifest_nodes.items():
                 if node.get("access"):
                     node_access = node.get("access")
-                    if node_access!="protected":
-                        if node.get("resource_type")=="model":
+                    if node_access != "protected":
+                        if node.get("resource_type") == "model":
                             loomnodes.append(ModelParser.parse_from_dict(None, node))
         for node in loomnodes:
             manifest.nodes[node.unique_id] = node
-        logger.info(f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!")
+        logger.info(
+            f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!"
+        )
     return manifest
 
 
@@ -316,7 +319,6 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
         adapter = _instantiate_adapter(runtime_cfg)
         setattr(runtime_cfg, "adapter", adapter)
         adapter.set_macro_resolver(manifest)
-
 
     sql_parser = SqlBlockParser(runtime_cfg, manifest, runtime_cfg)
     macro_parser = SqlMacroParser(runtime_cfg, manifest)
@@ -790,9 +792,12 @@ def _iter_candidate_nodes(
         if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
             return False
         if context.settings.models:
-            if not _is_file_match(
-                node, context.settings.models, context.project.runtime_cfg.project_root
-            ) and not include_external:
+            if (
+                not _is_file_match(
+                    node, context.settings.models, context.project.runtime_cfg.project_root
+                )
+                and not include_external
+            ):
                 return False
         if context.settings.fqn:
             if not _is_fqn_match(node, context.settings.fqn):
