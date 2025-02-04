@@ -2,7 +2,6 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
 # C extensions
 *.so
 
@@ -110,6 +109,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.vscode
 
 # Spyder project settings
 .spyderproject
@@ -134,3 +134,6 @@ dmypy.json
 
 # Makefile touch target
 .uv-installed-*
+
+# Taskfile hashes
+.task

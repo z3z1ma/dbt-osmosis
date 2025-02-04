@@ -53,6 +53,7 @@ from dbt.contracts.results import (
 from dbt.mp_context import get_mp_context
 from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
+from dbt.parser.models import ModelParser
 from dbt.parser.sql import SqlBlockParser, SqlMacroParser
 from dbt.task.docs.generate import Catalog
 from dbt.task.sql import SqlCompileRunner
@@ -251,6 +252,29 @@ class DbtProjectContext:
         return self._manifest_mutex
 
 
+def _add_cross_project_references(manifest, dbt_loom, project_name):
+    """Add cross-project references to the dbt manifest from dbt-loom defined manifests."""
+    loomnodes = []
+    loom = dbt_loom.dbtLoom(project_name)
+    loom_manifests = loom.manifests
+    logger.info(":arrows_counterclockwise: Loaded dbt loom manifests!")
+    for name, loom_manifest in loom_manifests.items():
+        if loom_manifest.get("nodes"):
+            loom_manifest_nodes = loom_manifest.get("nodes")
+            for _, node in loom_manifest_nodes.items():
+                if node.get("access"):
+                    node_access = node.get("access")
+                    if node_access != "protected":
+                        if node.get("resource_type") == "model":
+                            loomnodes.append(ModelParser.parse_from_dict(None, node))
+        for node in loomnodes:
+            manifest.nodes[node.unique_id] = node
+        logger.info(
+            f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!"
+        )
+    return manifest
+
+
 def _instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
     """Instantiate a dbt adapter based on the runtime configuration."""
     logger.debug(":mag: Registering adapter for runtime config => %s", runtime_config)
@@ -276,6 +300,18 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
         runtime_cfg.load_dependencies(),
     )
     manifest = loader.load()
+
+    # check if dbt-loom is installed
+    loom_imported = False
+    try:
+        dbt_loom = __import__("dbt_loom")
+        loom_imported = True
+    except ImportError:
+        pass
+
+    if loom_imported:
+        manifest = _add_cross_project_references(manifest, dbt_loom, runtime_cfg.project_name)
+
     manifest.build_flat_graph()
     logger.info(":arrows_counterclockwise: Loaded the dbt project manifest!")
 
@@ -665,9 +701,9 @@ def _is_fqn_match(node: ResultNode, fqns: list[str]) -> bool:
 def _is_file_match(node: ResultNode, paths: list[Path | str], root: Path | str) -> bool:
     """Check if a node's file path matches any of the provided file paths or names."""
     node_path = Path(root, node.original_file_path).resolve()
-    yaml_path = None
     if node.patch_path:
-        yaml_path = Path(root, node.patch_path.partition("://")[-1]).resolve()
+        absolute_patch_path = Path(root, node.patch_path.partition("://")[-1]).resolve()
+    yaml_path = absolute_patch_path if absolute_patch_path.exists() else None
     for model_or_dir in paths:
         model_or_dir = Path(model_or_dir).resolve()
         if node.name == model_or_dir.stem:
@@ -739,6 +775,7 @@ def _topological_sort(
 
 def _iter_candidate_nodes(
     context: YamlRefactorContext,
+    include_external: bool = False,
 ) -> Iterator[tuple[str, ResultNode]]:
     """Iterate over the models in the dbt project manifest applying the filter settings."""
     logger.debug(
@@ -746,17 +783,20 @@ def _iter_candidate_nodes(
         context.settings,
     )
 
-    def f(node: ResultNode) -> bool:
+    def f(node: ResultNode, include_external: bool = False) -> bool:
         """Closure to filter models based on the context settings."""
         if node.resource_type not in (NodeType.Model, NodeType.Source, NodeType.Seed):
             return False
-        if node.package_name != context.project.runtime_cfg.project_name:
+        if node.package_name != context.project.runtime_cfg.project_name and not include_external:
             return False
         if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
             return False
         if context.settings.models:
-            if not _is_file_match(
-                node, context.settings.models, context.project.runtime_cfg.project_root
+            if (
+                not _is_file_match(
+                    node, context.settings.models, context.project.runtime_cfg.project_root
+                )
+                and not include_external
             ):
                 return False
         if context.settings.fqn:
@@ -768,7 +808,7 @@ def _iter_candidate_nodes(
     candidate_nodes: list[t.Any] = []
     items = chain(context.project.manifest.nodes.items(), context.project.manifest.sources.items())
     for uid, dbt_node in items:
-        if f(dbt_node):
+        if f(dbt_node, include_external):
             candidate_nodes.append((uid, dbt_node))
 
     for uid, node in _topological_sort(candidate_nodes):
@@ -822,6 +862,8 @@ def _maybe_use_precise_dtype(
     if (col.is_numeric() and use_num_prec) or (col.is_string() and use_chr_prec):
         logger.debug(":ruler: Using precise data type => %s", col.data_type)
         return col.data_type
+    if hasattr(col, "mode"):
+        return col.data_type
     return col.dtype
 
 
@@ -851,24 +893,29 @@ def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, Column
     normalized_cols = OrderedDict()
     offset = 0
 
-    def process_column(col: BaseColumn | ColumnMetadata):
+    def process_column(c: BaseColumn | ColumnMetadata, /) -> None:
         nonlocal offset
-        if any(re.match(b, col.name) for b in context.ignore_patterns):
-            logger.debug(
-                ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
+
+        cols = [c]
+        if hasattr(c, "flatten"):
+            cols.extend(getattr(c, "flatten")())
+
+        for col in cols:
+            if any(re.match(b, col.name) for b in context.ignore_patterns):
+                logger.debug(
+                    ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
+                )
+                return
+            normalized = normalize_column_name(
+                col.name, context.project.runtime_cfg.credentials.type
             )
-            return
-        normalized = normalize_column_name(col.name, context.project.runtime_cfg.credentials.type)
-        if not isinstance(col, ColumnMetadata):
-            dtype = _maybe_use_precise_dtype(col, context.settings)
-            col = ColumnMetadata(
-                name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
-            )
-        normalized_cols[normalized] = col
-        offset += 1
-        if hasattr(col, "flatten"):
-            for struct_field in t.cast(Iterable[BaseColumn], getattr(col, "flatten")()):
-                process_column(struct_field)
+            if not isinstance(col, ColumnMetadata):
+                dtype = _maybe_use_precise_dtype(col, context.settings)
+                col = ColumnMetadata(
+                    name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
+                )
+            normalized_cols[normalized] = col
+            offset += 1
 
     if catalog := context.read_catalog():
         logger.debug(":blue_book: Catalog found => Checking for ref => %s", ref)
@@ -1089,7 +1136,7 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
         for k in ("dbt-osmosis", "dbt_osmosis")
         for c in (node.config.extra, node.unrendered_config)
     ]
-    path_template = _find_first(t.cast(list[str | None], conf), lambda v: v is not None)
+    path_template = _find_first(t.cast(list[t.Union[str, None]], conf), lambda v: v is not None)
     if not path_template:
         raise MissingOsmosisConfig(
             f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
@@ -1125,6 +1172,9 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
 
     if node.resource_type == NodeType.Source:
         segments.append(context.project.runtime_cfg.model_paths[0])
+    elif rendered.startswith("/"):
+        segments.append(context.project.runtime_cfg.model_paths[0])
+        rendered = rendered.lstrip("/")
     else:
         segments.append(Path(node.original_file_path).parent)
 
@@ -1515,8 +1565,17 @@ def sync_node_to_yaml(
         doc_obj: dict[str, t.Any] | None = None
         for item in doc_list:
             if item.get("name") == node.name:
-                doc_obj = item
-                break
+                # check if model is versioned
+                # versions have to be defined in yaml meaning
+                # there'll always be an existing properties yaml file
+                if isinstance(node, ModelNode) and node.version is not None:
+                    for version in item.get("versions", []):
+                        if version.get("v") == node.version:
+                            doc_obj = version
+                            break
+                else:
+                    doc_obj = item
+                    break
         if not doc_obj:
             doc_obj = {
                 "name": node.name,
@@ -1938,7 +1997,7 @@ def inherit_upstream_column_knowledge(
         logger.info(":wave: Inheriting column knowledge across all matched nodes.")
         for _ in context.pool.map(
             partial(inherit_upstream_column_knowledge, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, include_external=True)),
         ):
             ...
         return

@@ -28,7 +28,7 @@ class TestDbtYamlManager:
         # Progenitor gives us an idea of where the inherited traits will come from
         knowledge: dict[str, t.Any] = {
             "customer_id": {
-                "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers"},
+                "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers.v1"},
                 "name": "customer_id",
                 "data_type": "INTEGER",
                 "constraints": [],

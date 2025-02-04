@@ -54,7 +54,7 @@ def load_manifest() -> Manifest:
             {
                 "generation_0": ["model.jaffle_shop_duckdb.customers"],
                 "generation_1": [
-                    "model.jaffle_shop_duckdb.stg_customers",
+                    "model.jaffle_shop_duckdb.stg_customers.v1",
                     "model.jaffle_shop_duckdb.stg_orders",
                     "model.jaffle_shop_duckdb.stg_payments",
                 ],
@@ -85,7 +85,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
         (
             {"force_inherit_descriptions": False, "add_progenitor_to_meta": True},
             {
-                "stg_customers.customer_id": {
+                "stg_customers.v1.customer_id": {
                     "description": "I will be inherited, forcibly so :)",
                     "meta": {"a": 1, "b": 2},
                     "tags": ["foo", "bar"],
@@ -97,7 +97,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
                     "a": 1,
                     "b": 2,
                     "c": 3,
-                    "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers",
+                    "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers.v1",
                 },
                 "tags": ["foo", "bar", "baz"],
             },
@@ -106,7 +106,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
         (
             {"force_inherit_descriptions": True, "add_progenitor_to_meta": True},
             {
-                "stg_customers.customer_id": {
+                "stg_customers.v1.customer_id": {
                     "description": "I will be inherited, forcibly so :)",
                     "meta": {"a": 1, "b": 2},
                     "tags": ["foo", "bar"],
@@ -118,7 +118,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
                     "a": 1,
                     "b": 2,
                     "c": 3,
-                    "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers",
+                    "osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers.v1",
                 },
                 "tags": ["foo", "bar", "baz"],
             },
@@ -127,7 +127,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
         (
             {"skip_add_tags": True, "skip_merge_meta": True},
             {
-                "stg_customers.customer_id": {
+                "stg_customers.v1.customer_id": {
                     "description": "I will not be inherited, since the customer table documents me",
                     "meta": {"a": 1},
                     "tags": ["foo", "bar"],
@@ -143,7 +143,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
         (
             {"use_unrendered_descriptions": True, "force_inherit_descriptions": True},
             {
-                "stg_customers.customer_id": {
+                "stg_customers.v1.customer_id": {
                     "description": "{{ doc('stg_customer_description') }}",
                     "meta": {"d": 4},
                     "tags": ["rendered", "unrendered"],
@@ -159,7 +159,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
         (
             {"skip_add_data_types": True, "add_inheritance_for_specified_keys": ["quote"]},
             {
-                "stg_customers.customer_id": {
+                "stg_customers.v1.customer_id": {
                     "description": "Keep on, keeping on",
                     "meta": {"e": 5},
                     "tags": ["constrainted"],
@@ -177,7 +177,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
         (
             {"output_to_lower": True},
             {
-                "stg_customers.customer_id": {
+                "stg_customers.v1.customer_id": {
                     "name": "WTF",
                 }
             },
@@ -197,7 +197,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
                 "force_inherit_descriptions": True,
             },
             {
-                "stg_customers.customer_id": {
+                "stg_customers.v1.customer_id": {
                     "description": "I will prevail",
                     "meta": {"a": 1},
                     "tags": ["foo", "bar"],
@@ -233,8 +233,16 @@ def test_inherit_upstream_column_knowledge_with_various_settings(
 
     # Modify upstream column data
     for column_path, mods in upstream_mutations.items():
-        node_id, column_name = column_path.split(".")
-        upstream_col = manifest.nodes[f"model.jaffle_shop_duckdb.{node_id}"].columns[column_name]
+        components = column_path.split(".")
+
+        if len(components) > 2:
+            node_id, version, column_name = components
+            node = f"model.jaffle_shop_duckdb.{node_id}.{version}"
+        else:
+            node_id, column_name = components
+            node = f"model.jaffle_shop_duckdb.{node_id}"
+
+        upstream_col = manifest.nodes[node].columns[column_name]
         for attr, attr_value in mods.items():
             setattr(upstream_col, attr, attr_value)
 
@@ -289,7 +297,7 @@ def test_use_unrendered_descriptions(
 
 def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
     manifest = yaml_context.project.manifest
-    manifest.nodes["model.jaffle_shop_duckdb.stg_customers"].columns[
+    manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"].columns[
         "customer_id"
     ].description = "THIS COLUMN IS UPDATED FOR TESTING"
 
@@ -297,7 +305,7 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
         "customer_id": {
             "name": "customer_id",
             "description": "THIS COLUMN IS UPDATED FOR TESTING",
-            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers"},
+            "meta": {"osmosis_progenitor": "model.jaffle_shop_duckdb.stg_customers.v1"},
             "data_type": "INTEGER",
             "constraints": [],
             "quote": None,

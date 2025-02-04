@@ -235,6 +235,11 @@ def test_sync_node_to_yaml(yaml_context: YamlRefactorContext, fresh_caches):
     sync_node_to_yaml(yaml_context, node, commit=False)
 
 
+def test_sync_node_to_yaml_versioned(yaml_context: YamlRefactorContext, fresh_caches):
+    node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]
+    sync_node_to_yaml(yaml_context, node, commit=False)
+
+
 def test_commit_yamls_no_write(yaml_context: YamlRefactorContext):
     """
     Since dry_run=True, commit_yamls should not actually write anything to disk.

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dbt-osmosis"
-version = "1.1.9"
+version = "1.1.13"
 description = "A dbt utility for managing YAML to make developing with dbt more delightful."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -26,7 +26,7 @@ requires-python = ">=3.9,<3.13"
 dependencies = [
   "click>7,<9",
   "dbt-core>=1.8,<=1.10",
-  "ruamel.yaml~=0.18.7",
+  "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
   "pluggy>=1.5.0,<2",
   "typing-extensions~=4.12.2 ; python_version < '3.10'",
