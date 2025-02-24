@@ -2105,10 +2105,10 @@ def remove_columns_not_in_database(
     for extra_column in extra_columns:
         logger.info(
             ":heavy_minus_sign: Removing extra column => %s in node => %s",
-            extra_column,
+            extra_column.lower(),
             node.unique_id,
         )
-        _ = node.columns.pop(extra_column, None)
+        _ = node.columns.pop(extra_column.lower(), None)
 
 
 @_transform_op("Sort Columns in DB Order")
@@ -2134,7 +2134,7 @@ def sort_columns_as_in_database(
         return
 
     def _position(column: dict[str, t.Any]):
-        db_info = incoming_columns.get(column["name"])
+        db_info = incoming_columns.get(column["name"].upper())
         if db_info is None:
             return 99999
         return db_info.index
@@ -2204,10 +2204,11 @@ def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None
         lowercase = _get_setting_for_node(
             "output-to-lower", node, name, fallback=context.settings.output_to_lower
         )
-        if inc_c := incoming_columns.get(name):
+        if inc_c := incoming_columns.get(name.upper()):
             is_lower = column.data_type and column.data_type.islower()
             if inc_c.type:
-                column.data_type = inc_c.type.lower() if lowercase or is_lower else inc_c.type
+                inc_c_type = inc_c.type.replace("character varying", "varchar").replace("varchar(16777216)", "varchar")
+                column.data_type = inc_c_type.lower() if lowercase or is_lower else inc_c_type
 
 
 @_transform_op("Synthesize Missing Documentation")
