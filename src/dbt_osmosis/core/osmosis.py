@@ -1040,6 +1040,7 @@ def _get_setting_for_node(
 
 def create_missing_source_yamls(context: YamlRefactorContext) -> None:
     """Create source files for sources defined in the dbt_project.yml dbt-osmosis var which don't exist as nodes.
+    Also check if there are any tables in the schema that are not yet in the yaml file and add them.
 
     This is a useful preprocessing step to ensure that all sources are represented in the dbt project manifest. We
     do not have rich node information for non-existent sources, hence the alternative codepath here to bootstrap them.
@@ -1063,21 +1064,6 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         else:
             continue
 
-        if _find_first(
-            context.project.manifest.sources.values(), lambda s: s.source_name == source
-        ):
-            logger.debug(
-                ":white_check_mark: Source => %s already exists in the manifest, skipping creation.",
-                source,
-            )
-            continue
-
-        src_yaml_path = Path(
-            context.project.runtime_cfg.project_root,
-            context.project.runtime_cfg.model_paths[0],
-            src_yaml_path.lstrip(os.sep),
-        )
-
         def _describe(rel: BaseRelation) -> dict[str, t.Any]:
             s = {
                 "name": rel.identifier,
@@ -1095,23 +1081,79 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
                 for col in t.cast(list[dict[str, t.Any]], s["columns"]):
                     _ = col.pop("data_type", None)
             return s
-
-        tables = [
-            schema
-            for schema in context.pool.map(
-                _describe,
-                context.project.adapter.list_relations(database=database, schema=schema),
+        src_yaml_path = Path(
+                        context.project.runtime_cfg.project_root,
+                        context.project.runtime_cfg.model_paths[0],
+                        src_yaml_path.lstrip(os.sep),
+                    )
+        if _find_first(
+            context.project.manifest.sources.values(), lambda s: s.source_name == source
+        ):
+            logger.debug(
+                ":white_check_mark: Source => %s already exists in the manifest, checking if we need to add additional tables.",
+                source,
             )
-        ]
-        source = {"name": source, "database": database, "schema": schema, "tables": tables}
+            # logger.warn(context.project.manifest.sources)
+            # continue
+            existing_tables_in_manifest = [
+                t.name  for k, t in context.project.manifest.sources.items() if t.source_name == source
+            ]
+            existing_tables_in_db = [
+                t for t in context.project.adapter.list_relations(database=database, schema=schema)
+            ]
+            new_tables = [
+                t for t in existing_tables_in_db if t.name not in existing_tables_in_manifest
+            ]
+            if new_tables == []:
+                logger.debug(
+                    ":white_check_mark: No new tables found in the schema => %s", schema
+                )
+                continue
+            else:
+                logger.info(
+                    ":white_check_mark: New tables found in the schema => %s => %s",
+                    schema,
+                    ", ".join([t.name for t in new_tables]),
+                )
+                did_side_effect = True
+                tables = [
+                    schema
+                    for schema in context.pool.map(
+                        _describe,
+                        new_tables
+                    )
+                ]
+                with src_yaml_path.open("w") as f:
+                    logger.info(":books: Injecting new tables %s in existing source => %s => %s", ", ".join([t.name for t in new_tables]), source, src_yaml_path)
+                    
+                    sources=_read_yaml(context, f).get("sources", [])
+                    for current_source in sources:
+                        if current_source["name"] == source:
+                            current_source["tables"].extend(tables) 
+                            break
+                    
+                    context.yaml_handler.dump({"version": 2, "sources": sources}, f)
+                    context.register_mutations(1)
+                    did_side_effect = True
+            continue
+        else:
+            
+            tables = [
+                schema
+                for schema in context.pool.map(
+                    _describe,
+                    context.project.adapter.list_relations(database=database, schema=schema),
+                )
+            ]
+            source = {"name": source, "database": database, "schema": schema, "tables": tables}
 
-        src_yaml_path.parent.mkdir(parents=True, exist_ok=True)
-        with src_yaml_path.open("w") as f:
-            logger.info(":books: Injecting new source => %s => %s", source["name"], src_yaml_path)
-            context.yaml_handler.dump({"version": 2, "sources": [source]}, f)
-            context.register_mutations(1)
+            src_yaml_path.parent.mkdir(parents=True, exist_ok=True)
+            with src_yaml_path.open("w") as f:
+                logger.info(":books: Injecting new source => %s => %s", source["name"], src_yaml_path)
+                context.yaml_handler.dump({"version": 2, "sources": [source]}, f)
+                context.register_mutations(1)
 
-        did_side_effect = True
+            did_side_effect = True
 
     if did_side_effect:
         logger.info(
