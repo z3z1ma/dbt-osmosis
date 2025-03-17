@@ -368,6 +368,9 @@ def create_yaml_instance(
     y.encoding = encoding
 
     def str_representer(dumper: ruamel.yaml.RoundTripDumper, data: str) -> t.Any:
+        # https://github.com/commx/ruamel-yaml/blob/280677cf647912c599d8886000020d6ffbbb4216/resolver.py#L32
+        if re.match(r"^(y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF)$", data):
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
         newlines = len(data.splitlines())
         if newlines == 1 and len(data) > width - len(f"description{y.prefix_colon}: "):
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=">")
