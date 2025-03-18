@@ -7,8 +7,6 @@ from textwrap import dedent
 
 import openai
 
-openai.api_key = os.environ.get("OPENAI_API_KEY")
-
 __all__ = [
     "generate_model_spec_as_json",
     "generate_column_doc",
