@@ -2285,7 +2285,9 @@ def synthesize_missing_documentation_with_openai(
         )
         spec = generate_model_spec_as_json(
             getattr(
-                node, "raw_code", f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}"
+                node,
+                "compiled_sql",
+                f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}",
             ),
             upstream_docs=upstream_docs,
             existing_context=f"NodeId={node.unique_id}\nTableDescription={node.description}",
@@ -2306,7 +2308,7 @@ def synthesize_missing_documentation_with_openai(
             node.description = generate_table_doc(
                 getattr(
                     node,
-                    "raw_code",
+                    "compiled_sql",
                     f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}",
                 ),
                 table_name=node.relation_name or node.name,
