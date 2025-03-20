@@ -2287,7 +2287,7 @@ def synthesize_missing_documentation_with_openai(
             getattr(
                 node,
                 "compiled_sql",
-                f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}"
+                f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}",
             ),
             upstream_docs=upstream_docs,
             existing_context=f"NodeId={node.unique_id}\nTableDescription={node.description}",
