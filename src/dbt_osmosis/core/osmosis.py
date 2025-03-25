@@ -1085,7 +1085,7 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
 
         def _describe(rel: BaseRelation) -> dict[str, t.Any]:
             s = {
-                "name": rel.identifier,
+                "name": rel.identifier.lower() if lowercase else rel.identifier,
                 "description": "",
                 "columns": [
                     {
