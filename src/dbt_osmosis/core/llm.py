@@ -57,6 +57,10 @@ def _create_llm_prompt_for_model_docs_as_json(
     4. Do not output any extra text besides valid JSON.
     """)
 
+    if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
+        if len(sql_content) > int(max_sql_chars):
+            sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
+
     user_message = dedent(f"""
     The SQL for the model is:
 
@@ -142,6 +146,10 @@ def _create_llm_prompt_for_table(
     4. Avoid speculation. Keep it short and relevant.
     5. DO NOT list out the columns. Only provide a high-level description.
     """)
+
+    if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
+        if len(sql_content) > int(max_sql_chars):
+            sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
 
     user_message = dedent(f"""
     The SQL for the model is:
