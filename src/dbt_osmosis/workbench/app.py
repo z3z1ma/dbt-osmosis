@@ -14,6 +14,8 @@ import feedparser
 import pandas as pd
 import streamlit as st
 import ydata_profiling
+from dbt_common.clients.system import get_env
+from dbt_common.context import set_invocation_context
 from streamlit import session_state as state
 from streamlit_elements_fluence import elements, event, sync
 
@@ -121,6 +123,7 @@ def _parse_args() -> dict[str, t.Any]:
 
 def change_target() -> None:
     """Change the target profile"""
+    set_invocation_context(get_env())
     ctx: DbtProject = state.app.ctx
     if ctx.runtime_cfg.target_name != state.app.target_name:
         print(f"Changing target to {state.app.target_name}")
@@ -131,6 +134,7 @@ def change_target() -> None:
 
 def inject_model() -> None:
     """Inject model into editor"""
+    set_invocation_context(get_env())
     ctx: DbtProject = state.app.ctx
     if state.model is not None and state.model != "SCRATCH":
         path = os.path.join(ctx.runtime_cfg.project_root, state.model.original_file_path)
