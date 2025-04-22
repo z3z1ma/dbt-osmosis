@@ -1056,6 +1056,24 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
     database: str = context.project.runtime_cfg.credentials.database
     lowercase: bool = context.settings.output_to_lower
 
+    def _describe(rel: BaseRelation) -> dict[str, t.Any]:
+        s = {
+            "name": rel.identifier.lower() if lowercase else rel.identifier,
+            "description": "",
+            "columns": [
+                {
+                    "name": name.lower() if lowercase else name,
+                    "description": meta.comment or "",
+                    "data_type": meta.type.lower() if lowercase else meta.type,
+                }
+                for name, meta in get_columns(context, get_table_ref(rel)).items()
+            ],
+        }
+        if context.settings.skip_add_data_types:
+            for col in t.cast(list[dict[str, t.Any]], s["columns"]):
+                _ = col.pop("data_type", None)
+        return s
+
     did_side_effect: bool = False
     for source, spec in context.source_definitions.items():
         if isinstance(spec, str):
@@ -1068,55 +1086,77 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         else:
             continue
 
-        if _find_first(
-            context.project.manifest.sources.values(), lambda s: s.source_name == source
-        ):
-            logger.debug(
-                ":white_check_mark: Source => %s already exists in the manifest, skipping creation.",
-                source,
-            )
-            continue
-
         src_yaml_path = Path(
             context.project.runtime_cfg.project_root,
             context.project.runtime_cfg.model_paths[0],
             src_yaml_path.lstrip(os.sep),
         )
 
-        def _describe(rel: BaseRelation) -> dict[str, t.Any]:
-            s = {
-                "name": rel.identifier.lower() if lowercase else rel.identifier,
-                "description": "",
-                "columns": [
-                    {
-                        "name": name.lower() if lowercase else name,
-                        "description": meta.comment or "",
-                        "data_type": meta.type.lower() if lowercase else meta.type,
-                    }
-                    for name, meta in get_columns(context, get_table_ref(rel)).items()
-                ],
-            }
-            if context.settings.skip_add_data_types:
-                for col in t.cast(list[dict[str, t.Any]], s["columns"]):
-                    _ = col.pop("data_type", None)
-            return s
-
-        tables = [
-            schema
-            for schema in context.pool.map(
-                _describe,
-                context.project.adapter.list_relations(database=database, schema=schema),
+        if _find_first(
+            context.project.manifest.sources.values(), lambda s: s.source_name == source
+        ):
+            logger.debug(
+                ":white_check_mark: Source => %s already exists in the manifest, checking for deltas.",
+                source,
             )
-        ]
-        source = {"name": source, "database": database, "schema": schema, "tables": tables}
+            source_tables = {
+                ref.identifier or ref.name
+                for ref in context.project.manifest.sources.values()
+                if ref.source_name == source
+            }
+            db_tables = {
+                ref.identifier or ref.name
+                for ref in context.project.adapter.list_relations(database=database, schema=schema)
+            }
+            discovered_tables = db_tables - source_tables
+            removed_tables = source_tables - db_tables
+            if len(discovered_tables) + len(removed_tables) == 0:
+                logger.debug(":white_check_mark: No changes found in the schema => %s", schema)
+                continue
+            else:
+                logger.info(
+                    ":white_check_mark: Deltas found in the schema => %s => %s",
+                    schema,
+                    ", ".join(sorted(discovered_tables)),
+                )
+                did_side_effect = True
+                tables = [schema for schema in context.pool.map(_describe, discovered_tables)]
+                with src_yaml_path.open("w") as f:
+                    logger.info(
+                        ":books: Injecting new tables %s in existing source => %s => %s",
+                        ", ".join([t.name for t in discovered_tables]),
+                        source,
+                        src_yaml_path,
+                    )
 
-        src_yaml_path.parent.mkdir(parents=True, exist_ok=True)
-        with src_yaml_path.open("w") as f:
-            logger.info(":books: Injecting new source => %s => %s", source["name"], src_yaml_path)
-            context.yaml_handler.dump({"version": 2, "sources": [source]}, f)
-            context.register_mutations(1)
+                    sources = _read_yaml(context, f).get("sources", [])
+                    for current_source in sources:
+                        if current_source["name"] == source:
+                            current_source["tables"].extend(tables)
+                            break
 
-        did_side_effect = True
+                    context.yaml_handler.dump({"version": 2, "sources": sources}, f)
+                    context.register_mutations(1)
+                    did_side_effect = True
+        else:
+            tables = [
+                schema
+                for schema in context.pool.map(
+                    _describe,
+                    context.project.adapter.list_relations(database=database, schema=schema),
+                )
+            ]
+            source = {"name": source, "database": database, "schema": schema, "tables": tables}
+
+            src_yaml_path.parent.mkdir(parents=True, exist_ok=True)
+            with src_yaml_path.open("w") as f:
+                logger.info(
+                    ":books: Injecting new source => %s => %s", source["name"], src_yaml_path
+                )
+                context.yaml_handler.dump({"version": 2, "sources": [source]}, f)
+                context.register_mutations(1)
+
+            did_side_effect = True
 
     if did_side_effect:
         logger.info(
