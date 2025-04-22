@@ -1173,7 +1173,26 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
         logger.warning(":warning: No path template found for => %s", node.unique_id)
         return Path(context.project.runtime_cfg.project_root, node.original_file_path)
 
-    rendered = tpl.format(node=node, model=node.name, parent=node.fqn[-2])
+    fqn_ = node.fqn
+    tags_ = node.tags
+
+    # NOTE: this permits negative index lookups in fqn within format strings
+    lr_index = {i: s for i, s in enumerate(fqn_)}
+    rl_index = {str(-len(fqn_) + i): s for i, s in enumerate(reversed(fqn_), start=1)}
+    node.fqn = {**rl_index, **lr_index}
+
+    # NOTE: this permits negative index lookups in tags within format strings
+    lr_index = {i: s for i, s in enumerate(tags_)}
+    rl_index = {str(-len(tags_) + i): s for i, s in enumerate(reversed(tags_), start=1)}
+    node.tags = {**rl_index, **lr_index}
+
+    path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
+    rendered = tpl.format(node=node, model=node.name, parent=path.parent.name)
+
+    # restore original values
+    node.fqn = fqn_
+    node.tags = tags_
+
     segments: list[Path | str] = []
 
     if node.resource_type == NodeType.Source:
@@ -1182,7 +1201,7 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
         segments.append(context.project.runtime_cfg.model_paths[0])
         rendered = rendered.lstrip("/")
     else:
-        segments.append(Path(node.original_file_path).parent)
+        segments.append(path.parent)
 
     if not (rendered.endswith(".yml") or rendered.endswith(".yaml")):
         rendered += ".yml"
@@ -1373,6 +1392,44 @@ def draft_restructure_delta_plan(context: YamlRefactorContext) -> RestructureDel
         if exc:
             logger.error(":bomb: Error encountered while drafting plan => %s", exc)
             raise exc
+
+    # Deduplicate operations by target file path
+    deduplicated_ops: dict[Path, RestructureOperation] = {}
+    for op in plan.operations:
+        if op.file_path in deduplicated_ops:
+            # merge content rather than replacing
+            existing_op = deduplicated_ops[op.file_path]
+            for resource_type, resources in op.content.items():
+                if resource_type not in existing_op.content:
+                    existing_op.content[resource_type] = resources
+                elif isinstance(resources, list) and isinstance(
+                    existing_op.content[resource_type], list
+                ):
+                    # for model lists, deduplicate by model name
+                    if resource_type in ("models", "seeds"):
+                        existing_models = {
+                            m.get("name"): m for m in existing_op.content[resource_type]
+                        }
+                        for model in resources:
+                            if model.get("name") in existing_models:
+                                # skip duplicate models - they're already included
+                                continue
+                            existing_op.content[resource_type].append(model)
+                    else:
+                        # for other types (like sources), just append
+                        existing_op.content[resource_type].extend(resources)
+
+            # merge superseded paths
+            for path, nodes in op.superseded_paths.items():
+                if path in existing_op.superseded_paths:
+                    existing_op.superseded_paths[path].extend(nodes)
+                else:
+                    existing_op.superseded_paths[path] = nodes
+        else:
+            deduplicated_ops[op.file_path] = op
+
+    plan.operations = list(deduplicated_ops.values())
+
     logger.info(":star2: Draft plan creation complete => %s operations", len(plan.operations))
     return plan
 
@@ -1508,9 +1565,20 @@ def sync_node_to_yaml(
     """
     if node is None:
         logger.info(":wave: No single node specified; synchronizing all matched nodes.")
+        processed_models = set()
+
+        # Closure to filter nodes to avoid duplicates for versioned models
+        def _deduplicated_version_nodes():
+            for _, n in _iter_candidate_nodes(context):
+                # for versioned models, only process each base model name once
+                if n.resource_type == NodeType.Model and n.name in processed_models:
+                    continue
+                processed_models.add(n.name) if n.resource_type == NodeType.Model else None
+                yield n
+
         for _ in context.pool.map(
             partial(sync_node_to_yaml, context, commit=commit),
-            (n for _, n in _iter_candidate_nodes(context)),
+            _deduplicated_version_nodes(),
         ):
             ...
         return
@@ -1568,28 +1636,67 @@ def sync_node_to_yaml(
     else:
         # Models or Seeds => doc[ "models" ] or doc[ "seeds" ] is a list of { "name", "description", "columns", ... }
         doc_list = doc.setdefault(resource_k, [])
-        doc_obj: dict[str, t.Any] | None = None
-        for item in doc_list:
+        doc_model: dict[str, t.Any] | None = None
+        doc_version: dict[str, t.Any] | None = None
+
+        # First, check for duplicate model entries and remove them
+        model_indices = []
+        for i, item in enumerate(doc_list):
             if item.get("name") == node.name:
-                # check if model is versioned
-                # versions have to be defined in yaml meaning
-                # there'll always be an existing properties yaml file
-                if isinstance(node, ModelNode) and node.version is not None:
-                    for version in item.get("versions", []):
-                        if version.get("v") == node.version:
-                            doc_obj = version
-                            break
-                else:
-                    doc_obj = item
-                    break
-        if not doc_obj:
-            doc_obj = {
+                model_indices.append(i)
+
+        # Keep only the first instance and remove others if there are duplicates
+        if len(model_indices) > 1:
+            logger.warning(":warning: Found duplicate entries for model => %s", node.name)
+            # Keep the first one and remove the rest
+            doc_model = doc_list[model_indices[0]]
+            # Remove duplicates in reverse order to avoid index shifting
+            for idx in sorted(model_indices[1:], reverse=True):
+                doc_list.pop(idx)
+        elif model_indices:
+            doc_model = doc_list[model_indices[0]]
+
+        # If the model doesn't exist in the document, create it
+        if not doc_model:
+            doc_model = {
                 "name": node.name,
                 "columns": [],
             }
-            doc_list.append(doc_obj)
+            doc_list.append(doc_model)
 
-        _sync_doc_section(context, node, doc_obj)
+        # Handle versioned models differently
+        if isinstance(node, ModelNode) and node.version is not None:
+            # Ensure versions array exists
+            if "versions" not in doc_model:
+                doc_model["versions"] = []
+
+            # Deduplicate versions with the same 'v' value
+            version_by_v = {}
+            for version in doc_model.get("versions", []):
+                v_value = version.get("v")
+                if v_value is not None:
+                    version_by_v[v_value] = version
+
+            # Replace versions list with deduplicated versions
+            doc_model["versions"] = list(version_by_v.values())
+
+            # Try to find the specific version
+            doc_version = version_by_v.get(node.version)
+
+            # If version doesn't exist, create it
+            if not doc_version:
+                doc_version = {"v": node.version, "columns": []}
+                doc_model["versions"].append(doc_version)
+
+            # Ensure latest_version is set
+            if "latest_version" not in doc_model:
+                doc_model["latest_version"] = node.version
+
+            # Sync data to the version object
+            _sync_doc_section(context, node, doc_version)
+        else:
+            # For non-versioned models, sync directly to the model object
+            _sync_doc_section(context, node, doc_model)
 
     for k in ("models", "sources", "seeds"):
         if len(doc.get(k, [])) == 0:

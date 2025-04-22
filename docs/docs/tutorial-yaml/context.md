@@ -34,7 +34,7 @@ models:
 
 `{node}` is a **powerful** placeholder giving you the entire node object as it appears in the manifest. This object includes details like:
 
-- `node.fqn`: A list describing the folder structure (e.g., `["my_project", "staging", "salesforce", "contacts"]`)
+- `node.fqn`: A list uniquely identifying the node (e.g., `["my_project", "contacts"]`)
 - `node.resource_type`: `model`, `source`, or `seed`
 - `node.language`: Typically `"sql"`
 - `node.config[materialized]`: The model’s materialization (e.g. `"table"`, `"view"`, `"incremental"`)
@@ -52,11 +52,11 @@ models:
 
     intermediate:
       # advanced usage: use a combination of node.fqn, resource_type, language, and name
-      +dbt-osmosis: "node.fqn[-2]/{node.resource_type}_{node.language}/{node.name}.yml"
+      +dbt-osmosis: "{node.fqn[0]}/{node.resource_type}_{node.language}/{node.name}.yml"
 
     marts:
       # more advanced: nest YAML by materialization, then by the first tag.
-      +dbt-osmosis: "node.config[materialized]/node.tags[0]/schema.yml"
+      +dbt-osmosis: "{node.config[materialized]}/{node.tags[0]}/{node.name}.yml"
 ```
 
 ### Creative Use Cases
@@ -72,7 +72,7 @@ models:
 2. **Sort YAML by a specific tag** (you could use `meta` as well)
 
    ```yaml
-   +dbt-osmosis: "node.tags[0]/{model}.yml"
+   +dbt-osmosis: "{node.tags[0]}/{model}.yml"
    ```
 
    If the first tag is `finance`, you’d get `finance/my_model.yml`.
