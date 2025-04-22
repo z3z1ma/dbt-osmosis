@@ -28,7 +28,7 @@ dependencies = [
   "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
   "pluggy>=1.5.0,<2",
-  "typing-extensions~=4.12.2 ; python_version < '3.10'",
+  "typing-extensions~=4.13.1 ; python_version < '3.10'",
   "mysql-mimic>=2.5.7",
 ]
 
