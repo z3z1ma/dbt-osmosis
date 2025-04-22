@@ -25,7 +25,6 @@ from threading import get_ident
 from types import MappingProxyType
 
 import dbt.flags as dbt_flags
-import dbt.utils as dbt_utils
 import pluggy
 import ruamel.yaml
 from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
@@ -589,6 +588,8 @@ def _load_catalog(settings: YamlRefactorSettings) -> CatalogResults | None:
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
 def _generate_catalog(context: DbtProjectContext) -> CatalogResults | None:
     """Generate the dbt catalog file for the project."""
+    import dbt.utils as dbt_utils
+
     if context.config.disable_introspection:
         logger.warning(":warning: Introspection is disabled, cannot generate catalog.")
         return
