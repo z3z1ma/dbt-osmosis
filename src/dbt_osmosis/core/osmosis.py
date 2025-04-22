@@ -1519,9 +1519,7 @@ def _sync_doc_section(
             "skip-add-data-types", node, name, fallback=context.settings.skip_add_data_types
         )
         for k, v in cdict.items():
-            if k == "description" and not v:
-                merged.pop("description", None)
-            elif k == "data_type" and skip_add_types and merged.get("data_type") is None:
+            if k == "data_type" and (skip_add_types or merged.get("data_type") is None):
                 pass
             else:
                 merged[k] = v
@@ -1938,7 +1936,7 @@ def _build_column_knowledge_graph(
                         fallback=context.settings.force_inherit_descriptions,
                     )
                 ):
-                    _ = graph_edge.pop("description", None)
+                    graph_edge.pop("description", None)
                 if graph_edge.get("tags") == []:
                     del graph_edge["tags"]
                 if graph_edge.get("meta") == {}:
