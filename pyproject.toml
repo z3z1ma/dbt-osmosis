@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dbt-osmosis"
-version = "1.1.16"
+version = "1.1.17"
 description = "A dbt utility for managing YAML to make developing with dbt more delightful."
 readme = "README.md"
 license = { text = "Apache-2.0" }

@@ -1532,7 +1532,7 @@ def _sync_doc_section(
             merged.pop("meta", None)
 
         for k in set(merged.keys()) - {"name", "description", "tags", "meta"}:
-            if merged[k] is None:
+            if merged[k] in (None, [], {}):
                 merged.pop(k)
 
         if _get_setting_for_node(
