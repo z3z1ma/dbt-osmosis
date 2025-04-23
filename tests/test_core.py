@@ -38,7 +38,6 @@ from dbt_osmosis.core.osmosis import (
     execute_sql_code,
     get_columns,
     get_plugin_manager,
-    get_table_ref,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     normalize_column_name,
@@ -176,8 +175,7 @@ def test_get_columns_simple(yaml_context: YamlRefactorContext, fresh_caches):
     """
     # Let's find a model named "customers" from your jaffle_shop_duckdb project:
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
-    ref = get_table_ref(node)
-    cols = get_columns(yaml_context, ref)
+    cols = get_columns(yaml_context, node)
     assert "customer_id" in cols
 
 

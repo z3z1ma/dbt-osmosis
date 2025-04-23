@@ -46,9 +46,6 @@ from dbt.contracts.graph.nodes import (
     SourceDefinition,
 )
 from dbt.contracts.results import CatalogArtifact, CatalogResults, ColumnMetadata
-from dbt.contracts.results import (
-    CatalogKey as TableRef,
-)
 from dbt.mp_context import get_mp_context
 from dbt.node_types import NodeType
 from dbt.parser.manifest import ManifestLoader, process_node
@@ -74,7 +71,6 @@ __all__ = [
     "compile_sql_code",
     "execute_sql_code",
     "normalize_column_name",
-    "get_table_ref",
     "get_columns",
     "create_missing_source_yamls",
     "get_current_yaml_path",
@@ -873,89 +869,92 @@ def _maybe_use_precise_dtype(
     return col.dtype
 
 
-def get_table_ref(node: ResultNode | BaseRelation) -> TableRef:
-    """Make an appropriate table ref for a dbt node or relation."""
-    if isinstance(node, BaseRelation):
-        assert node.schema, "Schema must be set for a BaseRelation to generate a TableRef"
-        assert node.identifier, "Identifier must be set for a BaseRelation to generate a TableRef"
-        return TableRef(node.database, node.schema, node.identifier)
-    elif node.resource_type == NodeType.Source:
-        return TableRef(node.database, node.schema, node.identifier or node.name)
-    else:
-        return TableRef(node.database, node.schema, node.alias or node.name)
-
-
-_COLUMN_LIST_CACHE = {}
+_COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
 """Cache for column lists to avoid redundant introspection."""
 
 
-def get_columns(context: YamlRefactorContext, ref: TableRef) -> dict[str, ColumnMetadata]:
+def get_columns(
+    context: YamlRefactorContext, relation: BaseRelation | ResultNode | None
+) -> dict[str, ColumnMetadata]:
     """Equivalent to get_columns_meta in old code but directly referencing a key, not a node."""
-    if ref in _COLUMN_LIST_CACHE:
-        logger.debug(":blue_book: Column list cache HIT => %s", ref)
-        return _COLUMN_LIST_CACHE[ref]
+    normalized_columns: OrderedDict[str, ColumnMetadata] = OrderedDict()
 
-    logger.info(":mag_right: Collecting columns for table => %s", ref)
-    normalized_cols = OrderedDict()
-    offset = 0
+    if relation is None:
+        logger.debug(":blue_book: Relation is empty, skipping column collection.")
+        return normalized_columns
+
+    if not isinstance(relation, BaseRelation):
+        relation = context.project.adapter.Relation.create_from(
+            context.project.adapter.config, relation
+        )
+
+    rendered_relation = relation.render()
+    if rendered_relation in _COLUMN_LIST_CACHE:
+        logger.debug(":blue_book: Column list cache HIT => %s", rendered_relation)
+        return _COLUMN_LIST_CACHE[rendered_relation]
+
+    logger.info(":mag_right: Collecting columns for table => %s", rendered_relation)
+    index = 0
 
     def process_column(c: BaseColumn | ColumnMetadata, /) -> None:
-        nonlocal offset
+        nonlocal index
 
-        cols = [c]
+        columns = [c]
         if hasattr(c, "flatten"):
-            cols.extend(getattr(c, "flatten")())
+            columns.extend(getattr(c, "flatten")())
 
-        for col in cols:
-            if any(re.match(b, col.name) for b in context.ignore_patterns):
+        for column in columns:
+            if any(re.match(b, column.name) for b in context.ignore_patterns):
                 logger.debug(
-                    ":no_entry_sign: Skipping column => %s due to skip pattern match.", col.name
+                    ":no_entry_sign: Skipping column => %s due to skip pattern match.", column.name
                 )
-                return
+                continue
             normalized = normalize_column_name(
-                col.name, context.project.runtime_cfg.credentials.type
+                column.name, context.project.runtime_cfg.credentials.type
             )
-            if not isinstance(col, ColumnMetadata):
-                dtype = _maybe_use_precise_dtype(col, context.settings)
-                col = ColumnMetadata(
-                    name=normalized, type=dtype, index=offset, comment=getattr(col, "comment", None)
+            if not isinstance(column, ColumnMetadata):
+                dtype = _maybe_use_precise_dtype(column, context.settings)
+                column = ColumnMetadata(
+                    name=normalized,
+                    type=dtype,
+                    index=index,
+                    comment=getattr(column, "comment", None),
                 )
-            normalized_cols[normalized] = col
-            offset += 1
+            normalized_columns[normalized] = column
+            index += 1
 
     if catalog := context.read_catalog():
-        logger.debug(":blue_book: Catalog found => Checking for ref => %s", ref)
+        logger.debug(":blue_book: Catalog found => Checking for ref => %s", rendered_relation)
         catalog_entry = _find_first(
-            chain(catalog.nodes.values(), catalog.sources.values()), lambda c: c.key() == ref
+            chain(catalog.nodes.values(), catalog.sources.values()),
+            lambda c: relation.matches(*c.key()),
         )
         if catalog_entry:
-            logger.info(":books: Found catalog entry for => %s. Using it to process columns.", ref)
+            logger.info(
+                ":books: Found catalog entry for => %s. Using it to process columns.",
+                rendered_relation,
+            )
             for column in catalog_entry.columns.values():
                 process_column(column)
-            return normalized_cols
+            return normalized_columns
 
     if context.project.config.disable_introspection:
         logger.warning(
             ":warning: Introspection is disabled, cannot introspect columns and no catalog entry."
         )
-        return normalized_cols
-
-    relation: BaseRelation | None = context.project.adapter.get_relation(*ref)
-    if relation is None:
-        logger.warning(":warning: No relation found => %s", ref)
-        return normalized_cols
+        return normalized_columns
 
     try:
-        logger.info(":mag: Introspecting columns in warehouse for => %s", relation)
+        logger.info(":mag: Introspecting columns in warehouse for => %s", rendered_relation)
         for column in t.cast(
             Iterable[BaseColumn], context.project.adapter.get_columns_in_relation(relation)
         ):
             process_column(column)
     except Exception as ex:
-        logger.warning(":warning: Could not introspect columns for %s: %s", ref, ex)
+        logger.warning(":warning: Could not introspect columns for %s: %s", rendered_relation, ex)
 
-    _COLUMN_LIST_CACHE[ref] = normalized_cols
-    return normalized_cols
+    _COLUMN_LIST_CACHE[rendered_relation] = normalized_columns
+    return normalized_columns
 
 
 # TODO: instead of getting specific keys, perhaps we get a NodeConfigContext object scoped to a node / node+column
@@ -1084,9 +1083,9 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
             src_yaml_path.lstrip(os.sep),
         )
 
-        def _describe(rel: BaseRelation) -> dict[str, t.Any]:
+        def _describe(relation: BaseRelation) -> dict[str, t.Any]:
             s = {
-                "name": rel.identifier.lower() if lowercase else rel.identifier,
+                "name": relation.identifier.lower() if lowercase else relation.identifier,
                 "description": "",
                 "columns": [
                     {
@@ -1094,7 +1093,7 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
                         "description": meta.comment or "",
                         "data_type": meta.type.lower() if lowercase else meta.type,
                     }
-                    for name, meta in get_columns(context, get_table_ref(rel)).items()
+                    for name, meta in get_columns(context, relation).items()
                 ],
             }
             if context.settings.skip_add_data_types:
@@ -1216,10 +1215,7 @@ def build_yaml_file_mapping(
     context: YamlRefactorContext, create_missing_sources: bool = False
 ) -> dict[str, SchemaFileLocation]:
     """Build a mapping of dbt model and source nodes to their current and target yaml paths."""
-    logger.info(
-        ":globe_with_meridians: Building YAML file mapping. create_missing_sources => %s",
-        create_missing_sources,
-    )
+    logger.info(":globe_with_meridians: Building YAML file mapping...")
 
     if create_missing_sources:
         create_missing_source_yamls(context)
@@ -2172,9 +2168,9 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
         normalize_column_name(c.name, context.project.runtime_cfg.credentials.type)
         for c in node.columns.values()
     }
-    incoming_columns = get_columns(context, get_table_ref(node))
+    incoming_columns = get_columns(context, node)
     for incoming_name, incoming_meta in incoming_columns.items():
-        if incoming_name not in node.columns and incoming_name not in current_columns:
+        if incoming_name not in current_columns:
             logger.info(
                 ":heavy_plus_sign: Reconciling missing column => %s in node => %s",
                 incoming_name,
@@ -2205,7 +2201,7 @@ def remove_columns_not_in_database(
         normalize_column_name(c.name, context.project.runtime_cfg.credentials.type)
         for c in node.columns.values()
     }
-    incoming_columns = get_columns(context, get_table_ref(node))
+    incoming_columns = get_columns(context, node)
     if not incoming_columns:
         logger.info(
             ":no_entry_sign: No columns discovered for node => %s, skipping cleanup.",
@@ -2236,7 +2232,7 @@ def sort_columns_as_in_database(
             ...
         return
     logger.info(":1234: Sorting columns by warehouse order => %s", node.unique_id)
-    incoming_columns = get_columns(context, get_table_ref(node))
+    incoming_columns = get_columns(context, node)
     if not incoming_columns:
         logger.info(
             ":no_entry_sign: No columns discovered for node => %s, skipping db order sorting.",
@@ -2244,15 +2240,15 @@ def sort_columns_as_in_database(
         )
         return
 
-    def _position(column: dict[str, t.Any]):
-        db_info = incoming_columns.get(column["name"])
-        if db_info is None:
-            return 99999
-        return db_info.index
+    def _position(column: str) -> int:
+        inc = incoming_columns.get(
+            normalize_column_name(column, context.project.runtime_cfg.credentials.type)
+        )
+        if inc is None or inc.index is None:
+            return 99_999
+        return inc.index
 
-    node.columns = {
-        k: v for k, v in sorted(node.columns.items(), key=lambda i: _position(i[1].to_dict()))
-    }
+    node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: _position(i[0]))}
 
 
 @_transform_op("Sort Columns Alphabetically")
@@ -2304,7 +2300,7 @@ def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None
             ...
         return
     logger.info(":1234: Synchronizing data types => %s", node.unique_id)
-    incoming_columns = get_columns(context, get_table_ref(node))
+    incoming_columns = get_columns(context, node)
     if _get_setting_for_node("skip-add-data-types", node, fallback=False):
         return
     for name, column in node.columns.items():

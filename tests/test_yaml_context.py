@@ -12,7 +12,6 @@ from dbt_osmosis.core.osmosis import (
     create_missing_source_yamls,
     draft_restructure_delta_plan,
     get_columns,
-    get_table_ref,
     inherit_upstream_column_knowledge,
 )
 
@@ -60,8 +59,7 @@ def _customer_column_types(yaml_context: YamlRefactorContext) -> dict[str, str]:
     node = next(n for n in yaml_context.project.manifest.nodes.values() if n.name == "customers")
     assert node
 
-    ref = get_table_ref(node)
-    columns = get_columns(yaml_context, ref)
+    columns = get_columns(yaml_context, node)
     assert columns
 
     column_types = dict({name: meta.type for name, meta in columns.items()})
