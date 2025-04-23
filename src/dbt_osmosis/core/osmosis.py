@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import importlib
 import io
 import json
 import os
@@ -22,7 +23,7 @@ from functools import lru_cache, partial
 from itertools import chain
 from pathlib import Path
 from threading import get_ident
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 
 import dbt.flags as dbt_flags
 import pluggy
@@ -247,9 +248,11 @@ class DbtProjectContext:
         return self._manifest_mutex
 
 
-def _add_cross_project_references(manifest, dbt_loom, project_name):
+def _add_cross_project_references(
+    manifest: Manifest, dbt_loom: ModuleType, project_name: str
+) -> Manifest:
     """Add cross-project references to the dbt manifest from dbt-loom defined manifests."""
-    loomnodes = []
+    loomnodes: list[t.Any] = []
     loom = dbt_loom.dbtLoom(project_name)
     loom_manifests = loom.manifests
     logger.info(":arrows_counterclockwise: Loaded dbt loom manifests!")
@@ -261,7 +264,7 @@ def _add_cross_project_references(manifest, dbt_loom, project_name):
                     node_access = node.get("access")
                     if node_access != "protected":
                         if node.get("resource_type") == "model":
-                            loomnodes.append(ModelParser.parse_from_dict(None, node))
+                            loomnodes.append(ModelParser.parse_from_dict(None, node))  # pyright: ignore[reportArgumentType]
         for node in loomnodes:
             manifest.nodes[node.unique_id] = node
         logger.info(
@@ -296,15 +299,11 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     )
     manifest = loader.load()
 
-    # check if dbt-loom is installed
-    loom_imported = False
     try:
-        dbt_loom = __import__("dbt_loom")
-        loom_imported = True
+        dbt_loom = importlib.import_module("dbt_loom")
     except ImportError:
         pass
-
-    if loom_imported:
+    else:
         manifest = _add_cross_project_references(manifest, dbt_loom, runtime_cfg.project_name)
 
     manifest.build_flat_graph()
@@ -885,7 +884,8 @@ def get_columns(
 
     if not isinstance(relation, BaseRelation):
         relation = context.project.adapter.Relation.create_from(
-            context.project.adapter.config, relation
+            context.project.adapter.config,  # pyright: ignore[reportUnknownArgumentType]
+            relation,  # pyright: ignore[reportArgumentType]
         )
 
     rendered_relation = relation.render()
@@ -1084,6 +1084,7 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
         )
 
         def _describe(relation: BaseRelation) -> dict[str, t.Any]:
+            assert relation.identifier, "No identifier found for relation."
             s = {
                 "name": relation.identifier.lower() if lowercase else relation.identifier,
                 "description": "",
@@ -1141,7 +1142,7 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
         for k in ("dbt-osmosis", "dbt_osmosis")
         for c in (node.config.extra, node.unrendered_config)
     ]
-    path_template = _find_first(t.cast(list[t.Union[str, None]], conf), lambda v: v is not None)
+    path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
     if not path_template:
         raise MissingOsmosisConfig(
             f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
@@ -1178,12 +1179,12 @@ def get_target_yaml_path(context: YamlRefactorContext, node: ResultNode) -> Path
     # NOTE: this permits negative index lookups in fqn within format strings
     lr_index = {i: s for i, s in enumerate(fqn_)}
     rl_index = {str(-len(fqn_) + i): s for i, s in enumerate(reversed(fqn_), start=1)}
-    node.fqn = {**rl_index, **lr_index}
+    node.fqn = {**rl_index, **lr_index}  # pyright: ignore[reportAttributeAccessIssue]
 
     # NOTE: this permits negative index lookups in tags within format strings
     lr_index = {i: s for i, s in enumerate(tags_)}
     rl_index = {str(-len(tags_) + i): s for i, s in enumerate(reversed(tags_), start=1)}
-    node.tags = {**rl_index, **lr_index}
+    node.tags = {**rl_index, **lr_index}  # pyright: ignore[reportAttributeAccessIssue]
 
     path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
     rendered = tpl.format(node=node, model=node.name, parent=path.parent.name)
@@ -1634,7 +1635,7 @@ def sync_node_to_yaml(
         doc_version: dict[str, t.Any] | None = None
 
         # First, check for duplicate model entries and remove them
-        model_indices = []
+        model_indices: list[int] = []
         for i, item in enumerate(doc_list):
             if item.get("name") == node.name:
                 model_indices.append(i)
@@ -1665,7 +1666,7 @@ def sync_node_to_yaml(
                 doc_model["versions"] = []
 
             # Deduplicate versions with the same 'v' value
-            version_by_v = {}
+            version_by_v: dict[int | str | float, dict[str, t.Any]] = {}
             for version in doc_model.get("versions", []):
                 v_value = version.get("v")
                 if v_value is not None:
@@ -2244,7 +2245,7 @@ def sort_columns_as_in_database(
         inc = incoming_columns.get(
             normalize_column_name(column, context.project.runtime_cfg.credentials.type)
         )
-        if inc is None or inc.index is None:
+        if inc is None or inc.index is None:  # pyright: ignore[reportUnnecessaryComparison]
             return 99_999
         return inc.index
 
@@ -2311,7 +2312,9 @@ def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None
         lowercase = _get_setting_for_node(
             "output-to-lower", node, name, fallback=context.settings.output_to_lower
         )
-        if inc_c := incoming_columns.get(name):
+        if inc_c := incoming_columns.get(
+            normalize_column_name(name, context.project.runtime_cfg.credentials.type)
+        ):
             is_lower = column.data_type and column.data_type.islower()
             if inc_c.type:
                 column.data_type = inc_c.type.lower() if lowercase or is_lower else inc_c.type
