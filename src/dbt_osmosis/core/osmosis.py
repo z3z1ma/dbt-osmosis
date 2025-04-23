@@ -1505,7 +1505,7 @@ def _sync_doc_section(
         current_map[norm_name] = c
 
     for name, meta in node.columns.items():
-        cdict = meta.to_dict()
+        cdict = meta.to_dict(omit_none=True)
         cdict["name"] = name
         norm_name = normalize_column_name(name, context.project.runtime_cfg.credentials.type)
 
@@ -1517,19 +1517,22 @@ def _sync_doc_section(
         )
         for k, v in cdict.items():
             if k == "data_type" and (skip_add_types or merged.get("data_type") is None):
-                pass
-            else:
-                merged[k] = v
+                # don't add data types if told not to
+                continue
+            if k == "constraints" and "constraints" in merged:
+                # keep constraints as is if present, mashumaro dumps too much info :shrug:
+                continue
+            merged[k] = v
 
-        if not merged.get("description"):
+        if merged.get("description") is None:
             merged.pop("description", None)
-        if merged.get("tags") == []:
+        if merged.get("tags", []) == []:
             merged.pop("tags", None)
-        if merged.get("meta") == {}:
+        if merged.get("meta", {}) == {}:
             merged.pop("meta", None)
 
-        for k in list(merged.keys()):
-            if not merged[k]:
+        for k in set(merged.keys()) - {"name", "description", "tags", "meta"}:
+            if merged[k] is None:
                 merged.pop(k)
 
         if _get_setting_for_node(
@@ -1883,7 +1886,7 @@ def _build_column_knowledge_graph(
                         break
                 else:
                     continue
-                graph_edge = incoming.to_dict()
+                graph_edge = incoming.to_dict(omit_none=True)
 
                 if _get_setting_for_node(
                     "add-progenitor-to-meta",
