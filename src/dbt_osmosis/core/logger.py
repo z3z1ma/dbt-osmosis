@@ -72,6 +72,18 @@ LOGGER = get_logger()
 """Default logger for dbt-osmosis"""
 
 
+def set_log_level(level: int | str) -> None:
+    """Set the log level for the default logger"""
+    global LOGGER
+    if isinstance(level, str):
+        level = getattr(logging, level, logging.INFO)
+    LOGGER.setLevel(level)
+    for handler in LOGGER.handlers:
+        # NOTE: RotatingFileHandler is fixed at WARNING level.
+        if isinstance(handler, RichHandler):
+            handler.setLevel(level)
+
+
 class LogMethod(t.Protocol):
     """Protocol for logger methods"""
 
