@@ -884,8 +884,11 @@ def get_columns(
 
     result_node: ResultNode | None = None
     if not isinstance(relation, BaseRelation):
-        if isinstance(relation, ResultNode):
-            result_node = relation
+        # NOTE: Technically, we should use `isinstance(relation, ResultNode)` to verify it’s a ResultNode,
+        #       but since ResultNode is defined as a Union[...], Python 3.9 raises
+        #       > TypeError: Subscripted generics cannot be used with class and instance checks
+        #       To avoid that, we’re skipping the isinstance check.
+        result_node = relation  # may be a ResultNode
         relation = context.project.adapter.Relation.create_from(
             context.project.adapter.config,  # pyright: ignore[reportUnknownArgumentType]
             relation,  # pyright: ignore[reportArgumentType]
