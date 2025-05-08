@@ -882,7 +882,10 @@ def get_columns(
         logger.debug(":blue_book: Relation is empty, skipping column collection.")
         return normalized_columns
 
+    result_node: ResultNode | None = None
     if not isinstance(relation, BaseRelation):
+        if isinstance(relation, ResultNode):
+            result_node = relation
         relation = context.project.adapter.Relation.create_from(
             context.project.adapter.config,  # pyright: ignore[reportUnknownArgumentType]
             relation,  # pyright: ignore[reportArgumentType]
@@ -913,7 +916,7 @@ def get_columns(
                 column.name, context.project.runtime_cfg.credentials.type
             )
             if not isinstance(column, ColumnMetadata):
-                dtype = _maybe_use_precise_dtype(column, context.settings)
+                dtype = _maybe_use_precise_dtype(column, context.settings, result_node)
                 column = ColumnMetadata(
                     name=normalized,
                     type=dtype,
