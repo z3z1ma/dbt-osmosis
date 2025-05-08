@@ -882,7 +882,13 @@ def get_columns(
         logger.debug(":blue_book: Relation is empty, skipping column collection.")
         return normalized_columns
 
+    result_node: ResultNode | None = None
     if not isinstance(relation, BaseRelation):
+        # NOTE: Technically, we should use `isinstance(relation, ResultNode)` to verify it’s a ResultNode,
+        #       but since ResultNode is defined as a Union[...], Python 3.9 raises
+        #       > TypeError: Subscripted generics cannot be used with class and instance checks
+        #       To avoid that, we’re skipping the isinstance check.
+        result_node = relation  # may be a ResultNode
         relation = context.project.adapter.Relation.create_from(
             context.project.adapter.config,  # pyright: ignore[reportUnknownArgumentType]
             relation,  # pyright: ignore[reportArgumentType]
@@ -913,7 +919,7 @@ def get_columns(
                 column.name, context.project.runtime_cfg.credentials.type
             )
             if not isinstance(column, ColumnMetadata):
-                dtype = _maybe_use_precise_dtype(column, context.settings)
+                dtype = _maybe_use_precise_dtype(column, context.settings, result_node)
                 column = ColumnMetadata(
                     name=normalized,
                     type=dtype,
