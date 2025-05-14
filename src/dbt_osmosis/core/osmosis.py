@@ -1516,7 +1516,7 @@ def _sync_doc_section(
             "skip-add-data-types", node, name, fallback=context.settings.skip_add_data_types
         )
         for k, v in cdict.items():
-            if k == "data_type" and (skip_add_types or merged.get("data_type") is None):
+            if k == "data_type" and skip_add_types:
                 # don't add data types if told not to
                 continue
             if k == "constraints" and "constraints" in merged:
