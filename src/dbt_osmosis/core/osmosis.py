@@ -2202,8 +2202,8 @@ def remove_columns_not_in_database(
             ...
         return
     current_columns = {
-        normalize_column_name(c.name, context.project.runtime_cfg.credentials.type)
-        for c in node.columns.values()
+        normalize_column_name(c.name, context.project.runtime_cfg.credentials.type): key
+        for key, c in node.columns.items()
     }
     incoming_columns = get_columns(context, node)
     if not incoming_columns:
@@ -2212,14 +2212,14 @@ def remove_columns_not_in_database(
             node.unique_id,
         )
         return
-    extra_columns = current_columns - set(incoming_columns.keys())
+    extra_columns = set(current_columns.keys()) - set(incoming_columns.keys())
     for extra_column in extra_columns:
         logger.info(
             ":heavy_minus_sign: Removing extra column => %s in node => %s",
             extra_column,
             node.unique_id,
         )
-        _ = node.columns.pop(extra_column, None)
+        _ = node.columns.pop(current_columns[extra_column], None)
 
 
 @_transform_op("Sort Columns in DB Order")
