@@ -50,6 +50,8 @@ Options often used:
 
 - `--force-inherit-descriptions` to override *existing* descriptions if they are placeholders
 - `--use-unrendered-descriptions` so that you can propagate Jinja-based docs (like `{{ doc(...) }}`)
+- `--add-inheritance-for-specified-keys` to inherit arbitrary keys (e.g., `policy_tags`) from upstream models. This can be specified multiple times.
+- `--use-specified-key-unrendered` to preserve Jinja templating within values inherited via `--add-inheritance-for-specified-keys`.
 - `--skip-add-columns`, `--skip-add-data-types`, `--skip-merge-meta`, `--skip-add-tags`, etc., if you want to limit changes
 - `--synthesize` to autogenerate missing documentation with ChatGPT/OpenAI (see *Synthesis* below)
 

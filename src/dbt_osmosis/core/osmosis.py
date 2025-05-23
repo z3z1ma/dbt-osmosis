@@ -454,6 +454,8 @@ class YamlRefactorSettings:
     """Force inheritance of descriptions from upstream models, even if node has a valid description."""
     use_unrendered_descriptions: bool = False
     """Use unrendered descriptions preserving things like {{ doc(...) }} which are otherwise pre-rendered in the manifest object"""
+    use_specified_key_unrendered: bool = False
+    """Use unrendered specified keys in the documentation."""
     add_inheritance_for_specified_keys: list[str] = field(default_factory=list)
     """Include additional keys in the inheritance process."""
     output_to_lower: bool = False
@@ -1930,6 +1932,14 @@ def _build_column_knowledge_graph(
                     current_val = graph_node.get(inheritable)
                     if incoming_unrendered_val := _get_unrendered(inheritable, ancestor):
                         graph_edge[inheritable] = incoming_unrendered_val
+                    elif _get_setting_for_node(
+                        "use-specified-key-unrendered",
+                        node,
+                        name,
+                        fallback=context.settings.use_specified_key_unrendered,
+                    ):
+                        if unrendered_val := _get_unrendered(inheritable, ancestor):
+                            graph_edge[inheritable] = unrendered_val
                     elif incoming_val := graph_edge.pop(inheritable, current_val):
                         graph_edge[inheritable] = incoming_val
 
