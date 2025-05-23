@@ -211,6 +211,28 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
                 "policy_tags": ["pii_main"],
             },
         ),
+        # Case 7: Use unrendered  any specified keys
+        (
+            {
+                "use_specified_key_unrendered": True,
+                "add_inheritance_for_specified_keys": ["policy_tags"],
+                "force_inherit_descriptions": True,
+            },
+            {
+                "stg_customers.v1.customer_id": {
+                    "description": "I will prevail",
+                    "meta": {"a": 1},
+                    "tags": ["foo", "bar"],
+                    "_extra": {"policy_tags": ["{{ var('policy_tags') }}"]},
+                }
+            },
+            {
+                "description": "I will prevail",
+                "meta": {"a": 1, "c": 3},
+                "tags": ["foo", "bar", "baz"],
+                "policy_tags": ["{{ var('policy_tags') }}"],
+            },
+        ),
     ],
 )
 def test_inherit_upstream_column_knowledge_with_various_settings(
