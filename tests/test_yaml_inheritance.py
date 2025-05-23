@@ -211,7 +211,7 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
                 "policy_tags": ["pii_main"],
             },
         ),
-        # Case 7: Use unrendered  any specified keys
+        # Case 7: Use unrendered specified keys
         (
             {
                 "use_specified_key_unrendered": True,
