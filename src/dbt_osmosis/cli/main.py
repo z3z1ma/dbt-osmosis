@@ -71,6 +71,22 @@ def test_llm(test_llm: bool) -> None:
 def yaml():
     """Manage, document, and organize dbt YAML files"""
 
+def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
+    """Options common across subcommands"""
+
+    @click.option(
+        "--log-level",
+        type=click.STRING,
+        default="INFO",
+        help="The log level to use. Default is INFO.",
+    )
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        # NOTE: Remove log_level from kwargs so it's not passed to the function.
+        logger.set_log_level(kwargs.pop("log_level").upper())
+        return func(*args, **kwargs)
+
+    return wrapper
 
 @cli.group()
 def sql():
@@ -168,6 +184,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
 @yaml.command(context_settings=_CONTEXT)
 @dbt_opts
 @yaml_opts
+@logging_opts
 @click.option(
     "-F",
     "--force-inherit-descriptions",
@@ -302,6 +319,7 @@ def refactor(
 @yaml.command(context_settings=_CONTEXT)
 @dbt_opts
 @yaml_opts
+@logging_opts
 @click.option(
     "--auto-apply",
     is_flag=True,
@@ -355,6 +373,7 @@ def organize(
 @yaml.command(context_settings=_CONTEXT)
 @dbt_opts
 @yaml_opts
+@logging_opts
 @click.option(
     "-F",
     "--force-inherit-descriptions",
@@ -476,6 +495,7 @@ def document(
         allow_extra_args=True,
     )
 )
+@logging_opts
 @click.option(
     "--project-dir",
     default=discover_project_dir,
@@ -558,6 +578,7 @@ def workbench(
 
 @sql.command(context_settings=_CONTEXT)
 @dbt_opts
+@logging_opts
 @click.argument("sql")
 def run(
     sql: str = "",
@@ -588,6 +609,7 @@ def run(
 
 @sql.command(context_settings=_CONTEXT)
 @dbt_opts
+@logging_opts
 @click.argument("sql")
 def compile(
     sql: str = "",
