@@ -4,7 +4,7 @@ import json
 import os
 import typing as t
 from textwrap import dedent
-
+from openai import OpenAI
 import openai
 
 __all__ = [
@@ -12,6 +12,76 @@ __all__ = [
     "generate_column_doc",
     "generate_table_doc",
 ]
+
+
+# Dynamic client creation function
+def get_llm_client():
+    """
+    Creates and returns an LLM client and model engine string based on environment variables.
+
+    Returns:
+        tuple: (client, model_engine) where client is an OpenAI or openai object, and model_engine is the model name.
+    Raises:
+        ValueError: If required environment variables are missing or provider is invalid.
+    """
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+
+    if provider == "openai":
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY not set for OpenAI provider")
+        client = OpenAI(api_key=openai_api_key)
+        model_engine = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+    elif provider == "azure-openai":
+        openai.api_type = "azure-openai"
+        openai.api_base = os.getenv("AZURE_OPENAI_ENDPOINT")
+        openai.api_version = os.getenv(
+            "AZURE_OPENAI_API_VERSION",
+            "2024-02-15-preview"
+        )
+        openai.api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+
+        if not (openai.api_base and openai.api_key and model_engine):
+            raise ValueError(
+                "Azure environment variables (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT_NAME) not properly set"
+            )
+        # For Azure, the global openai object is used directly (legacy SDK structure preferred)
+        return openai, model_engine
+
+    elif provider == "lm-studio":
+        client = OpenAI(
+            base_url=os.getenv(
+                "LM_STUDIO_BASE_URL",
+                "http://localhost:1234/v1"
+            ),
+            api_key=os.getenv(
+                "LM_STUDIO_API_KEY",
+                "lm-studio"
+            ),
+        )
+        model_engine = os.getenv("LM_STUDIO_MODEL", "local-model")
+
+    elif provider == "ollama":
+        client = OpenAI(
+            base_url=os.getenv(
+                "OLLAMA_BASE_URL",
+                "http://localhost:11434/v1"
+            ),
+            api_key=os.getenv(
+                "OLLAMA_API_KEY",
+                "ollama"
+            ),
+        )
+        model_engine = os.getenv("OLLAMA_MODEL", "llama3")
+
+    else:
+        raise ValueError(
+            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, lm-studio, ollama"
+        )
+
+    return client, model_engine
 
 
 def _create_llm_prompt_for_model_docs_as_json(
@@ -23,7 +93,8 @@ def _create_llm_prompt_for_model_docs_as_json(
     if upstream_docs is None:
         upstream_docs = []
 
-    example_json = dedent("""\
+    example_json = dedent(
+        """\
     {
       "description": "A short description for the model",
       "columns": [
@@ -37,9 +108,11 @@ def _create_llm_prompt_for_model_docs_as_json(
         }
       ]
     }
-    """)
+    """
+    )
 
-    system_prompt = dedent(f"""
+    system_prompt = dedent(
+        f"""
     You are a helpful SQL Developer and an Expert in dbt.
     You must produce a JSON object that documents a single model and its columns.
     The object must match the structure shown below.
@@ -55,13 +128,15 @@ def _create_llm_prompt_for_model_docs_as_json(
        - "description": short explanation of what the column is
     3. If you have "upstream_docs", you may incorporate them as you see fit, but do NOT invent details.
     4. Do not output any extra text besides valid JSON.
-    """)
+    """
+    )
 
     if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
         if len(sql_content) > int(max_sql_chars):
             sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
 
-    user_message = dedent(f"""
+    user_message = dedent(
+        f"""
     The SQL for the model is:
 
     >>> SQL CODE START
@@ -75,7 +150,8 @@ def _create_llm_prompt_for_model_docs_as_json(
     {os.linesep.join(upstream_docs)}
 
     Please return only a valid JSON that matches the structure described above.
-    """)
+    """
+    )
 
     return [
         {"role": "system", "content": system_prompt.strip()},
@@ -89,13 +165,26 @@ def _create_llm_prompt_for_column(
     table_name: str | None = None,
     upstream_docs: list[str] | None = None,
 ) -> list[dict[str, str]]:
-    """Builds a system + user prompt for generating a docstring for a single column. The final answer should be just the docstring text, not JSON or YAML."""
+    """
+    Builds a system + user prompt for generating a docstring for a single column.
+    The final answer should be just the docstring text, not JSON or YAML.
+
+    Args:
+        column_name (str): The name of the column to describe.
+        existing_context (str | None): Any relevant metadata or table definitions.
+        table_name (str | None): Name of the table/model (optional).
+        upstream_docs (list[str] | None): Optional docs or references you might have.
+
+    Returns:
+        list[dict[str, str]]: List of prompt messages for the LLM.
+    """
     if upstream_docs is None:
         upstream_docs = []
 
     table_context = f"in the table '{table_name}'." if table_name else "."
 
-    system_prompt = dedent(f"""
+    system_prompt = dedent(
+        f"""
     You are a helpful SQL Developer and an Expert in dbt.
     Your job is to produce a concise documentation string
     for a single column {table_context}
@@ -106,9 +195,11 @@ def _create_llm_prompt_for_column(
     3. If upstream docs exist, you may incorporate them. If none exist,
        a short placeholder is acceptable.
     4. Avoid speculation. Keep it short and relevant.
-    """)
+    """
+    )
 
-    user_message = dedent(f"""
+    user_message = dedent(
+        f"""
     The column name is: {column_name}
 
     Existing context:
@@ -118,7 +209,8 @@ def _create_llm_prompt_for_column(
     {os.linesep.join(upstream_docs)}
 
     Return ONLY the text suitable for the "description" field.
-    """)
+    """
+    )
 
     return [
         {"role": "system", "content": system_prompt.strip()},
@@ -129,11 +221,22 @@ def _create_llm_prompt_for_column(
 def _create_llm_prompt_for_table(
     sql_content: str, table_name: str, upstream_docs: list[str] | None = None
 ) -> list[dict[str, t.Any]]:
-    """Builds a system + user prompt instructing the model to produce a string description describing a single model."""
+    """
+    Builds a system + user prompt instructing the model to produce a string description for a single model/table.
+
+    Args:
+        sql_content (str): The SQL code for the table.
+        table_name (str): Name of the table/model.
+        upstream_docs (list[str] | None): Optional docs or references you might have.
+
+    Returns:
+        list[dict[str, t.Any]]: List of prompt messages for the LLM.
+    """
     if upstream_docs is None:
         upstream_docs = []
 
-    system_prompt = dedent(f"""
+    system_prompt = dedent(
+        f"""
     You are a helpful SQL Developer and an Expert in dbt.
     Your job is to produce a concise documentation string
     for a table named {table_name}.
@@ -145,13 +248,15 @@ def _create_llm_prompt_for_table(
        a short placeholder is acceptable.
     4. Avoid speculation. Keep it short and relevant.
     5. DO NOT list out the columns. Only provide a high-level description.
-    """)
+    """
+    )
 
     if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
         if len(sql_content) > int(max_sql_chars):
             sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
 
-    user_message = dedent(f"""
+    user_message = dedent(
+        f"""
     The SQL for the model is:
 
     >>> SQL CODE START
@@ -162,7 +267,8 @@ def _create_llm_prompt_for_table(
     {os.linesep.join(upstream_docs)}
 
     Please return only the text suitable for the "description" field.
-    """)
+    """
+    )
 
     return [
         {"role": "system", "content": system_prompt.strip()},
@@ -174,10 +280,9 @@ def generate_model_spec_as_json(
     sql_content: str,
     upstream_docs: list[str] | None = None,
     existing_context: str | None = None,
-    model_engine: str = "gpt-4o",
     temperature: float = 0.3,
 ) -> dict[str, t.Any]:
-    """Calls OpenAI to generate a JSON specification for a model's metadata and columns.
+    """Calls the LLM client to generate a JSON specification for a model's metadata and columns.
 
     The structure is:
       {
@@ -200,20 +305,33 @@ def generate_model_spec_as_json(
     messages = _create_llm_prompt_for_model_docs_as_json(
         sql_content, existing_context, upstream_docs
     )
-    response = openai.chat.completions.create(
-        model=model_engine,
-        messages=messages,  # pyright: ignore[reportArgumentType]
-        temperature=temperature,
-    )
+
+    client, model_engine = get_llm_client()
+
+    if os.getenv("LLM_PROVIDER", "openai").lower() == "azure-openai":
+        # Legacy structure for Azure OpenAI Service
+        response = client.ChatCompletion.create(
+            engine=model_engine,
+            messages=messages,
+            temperature=temperature
+        )
+    else:
+        # New SDK structure for OpenAI default, LM Studio, Ollama
+        response = client.chat.completions.create(
+            model=model_engine,
+            messages=messages,
+            temperature=temperature
+        )
 
     content = response.choices[0].message.content
     if content is None:
-        raise ValueError("OpenAI returned an empty response")
+        raise ValueError("LLM returned an empty response")
+
     content = content.strip()
     try:
-        data = t.cast(dict[str, t.Any], json.loads(content))
+        data = json.loads(content)
     except json.JSONDecodeError:
-        raise ValueError("OpenAI returned invalid JSON:\n" + content)
+        raise ValueError("LLM returned invalid JSON:\n" + content)
 
     return data
 
@@ -223,10 +341,9 @@ def generate_column_doc(
     existing_context: str | None = None,
     table_name: str | None = None,
     upstream_docs: list[str] | None = None,
-    model_engine: str = "gpt-4o",
     temperature: float = 0.7,
 ) -> str:
-    """Calls OpenAI to generate documentation for a single column in a table.
+    """Calls the LLM client to generate documentation for a single column in a table.
 
     Args:
         column_name (str): The name of the column to describe
@@ -242,15 +359,27 @@ def generate_column_doc(
     messages = _create_llm_prompt_for_column(
         column_name, existing_context, table_name, upstream_docs
     )
-    response = openai.chat.completions.create(
-        model=model_engine,
-        messages=messages,  # pyright: ignore[reportArgumentType]
-        temperature=temperature,
-    )
+
+    client, model_engine = get_llm_client()
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "azure-openai":
+        response = client.ChatCompletion.create(
+            engine=model_engine,
+            messages=messages,
+            temperature=temperature
+        )
+    else:
+        response = client.chat.completions.create(
+            model=model_engine,
+            messages=messages,
+            temperature=temperature
+        )
 
     content = response.choices[0].message.content
     if not content:
-        raise ValueError("OpenAI returned an empty response")
+        raise ValueError("LLM returned an empty response")
+
     return content.strip()
 
 
@@ -258,10 +387,9 @@ def generate_table_doc(
     sql_content: str,
     table_name: str,
     upstream_docs: list[str] | None = None,
-    model_engine: str = "gpt-4o",
     temperature: float = 0.7,
 ) -> str:
-    """Calls OpenAI to generate documentation for a single column in a table.
+    """Calls the LLM client to generate documentation for a single column in a table.
 
     Args:
         sql_content (str): The SQL code for the table
@@ -273,16 +401,30 @@ def generate_table_doc(
     Returns:
         str: A short docstring suitable for a "description" field
     """
-    messages = _create_llm_prompt_for_table(sql_content, table_name, upstream_docs)
-    response = openai.chat.completions.create(
-        model=model_engine,
-        messages=messages,  # pyright: ignore[reportArgumentType]
-        temperature=temperature,
+    messages = _create_llm_prompt_for_table(
+        sql_content, table_name, upstream_docs
     )
+
+    client, model_engine = get_llm_client()
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "azure-openai":
+        response = client.ChatCompletion.create(
+            engine=model_engine,
+            messages=messages,
+            temperature=temperature
+        )
+    else:
+        response = client.chat.completions.create(
+            model=model_engine,
+            messages=messages,
+            temperature=temperature
+        )
 
     content = response.choices[0].message.content
     if not content:
-        raise ValueError("OpenAI returned an empty response")
+        raise ValueError("LLM returned an empty response")
+
     return content.strip()
 
 
@@ -306,7 +448,6 @@ if __name__ == "__main__":
     model_spec = generate_model_spec_as_json(
         sql_content=sample_sql,
         upstream_docs=docs,
-        model_engine="gpt-3.5-turbo",
         temperature=0.3,
     )
 
@@ -318,7 +459,6 @@ if __name__ == "__main__":
         existing_context="This table tracks basic user information.",
         table_name="user_activity_model",
         upstream_docs=["Stores the user's primary email address."],
-        model_engine="gpt-3.5-turbo",
         temperature=0.2,
     )
     print("\n=== Single Column Documentation ===")

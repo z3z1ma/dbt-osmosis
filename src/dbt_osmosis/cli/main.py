@@ -47,18 +47,29 @@ _CONTEXT = {"max_content_width": 800}
 @click.version_option()
 def cli() -> None:
     """dbt-osmosis is a CLI tool for dbt that helps you manage, document, and organize your dbt yaml files"""
+
     pass
+
+@cli.command()
+@click.option(
+    "--test-llm",
+    is_flag=True,
+    help="Test the connection to the LLM client.",
+)
+def test_llm(test_llm: bool) -> None:
+    """Test the connection to the LLM client"""
+    if test_llm:
+        from tests.test_llm import test_llm_connection
+        result = test_llm_connection()
+        if result:
+            click.echo("LLM client connection successful.")
+        else:
+            click.echo("LLM client connection failed.")
 
 
 @cli.group()
 def yaml():
     """Manage, document, and organize dbt YAML files"""
-
-
-@cli.group()
-def sql():
-    """Execute and compile dbt SQL statements"""
-
 
 def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     """Options common across subcommands"""
@@ -76,6 +87,10 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         return func(*args, **kwargs)
 
     return wrapper
+
+@cli.group()
+def sql():
+    """Execute and compile dbt SQL statements"""
 
 
 def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
