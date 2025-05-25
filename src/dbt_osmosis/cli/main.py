@@ -218,6 +218,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="Add inheritance for the specified keys. IE policy_tags",
 )
 @click.option(
+    "--use-specified-key-unrendered",
+    is_flag=True,
+    help="Use unrendered specified keys in the documentation.",
+)
+@click.option(
     "--numeric-precision-and-scale",
     is_flag=True,
     help="Numeric types will have precision and scale, e.g. Number(38, 8).",
@@ -405,6 +410,11 @@ def organize(
     multiple=True,
     type=click.STRING,
     help="Add inheritance for the specified keys. IE policy_tags",
+)
+@click.option(
+    "--use-specified-key-unrendered",
+    is_flag=True,
+    help="Use unrendered specified keys in the documentation.",
 )
 @click.option(
     "--numeric-precision-and-scale",
