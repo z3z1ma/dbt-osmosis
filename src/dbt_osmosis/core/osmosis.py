@@ -1929,19 +1929,21 @@ def _build_column_knowledge_graph(
                     name,
                     fallback=context.settings.add_inheritance_for_specified_keys,
                 ):
-                    current_val = graph_node.get(inheritable)
-                    if incoming_unrendered_val := _get_unrendered(inheritable, ancestor):
-                        graph_edge[inheritable] = incoming_unrendered_val
-                    elif _get_setting_for_node(
-                        "use-specified-key-unrendered",
-                        node,
-                        name,
-                        fallback=context.settings.use_specified_key_unrendered,
-                    ):
-                        if unrendered_val := _get_unrendered(inheritable, ancestor):
-                            graph_edge[inheritable] = unrendered_val
-                    elif incoming_val := graph_edge.pop(inheritable, current_val):
-                        graph_edge[inheritable] = incoming_val
+                    # Get the incoming column dict directly
+                    if incoming and inheritable in incoming.to_dict(omit_none=True):
+                        incoming_dict = incoming.to_dict(omit_none=True)
+                        if _get_setting_for_node(
+                            "use-specified-key-unrendered",
+                            node,
+                            name,
+                            fallback=context.settings.use_specified_key_unrendered,
+                        ):
+                            # When use_specified_key_unrendered is True, prefer unrendered value
+                            unrendered_val = _get_unrendered(inheritable, ancestor)
+                            graph_edge[inheritable] = unrendered_val if unrendered_val else incoming_dict[inheritable]
+                        else:
+                            # When use_specified_key_unrendered is False, use rendered value
+                            graph_edge[inheritable] = incoming_dict[inheritable]
 
                 if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
                     generation == "generation_0"
