@@ -9,6 +9,7 @@ The `--synthesize` functionality in dbt-osmosis leverages Large Language Models 
 
 To be able to use a LLM client you need to define the right information using environmental variables, such as API key, base url, and other specific information depending on the LLM client.
 The `--synthesize` flag can be used with the following commands:
+
 - `dbt-osmosis yaml document`
 - `dbt-osmosis yaml refactor`
 
@@ -17,6 +18,7 @@ When enabled, dbt-osmosis attempts to generate descriptions for models and colum
 ## Supported LLM Clients
 
 The following LLM clients are supported:
+
 1. **OpenAI**
    - Environment Variables:
      - `OPENAI_API_KEY` (required)
@@ -28,19 +30,20 @@ The following LLM clients are supported:
      - `AZURE_OPENAI_DEPLOYMENT_NAME` (required)
      - `AZURE_OPENAI_API_VERSION` (default: `2025-01-01-preview`)
    - Available deploymnets
-     -  To check your current deployments and the values needed to config this environmental variables visit your [Open Ai Azure portal](https://oai.azure.com/resource/deployments){:target="_blank"}
+     - To check your current deployments and the values needed to config this environmental variables visit your [Open Ai Azure portal](https://oai.azure.com/resource/deployments)
 3. **LM Studio**
    - Environment Variables:
      - `LM_STUDIO_BASE_URL` (default: `http://localhost:1234/v1`)
      - `LM_STUDIO_API_KEY` (default: `lm-studio`)
      - `LM_STUDIO_MODEL` (default: `local-model`)
+   - For more information and instructions to use LM Studio locally visit [LM Studio](https://lmstudio.ai)
 4. **Ollama**
    - Environment Variables:
      - `OLLAMA_BASE_URL` (default: `http://localhost:11434/v1`)
      - `OLLAMA_API_KEY` (default: `ollama`)
      - `OLLAMA_MODEL` (default: `llama2:latest`)
    - Available models:
-      - For a list of available models and instructions on how to install and run Ollama locally visit: [Ollama](https://ollama.com){:target="_blank"}
+      - For a list of available models and instructions on how to install and run Ollama locally visit: [Ollama](https://ollama.com)
 5. **Google Gemini**
    - Environment Variables:
      - `GOOGLE_GEMINI_BASE_URL` (default: `https://generativelanguage.googleapis.com/v1beta/openai`)
@@ -52,14 +55,15 @@ The following LLM clients are supported:
      - `ANTHROPIC_API_KEY` (required)
      - `ANTHROPIC_MODEL` (default: `claude-3-5-haiku-latest`)
    - Available models:
-     - For a full list of models available visit [Anthropic](https://docs.anthropic.com/en/docs/about-claude/models/overview#model-names){:target="_blank"}
+     - For a full list of models available visit [Anthropic](https://docs.anthropic.com/en/docs/about-claude/models/overview#model-names)
 
 ## Setting Up Environment Variables
 
 To configure the required environment variables, you can use a `.env` or `.envrc` file. Tools like [direnv](https://direnv.net/) can help manage these variables efficiently.
 
 Example `.env` file:
-```
+
+```bash
 # OpenAI
 export LLM_PROVIDER="openai"
 export OPENAI_API_KEY="your_openai_api_key"
@@ -99,9 +103,11 @@ export ANTHROPIC_MODEL="claude-3-5-haiku-latest"
 ## Testing the Connection
 
 To test the connection to the configured LLM client, use the following command:
+
 ```bash
 dbt-osmosis --test-llm
 ```
+
 - If the connection is successful, you will see: `LLM client connection successful.`
 - If the connection fails, you will see: `LLM client connection failed.`
 
@@ -114,6 +120,7 @@ dbt-osmosis --test-llm
 ## Installation
 
 To use the `--synthesize` functionality, install dbt-osmosis with the `[openai]` extra:
+
 ```bash
 pip install "dbt-osmosis[openai]"
 ```
@@ -125,5 +132,6 @@ dbt-osmosis yaml refactor --synthesize
 ```
 
 This command will:
+
 1. Organize your YAML files.
 2. Generate missing documentation inheriting the descriptions from parent to child tables and synthetizing description for empty fields using the configured LLM client.

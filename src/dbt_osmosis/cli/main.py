@@ -50,21 +50,23 @@ def cli() -> None:
 
     pass
 
+
 @cli.command()
 @click.option(
     "--test-llm",
     is_flag=True,
+    type=click.STRING,
     help="Test the connection to the LLM client.",
 )
 def test_llm(test_llm: bool) -> None:
     """Test the connection to the LLM client"""
     if test_llm:
         from tests.test_llm import test_llm_connection
-        print("DEBUG: Invoking test_llm_connection...")
-        result = test_llm_connection()
-        print(f"DEBUG: test_llm_connection result: {result}")
-        if result:
-            click.echo("LLM client connection successful.")
+        logger.info("INFO: Invoking test_llm_connection...")
+        response = test_llm_connection()
+        logger.info(f"INFO: LLM client response: {response}")
+        if response:
+            click.echo(f"LLM client connection successful. Response: {response}")
         else:
             click.echo("LLM client connection failed.")
 

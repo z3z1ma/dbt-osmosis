@@ -9,13 +9,26 @@ def llm_client():
     client, model_engine = get_llm_client()
     return client, model_engine
 
+
 def test_llm_connection(llm_client):
     """
-    Test the connection to the LLM client.
+    Test the connection to the LLM client and query its model.
     """
     client, model_engine = llm_client
     assert client is not None, "LLM client initialization failed."
     assert model_engine is not None, "Model engine initialization failed."
+    
+    # Query the LLM client
+    prompt = "This is a connection test, please tell me what model are you?"
+    try:
+        response = client.ask(prompt)
+        assert response, "LLM client did not return a response."
+        print(f"DEBUG: LLM client response: {response}")
+        return response
+    except Exception as e:
+        print(f"ERROR: Failed to query LLM client. Exception: {e}")
+        return None
+
 
 def test_generate_model_spec_as_json(llm_client):
     """
@@ -38,6 +51,7 @@ def test_generate_model_spec_as_json(llm_client):
     assert "description" in result, "Result should contain a description."
     assert "columns" in result, "Result should contain columns."
 
+
 def test_generate_table_doc(llm_client):
     """
     Test the generate_table_doc function.
@@ -52,6 +66,7 @@ def test_generate_table_doc(llm_client):
     upstream_docs = ["This table tracks recently registered users."]
     result = generate_table_doc(sql_content, table_name, upstream_docs)
     assert isinstance(result, str), "Result should be a string."
+
 
 def test_generate_column_doc(llm_client):
     """
