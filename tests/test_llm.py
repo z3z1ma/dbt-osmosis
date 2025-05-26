@@ -21,7 +21,10 @@ def test_llm_connection(llm_client):
     # Query the LLM client
     prompt = "This is a connection test, please tell me what model are you?"
     try:
-        response = client.ask(prompt)
+        response = client.chat.completions.create(
+            model=model_engine,
+            messages=[{"role": "user", "content": prompt}]
+        ).choices[0].message.content
         assert response, "LLM client did not return a response."
         print(f"DEBUG: LLM client response: {response}")
         return response

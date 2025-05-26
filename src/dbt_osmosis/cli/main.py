@@ -7,6 +7,11 @@ import io
 import subprocess
 import sys
 import typing as t
+import sys
+from pathlib import Path
+
+# Add the 'tests' directory to the Python module search path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tests"))
 from pathlib import Path
 
 import click
@@ -32,6 +37,8 @@ from dbt_osmosis.core.osmosis import (
     synthesize_missing_documentation_with_openai,
 )
 
+from tests.test_llm import test_llm_connection
+
 T = t.TypeVar("T")
 if sys.version_info >= (3, 10):
     P = t.ParamSpec("P")
@@ -50,25 +57,18 @@ def cli() -> None:
 
     pass
 
-
 @cli.command()
-@click.option(
-    "--test-llm",
-    is_flag=True,
-    type=click.STRING,
-    help="Test the connection to the LLM client.",
-)
-def test_llm(test_llm: bool) -> None:
+def test_llm() -> None:
     """Test the connection to the LLM client"""
-    if test_llm:
-        from tests.test_llm import test_llm_connection
-        logger.info("INFO: Invoking test_llm_connection...")
-        response = test_llm_connection()
-        logger.info(f"INFO: LLM client response: {response}")
-        if response:
-            click.echo(f"LLM client connection successful. Response: {response}")
-        else:
-            click.echo("LLM client connection failed.")
+    logger.info("INFO: Invoking test_llm_connection...")
+    from dbt_osmosis.core.llm import get_llm_client
+    llm_client = get_llm_client()
+    response = test_llm_connection(llm_client)
+    logger.info(f"INFO: LLM client response: {response}")
+    if response:
+        click.echo(f"LLM client connection successful. Response: {response}")
+    else:
+        click.echo("LLM client connection failed.")
 
 
 @cli.group()
@@ -87,7 +87,8 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         # NOTE: Remove log_level from kwargs so it's not passed to the function.
-        logger.set_log_level(kwargs.pop("log_level").upper())
+        from dbt_osmosis.core.logger import set_log_level
+        set_log_level(kwargs.pop("log_level").upper())
         return func(*args, **kwargs)
 
     return wrapper
