@@ -35,17 +35,17 @@ def get_llm_client():
 
     elif provider == "azure-openai":
         openai.api_type = "azure-openai"
-        openai.api_base = os.getenv("AZURE_OPENAI_ENDPOINT")
+        openai.api_base = os.getenv("AZURE_OPENAI_BASE_URL")
         openai.api_version = os.getenv(
             "AZURE_OPENAI_API_VERSION",
-            "2024-02-15-preview"
+            "2025-01-01-preview"
         )
         openai.api_key = os.getenv("AZURE_OPENAI_API_KEY")
         model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
         if not (openai.api_base and openai.api_key and model_engine):
             raise ValueError(
-                "Azure environment variables (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT_NAME) not properly set"
+                "Azure environment variables (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT_NAME) not properly set for azure-openai provider"
             )
         # For Azure, the global openai object is used directly (legacy SDK structure preferred)
         return openai, model_engine
@@ -74,11 +74,37 @@ def get_llm_client():
                 "ollama"
             ),
         )
-        model_engine = os.getenv("OLLAMA_MODEL", "llama3")
+        model_engine = os.getenv("OLLAMA_MODEL", "llama2:latest")
 
+    elif provider == "google-gemini":
+        client = OpenAI(
+            base_url=os.getenv(
+                "GOOGLE_GEMINI_BASE_URL",
+                "https://generativelanguage.googleapis.com/v1beta/openai"
+            ),
+            api_key=os.getenv("GOOGLE_GEMINI_API_KEY")
+        )
+        model_engine = os.getenv("GOOGLE_GEMINI_MODEL", "gemini-2.0-flash")
+
+        if not client.api_key:
+            raise ValueError("GEMINI environment variables GOOGLE_GEMINI_API_KEY not set for google-gemini provider")
+
+    elif provider == "anthropic":
+        client = OpenAI(
+            base_url=os.getenv(
+                "ANTHROPIC_BASE_URL",
+                "https://api.anthropic.com/v1"
+            ),
+            api_key=os.getenv("ANTHROPIC_API_KEY")
+        )
+        model_engine = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
+
+        if not client.api_key:
+            raise ValueError("Anthropic environment variables ANTHROPIC_API_KEY not set for anthropic provider")
+        
     else:
         raise ValueError(
-            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, lm-studio, ollama"
+            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic lm-studio, ollama "
         )
 
     return client, model_engine
@@ -328,6 +354,8 @@ def generate_model_spec_as_json(
         raise ValueError("LLM returned an empty response")
 
     content = content.strip()
+    if content.startswith("```") and content.endswith("```"):
+        content = content[content.find("{"):content.rfind("}") + 1]
     try:
         data = json.loads(content)
     except json.JSONDecodeError:

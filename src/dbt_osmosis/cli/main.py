@@ -60,7 +60,9 @@ def test_llm(test_llm: bool) -> None:
     """Test the connection to the LLM client"""
     if test_llm:
         from tests.test_llm import test_llm_connection
+        print("DEBUG: Invoking test_llm_connection...")
         result = test_llm_connection()
+        print(f"DEBUG: test_llm_connection result: {result}")
         if result:
             click.echo("LLM client connection successful.")
         else:
