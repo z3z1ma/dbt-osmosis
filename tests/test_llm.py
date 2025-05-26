@@ -27,7 +27,8 @@ def test_llm_connection(llm_client):
         ).choices[0].message.content
         assert response, "LLM client did not return a response."
         print(f"DEBUG: LLM client response: {response}")
-        return response
+        assert "model" in response, "Response does not contain expected model information."
+        assert isinstance(response, str), "Response should be a string."
     except Exception as e:
         print(f"ERROR: Failed to query LLM client. Exception: {e}")
         return None
