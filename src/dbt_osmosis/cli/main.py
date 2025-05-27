@@ -7,11 +7,6 @@ import io
 import subprocess
 import sys
 import typing as t
-import sys
-from pathlib import Path
-
-# Add the 'tests' directory to the Python module search path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tests"))
 from pathlib import Path
 
 import click
