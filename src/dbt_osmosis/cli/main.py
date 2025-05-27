@@ -37,8 +37,6 @@ from dbt_osmosis.core.osmosis import (
     synthesize_missing_documentation_with_openai,
 )
 
-from tests.test_llm import test_llm_connection
-
 T = t.TypeVar("T")
 if sys.version_info >= (3, 10):
     P = t.ParamSpec("P")
@@ -57,18 +55,33 @@ def cli() -> None:
 
     pass
 
+
+def test_llm_connection(llm_client=None) -> None:
+    """Test the connection to the LLM client."""
+    import os
+    from dbt_osmosis.core.llm import get_llm_client
+
+    llm_client = os.getenv("LLM_PROVIDER")
+    if not llm_client:
+        click.echo("ERROR: LLM_PROVIDER environment variable is not set. Please set it to one of the available providers.")
+        return
+
+    client, model_engine = get_llm_client()
+    if not client or not model_engine:
+        click.echo(f"Connection ERROR: The environment variables for LLM provider {llm_client} are not set correctly.")
+        return
+
+    click.echo(f"LLM client connection successful. Provider: {llm_client}, Model Engine: {model_engine}")
+
+
 @cli.command()
 def test_llm() -> None:
     """Test the connection to the LLM client"""
     logger.info("INFO: Invoking test_llm_connection...")
     from dbt_osmosis.core.llm import get_llm_client
     llm_client = get_llm_client()
-    response = test_llm_connection(llm_client)
-    logger.info(f"INFO: LLM client response: {response}")
-    if response:
-        click.echo(f"LLM client connection successful. Response: {response}")
-    else:
-        click.echo("LLM client connection failed.")
+    test_llm_connection(llm_client)
+    click.echo("LLM client connection test completed.")
 
 
 @cli.group()

@@ -104,7 +104,26 @@ def get_llm_client():
         
     else:
         raise ValueError(
-            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic lm-studio, ollama "
+            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic, lm-studio, ollama."
+        )
+
+    # Define required environment variables for each provider
+    required_env_vars = {
+        "openai": ["OPENAI_API_KEY"],
+        "azure-openai": ["AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT_NAME"],
+        "lm-studio": ["LM_STUDIO_BASE_URL", "LM_STUDIO_API_KEY"],
+        "ollama": ["OLLAMA_BASE_URL", "OLLAMA_API_KEY"],
+        "google-gemini": ["GOOGLE_GEMINI_API_KEY"],
+        "anthropic": ["ANTHROPIC_API_KEY"],
+    }
+
+    # Check for missing environment variables
+    missing_vars = [
+        var for var in required_env_vars[provider] if not os.getenv(var)
+    ]
+    if missing_vars:
+        raise ValueError(
+            f"ERROR: Missing environment variables for {provider}: {', '.join(missing_vars)}. Please refer to the documentation to set them correctly."
         )
 
     return client, model_engine
