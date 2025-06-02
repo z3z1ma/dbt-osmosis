@@ -1146,7 +1146,7 @@ def _get_yaml_path_template(context: YamlRefactorContext, node: ResultNode) -> s
     conf = [
         c.get(k)
         for k in ("dbt-osmosis", "dbt_osmosis")
-        for c in (node.config.extra, node.unrendered_config)
+        for c in (node.config.extra, node.config.meta, node.unrendered_config)
     ]
     path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
     if not path_template:
