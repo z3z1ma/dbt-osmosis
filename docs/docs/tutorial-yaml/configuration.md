@@ -87,6 +87,7 @@ dbt-osmosis yaml refactor \
   --string-length \
   --force-inherit-descriptions \
   --output-to-lower \
+  --output-to-upper \
   --add-progenitor-to-meta \
   --sort-by=database
 ```
@@ -117,6 +118,11 @@ models:
         skip-add-tags: true
         output-to-lower: true
       +dbt-osmosis-sort-by: "alphabetical" # Flat keys work too
+    
+    marts:
+      +dbt-osmosis: "{parent}.yml"
+      +dbt-osmosis-options:
+        output-to-upper: true # Convert columns and data types to uppercase
 ```
 
 This means everything in the `staging` folder will skip adding **new** columns from the database, reorder existing columns alphabetically, but **won’t** skip data types (the default from the global level stands). Meanwhile, `intermediate` models skip adding tags and convert all columns/data types to lowercase.

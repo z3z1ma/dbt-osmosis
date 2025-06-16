@@ -233,6 +233,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="Output yaml file columns and data types in lowercase if possible.",
 )
 @click.option(
+    "--output-to-upper",
+    is_flag=True,
+    help="Output yaml file columns and data types in uppercase if possible.",
+)
+@click.option(
     "--auto-apply",
     is_flag=True,
     help="Automatically apply the restructure plan without confirmation.",
@@ -420,6 +425,11 @@ def organize(
     "--output-to-lower",
     is_flag=True,
     help="Output yaml file columns and data types in lowercase if possible.",
+)
+@click.option(
+    "--output-to-upper",
+    is_flag=True,
+    help="Output yaml file columns and data types in uppercase if possible.",
 )
 @click.option(
     "--synthesize",
