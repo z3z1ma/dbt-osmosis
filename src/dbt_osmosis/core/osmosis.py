@@ -458,6 +458,8 @@ class YamlRefactorSettings:
     """Include additional keys in the inheritance process."""
     output_to_lower: bool = False
     """Force column name and data type output to lowercase in the yaml files."""
+    output_to_upper: bool = False
+    """Force column name and data type output to uppercase in the yaml files."""
     catalog_path: str | None = None
     """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
     create_catalog_if_not_exists: bool = False
@@ -1061,6 +1063,7 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
     logger.info(":factory: Creating missing source YAMLs (if any).")
     database: str = context.project.runtime_cfg.credentials.database
     lowercase: bool = context.settings.output_to_lower
+    uppercase: bool = context.settings.output_to_upper
 
     did_side_effect: bool = False
     for source, spec in context.source_definitions.items():
@@ -1091,14 +1094,20 @@ def create_missing_source_yamls(context: YamlRefactorContext) -> None:
 
         def _describe(relation: BaseRelation) -> dict[str, t.Any]:
             assert relation.identifier, "No identifier found for relation."
+            identifier_name = relation.identifier
+            if uppercase:
+                identifier_name = identifier_name.upper()
+            elif lowercase:
+                identifier_name = identifier_name.lower()
+            
             s = {
-                "name": relation.identifier.lower() if lowercase else relation.identifier,
+                "name": identifier_name,
                 "description": "",
                 "columns": [
                     {
-                        "name": name.lower() if lowercase else name,
+                        "name": name.upper() if uppercase else (name.lower() if lowercase else name),
                         "description": meta.comment or "",
-                        "data_type": meta.type.lower() if lowercase else meta.type,
+                        "data_type": meta.type.upper() if uppercase else (meta.type.lower() if lowercase else meta.type),
                     }
                     for name, meta in get_columns(context, relation).items()
                 ],
@@ -1545,6 +1554,11 @@ def _sync_doc_section(
             "output-to-lower", node, name, fallback=context.settings.output_to_lower
         ):
             merged["name"] = merged["name"].lower()
+
+        if _get_setting_for_node(
+            "output-to-upper", node, name, fallback=context.settings.output_to_upper
+        ):
+            merged["name"] = merged["name"].upper()
 
         incoming_columns.append(merged)
 
@@ -2190,7 +2204,12 @@ def inject_missing_columns(context: YamlRefactorContext, node: ResultNode | None
             if (dtype := incoming_meta.type) and not _get_setting_for_node(
                 "skip-add-data-types", node, fallback=context.settings.skip_add_data_types
             ):
-                gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
+                if context.settings.output_to_upper:
+                    gen_col["data_type"] = dtype.upper()
+                elif context.settings.output_to_lower:
+                    gen_col["data_type"] = dtype.lower()
+                else:
+                    gen_col["data_type"] = dtype
             node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
 
 
@@ -2321,12 +2340,20 @@ def synchronize_data_types(context: YamlRefactorContext, node: ResultNode | None
         lowercase = _get_setting_for_node(
             "output-to-lower", node, name, fallback=context.settings.output_to_lower
         )
+        uppercase = _get_setting_for_node(
+            "output-to-upper", node, name, fallback=context.settings.output_to_upper
+        )
         if inc_c := incoming_columns.get(
             normalize_column_name(name, context.project.runtime_cfg.credentials.type)
         ):
             is_lower = column.data_type and column.data_type.islower()
             if inc_c.type:
-                column.data_type = inc_c.type.lower() if lowercase or is_lower else inc_c.type
+                if uppercase:
+                    column.data_type = inc_c.type.upper()
+                elif lowercase or is_lower:
+                    column.data_type = inc_c.type.lower()
+                else:
+                    column.data_type = inc_c.type
 
 
 @_transform_op("Synthesize Missing Documentation")

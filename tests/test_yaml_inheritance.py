@@ -188,6 +188,21 @@ def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[st
                 "tags": ["baz"],
             },
         ),
+        # Case 5b: Output to uppercase
+        (
+            {"output_to_upper": True},
+            {
+                "stg_customers.v1.customer_id": {
+                    "name": "wtf",
+                }
+            },
+            {
+                "name": "WTF",
+                "description": "I was steadfast and unyielding",
+                "meta": {"c": 3},
+                "tags": ["baz"],
+            },
+        ),
         # Case 6: Add inheritance for any specified keys
         (
             {

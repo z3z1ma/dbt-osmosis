@@ -30,6 +30,7 @@ dependencies = [
   "pluggy>=1.5.0,<2",
   "typing-extensions~=4.13.1 ; python_version < '3.10'",
   "mysql-mimic>=2.5.7",
+  "dbt-duckdb>=1.9.3",
 ]
 
 [project.optional-dependencies]
@@ -73,3 +74,8 @@ include_trailing_comma = true
 [tool.ruff]
 line-length = 100
 preview = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
