@@ -104,6 +104,7 @@ from dbt_osmosis.core.transforms import (
     sort_columns_as_configured,
     sort_columns_as_in_database,
     synchronize_data_types,
+    synthesize_missing_documentation_with_openai,
 )
 
 # Note: process_node is imported in sql_operations.py where it's used
@@ -151,6 +152,7 @@ __all__ = [
     "sort_columns_alphabetically",
     "sort_columns_as_configured",
     "synchronize_data_types",
+    "synthesize_missing_documentation_with_openai",
     "config_to_namespace",
     "_reload_manifest",
     "_find_first",
