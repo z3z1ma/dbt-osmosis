@@ -2,9 +2,10 @@ import os
 import typing as t
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Union
 
 from dbt.contracts.graph.nodes import ResultNode
-from dbt.node_types import NodeType
+from dbt.artifacts.resources.types import NodeType
 
 import dbt_osmosis.core.logger as logger
 
@@ -25,7 +26,7 @@ class SchemaFileLocation:
     """Describes the current and target location of a schema file."""
 
     target: Path
-    current: Path | None = None
+    current: Union[Path, None] = None
     node_type: NodeType = NodeType.Model
 
     @property
@@ -50,7 +51,7 @@ class MissingOsmosisConfig(Exception):
     """Raised when an osmosis configuration is missing."""
 
 
-def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
+def _get_yaml_path_template(context: t.Any, node: ResultNode) -> Union[str, None]:
     """Get the yaml path template for a dbt model or source node."""
     from dbt_osmosis.core.introspection import _find_first
 
@@ -64,7 +65,7 @@ def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
         for k in ("dbt-osmosis", "dbt_osmosis")
         for c in (node.config.extra, node.unrendered_config)
     ]
-    path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
+    path_template = _find_first(t.cast("list[Union[str, None]]", conf), lambda v: v is not None)
     if not path_template:
         raise MissingOsmosisConfig(
             f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
@@ -73,7 +74,7 @@ def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
     return path_template
 
 
-def get_current_yaml_path(context: t.Any, node: ResultNode) -> Path | None:
+def get_current_yaml_path(context: t.Any, node: ResultNode) -> Union[Path, None]:
     """Get the current yaml path for a dbt model or source node."""
     if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
         path = Path(context.project.runtime_cfg.project_root).joinpath(
@@ -115,7 +116,7 @@ def get_target_yaml_path(context: t.Any, node: ResultNode) -> Path:
     node.fqn = fqn_
     node.tags = tags_
 
-    segments: list[Path | str] = []
+    segments: list[Union[Path, str]] = []
 
     if node.resource_type == NodeType.Source:
         segments.append(context.project.runtime_cfg.model_paths[0])
