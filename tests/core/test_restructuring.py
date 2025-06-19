@@ -143,6 +143,5 @@ def test_apply_restructure_plan_confirm_yes(
     with mock.patch("builtins.input", side_effect=["y"]):
         apply_restructure_plan(yaml_context, plan, confirm=True)
         captured = capsys.readouterr()
-        # Check for the key message parts that appear in the log output
         assert "Committing all restructure changes" in captured.err
-        assert "reloading manifest" in captured.err
+        assert "Reloading the dbt project manifest" in captured.err

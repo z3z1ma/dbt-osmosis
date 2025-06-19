@@ -78,10 +78,10 @@ class DbtConfiguration:
 
     project_dir: str = field(default_factory=discover_project_dir)
     profiles_dir: str = field(default_factory=discover_profiles_dir)
-    target: str | None = None
-    profile: str | None = None
-    threads: int | None = None
-    single_threaded: bool | None = None
+    target: t.Optional[str] = None
+    profile: t.Optional[str] = None
+    threads: t.Optional[int] = None
+    single_threaded: t.Optional[bool] = None
     vars: dict[str, t.Any] = field(default_factory=dict)
     quiet: bool = True
     disable_introspection: bool = False  # Internal
@@ -139,7 +139,7 @@ class DbtProjectContext:
 
     _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
-    _adapter: BaseAdapter | None = field(default=None, init=False)
+    _adapter: t.Optional[BaseAdapter] = field(default=None, init=False)
     _connection_created_at: dict[int, float] = field(default_factory=dict, init=False)
 
     @property

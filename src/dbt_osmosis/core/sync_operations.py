@@ -76,7 +76,7 @@ def _sync_doc_section(context: t.Any, node: ResultNode, doc_section: dict[str, t
 
 
 def sync_node_to_yaml(
-    context: t.Any, node: ResultNode | None = None, *, commit: bool = True
+    context: t.Any, node: t.Optional[ResultNode] = None, *, commit: bool = True
 ) -> None:
     """Synchronize a single node's columns, description, tags, meta, etc. from the manifest into its corresponding YAML file.
 
@@ -140,7 +140,7 @@ def sync_node_to_yaml(
     if node.resource_type == NodeType.Source:
         # The doc structure => sources: [ { "name": <source_name>, "tables": [...]}, ... ]
         # Step A: find or create the source
-        doc_source: dict[str, t.Any] | None = None
+        doc_source: t.Optional[dict[str, t.Any]] = None
         for s in doc.setdefault(resource_k, []):
             if s.get("name") == node.source_name:
                 doc_source = s
@@ -153,7 +153,7 @@ def sync_node_to_yaml(
             doc["sources"].append(doc_source)
 
         # Step B: find or create the table
-        doc_table: dict[str, t.Any] | None = None
+        doc_table: t.Optional[dict[str, t.Any]] = None
         for t_ in doc_source["tables"]:
             if t_.get("name") == node.name:
                 doc_table = t_
@@ -172,8 +172,8 @@ def sync_node_to_yaml(
     else:
         # Models or Seeds => doc[ "models" ] or doc[ "seeds" ] is a list of { "name", "description", "columns", ... }
         doc_list = doc.setdefault(resource_k, [])
-        doc_model: dict[str, t.Any] | None = None
-        doc_version: dict[str, t.Any] | None = None
+        doc_model: t.Optional[dict[str, t.Any]] = None
+        doc_version: t.Optional[dict[str, t.Any]] = None
 
         # First, check for duplicate model entries and remove them
         model_indices: list[int] = []
@@ -207,7 +207,7 @@ def sync_node_to_yaml(
                 doc_model["versions"] = []
 
             # Deduplicate versions with the same 'v' value
-            version_by_v: dict[int | str | float, dict[str, t.Any]] = {}
+            version_by_v: dict[t.Union[int, str, float], dict[str, t.Any]] = {}
             for version in doc_model.get("versions", []):
                 v_value = version.get("v")
                 if v_value is not None:

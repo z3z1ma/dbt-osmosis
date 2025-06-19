@@ -16,8 +16,8 @@ __all__ = [
 def _build_node_ancestor_tree(
     manifest: Manifest,
     node: ResultNode,
-    tree: dict[str, list[str]] | None = None,
-    visited: set[str] | None = None,
+    tree: t.Optional[dict[str, list[str]]] = None,
+    visited: t.Optional[set[str]] = None,
     depth: int = 1,
 ) -> dict[str, list[str]]:
     """Build a flat graph of a node and it's ancestors."""
@@ -46,7 +46,7 @@ def _build_node_ancestor_tree(
     return tree
 
 
-def _get_node_yaml(context: t.Any, member: ResultNode) -> MappingProxyType[str, t.Any] | None:
+def _get_node_yaml(context: t.Any, member: ResultNode) -> t.Optional[MappingProxyType[str, t.Any]]:
     """Get a read-only view of the parsed YAML for a dbt model or source node."""
     from pathlib import Path
     from dbt_osmosis.core.schema.reader import _read_yaml
@@ -99,7 +99,7 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
             variants.extend(t.cast(list[str], v))
 
     def _get_unrendered(k: str, ancestor: ResultNode) -> t.Any:
-        raw_yaml = _get_node_yaml(context, ancestor) or {}
+        raw_yaml: t.Mapping[str, t.Any] = _get_node_yaml(context, ancestor) or {}
         raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
         from dbt_osmosis.core.introspection import normalize_column_name, _find_first
 

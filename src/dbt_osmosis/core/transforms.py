@@ -33,9 +33,9 @@ class TransformOperation:
     func: t.Callable[..., t.Any]
     name: str
 
-    _result: t.Any | None = field(init=False, default=None)
-    _context: t.Any | None = field(init=False, default=None)  # YamlRefactorContext
-    _node: ResultNode | None = field(init=False, default=None)
+    _result: t.Optional[t.Any] = field(init=False, default=None)
+    _context: t.Optional[t.Any] = field(init=False, default=None)  # YamlRefactorContext
+    _node: t.Optional[ResultNode] = field(init=False, default=None)
     _metadata: dict[str, t.Any] = field(init=False, default_factory=dict)
 
     @property
@@ -51,7 +51,7 @@ class TransformOperation:
     def __call__(
         self,
         context: t.Any,
-        node: ResultNode | None = None,  # YamlRefactorContext
+        node: t.Optional[ResultNode] = None,  # YamlRefactorContext
     ) -> "TransformOperation":
         """Run the operation and store the result."""
         self._context = context
@@ -88,7 +88,7 @@ class TransformPipeline:
         return MappingProxyType(self._metadata)
 
     def __rshift__(
-        self, next_op: "TransformOperation | t.Callable[..., t.Any]"
+        self, next_op: t.Union["TransformOperation", t.Callable[..., t.Any]]
     ) -> "TransformPipeline":
         """Chain operations together."""
         if isinstance(next_op, TransformOperation):
@@ -102,7 +102,7 @@ class TransformPipeline:
     def __call__(
         self,
         context: t.Any,
-        node: ResultNode | None = None,  # YamlRefactorContext
+        node: t.Optional[ResultNode] = None,  # YamlRefactorContext
     ) -> "TransformPipeline":
         """Run all operations in the pipeline."""
         logger.info(
@@ -169,8 +169,8 @@ class TransformPipeline:
 
 
 def _transform_op(
-    name: str | None = None,
-) -> t.Callable[[t.Callable[[t.Any, ResultNode | None], None]], TransformOperation]:
+    name: t.Optional[str] = None,
+) -> t.Callable[[t.Callable[[t.Any, t.Optional[ResultNode]], None]], TransformOperation]:
     """Decorator to create a TransformOperation from a function."""
 
     def decorator(
