@@ -7,6 +7,7 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 from itertools import chain
 from pathlib import Path
+from typing import Union
 
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.relation import BaseRelation
@@ -39,12 +40,12 @@ def _find_first(coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: 
 @t.overload
 def _find_first(
     coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: None = ...
-) -> T | None: ...
+) -> Union[T, None]: ...
 
 
 def _find_first(
-    coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: T | None = None
-) -> T | None:
+    coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: Union[T, None] = None
+) -> Union[T, None]:
     """Find the first item in a container that satisfies a predicate."""
     for item in coll:
         if predicate(item):
@@ -63,7 +64,7 @@ def normalize_column_name(column: str, credentials_type: str) -> str:
 
 
 def _maybe_use_precise_dtype(
-    col: BaseColumn, settings: t.Any, node: ResultNode | None = None
+    col: BaseColumn, settings: t.Any, node: Union[ResultNode, None] = None
 ) -> str:
     """Use the precise data type if enabled in the settings."""
     use_num_prec = _get_setting_for_node(
@@ -83,10 +84,10 @@ def _maybe_use_precise_dtype(
 def _get_setting_for_node(
     opt: str,
     /,
-    node: ResultNode | None = None,
-    col: str | None = None,
+    node: Union[ResultNode, None] = None,
+    col: Union[str, None] = None,
     *,
-    fallback: t.Any | None = None,
+    fallback: Union[t.Any, None] = None,
 ) -> t.Any:
     """Get a configuration value for a dbt node from the node's meta and config.
 
@@ -160,7 +161,7 @@ def _get_setting_for_node(
 
 
 def get_columns(
-    context: t.Any, relation: BaseRelation | ResultNode | None
+    context: t.Any, relation: Union[BaseRelation, ResultNode, None]
 ) -> dict[str, ColumnMetadata]:
     """Equivalent to get_columns_meta in old code but directly referencing a key, not a node."""
     normalized_columns: OrderedDict[str, ColumnMetadata] = OrderedDict()
@@ -189,7 +190,7 @@ def get_columns(
     logger.info(":mag_right: Collecting columns for table => %s", rendered_relation)
     index = 0
 
-    def process_column(c: BaseColumn | ColumnMetadata, /) -> None:
+    def process_column(c: Union[BaseColumn, ColumnMetadata], /) -> None:
         nonlocal index
 
         columns = [c]

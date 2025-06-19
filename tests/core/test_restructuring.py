@@ -42,9 +42,7 @@ def fresh_caches():
     """
     Patches the internal caches so each test starts with a fresh state.
     """
-    with (
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
+    with mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}):
         yield
 
 
