@@ -60,7 +60,7 @@ tasks:
       - for:
           matrix:
             python_version: ["3.9", "3.10", "3.11", "3.12"]
-            dbt_version: ["1.8.0", "1.9.0"]
+            dbt_version: ["1.8.0", "1.9.0", "1.10.2"]
         cmd: |
           echo -e "\033[32mtask: [test] uv run pytest (python=={{.ITEM.python_version}} and dbt~={{.ITEM.dbt_version}})\033[0m"
           export UV_PYTHON={{.ITEM.python_version}}
