@@ -58,15 +58,21 @@ def test_llm_connection(llm_client=None) -> None:
 
     llm_client = os.getenv("LLM_PROVIDER")
     if not llm_client:
-        click.echo("ERROR: LLM_PROVIDER environment variable is not set. Please set it to one of the available providers.")
+        click.echo(
+            "ERROR: LLM_PROVIDER environment variable is not set. Please set it to one of the available providers."
+        )
         return
 
     client, model_engine = get_llm_client()
     if not client or not model_engine:
-        click.echo(f"Connection ERROR: The environment variables for LLM provider {llm_client} are not set correctly.")
+        click.echo(
+            f"Connection ERROR: The environment variables for LLM provider {llm_client} are not set correctly."
+        )
         return
 
-    click.echo(f"LLM client connection successful. Provider: {llm_client}, Model Engine: {model_engine}")
+    click.echo(
+        f"LLM client connection successful. Provider: {llm_client}, Model Engine: {model_engine}"
+    )
 
 
 @cli.command()
@@ -74,6 +80,7 @@ def test_llm() -> None:
     """Test the connection to the LLM client"""
     logger.info("INFO: Invoking test_llm_connection...")
     from dbt_osmosis.core.llm import get_llm_client
+
     llm_client = get_llm_client()
     test_llm_connection(llm_client)
     click.echo("LLM client connection test completed.")
@@ -82,6 +89,7 @@ def test_llm() -> None:
 @cli.group()
 def yaml():
     """Manage, document, and organize dbt YAML files"""
+
 
 def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     """Options common across subcommands"""
@@ -96,10 +104,12 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         # NOTE: Remove log_level from kwargs so it's not passed to the function.
         from dbt_osmosis.core.logger import set_log_level
+
         set_log_level(kwargs.pop("log_level").upper())
         return func(*args, **kwargs)
 
     return wrapper
+
 
 @cli.group()
 def sql():

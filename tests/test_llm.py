@@ -1,5 +1,11 @@
 import pytest
-from dbt_osmosis.core.llm import get_llm_client, generate_model_spec_as_json, generate_column_doc, generate_table_doc
+from dbt_osmosis.core.llm import (
+    get_llm_client,
+    generate_model_spec_as_json,
+    generate_column_doc,
+    generate_table_doc,
+)
+
 
 @pytest.fixture(scope="module")
 def llm_client():
@@ -17,14 +23,18 @@ def test_llm_connection(llm_client):
     client, model_engine = llm_client
     assert client is not None, "LLM client initialization failed."
     assert model_engine is not None, "Model engine initialization failed."
-    
+
     # Query the LLM client
     prompt = "This is a connection test, please tell me what model are you?"
     try:
-        response = client.chat.completions.create(
-            model=model_engine,
-            messages=[{"role": "user", "content": prompt}]
-        ).choices[0].message.content
+        response = (
+            client.chat.completions.create(
+                model=model_engine,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            .choices[0]
+            .message.content
+        )
         assert response, "LLM client did not return a response."
         print(f"DEBUG: LLM client response: {response}")
         assert "model" in response, "Response does not contain expected model information."
@@ -38,7 +48,6 @@ def test_generate_model_spec_as_json(llm_client):
     """
     Test the generate_model_spec_as_json function.
     """
-    client, model_engine = llm_client
     sql_content = """
     SELECT id, email, created_at
     FROM users
@@ -60,7 +69,6 @@ def test_generate_table_doc(llm_client):
     """
     Test the generate_table_doc function.
     """
-    client, model_engine = llm_client
     sql_content = """
     SELECT id, email, created_at
     FROM users
@@ -76,7 +84,6 @@ def test_generate_column_doc(llm_client):
     """
     Test the generate_column_doc function.
     """
-    client, model_engine = llm_client
     column_name = "email"
     existing_context = "This column stores a user's main email address."
     table_name = "users"

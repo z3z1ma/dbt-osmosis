@@ -36,10 +36,7 @@ def get_llm_client():
     elif provider == "azure-openai":
         openai.api_type = "azure-openai"
         openai.api_base = os.getenv("AZURE_OPENAI_BASE_URL")
-        openai.api_version = os.getenv(
-            "AZURE_OPENAI_API_VERSION",
-            "2025-01-01-preview"
-        )
+        openai.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
         openai.api_key = os.getenv("AZURE_OPENAI_API_KEY")
         model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
@@ -52,56 +49,44 @@ def get_llm_client():
 
     elif provider == "lm-studio":
         client = OpenAI(
-            base_url=os.getenv(
-                "LM_STUDIO_BASE_URL",
-                "http://localhost:1234/v1"
-            ),
-            api_key=os.getenv(
-                "LM_STUDIO_API_KEY",
-                "lm-studio"
-            ),
+            base_url=os.getenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1"),
+            api_key=os.getenv("LM_STUDIO_API_KEY", "lm-studio"),
         )
         model_engine = os.getenv("LM_STUDIO_MODEL", "local-model")
 
     elif provider == "ollama":
         client = OpenAI(
-            base_url=os.getenv(
-                "OLLAMA_BASE_URL",
-                "http://localhost:11434/v1"
-            ),
-            api_key=os.getenv(
-                "OLLAMA_API_KEY",
-                "ollama"
-            ),
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+            api_key=os.getenv("OLLAMA_API_KEY", "ollama"),
         )
         model_engine = os.getenv("OLLAMA_MODEL", "llama2:latest")
 
     elif provider == "google-gemini":
         client = OpenAI(
             base_url=os.getenv(
-                "GOOGLE_GEMINI_BASE_URL",
-                "https://generativelanguage.googleapis.com/v1beta/openai"
+                "GOOGLE_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"
             ),
-            api_key=os.getenv("GOOGLE_GEMINI_API_KEY")
+            api_key=os.getenv("GOOGLE_GEMINI_API_KEY"),
         )
         model_engine = os.getenv("GOOGLE_GEMINI_MODEL", "gemini-2.0-flash")
 
         if not client.api_key:
-            raise ValueError("GEMINI environment variables GOOGLE_GEMINI_API_KEY not set for google-gemini provider")
+            raise ValueError(
+                "GEMINI environment variables GOOGLE_GEMINI_API_KEY not set for google-gemini provider"
+            )
 
     elif provider == "anthropic":
         client = OpenAI(
-            base_url=os.getenv(
-                "ANTHROPIC_BASE_URL",
-                "https://api.anthropic.com/v1"
-            ),
-            api_key=os.getenv("ANTHROPIC_API_KEY")
+            base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
+            api_key=os.getenv("ANTHROPIC_API_KEY"),
         )
         model_engine = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
 
         if not client.api_key:
-            raise ValueError("Anthropic environment variables ANTHROPIC_API_KEY not set for anthropic provider")
-        
+            raise ValueError(
+                "Anthropic environment variables ANTHROPIC_API_KEY not set for anthropic provider"
+            )
+
     else:
         raise ValueError(
             f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic, lm-studio, ollama."
@@ -110,7 +95,11 @@ def get_llm_client():
     # Define required environment variables for each provider
     required_env_vars = {
         "openai": ["OPENAI_API_KEY"],
-        "azure-openai": ["AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT_NAME"],
+        "azure-openai": [
+            "AZURE_OPENAI_BASE_URL",
+            "AZURE_OPENAI_API_KEY",
+            "AZURE_OPENAI_DEPLOYMENT_NAME",
+        ],
         "lm-studio": ["LM_STUDIO_BASE_URL", "LM_STUDIO_API_KEY"],
         "ollama": ["OLLAMA_BASE_URL", "OLLAMA_API_KEY"],
         "google-gemini": ["GOOGLE_GEMINI_API_KEY"],
@@ -118,9 +107,7 @@ def get_llm_client():
     }
 
     # Check for missing environment variables
-    missing_vars = [
-        var for var in required_env_vars[provider] if not os.getenv(var)
-    ]
+    missing_vars = [var for var in required_env_vars[provider] if not os.getenv(var)]
     if missing_vars:
         raise ValueError(
             f"ERROR: Missing environment variables for {provider}: {', '.join(missing_vars)}. Please refer to the documentation to set them correctly."
@@ -356,16 +343,12 @@ def generate_model_spec_as_json(
     if os.getenv("LLM_PROVIDER", "openai").lower() == "azure-openai":
         # Legacy structure for Azure OpenAI Service
         response = client.ChatCompletion.create(
-            engine=model_engine,
-            messages=messages,
-            temperature=temperature
+            engine=model_engine, messages=messages, temperature=temperature
         )
     else:
         # New SDK structure for OpenAI default, LM Studio, Ollama
         response = client.chat.completions.create(
-            model=model_engine,
-            messages=messages,
-            temperature=temperature
+            model=model_engine, messages=messages, temperature=temperature
         )
 
     content = response.choices[0].message.content
@@ -374,7 +357,7 @@ def generate_model_spec_as_json(
 
     content = content.strip()
     if content.startswith("```") and content.endswith("```"):
-        content = content[content.find("{"):content.rfind("}") + 1]
+        content = content[content.find("{") : content.rfind("}") + 1]
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
@@ -412,15 +395,11 @@ def generate_column_doc(
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
     if provider == "azure-openai":
         response = client.ChatCompletion.create(
-            engine=model_engine,
-            messages=messages,
-            temperature=temperature
+            engine=model_engine, messages=messages, temperature=temperature
         )
     else:
         response = client.chat.completions.create(
-            model=model_engine,
-            messages=messages,
-            temperature=temperature
+            model=model_engine, messages=messages, temperature=temperature
         )
 
     content = response.choices[0].message.content
@@ -448,24 +427,18 @@ def generate_table_doc(
     Returns:
         str: A short docstring suitable for a "description" field
     """
-    messages = _create_llm_prompt_for_table(
-        sql_content, table_name, upstream_docs
-    )
+    messages = _create_llm_prompt_for_table(sql_content, table_name, upstream_docs)
 
     client, model_engine = get_llm_client()
 
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
     if provider == "azure-openai":
         response = client.ChatCompletion.create(
-            engine=model_engine,
-            messages=messages,
-            temperature=temperature
+            engine=model_engine, messages=messages, temperature=temperature
         )
     else:
         response = client.chat.completions.create(
-            model=model_engine,
-            messages=messages,
-            temperature=temperature
+            model=model_engine, messages=messages, temperature=temperature
         )
 
     content = response.choices[0].message.content
