@@ -173,26 +173,3 @@ __all__ = [
     "_YAML_BUFFER_CACHE",
     "SqlCompileRunner",
 ]
-
-if __name__ == "__main__":
-    c = DbtConfiguration(
-        project_dir="demo_duckdb", profiles_dir="demo_duckdb", vars={"dbt-osmosis": {}}
-    )
-    project = create_dbt_project_context(c)
-    yaml_context = YamlRefactorContext(
-        project, settings=YamlRefactorSettings(use_unrendered_descriptions=True)
-    )
-    create_missing_source_yamls(yaml_context)
-    plan = draft_restructure_delta_plan(yaml_context)
-    apply_restructure_plan(yaml_context, plan, confirm=True)
-
-    from dbt_osmosis.core.transforms import TransformPipeline
-
-    pipeline = TransformPipeline()
-    pipeline >> inject_missing_columns
-    pipeline >> remove_columns_not_in_database
-    pipeline >> inherit_upstream_column_knowledge
-    pipeline >> sort_columns_as_configured
-    pipeline >> synchronize_data_types
-    pipeline.commit_mode = "atomic"
-    _ = pipeline(context=yaml_context)
