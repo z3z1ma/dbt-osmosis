@@ -89,18 +89,25 @@ def test_get_columns_meta_char_length():
         ),
         settings=YamlRefactorSettings(string_length=True, dry_run=True),
     )
-    with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
-        assert _customer_column_types(yaml_context) == {
-            # in DuckDB decimals always have presision and scale
-            "customer_average_value": "DECIMAL(18,3)",
-            "customer_id": "INTEGER",
-            "customer_lifetime_value": "DOUBLE",
-            "first_name": "character varying(256)",
-            "first_order": "DATE",
-            "last_name": "character varying(256)",
-            "most_recent_order": "DATE",
-            "number_of_orders": "BIGINT",
-        }
+    # Patch both possible cache locations to ensure isolation
+    with (
+        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
+    ):
+        assert (
+            _customer_column_types(yaml_context)
+            == {
+                # in DuckDB decimals always have presision and scale
+                "customer_average_value": "DECIMAL(18,3)",
+                "customer_id": "INTEGER",
+                "customer_lifetime_value": "DOUBLE",
+                "first_name": "character varying(256)",  # DuckDB returns detailed type when string_length=True
+                "first_order": "DATE",
+                "last_name": "character varying(256)",  # DuckDB returns detailed type when string_length=True
+                "most_recent_order": "DATE",
+                "number_of_orders": "BIGINT",
+            }
+        )
 
 
 def test_get_columns_meta_numeric_precision():
