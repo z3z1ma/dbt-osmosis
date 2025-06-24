@@ -35,8 +35,8 @@ jobs:
           uv --version
 
       - name: Install required packages
-        run: | # install duckdb extras to be able to parse manifest
-          uv sync --extra duckdb --extra dev
+        run: | # install dev and openai extras to be able to parse manifest and run all tests
+          uv sync --extra dev --extra openai
 
       - name: Install dbt-core
         run: |
