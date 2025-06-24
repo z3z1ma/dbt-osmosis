@@ -3,7 +3,6 @@ import typing as t
 from concurrent.futures import FIRST_EXCEPTION, Future, wait
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union
 
 from dbt.contracts.graph.nodes import ResultNode, ModelNode, SeedNode, SourceDefinition
 from dbt.artifacts.resources.types import NodeType
@@ -45,7 +44,7 @@ class RestructureDeltaPlan:
     operations: list[RestructureOperation] = field(default_factory=list)
 
 
-def _generate_minimal_model_yaml(node: Union[ModelNode, SeedNode]) -> dict[str, t.Any]:
+def _generate_minimal_model_yaml(node: t.Union[ModelNode, SeedNode]) -> dict[str, t.Any]:
     """Generate a minimal model yaml for a dbt model node."""
     logger.debug(":baby: Generating minimal yaml for Model/Seed => %s", node.name)
     return {"name": node.name, "columns": []}

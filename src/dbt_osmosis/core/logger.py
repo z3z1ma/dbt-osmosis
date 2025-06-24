@@ -8,7 +8,6 @@ import typing as t
 from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Union
 
 import rich
 from rich.logging import RichHandler
@@ -34,7 +33,7 @@ def get_rotating_log_handler(name: str, path: Path, formatter: str) -> RotatingF
 @lru_cache(maxsize=10)
 def get_logger(
     name: str = "dbt-osmosis",
-    level: Union[int, str] = _LOGGING_LEVEL,
+    level: t.Union[int, str] = _LOGGING_LEVEL,
     path: Path = _LOG_PATH,
     formatter: str = _LOG_FILE_FORMAT,
 ) -> logging.Logger:
@@ -73,7 +72,7 @@ LOGGER = get_logger()
 """Default logger for dbt-osmosis"""
 
 
-def set_log_level(level: Union[int, str]) -> None:
+def set_log_level(level: t.Union[int, str]) -> None:
     """Set the log level for the default logger"""
     global LOGGER
     if isinstance(level, str):

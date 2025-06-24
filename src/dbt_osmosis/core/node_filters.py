@@ -2,7 +2,6 @@ import typing as t
 from collections import defaultdict, deque
 from pathlib import Path
 from itertools import chain
-from typing import Union
 
 from dbt.contracts.graph.nodes import ResultNode
 from dbt.artifacts.resources.types import NodeType
@@ -31,7 +30,9 @@ def _is_fqn_match(node: ResultNode, fqns: list[str]) -> bool:
     return False
 
 
-def _is_file_match(node: ResultNode, paths: list[Union[Path, str]], root: Union[Path, str]) -> bool:
+def _is_file_match(
+    node: ResultNode, paths: list[t.Union[Path, str]], root: t.Union[Path, str]
+) -> bool:
     """Check if a node's file path matches any of the provided file paths or names."""
     node_path = Path(root, node.original_file_path).resolve()
     yaml_path = None
