@@ -103,9 +103,8 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         # NOTE: Remove log_level from kwargs so it's not passed to the function.
-        from dbt_osmosis.core.logger import set_log_level
-
-        set_log_level(kwargs.pop("log_level").upper())
+        log_level = kwargs.pop("log_level")
+        logger.set_log_level(str(log_level).upper())
         return func(*args, **kwargs)
 
     return wrapper
