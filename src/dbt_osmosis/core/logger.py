@@ -91,5 +91,7 @@ class LogMethod(t.Protocol):
 
 
 def __getattr__(name: str) -> LogMethod:
+    if name == "set_log_level":
+        return set_log_level
     func = getattr(LOGGER, name)
     return func

@@ -47,17 +47,48 @@ _CONTEXT = {"max_content_width": 800}
 @click.version_option()
 def cli() -> None:
     """dbt-osmosis is a CLI tool for dbt that helps you manage, document, and organize your dbt yaml files"""
+
     pass
+
+
+def test_llm_connection(llm_client=None) -> None:
+    """Test the connection to the LLM client."""
+    import os
+    from dbt_osmosis.core.llm import get_llm_client
+
+    llm_client = os.getenv("LLM_PROVIDER")
+    if not llm_client:
+        click.echo(
+            "ERROR: LLM_PROVIDER environment variable is not set. Please set it to one of the available providers."
+        )
+        return
+
+    client, model_engine = get_llm_client()
+    if not client or not model_engine:
+        click.echo(
+            f"Connection ERROR: The environment variables for LLM provider {llm_client} are not set correctly."
+        )
+        return
+
+    click.echo(
+        f"LLM client connection successful. Provider: {llm_client}, Model Engine: {model_engine}"
+    )
+
+
+@cli.command()
+def test_llm() -> None:
+    """Test the connection to the LLM client"""
+    logger.info("INFO: Invoking test_llm_connection...")
+    from dbt_osmosis.core.llm import get_llm_client
+
+    llm_client = get_llm_client()
+    test_llm_connection(llm_client)
+    click.echo("LLM client connection test completed.")
 
 
 @cli.group()
 def yaml():
     """Manage, document, and organize dbt YAML files"""
-
-
-@cli.group()
-def sql():
-    """Execute and compile dbt SQL statements"""
 
 
 def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
@@ -77,6 +108,11 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         return func(*args, **kwargs)
 
     return wrapper
+
+
+@cli.group()
+def sql():
+    """Execute and compile dbt SQL statements"""
 
 
 def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
