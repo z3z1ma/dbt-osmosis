@@ -72,7 +72,8 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         # NOTE: Remove log_level from kwargs so it's not passed to the function.
-        logger.set_log_level(kwargs.pop("log_level").upper())
+        log_level = kwargs.pop("log_level")
+        logger.set_log_level(str(log_level).upper())
         return func(*args, **kwargs)
 
     return wrapper
@@ -243,14 +244,14 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="Automatically synthesize missing documentation with OpenAI.",
 )
 def refactor(
-    target: str | None = None,
-    profile: str | None = None,
-    project_dir: str | None = None,
-    profiles_dir: str | None = None,
-    vars: str | None = None,
+    target: t.Optional[str] = None,
+    profile: t.Optional[str] = None,
+    project_dir: t.Optional[str] = None,
+    profiles_dir: t.Optional[str] = None,
+    vars: t.Optional[str] = None,
     auto_apply: bool = False,
     check: bool = False,
-    threads: int | None = None,
+    threads: t.Optional[int] = None,
     disable_introspection: bool = False,
     synthesize: bool = False,
     **kwargs: t.Any,
@@ -311,14 +312,14 @@ def refactor(
     help="If specified, will automatically apply the restructure plan without confirmation.",
 )
 def organize(
-    target: str | None = None,
-    project_dir: str | None = None,
-    profiles_dir: str | None = None,
+    target: t.Optional[str] = None,
+    project_dir: t.Optional[str] = None,
+    profiles_dir: t.Optional[str] = None,
     check: bool = False,
-    profile: str | None = None,
-    vars: str | None = None,
+    profile: t.Optional[str] = None,
+    vars: t.Optional[str] = None,
     auto_apply: bool = False,
-    threads: int | None = None,
+    threads: t.Optional[int] = None,
     disable_introspection: bool = False,
     **kwargs: t.Any,
 ) -> None:
@@ -427,13 +428,13 @@ def organize(
     help="Automatically synthesize missing documentation with OpenAI.",
 )
 def document(
-    target: str | None = None,
-    profile: str | None = None,
-    project_dir: str | None = None,
-    profiles_dir: str | None = None,
-    vars: str | None = None,
+    target: t.Optional[str] = None,
+    profile: t.Optional[str] = None,
+    project_dir: t.Optional[str] = None,
+    profiles_dir: t.Optional[str] = None,
+    vars: t.Optional[str] = None,
     check: bool = False,
-    threads: int | None = None,
+    threads: t.Optional[int] = None,
     disable_introspection: bool = False,
     synthesize: bool = False,
     **kwargs: t.Any,
@@ -508,8 +509,8 @@ def document(
 @click.pass_context
 def workbench(
     ctx: click.Context,
-    profiles_dir: str | None = None,
-    project_dir: str | None = None,
+    profiles_dir: t.Optional[str] = None,
+    project_dir: t.Optional[str] = None,
     host: str = "localhost",
     port: int = 8501,
 ) -> None:
@@ -567,9 +568,9 @@ def workbench(
 @click.argument("sql")
 def run(
     sql: str = "",
-    project_dir: str | None = None,
-    profiles_dir: str | None = None,
-    target: str | None = None,
+    project_dir: t.Optional[str] = None,
+    profiles_dir: t.Optional[str] = None,
+    target: t.Optional[str] = None,
     **kwargs: t.Any,
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""
@@ -598,9 +599,9 @@ def run(
 @click.argument("sql")
 def compile(
     sql: str = "",
-    project_dir: str | None = None,
-    profiles_dir: str | None = None,
-    target: str | None = None,
+    project_dir: t.Optional[str] = None,
+    profiles_dir: t.Optional[str] = None,
+    target: t.Optional[str] = None,
     **kwargs: t.Any,
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""

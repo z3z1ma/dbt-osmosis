@@ -41,7 +41,7 @@ ALTER_TABLE_COMMENT = re.compile(
 )
 
 
-def _regex_parse_to_complete_dict(sql: str, pattern: re.Pattern[str]) -> dict[str, str] | None:
+def _regex_parse_to_complete_dict(sql: str, pattern: re.Pattern[str]) -> t.Optional[dict[str, str]]:
     """Parse a SQL statement using a regex pattern and return a dict with the matched groups ensuring all are present"""
     if match := pattern.match(sql):
         result = match.groupdict()
@@ -118,7 +118,9 @@ class DbtSession(Session):
         return [row.values() for row in rows], t.cast(tuple[str], table.column_names)
 
     async def schema(self):
-        schema: defaultdict[str, dict[str, dict[str, tuple[str, str | None]]]] = defaultdict(dict)
+        schema: defaultdict[str, dict[str, dict[str, tuple[str, t.Optional[str]]]]] = defaultdict(
+            dict
+        )
         for node in chain(
             self.project.manifest.sources.values(), self.project.manifest.nodes.values()
         ):
