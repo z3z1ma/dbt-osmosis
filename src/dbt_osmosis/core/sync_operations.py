@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import typing as t
 from functools import partial
 
-from dbt.contracts.graph.nodes import ResultNode, ModelNode
+from dbt.contracts.graph.nodes import ModelNode, ResultNode
 from dbt.node_types import NodeType
 
 import dbt_osmosis.core.logger as logger
@@ -35,7 +37,7 @@ def _sync_doc_section(context: t.Any, node: ResultNode, doc_section: dict[str, t
     for name, meta in node.columns.items():
         cdict = meta.to_dict(omit_none=True)
         cdict["name"] = name
-        from dbt_osmosis.core.introspection import normalize_column_name, _get_setting_for_node
+        from dbt_osmosis.core.introspection import _get_setting_for_node, normalize_column_name
 
         norm_name = normalize_column_name(name, context.project.runtime_cfg.credentials.type)
 

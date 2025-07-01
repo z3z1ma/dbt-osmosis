@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import os
 import typing as t
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dbt.contracts.graph.nodes import ResultNode
 from dbt.artifacts.resources.types import NodeType
+from dbt.contracts.graph.nodes import ResultNode
 
 import dbt_osmosis.core.logger as logger
 
@@ -164,8 +166,8 @@ def create_missing_source_yamls(context: t.Any) -> None:
     This is a useful preprocessing step to ensure that all sources are represented in the dbt project manifest. We
     do not have rich node information for non-existent sources, hence the alternative codepath here to bootstrap them.
     """
-    from dbt_osmosis.core.introspection import _find_first, get_columns
     from dbt_osmosis.core.config import _reload_manifest
+    from dbt_osmosis.core.introspection import _find_first, get_columns
 
     if context.project.config.disable_introspection:
         logger.warning(":warning: Introspection is disabled, cannot create missing source YAMLs.")

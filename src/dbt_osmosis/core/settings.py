@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import threading
+import typing as t
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-import typing as t
 
 import ruamel.yaml
 from dbt.contracts.results import CatalogResults
@@ -147,7 +147,7 @@ class YamlRefactorContext:
         """Read the catalog file if it exists."""
         logger.debug(":mag: Checking if catalog is already loaded => %s", bool(self._catalog))
         if not self._catalog:
-            from dbt_osmosis.core.introspection import _load_catalog, _generate_catalog
+            from dbt_osmosis.core.introspection import _generate_catalog, _load_catalog
 
             catalog = _load_catalog(self.settings)
             if not catalog and self.settings.create_catalog_if_not_exists:

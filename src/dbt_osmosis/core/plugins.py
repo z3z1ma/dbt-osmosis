@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import re
 import typing as t
 from functools import lru_cache
 
 import pluggy
-
 from dbt.contracts.graph.nodes import ResultNode
 
 import dbt_osmosis.core.logger as logger

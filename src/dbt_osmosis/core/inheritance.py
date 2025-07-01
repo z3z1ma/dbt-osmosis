@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import typing as t
 from types import MappingProxyType
 
 from dbt.contracts.graph.manifest import Manifest
-from dbt.contracts.graph.nodes import ResultNode, ModelNode, SeedNode, SourceDefinition
+from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDefinition
 
 import dbt_osmosis.core.logger as logger
 
@@ -49,8 +51,9 @@ def _build_node_ancestor_tree(
 def _get_node_yaml(context: t.Any, member: ResultNode) -> t.Optional[MappingProxyType[str, t.Any]]:
     """Get a read-only view of the parsed YAML for a dbt model or source node."""
     from pathlib import Path
-    from dbt_osmosis.core.schema.reader import _read_yaml
+
     from dbt_osmosis.core.introspection import _find_first
+    from dbt_osmosis.core.schema.reader import _read_yaml
 
     project_dir = Path(context.project.runtime_cfg.project_root)
 
@@ -101,7 +104,7 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
     def _get_unrendered(k: str, ancestor: ResultNode) -> t.Any:
         raw_yaml: t.Mapping[str, t.Any] = _get_node_yaml(context, ancestor) or {}
         raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
-        from dbt_osmosis.core.introspection import normalize_column_name, _find_first
+        from dbt_osmosis.core.introspection import _find_first, normalize_column_name
 
         raw_column_metadata = _find_first(
             raw_columns,

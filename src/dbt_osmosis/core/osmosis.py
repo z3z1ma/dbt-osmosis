@@ -1,35 +1,37 @@
 # pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportAny=false, reportUnknownMemberType=false
-
 """dbt-osmosis core module with backwards compatibility imports."""
 
 from __future__ import annotations
+
+# Import SqlCompileRunner for test compatibility
+from dbt.task.sql import SqlCompileRunner
 
 # Core configuration and project management
 from dbt_osmosis.core.config import (
     DbtConfiguration,
     DbtProjectContext,
+    _reload_manifest,
     config_to_namespace,
     create_dbt_project_context,
-    discover_project_dir,
     discover_profiles_dir,
-    _reload_manifest,
+    discover_project_dir,
 )
 
 # Inheritance functionality
 from dbt_osmosis.core.inheritance import (
+    _build_column_knowledge_graph,
     _build_node_ancestor_tree,
     _get_node_yaml,
-    _build_column_knowledge_graph,
 )
 
 # Introspection utilities
 from dbt_osmosis.core.introspection import (
-    get_columns,
-    normalize_column_name,
+    _COLUMN_LIST_CACHE,
     _find_first,
     _get_setting_for_node,
     _maybe_use_precise_dtype,
-    _COLUMN_LIST_CACHE,
+    get_columns,
+    normalize_column_name,
 )
 
 # Node filtering and sorting
@@ -39,28 +41,28 @@ from dbt_osmosis.core.node_filters import (
 
 # Path management
 from dbt_osmosis.core.path_management import (
+    MissingOsmosisConfig,
+    _get_yaml_path_template,
     build_yaml_file_mapping,
     create_missing_source_yamls,
     get_current_yaml_path,
     get_target_yaml_path,
-    MissingOsmosisConfig,
-    _get_yaml_path_template,
 )
 
 # Plugin system
 from dbt_osmosis.core.plugins import (
-    get_plugin_manager,
     FuzzyCaseMatching,
     FuzzyPrefixMatching,
+    get_plugin_manager,
 )
 
 # Restructuring operations
 from dbt_osmosis.core.restructuring import (
+    RestructureDeltaPlan,
+    RestructureOperation,
     apply_restructure_plan,
     draft_restructure_delta_plan,
     pretty_print_plan,
-    RestructureOperation,
-    RestructureDeltaPlan,
 )
 
 # Schema parsing and writing
@@ -86,9 +88,6 @@ from dbt_osmosis.core.sql_operations import (
     compile_sql_code,
     execute_sql_code,
 )
-
-# Import SqlCompileRunner for test compatibility
-from dbt.task.sql import SqlCompileRunner
 
 # Sync operations
 from dbt_osmosis.core.sync_operations import (

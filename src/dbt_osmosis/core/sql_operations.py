@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import uuid
 
 from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
 from dbt.adapters.contracts.connection import AdapterResponse
 from dbt.contracts.graph.nodes import ManifestSQLNode
-from dbt.task.sql import SqlCompileRunner
-from dbt.parser.manifest import process_node
 from dbt.node_types import NodeType
+from dbt.parser.manifest import process_node
+from dbt.task.sql import SqlCompileRunner
 
 import dbt_osmosis.core.logger as logger
 from dbt_osmosis.core.config import DbtProjectContext

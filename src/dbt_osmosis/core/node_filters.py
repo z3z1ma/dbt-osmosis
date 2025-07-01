@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import typing as t
 from collections import defaultdict, deque
-from pathlib import Path
 from itertools import chain
+from pathlib import Path
 
-from dbt.contracts.graph.nodes import ResultNode
 from dbt.artifacts.resources.types import NodeType
+from dbt.contracts.graph.nodes import ResultNode
 
 import dbt_osmosis.core.logger as logger
 
@@ -77,7 +79,7 @@ def _topological_sort(
     adjacency: defaultdict[str, set[str]] = defaultdict(set)
     in_degree: defaultdict[str, int] = defaultdict(int)
 
-    all_uids = set(uid for uid, _ in candidate_nodes)
+    all_uids = {uid for uid, _ in candidate_nodes}
 
     for uid, _ in candidate_nodes:
         in_degree[uid] = 0

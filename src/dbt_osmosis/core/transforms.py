@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import atexit
 import time
 import typing as t
@@ -6,8 +8,8 @@ from dataclasses import dataclass, field
 from functools import partial
 from types import MappingProxyType
 
-from dbt.contracts.graph.nodes import ResultNode, ColumnInfo
 from dbt.artifacts.resources.types import NodeType
+from dbt.contracts.graph.nodes import ColumnInfo, ResultNode
 
 import dbt_osmosis.core.logger as logger
 
@@ -52,7 +54,7 @@ class TransformOperation:
         self,
         context: t.Any,
         node: t.Optional[ResultNode] = None,  # YamlRefactorContext
-    ) -> "TransformOperation":
+    ) -> TransformOperation:
         """Run the operation and store the result."""
         self._context = context
         self._node = node
@@ -65,7 +67,7 @@ class TransformOperation:
             raise
         return self
 
-    def __rshift__(self, next_op: "TransformOperation") -> "TransformPipeline":
+    def __rshift__(self, next_op: TransformOperation) -> TransformPipeline:
         """Chain operations together."""
         return TransformPipeline([self]) >> next_op
 
@@ -88,8 +90,8 @@ class TransformPipeline:
         return MappingProxyType(self._metadata)
 
     def __rshift__(
-        self, next_op: t.Union["TransformOperation", t.Callable[..., t.Any]]
-    ) -> "TransformPipeline":
+        self, next_op: t.Union[TransformOperation, t.Callable[..., t.Any]]
+    ) -> TransformPipeline:
         """Chain operations together."""
         if isinstance(next_op, TransformOperation):
             self.operations.append(next_op)
@@ -103,7 +105,7 @@ class TransformPipeline:
         self,
         context: t.Any,
         node: t.Optional[ResultNode] = None,  # YamlRefactorContext
-    ) -> "TransformPipeline":
+    ) -> TransformPipeline:
         """Run all operations in the pipeline."""
         logger.info(
             "\n:gear: [b]Running pipeline[/b] with => %s operations %s \n",
@@ -285,7 +287,7 @@ def inject_missing_columns(context: t.Any, node: t.Union[ResultNode, None] = Non
 @_transform_op("Remove Extra Columns")
 def remove_columns_not_in_database(context: t.Any, node: t.Union[ResultNode, None] = None) -> None:
     """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
-    from dbt_osmosis.core.introspection import normalize_column_name, get_columns
+    from dbt_osmosis.core.introspection import get_columns, normalize_column_name
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
     if node is None:
@@ -320,7 +322,7 @@ def remove_columns_not_in_database(context: t.Any, node: t.Union[ResultNode, Non
 @_transform_op("Sort Columns in DB Order")
 def sort_columns_as_in_database(context: t.Any, node: t.Union[ResultNode, None] = None) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
-    from dbt_osmosis.core.introspection import normalize_column_name, get_columns
+    from dbt_osmosis.core.introspection import get_columns, normalize_column_name
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
     if node is None:
@@ -395,8 +397,8 @@ def synchronize_data_types(context: t.Any, node: t.Union[ResultNode, None] = Non
     """Populate data types for columns in a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.introspection import (
         _get_setting_for_node,
-        normalize_column_name,
         get_columns,
+        normalize_column_name,
     )
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
@@ -433,6 +435,7 @@ def synthesize_missing_documentation_with_openai(
 ) -> None:
     """Synthesize missing documentation for a dbt node using OpenAI's GPT-4o API."""
     import textwrap
+
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
     try:

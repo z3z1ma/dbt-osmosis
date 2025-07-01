@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import threading
 import typing as t
 from concurrent.futures import FIRST_EXCEPTION, Future, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dbt.contracts.graph.nodes import ResultNode, ModelNode, SeedNode, SourceDefinition
 from dbt.artifacts.resources.types import NodeType
+from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDefinition
 
 import dbt_osmosis.core.logger as logger
 
@@ -264,10 +266,9 @@ def apply_restructure_plan(
             return
         logger.warning(":loudspeaker: Please respond with 'y' or 'n'.")
 
-    from dbt_osmosis.core.schema.reader import _read_yaml
-    from dbt_osmosis.core.schema.writer import _write_yaml
-    from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE
     from dbt_osmosis.core.config import _reload_manifest
+    from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE, _read_yaml
+    from dbt_osmosis.core.schema.writer import _write_yaml
 
     for op in plan.operations:
         logger.debug(":arrow_right: Applying restructure operation => %s", op)

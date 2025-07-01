@@ -1,11 +1,14 @@
 """Supplementary module for LLM synthesis of dbt documentation."""
 
+from __future__ import annotations
+
 import json
 import os
 import typing as t
 from textwrap import dedent
-from openai import OpenAI
+
 import openai
+from openai import OpenAI
 
 __all__ = [
     "generate_model_spec_as_json",
