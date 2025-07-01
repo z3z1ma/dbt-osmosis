@@ -18,8 +18,8 @@ __all__ = [
 def _build_node_ancestor_tree(
     manifest: Manifest,
     node: ResultNode,
-    tree: t.Optional[dict[str, list[str]]] = None,
-    visited: t.Optional[set[str]] = None,
+    tree: dict[str, list[str]] | None = None,
+    visited: set[str] | None = None,
     depth: int = 1,
 ) -> dict[str, list[str]]:
     """Build a flat graph of a node and it's ancestors."""
@@ -48,7 +48,7 @@ def _build_node_ancestor_tree(
     return tree
 
 
-def _get_node_yaml(context: t.Any, member: ResultNode) -> t.Optional[MappingProxyType[str, t.Any]]:
+def _get_node_yaml(context: t.Any, member: ResultNode) -> MappingProxyType[str, t.Any] | None:
     """Get a read-only view of the parsed YAML for a dbt model or source node."""
     from pathlib import Path
 

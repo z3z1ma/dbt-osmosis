@@ -27,7 +27,7 @@ class SchemaFileLocation:
     """Describes the current and target location of a schema file."""
 
     target: Path
-    current: t.Union[Path, None] = None
+    current: Path | None = None
     node_type: NodeType = NodeType.Model
 
     @property
@@ -52,7 +52,7 @@ class MissingOsmosisConfig(Exception):
     """Raised when an osmosis configuration is missing."""
 
 
-def _get_yaml_path_template(context: t.Any, node: ResultNode) -> t.Union[str, None]:
+def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
     """Get the yaml path template for a dbt model or source node."""
     from dbt_osmosis.core.introspection import _find_first
 
@@ -61,12 +61,12 @@ def _get_yaml_path_template(context: t.Any, node: ResultNode) -> t.Union[str, No
         if isinstance(def_or_path, dict):
             return def_or_path.get("path")
         return def_or_path
-    conf = [
-        c.get(k)
-        for k in ("dbt-osmosis", "dbt_osmosis")
-        for c in (node.config.extra, node.config.meta, node.unrendered_config)
-    ]
-    path_template = _find_first(t.cast("list[t.Union[str, None]]", conf), lambda v: v is not None)
+        conf = [
+            c.get(k)
+            for k in ("dbt-osmosis", "dbt_osmosis")
+            for c in (node.config.extra, node.config.meta, node.unrendered_config)
+        ]
+    path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
     if not path_template:
         raise MissingOsmosisConfig(
             f"Config key `dbt-osmosis: <path>` not set for model {node.name}"

@@ -20,7 +20,7 @@ def _write_yaml(
     path: Path,
     data: dict[str, t.Any],
     dry_run: bool = False,
-    mutation_tracker: t.Optional[t.Callable[[int], None]] = None,
+    mutation_tracker: t.Callable[[int], None] | None = None,
 ) -> None:
     """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache."""
     logger.debug(":page_with_curl: Attempting to write YAML to => %s", path)
@@ -47,7 +47,7 @@ def commit_yamls(
     yaml_handler: ruamel.yaml.YAML,
     yaml_handler_lock: threading.Lock,
     dry_run: bool = False,
-    mutation_tracker: t.Optional[t.Callable[[int], None]] = None,
+    mutation_tracker: t.Callable[[int], None] | None = None,
 ) -> None:
     """Commit all files in the yaml buffer cache to disk. Clears the buffer cache and registers mutations."""
     logger.info(":inbox_tray: Committing all YAMLs from buffer cache to disk.")
