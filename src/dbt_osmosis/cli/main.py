@@ -280,14 +280,14 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="Automatically synthesize missing documentation with OpenAI.",
 )
 def refactor(
-    target: t.Optional[str] = None,
-    profile: t.Optional[str] = None,
-    project_dir: t.Optional[str] = None,
-    profiles_dir: t.Optional[str] = None,
-    vars: t.Optional[str] = None,
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
     auto_apply: bool = False,
     check: bool = False,
-    threads: t.Optional[int] = None,
+    threads: int | None = None,
     disable_introspection: bool = False,
     synthesize: bool = False,
     **kwargs: t.Any,
@@ -348,14 +348,14 @@ def refactor(
     help="If specified, will automatically apply the restructure plan without confirmation.",
 )
 def organize(
-    target: t.Optional[str] = None,
-    project_dir: t.Optional[str] = None,
-    profiles_dir: t.Optional[str] = None,
+    target: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
     check: bool = False,
-    profile: t.Optional[str] = None,
-    vars: t.Optional[str] = None,
+    profile: str | None = None,
+    vars: str | None = None,
     auto_apply: bool = False,
-    threads: t.Optional[int] = None,
+    threads: int | None = None,
     disable_introspection: bool = False,
     **kwargs: t.Any,
 ) -> None:
@@ -464,13 +464,13 @@ def organize(
     help="Automatically synthesize missing documentation with OpenAI.",
 )
 def document(
-    target: t.Optional[str] = None,
-    profile: t.Optional[str] = None,
-    project_dir: t.Optional[str] = None,
-    profiles_dir: t.Optional[str] = None,
-    vars: t.Optional[str] = None,
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
     check: bool = False,
-    threads: t.Optional[int] = None,
+    threads: int | None = None,
     disable_introspection: bool = False,
     synthesize: bool = False,
     **kwargs: t.Any,
@@ -545,8 +545,8 @@ def document(
 @click.pass_context
 def workbench(
     ctx: click.Context,
-    profiles_dir: t.Optional[str] = None,
-    project_dir: t.Optional[str] = None,
+    profiles_dir: str | None = None,
+    project_dir: str | None = None,
     host: str = "localhost",
     port: int = 8501,
 ) -> None:
@@ -604,9 +604,9 @@ def workbench(
 @click.argument("sql")
 def run(
     sql: str = "",
-    project_dir: t.Optional[str] = None,
-    profiles_dir: t.Optional[str] = None,
-    target: t.Optional[str] = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
     **kwargs: t.Any,
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""
@@ -635,9 +635,9 @@ def run(
 @click.argument("sql")
 def compile(
     sql: str = "",
-    project_dir: t.Optional[str] = None,
-    profiles_dir: t.Optional[str] = None,
-    target: t.Optional[str] = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
     **kwargs: t.Any,
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""

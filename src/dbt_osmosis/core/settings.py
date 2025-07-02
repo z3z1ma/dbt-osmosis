@@ -30,7 +30,7 @@ class YamlRefactorSettings:
 
     fqn: list[str] = field(default_factory=list)
     """Filter models to action via a fully qualified name match such as returned by `dbt ls`."""
-    models: list[t.Union[Path, str]] = field(default_factory=list)
+    models: list[Path | str] = field(default_factory=list)
     """Filter models to action via a file path match."""
     dry_run: bool = False
     """Do not write changes to disk."""
@@ -58,7 +58,7 @@ class YamlRefactorSettings:
     """Include additional keys in the inheritance process."""
     output_to_lower: bool = False
     """Force column name and data type output to lowercase in the yaml files."""
-    catalog_path: t.Optional[str] = None
+    catalog_path: str | None = None
     """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
     create_catalog_if_not_exists: bool = False
     """Generate the catalog.json for the project if it doesn't exist and use it for introspective queries."""
@@ -93,7 +93,7 @@ class YamlRefactorContext:
     )
 
     _mutation_count: int = field(default=0, init=False)
-    _catalog: t.Optional[CatalogResults] = field(default=None, init=False)
+    _catalog: CatalogResults | None = field(default=None, init=False)
 
     def register_mutations(self, count: int) -> None:
         """Increment the mutation count by a specified amount."""
