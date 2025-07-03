@@ -15,12 +15,11 @@ classifiers = [
   "Intended Audience :: Developers",
   "Topic :: Software Development :: Build Tools",
   "License :: OSI Approved :: Apache Software License",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.10,<3.13"
 
 dependencies = [
   "click>7,<9",
@@ -28,7 +27,6 @@ dependencies = [
   "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
   "pluggy>=1.5.0,<2",
-  "typing-extensions~=4.13.1 ; python_version < '3.10'",
   "mysql-mimic>=2.5.7",
 ]
 
@@ -60,7 +58,7 @@ override-dependencies = ["protobuf>=5.0,<6.0"]
 
 [tool.black]
 line-length = 100
-target-version = ["py39", "py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312"]
 preview = true
 
 [tool.isort]
