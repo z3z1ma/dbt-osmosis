@@ -11,7 +11,7 @@ Get started by **running dbt-osmosis**.
 
 ### What you'll need
 
-- [Python](https://www.python.org/downloads/) (3.9+)
+- [Python](https://www.python.org/downloads/) (3.10+)
 - [dbt](https://docs.getdbt.com/docs/core/installation) (1.8.0+)
 - or [uv](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 - An existing dbt project (or you can play with it using [jaffle shop](https://github.com/dbt-labs/jaffle_shop_duckdb))
