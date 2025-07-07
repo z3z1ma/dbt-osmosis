@@ -27,7 +27,7 @@ class SchemaFileLocation:
     """Describes the current and target location of a schema file."""
 
     target: Path
-    current: t.Union[Path, None] = None
+    current: Path | None = None
     node_type: NodeType = NodeType.Model
 
     @property
@@ -52,7 +52,7 @@ class MissingOsmosisConfig(Exception):
     """Raised when an osmosis configuration is missing."""
 
 
-def _get_yaml_path_template(context: t.Any, node: ResultNode) -> t.Union[str, None]:
+def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
     """Get the yaml path template for a dbt model or source node."""
     from dbt_osmosis.core.introspection import _find_first
 
@@ -61,12 +61,13 @@ def _get_yaml_path_template(context: t.Any, node: ResultNode) -> t.Union[str, No
         if isinstance(def_or_path, dict):
             return def_or_path.get("path")
         return def_or_path
+
     conf = [
         c.get(k)
         for k in ("dbt-osmosis", "dbt_osmosis")
         for c in (node.config.extra, node.config.meta, node.unrendered_config)
     ]
-    path_template = _find_first(t.cast("list[t.Union[str, None]]", conf), lambda v: v is not None)
+    path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
     if not path_template:
         raise MissingOsmosisConfig(
             f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
@@ -101,14 +102,18 @@ def get_target_yaml_path(context: t.Any, node: ResultNode) -> Path:
     tags_ = node.tags
 
     # NOTE: this permits negative index lookups in fqn within format strings
-    lr_index = {i: s for i, s in enumerate(fqn_)}
-    rl_index = {str(-len(fqn_) + i): s for i, s in enumerate(reversed(fqn_), start=1)}
-    node.fqn = {**rl_index, **lr_index}  # pyright: ignore[reportAttributeAccessIssue]
+    lr_index: dict[int, str] = {i: s for i, s in enumerate(fqn_)}
+    rl_index: dict[str, str] = {
+        str(-len(fqn_) + i): s for i, s in enumerate(reversed(fqn_), start=1)
+    }
+    node.fqn = {**rl_index, **lr_index}  # type: ignore[assignment]
 
     # NOTE: this permits negative index lookups in tags within format strings
-    lr_index = {i: s for i, s in enumerate(tags_)}
-    rl_index = {str(-len(tags_) + i): s for i, s in enumerate(reversed(tags_), start=1)}
-    node.tags = {**rl_index, **lr_index}  # pyright: ignore[reportAttributeAccessIssue]
+    tags_lr_index: dict[int, str] = {i: s for i, s in enumerate(tags_)}
+    tags_rl_index: dict[str, str] = {
+        str(-len(tags_) + i): s for i, s in enumerate(reversed(tags_), start=1)
+    }
+    node.tags = {**tags_rl_index, **tags_lr_index}  # type: ignore[assignment]
 
     path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
     rendered = tpl.format(node=node, model=node.name, parent=path.parent.name)

@@ -41,7 +41,7 @@ ALTER_TABLE_COMMENT = re.compile(
 )
 
 
-def _regex_parse_to_complete_dict(sql: str, pattern: re.Pattern[str]) -> t.Optional[dict[str, str]]:
+def _regex_parse_to_complete_dict(sql: str, pattern: re.Pattern[str]) -> dict[str, str] | None:
     """Parse a SQL statement using a regex pattern and return a dict with the matched groups ensuring all are present"""
     if match := pattern.match(sql):
         result = match.groupdict()
