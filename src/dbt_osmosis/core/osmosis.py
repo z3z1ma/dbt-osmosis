@@ -1940,7 +1940,9 @@ def _build_column_knowledge_graph(
                         ):
                             # When use_specified_key_unrendered is True, prefer unrendered value
                             unrendered_val = _get_unrendered(inheritable, ancestor)
-                            graph_edge[inheritable] = unrendered_val if unrendered_val else incoming_dict[inheritable]
+                            graph_edge[inheritable] = (
+                                unrendered_val if unrendered_val else incoming_dict[inheritable]
+                            )
                         else:
                             # When use_specified_key_unrendered is False, use rendered value
                             graph_edge[inheritable] = incoming_dict[inheritable]
