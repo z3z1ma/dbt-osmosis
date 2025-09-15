@@ -25,6 +25,9 @@ from dbt.tracking import disable_tracking
 from dbt_common.clients.system import get_env
 from dbt_common.context import set_invocation_context
 
+from packaging.version import parse as parse_version
+from dbt.version import __version__ as dbt_version
+
 import dbt_osmosis.core.logger as logger
 
 __all__ = [
@@ -137,6 +140,9 @@ class DbtProjectContext:
     connection_ttl: float = 3600.0
     """Max time in seconds to keep a db connection alive before recycling it, mostly useful for very long runs"""
 
+    dbt_version: str = field(init=False)
+    is_dbt_v1_10_or_greater: bool = field(init=False)
+
     _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
     _adapter: BaseAdapter | None = field(default=None, init=False)
@@ -201,11 +207,11 @@ def _add_cross_project_references(
                     if node_access != "protected":
                         if node.get("resource_type") == "model":
                             loomnodes.append(ModelParser.parse_from_dict(None, node))  # pyright: ignore[reportArgumentType]
-        for node in loomnodes:
-            manifest.nodes[node.unique_id] = node
-        logger.info(
-            f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!"
-        )
+    for node in loomnodes:
+        manifest.nodes[node.unique_id] = node
+    logger.info(
+        f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!"
+    )
     return manifest
 
 
@@ -253,8 +259,7 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     sql_parser = SqlBlockParser(runtime_cfg, manifest, runtime_cfg)
     macro_parser = SqlMacroParser(runtime_cfg, manifest)
 
-    logger.info(":sparkles: DbtProjectContext successfully created!")
-    return DbtProjectContext(
+    context = DbtProjectContext(
         config=config,
         runtime_cfg=runtime_cfg,
         manifest=manifest,
@@ -262,10 +267,17 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
         macro_parser=macro_parser,
     )
 
+    context.dbt_version = dbt_version
+    context.is_dbt_v1_10_or_greater = parse_version(dbt_version) >= parse_version("1.10.0")
+    
+    logger.info(":sparkles: DbtProjectContext successfully created!")
+    return context
 
 def _reload_manifest(context: DbtProjectContext) -> None:
     """Reload the dbt project manifest. Useful for picking up mutations."""
     logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
+    # Re-initialize the ManifestLoader with the full runtime_cfg
+    # This ensures project variables like `enable_semantic: false` are respected
     loader = ManifestLoader(context.runtime_cfg, context.runtime_cfg.load_dependencies())
     manifest = loader.load()
     manifest.build_flat_graph()

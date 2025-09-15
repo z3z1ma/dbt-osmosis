@@ -9,37 +9,52 @@ __all__ = [
     "create_yaml_instance",
 ]
 
+def _filter_yaml_content(data: dict) -> dict:
+    """
+    Filters a parsed YAML dictionary to only include keys relevant to dbt-osmosis.
+    This prevents the tool from processing or being aware of semantic_models, macros, etc.
+    """
+    allowed_keys = {"version", "models", "sources", "seeds"}
+    
+    # Create a new dictionary containing only the allowed keys from the parsed file
+    filtered_data = {key: value for key, value in data.items() if key in allowed_keys}
 
-def create_yaml_instance(
-    indent_mapping: int = 2,
-    indent_sequence: int = 4,
-    indent_offset: int = 2,
-    width: int = 100,
-    preserve_quotes: bool = False,
-    default_flow_style: bool = False,
-    encoding: str = "utf-8",
-) -> ruamel.yaml.YAML:
-    """Returns a ruamel.yaml.YAML instance configured with the provided settings."""
-    logger.debug(":notebook: Creating ruamel.yaml.YAML instance with custom formatting.")
-    y = ruamel.yaml.YAML()
-    y.indent(mapping=indent_mapping, sequence=indent_sequence, offset=indent_offset)
-    y.width = width
-    y.preserve_quotes = preserve_quotes
-    y.default_flow_style = default_flow_style
-    y.encoding = encoding
+    # Log which keys were ignored for debugging and transparency
+    ignored_keys = set(data.keys()) - allowed_keys
+    if ignored_keys:
+        logger.debug(
+            f":magnifying_glass_left: Parser ignoring irrelevant top-level keys in YAML: {ignored_keys}"
+        )
+        
+    return filtered_data
 
-    def str_representer(dumper: ruamel.yaml.RoundTripDumper, data: str) -> t.Any:
-        # https://github.com/commx/ruamel-yaml/blob/280677cf647912c599d8886000020d6ffbbb4216/resolver.py#L32
-        if re.match(r"^(y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF)$", data):
-            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
-        newlines = len(data.splitlines())
-        if newlines == 1 and len(data) > width - len(f"description{y.prefix_colon}: "):
-            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=">")
-        if newlines > 1:
-            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
-        return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
-    y.representer.add_representer(str, str_representer)
+class OsmosisYAML(ruamel.yaml.YAML):
+    """A custom ruamel.yaml.YAML subclass that filters loaded data."""
+    def load(self, stream: t.Any) -> t.Any:
+        """Loads a YAML stream and filters it for relevant dbt-osmosis content."""
+        # First, parse the YAML file into a standard dictionary using the parent method
+        raw_data = super().load(stream)
+        
+        # If the parsed data is a dictionary, pass it through our content filter
+        if isinstance(raw_data, dict):
+            return _filter_yaml_content(raw_data)
+        
+        # If it's not a dictionary (e.g., an empty file parsing to None), return it as-is
+        return raw_data
 
-    logger.debug(":notebook: YAML instance created => %s", y)
-    return y
+
+def create_yaml_instance() -> ruamel.yaml.YAML:
+    """Creates a ruamel.yaml.YAML instance with project-consistent settings."""
+    # Use the custom OsmosisYAML class, initialized in round-trip mode.
+    yaml = OsmosisYAML(typ="rt")
+
+    # Apply our desired formatting
+    yaml.preserve_quotes = True
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    
+    # These are reasonable defaults that were likely intended in the original code
+    yaml.width = 800
+    yaml.default_flow_style = False
+    
+    return yaml
