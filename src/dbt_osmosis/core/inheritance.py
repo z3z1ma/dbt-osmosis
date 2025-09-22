@@ -92,6 +92,12 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
     tree = _build_node_ancestor_tree(context.project.manifest, node)
     logger.debug(":family_tree: Node ancestor tree => %s", tree)
 
+    # Get the default_progenitor from the node's meta, if it exists
+    node_yaml = _get_node_yaml(context, node)
+    default_progenitor = None
+    if node_yaml:
+        default_progenitor = node_yaml.get("meta", {}).get("default_progenitor")
+
     from dbt_osmosis.core.plugins import get_plugin_manager
 
     pm = get_plugin_manager()
@@ -115,6 +121,7 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
         return raw_column_metadata.get(k)
 
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
+    column_progenitor_alternatives: dict[str, list[str]] = {}
     for generation in reversed(sorted(tree.keys())):
         ancestors = tree[generation]
         for ancestor_uid in ancestors:
@@ -126,12 +133,38 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
 
             for name, _ in node.columns.items():
                 graph_node = column_knowledge_graph.setdefault(name, {})
+                alternatives = column_progenitor_alternatives.setdefault(name, [])
+
                 for variant in node_column_variants[name]:
                     incoming = ancestor.columns.get(variant)
+                    # print(incoming)
                     if incoming is not None:
+                        # Track this ancestor as a potential progenitor (but exclude self-reference)
+                        if ancestor.unique_id != node.unique_id and ancestor.unique_id not in alternatives:
+                            alternatives.append(ancestor.unique_id)
                         break
                 else:
                     continue
+
+                # Check if we should use default_progenitor instead of the current ancestor
+                selected_ancestor = ancestor
+                if (default_progenitor and
+                    len(alternatives) > 1 and
+                    default_progenitor in alternatives and
+                    ancestor.unique_id != default_progenitor):
+                    # Find the default progenitor in the manifest and use it instead
+                    default_ancestor = context.project.manifest.nodes.get(
+                        default_progenitor, context.project.manifest.sources.get(default_progenitor)
+                    )
+                    if default_ancestor and isinstance(default_ancestor, (SourceDefinition, SeedNode, ModelNode)):
+                        # Check if the default ancestor has this column variant
+                        for variant in node_column_variants[name]:
+                            default_incoming = default_ancestor.columns.get(variant)
+                            if default_incoming is not None:
+                                selected_ancestor = default_ancestor
+                                incoming = default_incoming
+                                break
+
                 graph_edge = incoming.to_dict(omit_none=True)
 
                 from dbt_osmosis.core.introspection import _get_setting_for_node
@@ -142,9 +175,14 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                     name,
                     fallback=context.settings.add_progenitor_to_meta,
                 ):
-                    graph_node.setdefault("meta", {}).setdefault(
-                        "osmosis_progenitor", ancestor.unique_id
-                    )
+                    # Only set the progenitor if it's not already set (first match wins)
+                    if "osmosis_progenitor" not in graph_node.get("meta", {}):
+                        graph_node.setdefault("meta", {}).setdefault(
+                            "osmosis_progenitor", selected_ancestor.unique_id
+                            # "osmosis_progenitor", alternatives[0].unique_id
+                        )
+                    # Always add the alternatives array (will be filtered later)
+                    graph_node.setdefault("meta", {})["osmosis_progenitor_alternatives"] = alternatives.copy()
 
                 if _get_setting_for_node(
                     "use-unrendered-descriptions",
@@ -152,7 +190,7 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                     name,
                     fallback=context.settings.use_unrendered_descriptions,
                 ):
-                    if unrendered_description := _get_unrendered("description", ancestor):
+                    if unrendered_description := _get_unrendered("description", selected_ancestor):
                         graph_edge["description"] = unrendered_description
 
                 current_tags = graph_node.get("tags", [])
@@ -170,7 +208,7 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                     fallback=context.settings.add_inheritance_for_specified_keys,
                 ):
                     current_val = graph_node.get(inheritable)
-                    if incoming_unrendered_val := _get_unrendered(inheritable, ancestor):
+                    if incoming_unrendered_val := _get_unrendered(inheritable, selected_ancestor):
                         graph_edge[inheritable] = incoming_unrendered_val
                     elif incoming_val := graph_edge.pop(inheritable, current_val):
                         graph_edge[inheritable] = incoming_val
@@ -196,5 +234,15 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                         graph_edge.pop(k)
 
                 graph_node.update(graph_edge)
+
+    # Final pass: remove duplicates from alternatives arrays
+    for column_name, graph_node in column_knowledge_graph.items():
+        meta = graph_node.get("meta", {})
+        if "osmosis_progenitor_alternatives" in meta and "osmosis_progenitor" in meta:
+            progenitor = meta["osmosis_progenitor"]
+            alternatives = meta["osmosis_progenitor_alternatives"]
+            # Filter out the selected progenitor from alternatives to avoid duplication
+            filtered_alternatives = [alt for alt in alternatives if alt != progenitor]
+            meta["osmosis_progenitor_alternatives"] = filtered_alternatives
 
     return column_knowledge_graph
