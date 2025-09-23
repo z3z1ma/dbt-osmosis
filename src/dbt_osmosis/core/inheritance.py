@@ -135,9 +135,9 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                 graph_node = column_knowledge_graph.setdefault(name, {})
                 alternatives = column_progenitor_alternatives.setdefault(name, [])
 
+
                 for variant in node_column_variants[name]:
                     incoming = ancestor.columns.get(variant)
-                    # print(incoming)
                     if incoming is not None:
                         # Track this ancestor as a potential progenitor (but exclude self-reference)
                         if ancestor.unique_id != node.unique_id and ancestor.unique_id not in alternatives:
@@ -146,24 +146,8 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                 else:
                     continue
 
-                # Check if we should use default_progenitor instead of the current ancestor
+                # Default: use current ancestor
                 selected_ancestor = ancestor
-                if (default_progenitor and
-                    len(alternatives) > 1 and
-                    default_progenitor in alternatives and
-                    ancestor.unique_id != default_progenitor):
-                    # Find the default progenitor in the manifest and use it instead
-                    default_ancestor = context.project.manifest.nodes.get(
-                        default_progenitor, context.project.manifest.sources.get(default_progenitor)
-                    )
-                    if default_ancestor and isinstance(default_ancestor, (SourceDefinition, SeedNode, ModelNode)):
-                        # Check if the default ancestor has this column variant
-                        for variant in node_column_variants[name]:
-                            default_incoming = default_ancestor.columns.get(variant)
-                            if default_incoming is not None:
-                                selected_ancestor = default_ancestor
-                                incoming = default_incoming
-                                break
 
                 graph_edge = incoming.to_dict(omit_none=True)
 
@@ -179,9 +163,8 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                     if "osmosis_progenitor" not in graph_node.get("meta", {}):
                         graph_node.setdefault("meta", {}).setdefault(
                             "osmosis_progenitor", selected_ancestor.unique_id
-                            # "osmosis_progenitor", alternatives[0].unique_id
                         )
-                    # Always add the alternatives array (will be filtered later)
+                    # Always add the alternatives array
                     graph_node.setdefault("meta", {})["osmosis_progenitor_alternatives"] = alternatives.copy()
 
                 if _get_setting_for_node(
@@ -198,7 +181,14 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                     graph_edge["tags"] = list(merged_tags)
 
                 current_meta = graph_node.get("meta", {})
-                if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
+                incoming_meta = graph_edge.pop("meta", {})
+
+                # Preserve specific metadata keys that should not be overwritten by inheritance
+                preserved_keys = ["column_default_progenitor", "osmosis_progenitor", "osmosis_progenitor_alternatives"]
+                preserved_meta = {k: v for k, v in current_meta.items() if k in preserved_keys}
+
+                # Merge with preserved keys taking precedence
+                if merged_meta := {**current_meta, **incoming_meta, **preserved_meta}:
                     graph_edge["meta"] = merged_meta
 
                 for inheritable in _get_setting_for_node(
@@ -235,14 +225,100 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
 
                 graph_node.update(graph_edge)
 
-    # Final pass: remove duplicates from alternatives arrays
-    for column_name, graph_node in column_knowledge_graph.items():
-        meta = graph_node.get("meta", {})
-        if "osmosis_progenitor_alternatives" in meta and "osmosis_progenitor" in meta:
-            progenitor = meta["osmosis_progenitor"]
-            alternatives = meta["osmosis_progenitor_alternatives"]
-            # Filter out the selected progenitor from alternatives to avoid duplication
-            filtered_alternatives = [alt for alt in alternatives if alt != progenitor]
-            meta["osmosis_progenitor_alternatives"] = filtered_alternatives
+    # Second pass: Apply default_progenitor and column_default_progenitor overrides
+    for name, graph_node in column_knowledge_graph.items():
+        if "osmosis_progenitor" not in graph_node.get("meta", {}):
+            continue
+
+        current_progenitor = graph_node["meta"]["osmosis_progenitor"]
+        alternatives = graph_node["meta"].get("osmosis_progenitor_alternatives", [])
+
+        # Check for column_default_progenitor (highest priority)
+        column_default_progenitor = None
+        if node_yaml:
+            columns = node_yaml.get("columns", [])
+            from dbt_osmosis.core.introspection import _find_first
+            column_meta = _find_first(columns, lambda c: c.get("name") == name, {})
+            column_default_progenitor = column_meta.get("meta", {}).get("column_default_progenitor")
+
+        new_progenitor = current_progenitor
+
+        if column_default_progenitor:
+            # Use column default progenitor if specified
+            new_progenitor = column_default_progenitor
+        elif (default_progenitor and
+              len(alternatives) > 1 and
+              default_progenitor in alternatives and
+              current_progenitor != default_progenitor):
+            # Use model-level default progenitor if available and different from current
+            new_progenitor = default_progenitor
+
+        # Update the progenitor if it changed
+        if new_progenitor != current_progenitor:
+            # Find the actual progenitor that the new progenitor inherits from
+            new_ancestor = context.project.manifest.nodes.get(
+                new_progenitor, context.project.manifest.sources.get(new_progenitor)
+            )
+            if new_ancestor and isinstance(new_ancestor, (SourceDefinition, SeedNode, ModelNode)):
+                for variant in node_column_variants[name]:
+                    new_incoming = new_ancestor.columns.get(variant)
+                    if new_incoming is not None:
+                        # Get the actual progenitor from the new ancestor's metadata
+                        new_column_meta = new_incoming.to_dict(omit_none=True).get("meta", {})
+                        actual_progenitor = new_column_meta.get("osmosis_progenitor")
+
+                        if actual_progenitor:
+                            # Use the actual progenitor (what the new ancestor inherits from)
+                            graph_node["meta"]["osmosis_progenitor"] = actual_progenitor
+
+                            # Inherit from the actual progenitor
+                            actual_ancestor = context.project.manifest.nodes.get(
+                                actual_progenitor, context.project.manifest.sources.get(actual_progenitor)
+                            )
+                            if actual_ancestor and isinstance(actual_ancestor, (SourceDefinition, SeedNode, ModelNode)):
+                                for actual_variant in node_column_variants[name]:
+                                    actual_incoming = actual_ancestor.columns.get(actual_variant)
+                                    if actual_incoming is not None:
+                                        actual_graph_edge = actual_incoming.to_dict(omit_none=True)
+
+                                        # Get unrendered description if available
+                                        if _get_setting_for_node(
+                                            "use-unrendered-descriptions",
+                                            node,
+                                            name,
+                                            fallback=context.settings.use_unrendered_descriptions,
+                                        ):
+                                            if unrendered_description := _get_unrendered("description", actual_ancestor):
+                                                actual_graph_edge["description"] = unrendered_description
+
+                                        # Update description and other inherited properties
+                                        for key in ["description", "tags"]:
+                                            if key in actual_graph_edge:
+                                                graph_node[key] = actual_graph_edge[key]
+                                        break
+                        else:
+                            # No osmosis_progenitor in the new ancestor, use it directly
+                            graph_node["meta"]["osmosis_progenitor"] = new_progenitor
+                            new_graph_edge = new_incoming.to_dict(omit_none=True)
+
+                            # Get unrendered description if available
+                            if _get_setting_for_node(
+                                "use-unrendered-descriptions",
+                                node,
+                                name,
+                                fallback=context.settings.use_unrendered_descriptions,
+                            ):
+                                if unrendered_description := _get_unrendered("description", new_ancestor):
+                                    new_graph_edge["description"] = unrendered_description
+
+                            # Update description and other inherited properties
+                            for key in ["description", "tags"]:
+                                if key in new_graph_edge:
+                                    graph_node[key] = new_graph_edge[key]
+
+                        # Preserve column_default_progenitor if it was the reason for this change
+                        if column_default_progenitor:
+                            graph_node.setdefault("meta", {})["column_default_progenitor"] = column_default_progenitor
+                        break
 
     return column_knowledge_graph
