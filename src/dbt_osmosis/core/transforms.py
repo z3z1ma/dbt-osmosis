@@ -280,6 +280,8 @@ def inject_missing_columns(context: t.Any, node: ResultNode | None = None) -> No
             ):
                 gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
             node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
+            if hasattr(node.columns[incoming_name], "config"):
+                delattr(node.columns[incoming_name], "config")
 
 
 @_transform_op("Remove Extra Columns")
