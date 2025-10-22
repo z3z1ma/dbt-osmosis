@@ -8,6 +8,8 @@ from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDef
 
 import dbt_osmosis.core.logger as logger
 
+from dbt_osmosis.core.dbt_compat import get_meta, get_tags, set_meta, set_tags
+
 __all__ = [
     "_build_node_ancestor_tree",
     "_get_node_yaml",
@@ -155,13 +157,26 @@ def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str,
                     if unrendered_description := _get_unrendered("description", ancestor):
                         graph_edge["description"] = unrendered_description
 
-                current_tags = graph_node.get("tags", [])
-                if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
-                    graph_edge["tags"] = list(merged_tags)
+                incoming_tags = get_tags(context, graph_edge)
+                current_tags = get_tags(context, graph_node)
+                if merged_tags := list(set(incoming_tags) | set(current_tags)):
+                    set_tags(context, graph_node, sorted(merged_tags))
+                # Remove tags from edge to prevent double-merging by update()
+                if context.project.is_dbt_v1_10_or_greater:
+                    graph_edge.get("config", {}).pop("tags", None)
+                else:
+                    graph_edge.pop("tags", None)
 
-                current_meta = graph_node.get("meta", {})
-                if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
-                    graph_edge["meta"] = merged_meta
+
+                incoming_meta = get_meta(context, graph_edge)
+                current_meta = get_meta(context, graph_node)
+                if merged_meta := {**current_meta, **incoming_meta}:
+                    set_meta(context, graph_node, merged_meta)
+                # Remove meta from edge to prevent double-merging by update()
+                if context.project.is_dbt_v1_10_or_greater:
+                    graph_edge.get("config", {}).pop("meta", None)
+                else:
+                    graph_edge.pop("meta", None)
 
                 for inheritable in _get_setting_for_node(
                     "add-inheritance-for-specified-keys",

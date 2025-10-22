@@ -2,48 +2,61 @@ from __future__ import annotations
 
 import threading
 import typing as t
-from concurrent.futures import FIRST_EXCEPTION, Future, wait
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from dbt.artifacts.resources.types import NodeType
-from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDefinition
+from concurrent.futures import Future, wait, FIRST_EXCEPTION
 
 import dbt_osmosis.core.logger as logger
 
-__all__ = [
-    "RestructureOperation",
-    "RestructureDeltaPlan",
-    "_generate_minimal_model_yaml",
-    "_generate_minimal_source_yaml",
-    "_create_operations_for_node",
-    "draft_restructure_delta_plan",
-    "pretty_print_plan",
-    "_remove_models",
-    "_remove_seeds",
-    "_remove_sources",
-    "apply_restructure_plan",
-]
+# CORRECTED: Imports moved outside of the TYPE_CHECKING block
+from dbt.contracts.graph.nodes import ResultNode, ModelNode, SeedNode, SourceDefinition
+from dbt.node_types import NodeType
+
+if t.TYPE_CHECKING:
+    from dbt_osmosis.core.path_management import SchemaFileLocation
 
 
 @dataclass
 class RestructureOperation:
-    """Represents a single operation to perform on a YAML file.
-
-    This might be CREATE, UPDATE, SUPERSEDE, etc. In a more advanced approach,
-    we might unify multiple steps under a single operation with sub-operations.
-    """
+    """A planned restructure operation to be executed by dbt-osmosis."""
 
     file_path: Path
-    content: dict[str, t.Any]
+    """The path to the file to be operated on."""
+    content: dict[str, t.Any] = field(default_factory=dict)
+    """A mapping of model names to their documentation."""
     superseded_paths: dict[Path, list[ResultNode]] = field(default_factory=dict)
 
 
 @dataclass
 class RestructureDeltaPlan:
-    """Stores all the operations needed to restructure the project."""
+    """A container for all planned restructure operations."""
 
     operations: list[RestructureOperation] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        """Return True if there are any operations or superseded files."""
+        return bool(self.operations)
+
+# ADDED: New helper function to inspect YAML content
+def _is_yaml_file_relevant(context: t.Any, path: Path) -> bool:
+    """Check if a YAML file contains keys relevant to dbt-osmosis (models, sources, seeds)."""
+    from dbt_osmosis.core.schema.reader import _read_yaml
+
+    if not path or not path.exists():
+        return True  # Assume relevance if it doesn't exist yet
+
+    doc = _read_yaml(context.yaml_handler, context.yaml_handler_lock, path)
+    relevant_keys = {"models", "sources", "seeds"}
+    
+    # If any relevant key exists, the file is relevant
+    if any(key in doc for key in relevant_keys):
+        return True
+    
+    logger.debug(
+        ":magnifying_glass_left: Skipping irrelevant YAML file (no models/sources/seeds) => %s", path
+    )
+    return False
 
 
 def _generate_minimal_model_yaml(node: t.Union[ModelNode, SeedNode]) -> dict[str, t.Any]:
@@ -93,6 +106,10 @@ def _create_operations_for_node(
                 )
             )
     else:
+        # UPDATED: Check if the current file is relevant before processing
+        if not _is_yaml_file_relevant(context, loc.current):
+            return []
+            
         from dbt_osmosis.core.schema.reader import _read_yaml
 
         existing = _read_yaml(context.yaml_handler, context.yaml_handler_lock, loc.current)

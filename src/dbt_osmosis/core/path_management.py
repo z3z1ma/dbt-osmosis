@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import typing as t
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -54,24 +55,23 @@ class MissingOsmosisConfig(Exception):
 
 def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
     """Get the yaml path template for a dbt model or source node."""
-    from dbt_osmosis.core.introspection import _find_first
+    
+    path_template = node.config.get("dbt-osmosis")
 
-    if node.resource_type == NodeType.Source:
-        def_or_path = context.source_definitions.get(node.source_name)
-        if isinstance(def_or_path, dict):
-            return def_or_path.get("path")
-        return def_or_path
+    if not path_template:
+        try:
+            project_vars = context.project.runtime_cfg.vars.to_dict()
+            path_template = project_vars.get("dbt_osmosis_default_path")
+            if path_template:
+                logger.debug(":earth_americas: Using global var 'dbt_osmosis_default_path': %s", path_template)
+        except Exception:
+            path_template = None
 
-    conf = [
-        c.get(k)
-        for k in ("dbt-osmosis", "dbt_osmosis")
-        for c in (node.config.extra, node.config.meta, node.unrendered_config)
-    ]
-    path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
     if not path_template:
         raise MissingOsmosisConfig(
-            f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
+            f"Config key `dbt-osmosis: <path>` or var `dbt_osmosis_default_path` not set for model {node.name}"
         )
+    
     logger.debug(":gear: Resolved YAML path template => %s", path_template)
     return path_template
 
@@ -93,52 +93,25 @@ def get_current_yaml_path(context: t.Any, node: ResultNode) -> t.Union[Path, Non
 
 def get_target_yaml_path(context: t.Any, node: ResultNode) -> Path:
     """Get the target yaml path for a dbt model or source node."""
+    project_root = Path(context.project.runtime_cfg.project_root)
     tpl = _get_yaml_path_template(context, node)
+
     if not tpl:
         logger.warning(":warning: No path template found for => %s", node.unique_id)
-        return Path(context.project.runtime_cfg.project_root, node.original_file_path)
+        return project_root.joinpath(node.original_file_path)
 
-    fqn_ = node.fqn
-    tags_ = node.tags
+    if tpl.lower() == "alongside":
+        sql_path = project_root.joinpath(node.original_file_path)
+        yml_path = sql_path.with_suffix(".yml")
+        logger.debug(":star2: Target YAML path (alongside) => %s", yml_path)
+        return yml_path
 
-    # NOTE: this permits negative index lookups in fqn within format strings
-    lr_index: dict[int, str] = {i: s for i, s in enumerate(fqn_)}
-    rl_index: dict[str, str] = {
-        str(-len(fqn_) + i): s for i, s in enumerate(reversed(fqn_), start=1)
-    }
-    node.fqn = {**rl_index, **lr_index}  # type: ignore[assignment]
+    path = Path(node.original_file_path)
+    rendered = tpl.format(model=node.name, parent=path.parent.name)
 
-    # NOTE: this permits negative index lookups in tags within format strings
-    tags_lr_index: dict[int, str] = {i: s for i, s in enumerate(tags_)}
-    tags_rl_index: dict[str, str] = {
-        str(-len(tags_) + i): s for i, s in enumerate(reversed(tags_), start=1)
-    }
-    node.tags = {**tags_rl_index, **tags_lr_index}  # type: ignore[assignment]
-
-    path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
-    rendered = tpl.format(node=node, model=node.name, parent=path.parent.name)
-
-    # restore original values
-    node.fqn = fqn_
-    node.tags = tags_
-
-    segments: list[t.Union[Path, str]] = []
-
-    if node.resource_type == NodeType.Source:
-        segments.append(context.project.runtime_cfg.model_paths[0])
-    elif rendered.startswith("/"):
-        segments.append(context.project.runtime_cfg.model_paths[0])
-        rendered = rendered.lstrip("/")
-    else:
-        segments.append(path.parent)
-
-    if not (rendered.endswith(".yml") or rendered.endswith(".yaml")):
-        rendered += ".yml"
-    segments.append(rendered)
-
-    path = Path(context.project.runtime_cfg.project_root, *segments)
-    logger.debug(":star2: Target YAML path => %s", path)
-    return path
+    final_path = project_root.joinpath(rendered)
+    logger.debug(":star2: Target YAML path (formatted) => %s", final_path)
+    return final_path
 
 
 def build_yaml_file_mapping(
@@ -161,16 +134,18 @@ def build_yaml_file_mapping(
             node_type=node.resource_type,
         )
 
-    logger.debug(":card_index_dividers: Built YAML file mapping => %s", out_map)
+    # ADDED: Log the complete file plan before returning
+    logger.info("=" * 80)
+    logger.info("PROPOSED YAML REFACTOR PLAN (MODEL -> TARGET FILE):")
+    for uid, location in out_map.items():
+        logger.info(f"{uid} -> {location.target}")
+    logger.info("=" * 80)
+
     return out_map
 
 
 def create_missing_source_yamls(context: t.Any) -> None:
-    """Create source files for sources defined in the dbt_project.yml dbt-osmosis var which don't exist as nodes.
-
-    This is a useful preprocessing step to ensure that all sources are represented in the dbt project manifest. We
-    do not have rich node information for non-existent sources, hence the alternative codepath here to bootstrap them.
-    """
+    """Create source files for sources defined in the dbt_project.yml dbt-osmosis var which don't exist as nodes."""
     from dbt_osmosis.core.config import _reload_manifest
     from dbt_osmosis.core.introspection import _find_first, get_columns
 
