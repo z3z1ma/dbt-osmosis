@@ -207,11 +207,13 @@ def get_columns(
             )
             if not isinstance(column, ColumnMetadata):
                 dtype = _maybe_use_precise_dtype(column, context.settings, result_node)
+                # BigQuery uses "description" attribute, other adapters use "comment"
+                col_comment = getattr(column, "description", None) or getattr(column, "comment", None)
                 column = ColumnMetadata(
                     name=normalized,
                     type=dtype,
                     index=index,
-                    comment=getattr(column, "comment", None),
+                    comment=col_comment,
                 )
             normalized_columns[normalized] = column
             index += 1
