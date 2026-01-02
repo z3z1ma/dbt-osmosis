@@ -34,6 +34,7 @@ __all__ = [
     "DbtProjectContext",
     "create_dbt_project_context",
     "_reload_manifest",
+    "MAX_PREVIEW_LENGTH",
 ]
 
 disable_tracking()
@@ -273,3 +274,7 @@ def _reload_manifest(context: DbtProjectContext) -> None:
         context.adapter.set_macro_resolver(manifest)
     context.manifest = manifest
     logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)
+
+
+# Constants
+MAX_PREVIEW_LENGTH = 100

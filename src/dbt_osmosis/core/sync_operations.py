@@ -35,6 +35,14 @@ def _sync_doc_section(context: t.Any, node: ResultNode, doc_section: dict[str, t
         current_map[norm_name] = c
 
     for name, meta in node.columns.items():
+        # Null check: validate meta exists before calling to_dict
+        if meta is None:
+            logger.warning(
+                ":warning: Column %s has None metadata in node %s, skipping",
+                name,
+                node.unique_id,
+            )
+            continue
         cdict = meta.to_dict(omit_none=True)
         cdict["name"] = name
         from dbt_osmosis.core.introspection import _get_setting_for_node, normalize_column_name
@@ -178,6 +186,7 @@ def sync_node_to_yaml(
         doc_version: t.Optional[dict[str, t.Any]] = None
 
         # First, check for duplicate model entries and remove them
+        # FIXED: Collect indices first, then remove in reverse order to avoid modification during iteration
         model_indices: list[int] = []
         for i, item in enumerate(doc_list):
             if item.get("name") == node.name:

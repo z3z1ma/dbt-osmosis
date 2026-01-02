@@ -28,17 +28,19 @@ def _write_yaml(
         with yaml_handler_lock:
             path.parent.mkdir(parents=True, exist_ok=True)
             original = path.read_bytes() if path.is_file() else b""
-            yaml_handler.dump(data, staging := io.BytesIO())
-            modified = staging.getvalue()
-            if modified != original:
-                logger.info(":writing_hand: Writing changes to => %s", path)
-                with path.open("wb") as f:
-                    _ = f.write(modified)
-                    if mutation_tracker:
-                        mutation_tracker(1)
-            else:
-                logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
-            del staging
+            # Use context manager to ensure BytesIO is properly closed
+            with io.BytesIO() as staging:
+                yaml_handler.dump(data, staging)
+                modified = staging.getvalue()
+                if modified != original:
+                    logger.info(":writing_hand: Writing changes to => %s", path)
+                    # Use context manager to ensure file handle is properly closed
+                    with path.open("wb") as f:
+                        _ = f.write(modified)
+                        if mutation_tracker:
+                            mutation_tracker(1)
+                else:
+                    logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
             if path in _YAML_BUFFER_CACHE:
                 del _YAML_BUFFER_CACHE[path]
 
@@ -55,15 +57,18 @@ def commit_yamls(
         with yaml_handler_lock:
             for path in list(_YAML_BUFFER_CACHE.keys()):
                 original = path.read_bytes() if path.is_file() else b""
-                yaml_handler.dump(_YAML_BUFFER_CACHE[path], staging := io.BytesIO())
-                modified = staging.getvalue()
-                if modified != original:
-                    logger.info(":writing_hand: Writing => %s", path)
-                    with path.open("wb") as f:
-                        logger.info(f"Writing {path}")
-                        _ = f.write(modified)
-                        if mutation_tracker:
-                            mutation_tracker(1)
-                else:
-                    logger.debug(":white_check_mark: Skipping => %s (no changes)", path)
+                # Use context manager to ensure BytesIO is properly closed
+                with io.BytesIO() as staging:
+                    yaml_handler.dump(_YAML_BUFFER_CACHE[path], staging)
+                    modified = staging.getvalue()
+                    if modified != original:
+                        logger.info(":writing_hand: Writing => %s", path)
+                        # Use context manager to ensure file handle is properly closed
+                        with path.open("wb") as f:
+                            logger.info(f"Writing {path}")
+                            _ = f.write(modified)
+                            if mutation_tracker:
+                                mutation_tracker(1)
+                    else:
+                        logger.debug(":white_check_mark: Skipping => %s (no changes)", path)
                 del _YAML_BUFFER_CACHE[path]

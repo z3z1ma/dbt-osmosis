@@ -25,5 +25,9 @@ def _read_yaml(
                 logger.debug(":warning: Path => %s is not a file. Returning empty doc.", path)
                 return _YAML_BUFFER_CACHE.setdefault(path, {})
             logger.debug(":open_file_folder: Reading YAML doc => %s", path)
-            _YAML_BUFFER_CACHE[path] = t.cast(dict[str, t.Any], yaml_handler.load(path))
-    return _YAML_BUFFER_CACHE[path]
+            # Add null check - yaml_handler.load() can return None for empty files
+            content = yaml_handler.load(path)
+            _YAML_BUFFER_CACHE[path] = t.cast(
+                dict[str, t.Any], content if content is not None else {}
+            )
+    return t.cast(dict[str, t.Any], _YAML_BUFFER_CACHE[path])

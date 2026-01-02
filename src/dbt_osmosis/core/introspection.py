@@ -14,6 +14,9 @@ from dbt.contracts.graph.nodes import ResultNode
 from dbt.contracts.results import CatalogArtifact, CatalogResults, ColumnMetadata
 from dbt.task.docs.generate import Catalog
 
+if t.TYPE_CHECKING:
+    pass
+
 import dbt_osmosis.core.logger as logger
 
 __all__ = [
@@ -208,7 +211,9 @@ def get_columns(
             if not isinstance(column, ColumnMetadata):
                 dtype = _maybe_use_precise_dtype(column, context.settings, result_node)
                 # BigQuery uses "description" attribute, other adapters use "comment"
-                col_comment = getattr(column, "description", None) or getattr(column, "comment", None)
+                col_comment = getattr(column, "description", None) or getattr(
+                    column, "comment", None
+                )
                 column = ColumnMetadata(
                     name=normalized,
                     type=dtype,
