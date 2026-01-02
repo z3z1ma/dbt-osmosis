@@ -181,14 +181,23 @@ def create_missing_source_yamls(context: t.Any) -> None:
 
     This is a useful preprocessing step to ensure that all sources are represented in the dbt project manifest. We
     do not have rich node information for non-existent sources, hence the alternative codepath here to bootstrap them.
+
+    For existing sources, this function will also discover and add new tables from the database that are not yet
+    defined in the source YAML file (fixes #217).
     """
     from dbt_osmosis.core.config import _reload_manifest
     from dbt_osmosis.core.introspection import _find_first, get_columns
+    from dbt_osmosis.core.schema.reader import (
+        _read_yaml,
+        _YAML_BUFFER_CACHE,
+        _YAML_BUFFER_CACHE_LOCK,
+    )
+    from dbt_osmosis.core.schema.writer import _write_yaml
 
     if context.project.config.disable_introspection:
         logger.warning(":warning: Introspection is disabled, cannot create missing source YAMLs.")
         return
-    logger.info(":factory: Creating missing source YAMLs (if any).")
+    logger.info(":factory: Creating missing source YAMLs and updating existing sources (if any).")
     database: str = context.project.runtime_cfg.credentials.database
     lowercase: bool = context.settings.output_to_lower
 
@@ -204,14 +213,22 @@ def create_missing_source_yamls(context: t.Any) -> None:
         else:
             continue
 
-        if _find_first(
+        # Check if source already exists in the manifest
+        existing_source_node = _find_first(
             context.project.manifest.sources.values(), lambda s: s.source_name == source
-        ):
+        )
+
+        if existing_source_node:
+            # Source already exists - check for new tables to add
+            # Get the set of tables already defined in the manifest/YAML
+            manifest_tables = {
+                s.name for s in context.project.manifest.sources.values() if s.source_name == source
+            }
             logger.debug(
-                ":white_check_mark: Source => %s already exists in the manifest, skipping creation.",
+                ":white_check_mark: Source => %s already exists in the manifest with %d tables.",
                 source,
+                len(manifest_tables),
             )
-            continue
 
         # SECURITY: Remove only the first leading separator, not all (prevents path traversal)
         cleaned_path = src_yaml_path[1:] if src_yaml_path.startswith(os.sep) else src_yaml_path
@@ -247,24 +264,80 @@ def create_missing_source_yamls(context: t.Any) -> None:
                     _ = col.pop("data_type", None)
             return s
 
-        tables = [
-            _describe(relation)
-            for relation in context.project.adapter.list_relations(database=database, schema=schema)
-        ]
-        source_dict = {"name": source, "database": database, "schema": schema, "tables": tables}
+        # Get all tables from the database
+        db_relations = list(
+            context.project.adapter.list_relations(database=database, schema=schema)
+        )
+        db_tables = {rel.identifier: _describe(rel) for rel in db_relations}
 
-        src_yaml_path_obj.parent.mkdir(parents=True, exist_ok=True)
-        with src_yaml_path_obj.open("w") as f:
-            logger.info(
-                ":books: Injecting new source => %s => %s", source_dict["name"], src_yaml_path_obj
-            )
-            context.yaml_handler.dump({"version": 2, "sources": [source_dict]}, f)
-            context.register_mutations(1)
+        if existing_source_node:
+            # For existing sources, check if there are new tables in the database
+            new_table_names = set(db_tables.keys()) - manifest_tables
+            if new_table_names:
+                logger.info(
+                    ":sparkles: Found %d new tables for source => %s: %s",
+                    len(new_table_names),
+                    source,
+                    sorted(new_table_names),
+                )
+                # Read the existing YAML file
+                existing_doc = _read_yaml(
+                    context.yaml_handler, context.yaml_handler_lock, src_yaml_path_obj
+                )
+                # Find the source entry and add new tables
+                for src_entry in existing_doc.get("sources", []):
+                    if src_entry.get("name") == source:
+                        # Add new tables to the existing source
+                        existing_tables_set = {t["name"] for t in src_entry.get("tables", [])}
+                        for table_name in sorted(new_table_names):
+                            if table_name not in existing_tables_set:
+                                src_entry.setdefault("tables", []).append(db_tables[table_name])
+                                logger.info(
+                                    ":plus: Adding new table => %s to source => %s",
+                                    table_name,
+                                    source,
+                                )
+                        break
+                # Write the updated YAML back
+                src_yaml_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                _write_yaml(
+                    context.yaml_handler,
+                    context.yaml_handler_lock,
+                    src_yaml_path_obj,
+                    existing_doc,
+                    context.settings.dry_run,
+                    context.register_mutations,
+                )
+                # Clear cache for the updated file
+                with _YAML_BUFFER_CACHE_LOCK:
+                    if src_yaml_path_obj in _YAML_BUFFER_CACHE:
+                        del _YAML_BUFFER_CACHE[src_yaml_path_obj]
+                did_side_effect = True
+            else:
+                logger.debug(
+                    ":white_check_mark: No new tables found for source => %s",
+                    source,
+                )
+        else:
+            # Source doesn't exist - create new YAML file with all tables
+            tables = list(db_tables.values())
+            source_dict = {"name": source, "database": database, "schema": schema, "tables": tables}
 
-        did_side_effect = True
+            src_yaml_path_obj.parent.mkdir(parents=True, exist_ok=True)
+            with src_yaml_path_obj.open("w") as f:
+                logger.info(
+                    ":books: Injecting new source => %s => %s with %d tables",
+                    source_dict["name"],
+                    src_yaml_path_obj,
+                    len(tables),
+                )
+                context.yaml_handler.dump({"version": 2, "sources": [source_dict]}, f)
+                context.register_mutations(1)
+
+            did_side_effect = True
 
     if did_side_effect:
         logger.info(
-            ":arrows_counterclockwise: Some new sources were created, reloading the project."
+            ":arrows_counterclockwise: Sources were updated, reloading the project.",
         )
         _reload_manifest(context.project)
