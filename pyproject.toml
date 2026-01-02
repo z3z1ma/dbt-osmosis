@@ -47,6 +47,7 @@ openai = ["openai~=1.58.1"]
 dev = [
   "ruff~=0.8.4",
   "pytest~=8.3.4",
+  "pytest-cov~=6.0",
   "pre-commit>3.0.0,<5",
   "dbt-duckdb>=1.0.0,<2",
 ]
@@ -72,3 +73,42 @@ include_trailing_comma = true
 [tool.ruff]
 line-length = 100
 preview = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "if t.TYPE_CHECKING:",
+]
+fail_under = 70
+precision = 2
+show_missing = true
+skip_covered = false
