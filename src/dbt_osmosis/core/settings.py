@@ -63,6 +63,8 @@ class YamlRefactorSettings:
     """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
     create_catalog_if_not_exists: bool = False
     """Generate the catalog.json for the project if it doesn't exist and use it for introspective queries."""
+    include_external: bool = False
+    """Include models and sources from external dbt packages in the processing."""
 
 
 @dataclass

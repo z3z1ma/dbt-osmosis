@@ -280,6 +280,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     is_flag=True,
     help="Automatically synthesize missing documentation with OpenAI.",
 )
+@click.option(
+    "--include-external",
+    is_flag=True,
+    help="Include models and sources from external dbt packages in the processing.",
+)
 def refactor(
     target: str | None = None,
     profile: str | None = None,
@@ -461,6 +466,11 @@ def organize(
     "--synthesize",
     is_flag=True,
     help="Automatically synthesize missing documentation with OpenAI.",
+)
+@click.option(
+    "--include-external",
+    is_flag=True,
+    help="Include models and sources from external dbt packages in the processing.",
 )
 def document(
     target: str | None = None,

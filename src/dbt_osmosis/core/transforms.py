@@ -209,7 +209,12 @@ def inherit_upstream_column_knowledge(
 
         for _ in context.pool.map(
             partial(inherit_upstream_column_knowledge, context),
-            (n for _, n in _iter_candidate_nodes(context, include_external=True)),
+            (
+                n
+                for _, n in _iter_candidate_nodes(
+                    context, include_external=context.settings.include_external
+                )
+            ),
         ):
             ...
         return
