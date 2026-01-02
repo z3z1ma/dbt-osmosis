@@ -138,3 +138,6 @@ dmypy.json
 
 # Taskfile hashes
 .task
+
+# Repos
+_deps/
