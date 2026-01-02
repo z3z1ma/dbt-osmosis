@@ -5,9 +5,9 @@ from unittest import mock
 import pytest
 
 from dbt_osmosis.core.config import DbtConfiguration, create_dbt_project_context
+from dbt_osmosis.core.schema.writer import commit_yamls
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 from dbt_osmosis.core.sync_operations import sync_node_to_yaml
-from dbt_osmosis.core.schema.writer import commit_yamls
 
 
 @pytest.fixture(scope="module")

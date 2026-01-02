@@ -15,6 +15,12 @@ __all__ = [
     "_build_node_ancestor_tree",
     "_get_node_yaml",
     "_build_column_knowledge_graph",
+    "_collect_column_variants",
+    "_get_unrendered",
+    "_build_graph_edge",
+    "_clean_graph_edge",
+    "_find_matching_column",
+    "_merge_graph_node_data",
 ]
 
 
@@ -111,13 +117,10 @@ def _get_node_yaml(
     return None
 
 
-def _build_column_knowledge_graph(
+def _collect_column_variants(
     context: YamlRefactorContextProtocol, node: ResultNode
-) -> dict[str, dict[str, t.Any]]:
-    """Generate a column knowledge graph for a dbt model or source node."""
-    tree = _build_node_ancestor_tree(context.project.manifest, node)
-    logger.debug(":family_tree: Node ancestor tree => %s", tree)
-
+) -> dict[str, list[str]]:
+    """Collect column variants from node columns and plugins."""
     from dbt_osmosis.core.plugins import get_plugin_manager
 
     pm = get_plugin_manager()
@@ -127,22 +130,157 @@ def _build_column_knowledge_graph(
         for v in pm.hook.get_candidates(name=column_name, node=node, context=context.project):
             variants.extend(t.cast(list[str], v))
 
-    def _get_unrendered(k: str, ancestor: ResultNode) -> t.Any:
-        raw_yaml: t.Mapping[str, t.Any] = _get_node_yaml(context, ancestor) or {}
-        raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
-        from dbt_osmosis.core.introspection import _find_first, normalize_column_name
+    return node_column_variants
 
-        raw_column_metadata = _find_first(
-            raw_columns,
-            lambda c: (
-                normalize_column_name(c["name"], context.project.runtime_cfg.credentials.type)
-                in node_column_variants[name]
-            ),
-            {},
+
+def _get_unrendered(
+    context: YamlRefactorContextProtocol,
+    k: str,
+    name: str,
+    ancestor: ResultNode,
+    node_column_variants: dict[str, list[str]]
+) -> t.Any:
+    """Get unrendered value for a column from ancestor YAML."""
+    raw_yaml: t.Mapping[str, t.Any] = _get_node_yaml(context, ancestor) or {}
+    raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
+    from dbt_osmosis.core.introspection import _find_first, normalize_column_name
+
+    raw_column_metadata = _find_first(
+        raw_columns,
+        lambda c: (
+            normalize_column_name(c["name"], context.project.runtime_cfg.credentials.type)
+            in node_column_variants[name]
+        ),
+        {},
+    )
+    return raw_column_metadata.get(k)
+
+
+def _build_graph_edge(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    name: str,
+    incoming: t.Any,
+    ancestor: ResultNode,
+    node_column_variants: dict[str, list[str]],
+) -> dict[str, t.Any]:
+    """Build a graph edge from incoming column with inheritance applied."""
+    graph_edge = incoming.to_dict(omit_none=True)
+
+    from dbt_osmosis.core.introspection import _get_setting_for_node
+
+    # Add progenitor to meta if configured
+    if _get_setting_for_node(
+        "add-progenitor-to-meta",
+        node,
+        name,
+        fallback=context.settings.add_progenitor_to_meta,
+    ):
+        graph_edge.setdefault("meta", {}).setdefault(
+            "osmosis_progenitor", ancestor.unique_id
         )
-        return raw_column_metadata.get(k)
 
+    # Use unrendered descriptions if configured
+    if _get_setting_for_node(
+        "use-unrendered-descriptions",
+        node,
+        name,
+        fallback=context.settings.use_unrendered_descriptions,
+    ):
+        if unrendered_description := _get_unrendered(context, "description", name, ancestor, node_column_variants):
+            graph_edge["description"] = unrendered_description
+
+    # Handle inheritance for specified keys
+    for inheritable in _get_setting_for_node(
+        "add-inheritance-for-specified-keys",
+        node,
+        name,
+        fallback=context.settings.add_inheritance_for_specified_keys,
+    ):
+        current_val = graph_edge.get(inheritable)
+        if incoming_unrendered_val := _get_unrendered(context, inheritable, name, ancestor, node_column_variants):
+            graph_edge[inheritable] = incoming_unrendered_val
+        elif incoming_val := graph_edge.pop(inheritable, current_val):
+            graph_edge[inheritable] = incoming_val
+
+    return graph_edge
+
+
+def _clean_graph_edge(
+    context: YamlRefactorContextProtocol,
+    graph_edge: dict[str, t.Any],
+    generation: str,
+    node: ResultNode,
+    name: str,
+) -> None:
+    """Clean up empty values and placeholder descriptions from graph edge."""
+    from dbt_osmosis.core.introspection import _get_setting_for_node
+    from dbt_osmosis.core.settings import EMPTY_STRING
+
+    # Remove placeholder descriptions or force inherit if direct ancestor
+    if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
+        generation == "generation_0"
+        and _get_setting_for_node(
+            "force_inherit_descriptions",
+            node,
+            name,
+            fallback=context.settings.force_inherit_descriptions,
+        )
+    ):
+        graph_edge.pop("description", None)
+
+    # Remove empty tags and meta objects
+    if graph_edge.get("tags") == []:
+        del graph_edge["tags"]
+    if graph_edge.get("meta") == {}:
+        del graph_edge["meta"]
+
+    # Remove None values
+    for k in list(graph_edge.keys()):
+        if graph_edge[k] is None:
+            graph_edge.pop(k)
+
+
+def _find_matching_column(
+    ancestor: ResultNode, column_variants: list[str]
+) -> t.Any | None:
+    """Find a matching column in ancestor from the given variants."""
+    for variant in column_variants:
+        incoming = ancestor.columns.get(variant)
+        if incoming is not None:
+            return incoming
+    return None
+
+
+def _merge_graph_node_data(
+    graph_node: dict[str, t.Any], graph_edge: dict[str, t.Any]
+) -> None:
+    """Merge graph edge data into existing graph node, handling tags and meta merging."""
+    # Merge tags
+    current_tags = graph_node.get("tags", [])
+    if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
+        graph_edge["tags"] = list(merged_tags)
+
+    # Merge meta
+    current_meta = graph_node.get("meta", {})
+    if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
+        graph_edge["meta"] = merged_meta
+
+    # Update graph node with merged data
+    graph_node.update(graph_edge)
+
+
+def _build_column_knowledge_graph(
+    context: YamlRefactorContextProtocol, node: ResultNode
+) -> dict[str, dict[str, t.Any]]:
+    """Generate a column knowledge graph for a dbt model or source node."""
+    tree = _build_node_ancestor_tree(context.project.manifest, node)
+    logger.debug(":family_tree: Node ancestor tree => %s", tree)
+
+    node_column_variants = _collect_column_variants(context, node)
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
+
+    # Process ancestors from farthest to closest
     for generation in reversed(sorted(tree.keys())):
         ancestors = tree[generation]
         for ancestor_uid in ancestors:
@@ -152,77 +290,23 @@ def _build_column_knowledge_graph(
             if not isinstance(ancestor, (SourceDefinition, SeedNode, ModelNode)):
                 continue
 
+            # Process each column in the target node
             for name, _ in node.columns.items():
-                graph_node = column_knowledge_graph.setdefault(name, {})
-                for variant in node_column_variants[name]:
-                    incoming = ancestor.columns.get(variant)
-                    if incoming is not None:
-                        break
-                else:
+                # Find matching column in ancestor
+                incoming = _find_matching_column(ancestor, node_column_variants[name])
+                if incoming is None:
                     continue
-                graph_edge = incoming.to_dict(omit_none=True)
 
-                from dbt_osmosis.core.introspection import _get_setting_for_node
+                # Build graph edge with inheritance applied
+                graph_edge = _build_graph_edge(
+                    context, node, name, incoming, ancestor, node_column_variants
+                )
 
-                if _get_setting_for_node(
-                    "add-progenitor-to-meta",
-                    node,
-                    name,
-                    fallback=context.settings.add_progenitor_to_meta,
-                ):
-                    graph_node.setdefault("meta", {}).setdefault(
-                        "osmosis_progenitor", ancestor.unique_id
-                    )
+                # Clean up empty values and placeholders
+                _clean_graph_edge(context, graph_edge, generation, node, name)
 
-                if _get_setting_for_node(
-                    "use-unrendered-descriptions",
-                    node,
-                    name,
-                    fallback=context.settings.use_unrendered_descriptions,
-                ):
-                    if unrendered_description := _get_unrendered("description", ancestor):
-                        graph_edge["description"] = unrendered_description
-
-                current_tags = graph_node.get("tags", [])
-                if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
-                    graph_edge["tags"] = list(merged_tags)
-
-                current_meta = graph_node.get("meta", {})
-                if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
-                    graph_edge["meta"] = merged_meta
-
-                for inheritable in _get_setting_for_node(
-                    "add-inheritance-for-specified-keys",
-                    node,
-                    name,
-                    fallback=context.settings.add_inheritance_for_specified_keys,
-                ):
-                    current_val = graph_node.get(inheritable)
-                    if incoming_unrendered_val := _get_unrendered(inheritable, ancestor):
-                        graph_edge[inheritable] = incoming_unrendered_val
-                    elif incoming_val := graph_edge.pop(inheritable, current_val):
-                        graph_edge[inheritable] = incoming_val
-
-                from dbt_osmosis.core.settings import EMPTY_STRING
-
-                if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
-                    generation == "generation_0"
-                    and _get_setting_for_node(
-                        "force_inherit_descriptions",
-                        node,
-                        name,
-                        fallback=context.settings.force_inherit_descriptions,
-                    )
-                ):
-                    graph_edge.pop("description", None)
-                if graph_edge.get("tags") == []:
-                    del graph_edge["tags"]
-                if graph_edge.get("meta") == {}:
-                    del graph_edge["meta"]
-                for k in list(graph_edge.keys()):
-                    if graph_edge[k] is None:
-                        graph_edge.pop(k)
-
-                graph_node.update(graph_edge)
+                # Merge with existing graph node
+                graph_node = column_knowledge_graph.setdefault(name, {})
+                _merge_graph_node_data(graph_node, graph_edge)
 
     return column_knowledge_graph

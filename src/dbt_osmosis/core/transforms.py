@@ -12,7 +12,15 @@ from dbt.artifacts.resources.types import NodeType
 from dbt.contracts.graph.nodes import ColumnInfo, ResultNode
 
 if t.TYPE_CHECKING:
-    from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
+    from dbt_osmosis.core.dbt_protocols import (
+        DbtProjectContextProtocol,
+        YamlRefactorContextProtocol,
+        ColumnDict,
+        ConfigDict,
+        NodesDict,
+        SourcesDict,
+        YAMLContent,
+    )
 
 import dbt_osmosis.core.logger as logger
 
@@ -74,7 +82,7 @@ class TransformOperation:
         """Chain operations together."""
         return TransformPipeline([self]) >> next_op
 
-    def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
+    def __repr__(self) -> str:
         return f"<Operation: {self.name} (success={self.metadata.get('success', False)})>"
 
 
@@ -99,7 +107,7 @@ class TransformPipeline:
         elif callable(next_op):
             self.operations.append(TransformOperation(next_op, next_op.__name__))
         else:
-            raise ValueError(f"Cannot chain non-callable: {next_op}")  # pyright: ignore[reportUnreachable]
+            raise ValueError(f"Cannot chain non-callable: {next_op}")
         return self
 
     def __call__(
@@ -177,7 +185,7 @@ class TransformPipeline:
 
         return self
 
-    def __repr__(self) -> str:  # pyright: ignore[reportImplicitOverride]
+    def __repr__(self) -> str:
         steps = [op.name for op in self.operations]
         return f"<OperationPipeline: {len(self.operations)} operations, steps={steps!r}>"
 
@@ -433,9 +441,7 @@ def sort_columns_as_configured(context: t.Any, node: ResultNode | None = None) -
 
 
 @_transform_op("Synchronize Data Types")
-def synchronize_data_types(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
-) -> None:
+def synchronize_data_types(context: t.Any, node: ResultNode | None = None) -> None:
     """Populate data types for columns in a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.introspection import (
         _get_setting_for_node,
@@ -472,12 +478,149 @@ def synchronize_data_types(
 
 
 @_transform_op("Synthesize Missing Documentation")
+def _collect_upstream_documents(
+    node: ResultNode, context: t.Any
+) -> list[str]:
+    """Collect upstream documentation from dependency nodes.
+
+    Args:
+        node: The dbt node to collect upstream docs for
+        context: The YamlRefactorContext instance
+
+    Returns:
+        List of strings containing upstream documentation
+    """
+    import textwrap
+    from collections import ChainMap
+
+    node_map = ChainMap(
+        t.cast(dict[str, ResultNode], context.project.manifest.nodes),
+        t.cast(dict[str, ResultNode], context.project.manifest.sources),
+    )
+    upstream_docs: list[str] = ["# The following is not exhaustive, but provides some context."]
+    depends_on_nodes = t.cast(list[str], node.depends_on_nodes)
+
+    for i, uid in enumerate(depends_on_nodes):
+        dep = node_map.get(uid)
+        if dep is not None:
+            oneline_desc = dep.description.replace("\n", " ")
+            upstream_docs.append(f"{uid}: # {oneline_desc}")
+            for j, (name, meta) in enumerate(dep.columns.items()):
+                if meta.description and meta.description not in context.placeholders:
+                    upstream_docs.append(f"- {name}: |\n{textwrap.indent(meta.description, '  ')}")
+                if j > 20:
+                    # just a small amount of this supplementary context is sufficient
+                    upstream_docs.append("- (omitting additional columns for brevity)")
+                    break
+        # ensure our context window is bounded, semi-arbitrary
+        if len(upstream_docs) > 100 and i < len(depends_on_nodes) - 1:
+            upstream_docs.append(f"# remaining nodes are: {', '.join(depends_on_nodes[i:])}")
+            break
+
+    if len(upstream_docs) == 1:
+        upstream_docs[0] = "(no upstream documentation found)"
+
+    return upstream_docs
+
+
+def _synthesize_bulk_documentation(
+    node: ResultNode, upstream_docs: list[str], context: t.Any
+) -> None:
+    """Synthesize documentation in bulk for multiple columns.
+
+    Args:
+        node: The dbt node to synthesize documentation for
+        upstream_docs: List of upstream documentation strings
+        context: The YamlRefactorContext instance
+    """
+    from dbt_osmosis.core.llm import generate_model_spec_as_json
+
+    logger.info(
+        ":robot: Synthesizing bulk documentation for => %s columns in node => %s",
+        len(node.columns) - len([c for c in node.columns.values() if c.description and c.description not in context.placeholders]),
+        node.unique_id,
+    )
+
+    spec = generate_model_spec_as_json(
+        getattr(
+            node,
+            "compiled_sql",
+            f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}",
+        ),
+        upstream_docs=upstream_docs,
+        existing_context=f"NodeId={node.unique_id}\nTableDescription={node.description}",
+        temperature=0.4,
+    )
+
+    if not node.description or node.description in context.placeholders:
+        node.description = spec.get("description", node.description)
+
+    for synth_col in spec.get("columns", []):
+        usr_col = node.columns.get(synth_col["name"])
+        if usr_col and (not usr_col.description or usr_col.description in context.placeholders):
+            usr_col.description = synth_col.get("description", usr_col.description)
+
+
+def _synthesize_node_documentation(
+    node: ResultNode, upstream_docs: list[str], context: t.Any
+) -> None:
+    """Synthesize documentation for the node itself.
+
+    Args:
+        node: The dbt node to synthesize documentation for
+        upstream_docs: List of upstream documentation strings
+        context: The YamlRefactorContext instance
+    """
+    from dbt_osmosis.core.llm import generate_table_doc
+
+    if not node.description or node.description in context.placeholders:
+        logger.info(
+            ":robot: Synthesizing documentation for node => %s",
+            node.unique_id,
+        )
+        node.description = generate_table_doc(
+            getattr(
+                node,
+                "compiled_sql",
+                f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}",
+            ),
+            table_name=node.relation_name or node.name,
+            upstream_docs=upstream_docs,
+        )
+
+
+def _synthesize_individual_column_documentation(
+    node: ResultNode, upstream_docs: list[str], context: t.Any
+) -> None:
+    """Synthesize documentation for individual columns.
+
+    Args:
+        node: The dbt node to synthesize documentation for
+        upstream_docs: List of upstream documentation strings
+        context: The YamlRefactorContext instance
+    """
+    from dbt_osmosis.core.llm import generate_column_doc
+
+    for column_name, column in node.columns.items():
+        if not column.description or column.description in context.placeholders:
+            logger.info(
+                ":robot: Synthesizing documentation for column => %s in node => %s",
+                column_name,
+                node.unique_id,
+            )
+            column.description = generate_column_doc(
+                column_name,
+                existing_context=f"DataType={column.data_type or 'unknown'}>\nColumnParent={node.unique_id}\nTableDescription={node.description}",
+                table_name=node.relation_name or node.name,
+                upstream_docs=upstream_docs,
+                temperature=0.7,
+            )
+
+
 def synthesize_missing_documentation_with_openai(
     context: t.Any, node: ResultNode | None = None
 ) -> None:
     """Synthesize missing documentation for a dbt node using OpenAI's GPT-4o API."""
-    import textwrap
-
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
     try:
@@ -498,6 +641,7 @@ def synthesize_missing_documentation_with_openai(
         ):
             ...
         return
+
     # since we are topologically sorted, we continually pass down synthesized knowledge leveraging our inheritance system
     # which minimizes synthesis requests -- in some cases by an order of magnitude while increasing accuracy
     _ = inherit_upstream_column_knowledge(context, node)
@@ -507,86 +651,19 @@ def synthesize_missing_documentation_with_openai(
             ":no_entry_sign: No columns to synthesize documentation for => %s", node.unique_id
         )
         return
+
     documented = len([
         column
         for column in node.columns.values()
         if column.description and column.description not in context.placeholders
     ])
-    node_map = ChainMap(
-        t.cast(dict[str, ResultNode], context.project.manifest.nodes),
-        t.cast(dict[str, ResultNode], context.project.manifest.sources),
-    )
-    upstream_docs: list[str] = ["# The following is not exhaustive, but provides some context."]
-    depends_on_nodes = t.cast(list[str], node.depends_on_nodes)
-    for i, uid in enumerate(depends_on_nodes):
-        dep = node_map.get(uid)
-        if dep is not None:
-            oneline_desc = dep.description.replace("\n", " ")
-            upstream_docs.append(f"{uid}: # {oneline_desc}")
-            for j, (name, meta) in enumerate(dep.columns.items()):
-                if meta.description and meta.description not in context.placeholders:
-                    upstream_docs.append(f"- {name}: |\n{textwrap.indent(meta.description, '  ')}")
-                if j > 20:
-                    # just a small amount of this supplementary context is sufficient
-                    upstream_docs.append("- (omitting additional columns for brevity)")
-                    break
-        # ensure our context window is bounded, semi-arbitrary
-        if len(upstream_docs) > 100 and i < len(depends_on_nodes) - 1:
-            upstream_docs.append(f"# remaining nodes are: {', '.join(depends_on_nodes[i:])}")
-            break
-    if len(upstream_docs) == 1:
-        upstream_docs[0] = "(no upstream documentation found)"
-    if (
-        total - documented
-        > 10  # a semi-arbitrary limit by which its probably better to one shot the table versus many smaller requests
-    ):
-        logger.info(
-            ":robot: Synthesizing bulk documentation for => %s columns in node => %s",
-            total - documented,
-            node.unique_id,
-        )
-        spec = generate_model_spec_as_json(
-            getattr(
-                node,
-                "compiled_sql",
-                f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}",
-            ),
-            upstream_docs=upstream_docs,
-            existing_context=f"NodeId={node.unique_id}\nTableDescription={node.description}",
-            temperature=0.4,
-        )
-        if not node.description or node.description in context.placeholders:
-            node.description = spec.get("description", node.description)
-        for synth_col in spec.get("columns", []):
-            usr_col = node.columns.get(synth_col["name"])
-            if usr_col and (not usr_col.description or usr_col.description in context.placeholders):
-                usr_col.description = synth_col.get("description", usr_col.description)
-    else:
-        if not node.description or node.description in context.placeholders:
-            logger.info(
-                ":robot: Synthesizing documentation for node => %s",
-                node.unique_id,
-            )
-            node.description = generate_table_doc(
-                getattr(
-                    node,
-                    "compiled_sql",
-                    f"SELECT {', '.join(node.columns)} FROM {node.schema}.{node.name}",
-                ),
-                table_name=node.relation_name or node.name,
-                upstream_docs=upstream_docs,
-            )
-        for column_name, column in node.columns.items():
-            if not column.description or column.description in context.placeholders:
-                logger.info(
-                    ":robot: Synthesizing documentation for column => %s in node => %s",
-                    column_name,
-                    node.unique_id,
-                )
-                column.description = generate_column_doc(
-                    column_name,
-                    existing_context=f"DataType={column.data_type or 'unknown'}>\nColumnParent={node.unique_id}\nTableDescription={node.description}",
-                    table_name=node.relation_name or node.name,
-                    upstream_docs=upstream_docs,
-                    temperature=0.7,
-                )
+
+    # Collect upstream documentation
+    upstream_docs = _collect_upstream_documents(node, context)
+
+    # Choose synthesis strategy based on number of missing columns
+    if total - documented > 10:  # Use bulk synthesis for many missing columns
+        _synthesize_bulk_documentation(node, upstream_docs, context)
+    else:  # Use individual synthesis for few missing columns
+        _synthesize_node_documentation(node, upstream_docs, context)
+        _synthesize_individual_column_documentation(node, upstream_docs, context)

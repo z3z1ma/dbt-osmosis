@@ -1,9 +1,9 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
 from dbt_osmosis.core.plugins import (
-    get_plugin_manager,
     FuzzyCaseMatching,
     FuzzyPrefixMatching,
+    get_plugin_manager,
 )
 
 

@@ -18,14 +18,14 @@ from pathlib import Path
 from threading import get_ident
 from types import ModuleType
 
-# Import from dbt-core-interface instead of internal dbt modules
-from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
-from dbt_core_interface import DbtProject as InterfaceDbtProject
-
 # Type imports for compatibility
 from dbt.adapters.base.impl import BaseAdapter
 from dbt.contracts.graph.manifest import Manifest
 from dbt.parser.models import ModelParser
+
+# Import from dbt-core-interface instead of internal dbt modules
+from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
+from dbt_core_interface import DbtProject as InterfaceDbtProject
 
 import dbt_osmosis.core.logger as logger
 

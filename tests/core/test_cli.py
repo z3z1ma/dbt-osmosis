@@ -1,8 +1,7 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
-from click.testing import CliRunner
-
 import pytest
+from click.testing import CliRunner
 
 from dbt_osmosis.cli.main import cli
 

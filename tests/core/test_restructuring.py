@@ -7,15 +7,15 @@ from unittest import mock
 import pytest
 
 from dbt_osmosis.core.config import DbtConfiguration, create_dbt_project_context
-from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
+from dbt_osmosis.core.path_management import create_missing_source_yamls
 from dbt_osmosis.core.restructuring import (
+    RestructureDeltaPlan,
+    RestructureOperation,
     apply_restructure_plan,
     draft_restructure_delta_plan,
     pretty_print_plan,
-    RestructureOperation,
-    RestructureDeltaPlan,
 )
-from dbt_osmosis.core.path_management import create_missing_source_yamls
+from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 
 
 @pytest.fixture(scope="module")

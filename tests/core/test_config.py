@@ -10,11 +10,11 @@ import pytest
 
 from dbt_osmosis.core.config import (
     DbtConfiguration,
+    _reload_manifest,
     config_to_namespace,
     create_dbt_project_context,
     discover_profiles_dir,
     discover_project_dir,
-    _reload_manifest,
 )
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 

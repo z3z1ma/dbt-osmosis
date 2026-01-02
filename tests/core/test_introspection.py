@@ -5,14 +5,14 @@ from unittest import mock
 import pytest
 
 from dbt_osmosis.core.config import DbtConfiguration, create_dbt_project_context
-from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 from dbt_osmosis.core.introspection import (
-    get_columns,
-    normalize_column_name,
     _find_first,
     _get_setting_for_node,
     _maybe_use_precise_dtype,
+    get_columns,
+    normalize_column_name,
 )
+from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 
 
 @pytest.fixture(scope="module")

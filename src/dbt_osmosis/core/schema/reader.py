@@ -4,11 +4,12 @@ Thread-safety:
     - _YAML_BUFFER_CACHE is protected by _YAML_BUFFER_CACHE_LOCK
     - All cache reads and writes must be synchronized using this lock
     - _read_yaml() acquires both yaml_handler_lock and _YAML_BUFFER_CACHE_LOCK
-    - The cache is unbounded and may grow indefinitely (known issue: dbt-osmosis-5n7)
+    - The cache now uses LRU eviction policy with a size limit of 256 entries
 """
 
 import threading
 import typing as t
+from collections import OrderedDict
 from pathlib import Path
 
 import ruamel.yaml
@@ -21,11 +22,75 @@ __all__ = [
     "_YAML_BUFFER_CACHE",
 ]
 
-_YAML_BUFFER_CACHE: dict[Path, t.Any] = {}
+
+class LRUCache:
+    """Thread-safe LRU cache implementation with dictionary-like interface.
+
+    This cache automatically evicts the least recently used items when it reaches
+    its maximum size limit. All operations are thread-safe.
+
+    Args:
+        maxsize: Maximum number of items to store before eviction
+    """
+
+    def __init__(self, maxsize: int = 256):
+        self.maxsize = maxsize
+        self._cache: OrderedDict[Path, t.Any] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def __getitem__(self, key: Path) -> t.Any:
+        with self._lock:
+            if key in self._cache:
+                # Move to end to mark as recently used
+                value = self._cache.pop(key)
+                self._cache[key] = value
+                return value
+            raise KeyError(key)
+
+    def __setitem__(self, key: Path, value: t.Any) -> None:
+        with self._lock:
+            if key in self._cache:
+                # Move to end if already exists
+                self._cache.pop(key)
+            elif len(self._cache) >= self.maxsize:
+                # Remove oldest item if at capacity
+                self._cache.popitem(last=False)
+            self._cache[key] = value
+
+    def __contains__(self, key: Path) -> bool:
+        with self._lock:
+            return key in self._cache
+
+    def __delitem__(self, key: Path) -> None:
+        with self._lock:
+            del self._cache[key]
+
+    def setdefault(self, key: Path, default: t.Any) -> t.Any:
+        with self._lock:
+            if key not in self._cache:
+                if len(self._cache) >= self.maxsize:
+                    self._cache.popitem(last=False)
+                self._cache[key] = default
+            return self._cache[key]
+
+    def clear(self) -> None:
+        """Clear all items from the cache."""
+        with self._lock:
+            self._cache.clear()
+
+    def __len__(self) -> int:
+        """Return the number of items in the cache."""
+        with self._lock:
+            return len(self._cache)
+
+
+# Use LRU cache with 256 entries to prevent unbounded growth
+# The maxsize should be large enough for typical projects but small enough to limit memory
+_YAML_BUFFER_CACHE: LRUCache = LRUCache(maxsize=256)
 """Cache for yaml file buffers to avoid redundant disk reads/writes and simplify edits.
 
 Thread-safety: Protected by _YAML_BUFFER_CACHE_LOCK. All reads and writes
-must be guarded by this lock. The cache is unbounded and may grow indefinitely.
+must be guarded by this lock. Uses LRU eviction policy with max size of 256 entries.
 """
 
 _YAML_BUFFER_CACHE_LOCK = threading.Lock()

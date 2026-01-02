@@ -4,8 +4,8 @@ import pytest
 from dbt.artifacts.resources.types import NodeType
 
 from dbt_osmosis.core.config import DbtConfiguration, create_dbt_project_context
-from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 from dbt_osmosis.core.path_management import MissingOsmosisConfig, _get_yaml_path_template
+from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 
 
 @pytest.fixture(scope="module")

@@ -54,6 +54,7 @@ def cli() -> None:
 def test_llm_connection(llm_client=None) -> None:
     """Test the connection to the LLM client."""
     import os
+
     from dbt_osmosis.core.llm import get_llm_client
 
     llm_client = os.getenv("LLM_PROVIDER")
