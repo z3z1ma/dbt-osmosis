@@ -112,3 +112,8 @@ fail_under = 70
 precision = 2
 show_missing = true
 skip_covered = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
