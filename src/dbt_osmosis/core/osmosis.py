@@ -28,6 +28,7 @@ from dbt_osmosis.core.inheritance import (
 from dbt_osmosis.core.introspection import (
     _COLUMN_LIST_CACHE,
     _find_first,
+    SettingsResolver,
     _get_setting_for_node,
     _maybe_use_precise_dtype,
     get_columns,
@@ -155,6 +156,7 @@ __all__ = [
     "config_to_namespace",
     "_reload_manifest",
     "_find_first",
+    "SettingsResolver",
     "_get_setting_for_node",
     "_maybe_use_precise_dtype",
     "_topological_sort",

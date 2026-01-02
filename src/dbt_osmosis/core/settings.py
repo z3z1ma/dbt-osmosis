@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 import typing as t
 from concurrent.futures import ThreadPoolExecutor
@@ -78,7 +79,9 @@ class YamlRefactorContext:
 
     project: DbtProjectContext  # Forward reference to avoid circular import
     settings: YamlRefactorSettings = field(default_factory=YamlRefactorSettings)
-    pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
+    pool: ThreadPoolExecutor = field(
+        default_factory=lambda: ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4))
+    )
     yaml_handler: ruamel.yaml.YAML = field(
         default_factory=lambda: None
     )  # Will be set in __post_init__
@@ -177,8 +180,22 @@ class YamlRefactorContext:
         self.yaml_handler = create_yaml_instance()
         for setting, val in self.yaml_settings.items():
             setattr(self.yaml_handler, setting, val)
-        self.pool._max_workers = self.project.runtime_cfg.threads
-        logger.info(
-            ":notebook: Osmosis ThreadPoolExecutor max_workers synced with dbt => %s",
-            self.pool._max_workers,
-        )
+        # Override max_workers with dbt's thread count if available, otherwise keep the safe default
+        if hasattr(self.project.runtime_cfg, "threads") and self.project.runtime_cfg.threads:
+            dbt_threads = self.project.runtime_cfg.threads
+            if dbt_threads < self.pool._max_workers:
+                self.pool._max_workers = dbt_threads
+                logger.info(
+                    ":notebook: Osmosis ThreadPoolExecutor max_workers capped to dbt threads => %s",
+                    self.pool._max_workers,
+                )
+            else:
+                logger.info(
+                    ":notebook: Osmosis ThreadPoolExecutor max_workers using dbt threads => %s",
+                    self.pool._max_workers,
+                )
+        else:
+            logger.info(
+                ":notebook: Osmosis ThreadPoolExecutor max_workers using default => %s",
+                self.pool._max_workers,
+            )
