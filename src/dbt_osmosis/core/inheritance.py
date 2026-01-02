@@ -231,6 +231,10 @@ def _clean_graph_edge(
     ):
         graph_edge.pop("description", None)
 
+    # Remove empty descriptions (that weren't caught by placeholder check)
+    if graph_edge.get("description") == "":
+        graph_edge.pop("description", None)
+
     # Remove empty tags and meta objects
     if graph_edge.get("tags") == []:
         del graph_edge["tags"]
@@ -259,10 +263,18 @@ def _merge_graph_node_data(graph_node: dict[str, t.Any], graph_edge: dict[str, t
     if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
         graph_edge["tags"] = list(merged_tags)
 
-    # Merge meta
+    # Merge meta, but preserve osmosis_progenitor from the first (farthest) generation
+    # The osmosis_progenitor should always point to the original source, not intermediate sources
     current_meta = graph_node.get("meta", {})
-    if merged_meta := {**current_meta, **graph_edge.pop("meta", {})}:
+    edge_meta = graph_edge.pop("meta", {})
+
+    # Preserve existing osmosis_progenitor if it exists in current_meta
+    progenitor = current_meta.get("osmosis_progenitor")
+    if merged_meta := {**current_meta, **edge_meta}:
         graph_edge["meta"] = merged_meta
+        # Restore the original progenitor if it existed
+        if progenitor:
+            graph_edge["meta"]["osmosis_progenitor"] = progenitor
 
     # Update graph node with merged data
     graph_node.update(graph_edge)
@@ -276,11 +288,35 @@ def _build_column_knowledge_graph(
     logger.debug(":family_tree: Node ancestor tree => %s", tree)
 
     node_column_variants = _collect_column_variants(context, node)
+
+    # Initialize the column knowledge graph with the local node's column data
+    # This ensures local metadata is preserved and merged with inherited metadata
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
+    for name, column in node.columns.items():
+        column_data = column.to_dict(omit_none=True)
+
+        # Clear out osmosis_progenitor if it points to the target node itself
+        # (this can happen from previous runs or dbt docs generate)
+        if column_data.get("meta", {}).get("osmosis_progenitor") == node.unique_id:
+            column_data["meta"].pop("osmosis_progenitor", None)
+            # Remove meta dict if it's now empty
+            if not column_data["meta"]:
+                column_data.pop("meta", None)
+
+        # Filter out empty strings and empty lists to match previous behavior
+        # (omit_none=True only removes None values, not empty strings/lists)
+        column_data = {k: v for k, v in column_data.items() if v not in ("", [], ())}
+        column_knowledge_graph[name] = column_data
+
+    # Track which columns have been processed in each generation to avoid
+    # multiple ancestors in the same generation from overwriting each other
+    processed_columns_in_generation: dict[str, set[str]] = {}
 
     # Process ancestors from farthest to closest
     for generation in reversed(sorted(tree.keys())):
         ancestors = tree[generation]
+        processed_columns_in_generation[generation] = set()
+
         for ancestor_uid in ancestors:
             ancestor = context.project.manifest.nodes.get(
                 ancestor_uid, context.project.manifest.sources.get(ancestor_uid)
@@ -288,12 +324,57 @@ def _build_column_knowledge_graph(
             if not isinstance(ancestor, (SourceDefinition, SeedNode, ModelNode)):
                 continue
 
+            # Special handling for the target node itself in generation_0:
+            # The target node should only be processed for columns that don't exist
+            # in any upstream source (i.e., columns that originate in this model).
+            if ancestor_uid == node.unique_id:
+                # Only process columns that haven't been found in any upstream ancestor yet
+                for name in node.columns.keys():
+                    if name in processed_columns_in_generation[generation]:
+                        continue
+                    # Only process if this column hasn't been processed in ANY generation
+                    # (meaning it doesn't exist in any upstream source)
+                    if not any(name in cols for cols in processed_columns_in_generation.values()):
+                        # For columns originating in the target node, set it as the progenitor
+                        # This provides useful information for tracking column lineage
+                        from dbt_osmosis.core.introspection import _get_setting_for_node
+
+                        if _get_setting_for_node(
+                            "add-progenitor-to-meta",
+                            node,
+                            name,
+                            fallback=context.settings.add_progenitor_to_meta,
+                        ):
+                            # Get the current column data to build the edge
+                            incoming = node.columns[name]
+                            graph_edge = incoming.to_dict(omit_none=True)
+                            # Set osmosis_progenitor to the target node itself
+                            graph_edge.setdefault("meta", {})["osmosis_progenitor"] = node.unique_id
+
+                            # Clean up empty values (like empty descriptions)
+                            _clean_graph_edge(context, graph_edge, generation, node, name)
+
+                            # Mark as processed
+                            processed_columns_in_generation[generation].add(name)
+
+                            # Merge with existing graph node
+                            graph_node = column_knowledge_graph.setdefault(name, {})
+                            _merge_graph_node_data(graph_node, graph_edge)
+                continue
+
             # Process each column in the target node
             for name, _ in node.columns.items():
+                # Skip if this column was already processed in this generation
+                if name in processed_columns_in_generation[generation]:
+                    continue
+
                 # Find matching column in ancestor
                 incoming = _find_matching_column(ancestor, node_column_variants[name])
                 if incoming is None:
                     continue
+
+                # Mark this column as processed in this generation
+                processed_columns_in_generation[generation].add(name)
 
                 # Build graph edge with inheritance applied
                 graph_edge = _build_graph_edge(
@@ -303,7 +384,7 @@ def _build_column_knowledge_graph(
                 # Clean up empty values and placeholders
                 _clean_graph_edge(context, graph_edge, generation, node, name)
 
-                # Merge with existing graph node
+                # Merge with existing graph node (which already has local column data)
                 graph_node = column_knowledge_graph.setdefault(name, {})
                 _merge_graph_node_data(graph_node, graph_edge)
 
