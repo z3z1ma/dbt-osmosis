@@ -138,7 +138,7 @@ def _get_unrendered(
     k: str,
     name: str,
     ancestor: ResultNode,
-    node_column_variants: dict[str, list[str]]
+    node_column_variants: dict[str, list[str]],
 ) -> t.Any:
     """Get unrendered value for a column from ancestor YAML."""
     raw_yaml: t.Mapping[str, t.Any] = _get_node_yaml(context, ancestor) or {}
@@ -176,9 +176,7 @@ def _build_graph_edge(
         name,
         fallback=context.settings.add_progenitor_to_meta,
     ):
-        graph_edge.setdefault("meta", {}).setdefault(
-            "osmosis_progenitor", ancestor.unique_id
-        )
+        graph_edge.setdefault("meta", {}).setdefault("osmosis_progenitor", ancestor.unique_id)
 
     # Use unrendered descriptions if configured
     if _get_setting_for_node(
@@ -187,7 +185,9 @@ def _build_graph_edge(
         name,
         fallback=context.settings.use_unrendered_descriptions,
     ):
-        if unrendered_description := _get_unrendered(context, "description", name, ancestor, node_column_variants):
+        if unrendered_description := _get_unrendered(
+            context, "description", name, ancestor, node_column_variants
+        ):
             graph_edge["description"] = unrendered_description
 
     # Handle inheritance for specified keys
@@ -198,7 +198,9 @@ def _build_graph_edge(
         fallback=context.settings.add_inheritance_for_specified_keys,
     ):
         current_val = graph_edge.get(inheritable)
-        if incoming_unrendered_val := _get_unrendered(context, inheritable, name, ancestor, node_column_variants):
+        if incoming_unrendered_val := _get_unrendered(
+            context, inheritable, name, ancestor, node_column_variants
+        ):
             graph_edge[inheritable] = incoming_unrendered_val
         elif incoming_val := graph_edge.pop(inheritable, current_val):
             graph_edge[inheritable] = incoming_val
@@ -241,9 +243,7 @@ def _clean_graph_edge(
             graph_edge.pop(k)
 
 
-def _find_matching_column(
-    ancestor: ResultNode, column_variants: list[str]
-) -> t.Any | None:
+def _find_matching_column(ancestor: ResultNode, column_variants: list[str]) -> t.Any | None:
     """Find a matching column in ancestor from the given variants."""
     for variant in column_variants:
         incoming = ancestor.columns.get(variant)
@@ -252,9 +252,7 @@ def _find_matching_column(
     return None
 
 
-def _merge_graph_node_data(
-    graph_node: dict[str, t.Any], graph_edge: dict[str, t.Any]
-) -> None:
+def _merge_graph_node_data(graph_node: dict[str, t.Any], graph_edge: dict[str, t.Any]) -> None:
     """Merge graph edge data into existing graph node, handling tags and meta merging."""
     # Merge tags
     current_tags = graph_node.get("tags", [])
