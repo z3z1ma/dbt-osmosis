@@ -134,6 +134,15 @@ def sync_node_to_yaml(
             ...
         return
 
+    # Skip package models (models from dbt packages) as they don't have writable YAML files
+    if node.package_name != context.project.runtime_cfg.project_name:
+        logger.debug(
+            ":package: Skipping package model => %s from package => %s",
+            node.unique_id,
+            node.package_name,
+        )
+        return
+
     from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
     from dbt_osmosis.core.schema.reader import _read_yaml
     from dbt_osmosis.core.schema.writer import _write_yaml

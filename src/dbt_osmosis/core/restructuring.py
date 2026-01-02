@@ -50,15 +50,35 @@ class RestructureDeltaPlan:
 
 
 def _generate_minimal_model_yaml(node: t.Union[ModelNode, SeedNode]) -> dict[str, t.Any]:
-    """Generate a minimal model yaml for a dbt model node."""
+    """Generate a minimal model yaml for a dbt model node.
+
+    Includes columns from the manifest to ensure data_type is preserved.
+    """
     logger.debug(":baby: Generating minimal yaml for Model/Seed => %s", node.name)
-    return {"name": node.name, "columns": []}
+    columns = []
+    for col_name, col_info in node.columns.items():
+        col_dict = col_info.to_dict(omit_none=True)
+        # Filter out 'config' and 'doc_blocks' fields added in dbt-core >= 1.9.6
+        col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
+        col_dict["name"] = col_name
+        columns.append(col_dict)
+    return {"name": node.name, "columns": columns}
 
 
 def _generate_minimal_source_yaml(node: SourceDefinition) -> dict[str, t.Any]:
-    """Generate a minimal source yaml for a dbt source node."""
+    """Generate a minimal source yaml for a dbt source node.
+
+    Includes columns from the manifest to ensure data_type is preserved.
+    """
     logger.debug(":baby: Generating minimal yaml for Source => %s", node.name)
-    return {"name": node.source_name, "tables": [{"name": node.name, "columns": []}]}
+    columns = []
+    for col_name, col_info in node.columns.items():
+        col_dict = col_info.to_dict(omit_none=True)
+        # Filter out 'config' and 'doc_blocks' fields added in dbt-core >= 1.9.6
+        col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
+        col_dict["name"] = col_name
+        columns.append(col_dict)
+    return {"name": node.source_name, "tables": [{"name": node.name, "columns": columns}]}
 
 
 def _create_operations_for_node(
