@@ -68,7 +68,7 @@ def test_execute_sql_code_no_jinja(yaml_context: YamlRefactorContext):
     If there's no jinja, 'execute_sql_code' calls adapter.execute directly with raw_sql.
     """
     raw_sql = "SELECT 42 AS meaning"
-    with mock.patch.object(yaml_context.project._adapter, "execute") as mock_execute:
+    with mock.patch.object(yaml_context.project.adapter, "execute") as mock_execute:
         mock_execute.return_value = ("OK", mock.Mock(rows=[(42,)]))
         resp, table = execute_sql_code(yaml_context.project, raw_sql)
         mock_execute.assert_called_with(raw_sql, auto_begin=False, fetch=True)
@@ -82,7 +82,7 @@ def test_execute_sql_code_with_jinja(yaml_context: YamlRefactorContext):
     """
     raw_sql = "SELECT {{ 2 + 2 }} AS four"
     with (
-        mock.patch.object(yaml_context.project._adapter, "execute") as mock_execute,
+        mock.patch.object(yaml_context.project.adapter, "execute") as mock_execute,
         mock.patch("dbt_osmosis.core.sql_operations.compile_sql_code") as mock_compile,
     ):
         mock_execute.return_value = ("OK", mock.Mock(rows=[(4,)]))
