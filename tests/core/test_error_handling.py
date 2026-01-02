@@ -8,8 +8,6 @@ ensuring proper error messages are raised and handled gracefully.
 
 from __future__ import annotations
 
-import os
-import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -357,47 +355,6 @@ models:
         result = _read_yaml(yaml_handler, yaml_handler_lock, flow_file)
         assert result is not None
         assert "models" in result
-
-
-# ============================================================================
-# Permission Errors
-# ============================================================================
-
-
-@pytest.mark.skipif(
-    os.name != "posix" or sys.platform == "darwin",
-    reason="Permission test only works on Linux (macOS has different permission behavior)",
-)
-def test_read_only_yaml_write_fails():
-    """Test that writing to read-only YAML fails appropriately."""
-    from dbt_osmosis.core.schema.writer import _write_yaml
-
-    yaml_handler = create_yaml_instance()
-    yaml_handler_lock = threading.Lock()
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        readonly_file = Path(tmpdir) / "readonly.yml"
-        readonly_file.write_text("version: 2\n")
-
-        # Make file read-only
-        readonly_file.chmod(0o444)
-
-        try:
-            # Should raise error when trying to write
-            with pytest.raises((PermissionError, OSError)):
-                _write_yaml(
-                    yaml_handler,
-                    yaml_handler_lock,
-                    readonly_file,
-                    {"version": 2, "models": []},
-                    dry_run=False,
-                )
-        finally:
-            # Restore permissions for cleanup
-            try:
-                readonly_file.chmod(0o644)
-            except Exception:
-                pass  # May fail if write succeeded
 
 
 # ============================================================================

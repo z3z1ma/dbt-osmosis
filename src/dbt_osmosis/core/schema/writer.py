@@ -132,6 +132,8 @@ def commit_yamls(
             with _YAML_BUFFER_CACHE_LOCK:
                 paths = list(_YAML_BUFFER_CACHE.keys())
             for path in paths:
+                # Ensure parent directory exists before writing
+                path.parent.mkdir(parents=True, exist_ok=True)
                 original = path.read_bytes() if path.is_file() else b""
                 # Use context manager to ensure BytesIO is properly closed
                 with io.BytesIO() as staging:
