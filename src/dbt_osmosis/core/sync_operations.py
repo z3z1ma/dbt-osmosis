@@ -6,6 +6,9 @@ from functools import partial
 from dbt.contracts.graph.nodes import ModelNode, ResultNode
 from dbt.node_types import NodeType
 
+if t.TYPE_CHECKING:
+    from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
+
 import dbt_osmosis.core.logger as logger
 
 __all__ = [
@@ -14,7 +17,9 @@ __all__ = [
 ]
 
 
-def _sync_doc_section(context: t.Any, node: ResultNode, doc_section: dict[str, t.Any]) -> None:
+def _sync_doc_section(
+    context: YamlRefactorContextProtocol, node: ResultNode, doc_section: dict[str, t.Any]
+) -> None:
     """Helper function that overwrites 'doc_section' with data from 'node'.
 
     This includes columns, description, meta, tags, etc.
@@ -86,7 +91,10 @@ def _sync_doc_section(context: t.Any, node: ResultNode, doc_section: dict[str, t
 
 
 def sync_node_to_yaml(
-    context: t.Any, node: t.Optional[ResultNode] = None, *, commit: bool = True
+    context: YamlRefactorContextProtocol,
+    node: t.Optional[ResultNode] = None,
+    *,
+    commit: bool = True,
 ) -> None:
     """Synchronize a single node's columns, description, tags, meta, etc. from the manifest into its corresponding YAML file.
 

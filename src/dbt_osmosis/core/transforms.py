@@ -11,6 +11,9 @@ from types import MappingProxyType
 from dbt.artifacts.resources.types import NodeType
 from dbt.contracts.graph.nodes import ColumnInfo, ResultNode
 
+if t.TYPE_CHECKING:
+    from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
+
 import dbt_osmosis.core.logger as logger
 
 __all__ = [
@@ -52,8 +55,8 @@ class TransformOperation:
 
     def __call__(
         self,
-        context: t.Any,
-        node: ResultNode | None = None,  # YamlRefactorContext
+        context: YamlRefactorContextProtocol,
+        node: ResultNode | None = None,  # YamlRefactorContextProtocol
     ) -> TransformOperation:
         """Run the operation and store the result."""
         self._context = context
@@ -101,8 +104,8 @@ class TransformPipeline:
 
     def __call__(
         self,
-        context: t.Any,
-        node: ResultNode | None = None,  # YamlRefactorContext
+        context: YamlRefactorContextProtocol,
+        node: ResultNode | None = None,  # YamlRefactorContextProtocol
     ) -> TransformPipeline:
         """Run all operations in the pipeline."""
         logger.info(

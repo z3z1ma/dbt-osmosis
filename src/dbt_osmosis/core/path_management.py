@@ -8,6 +8,9 @@ from pathlib import Path
 from dbt.artifacts.resources.types import NodeType
 from dbt.contracts.graph.nodes import ResultNode
 
+if t.TYPE_CHECKING:
+    from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
+
 import dbt_osmosis.core.logger as logger
 
 __all__ = [
@@ -52,7 +55,7 @@ class MissingOsmosisConfig(Exception):
     """Raised when an osmosis configuration is missing."""
 
 
-def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
+def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNode) -> str | None:
     """Get the yaml path template for a dbt model or source node."""
     from dbt_osmosis.core.introspection import _find_first
 
@@ -76,7 +79,9 @@ def _get_yaml_path_template(context: t.Any, node: ResultNode) -> str | None:
     return path_template
 
 
-def get_current_yaml_path(context: t.Any, node: ResultNode) -> t.Union[Path, None]:
+def get_current_yaml_path(
+    context: YamlRefactorContextProtocol, node: ResultNode
+) -> t.Union[Path, None]:
     """Get the current yaml path for a dbt model or source node."""
     if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
         path = Path(context.project.runtime_cfg.project_root).joinpath(
@@ -91,7 +96,7 @@ def get_current_yaml_path(context: t.Any, node: ResultNode) -> t.Union[Path, Non
     return None
 
 
-def get_target_yaml_path(context: t.Any, node: ResultNode) -> Path:
+def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode) -> Path:
     """Get the target yaml path for a dbt model or source node."""
     tpl = _get_yaml_path_template(context, node)
     if not tpl:

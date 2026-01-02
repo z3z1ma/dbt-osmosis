@@ -9,6 +9,9 @@ from pathlib import Path
 from dbt.artifacts.resources.types import NodeType
 from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDefinition
 
+if t.TYPE_CHECKING:
+    from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
+
 import dbt_osmosis.core.logger as logger
 
 __all__ = [
@@ -59,7 +62,7 @@ def _generate_minimal_source_yaml(node: SourceDefinition) -> dict[str, t.Any]:
 
 
 def _create_operations_for_node(
-    context: t.Any,
+    context: YamlRefactorContextProtocol,
     uid: str,
     loc: t.Any,  # SchemaFileLocation
 ) -> list[RestructureOperation]:
@@ -127,7 +130,7 @@ def _create_operations_for_node(
     return ops
 
 
-def draft_restructure_delta_plan(context: t.Any) -> RestructureDeltaPlan:
+def draft_restructure_delta_plan(context: YamlRefactorContextProtocol) -> RestructureDeltaPlan:
     """Draft a restructure plan for the dbt project."""
     logger.info(":bulb: Drafting restructure delta plan for the project.")
     plan = RestructureDeltaPlan()
@@ -246,7 +249,7 @@ def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> 
 
 
 def apply_restructure_plan(
-    context: t.Any, plan: RestructureDeltaPlan, *, confirm: bool = False
+    context: YamlRefactorContextProtocol, plan: RestructureDeltaPlan, *, confirm: bool = False
 ) -> None:
     """Apply the restructure plan for the dbt project."""
     if not plan.operations:
