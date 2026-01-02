@@ -2,7 +2,6 @@
 
 from unittest import mock
 
-
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 

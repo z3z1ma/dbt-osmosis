@@ -110,7 +110,22 @@ def _get_demo_query() -> str:
 
 
 def _parse_args() -> dict[str, t.Any]:
-    """Parse command line arguments"""
+    """Parse command line arguments for the dbt-osmosis workbench.
+
+    This function parses command line arguments to allow users to specify custom
+    dbt project and profiles directories when launching the workbench. The workbench
+    can be launched with custom paths like:
+
+        streamlit run app.py -- --project-dir /path/to/project --profiles-dir /path/to/profiles
+
+    Returns:
+        A dictionary containing parsed arguments with keys 'project_dir' and 'profiles_dir'.
+        Returns an empty dict if parsing fails or no arguments are provided.
+
+    Note:
+        Streamlit consumes arguments after '--', so the args are accessed from sys.argv[1:].
+        The function is resilient to parsing errors and returns an empty dict in such cases.
+    """
     try:
         parser = argparse.ArgumentParser(description="dbt osmosis workbench")
         _ = parser.add_argument("--profiles-dir", help="dbt profile directory")

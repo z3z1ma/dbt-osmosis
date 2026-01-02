@@ -1,6 +1,5 @@
 from unittest import mock
 
-
 from dbt_osmosis.core.osmosis import (
     YamlRefactorContext,
     _reload_manifest,

@@ -12,6 +12,7 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
 import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core.exceptions import MissingOsmosisConfig, PathResolutionError
 
 __all__ = [
     "SchemaFileLocation",
@@ -49,10 +50,6 @@ class SchemaFileMigration:
         default_factory=lambda: {"version": 2, "models": [], "sources": []}
     )
     supersede: dict[Path, list[ResultNode]] = field(default_factory=dict)
-
-
-class MissingOsmosisConfig(Exception):
-    """Raised when an osmosis configuration is missing."""
 
 
 def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNode) -> str | None:
@@ -147,7 +144,7 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
     resolved_path = path.resolve()
     project_root = Path(context.project.runtime_cfg.project_root).resolve()
     if not resolved_path.is_relative_to(project_root):
-        raise ValueError(
+        raise PathResolutionError(
             f"Security violation: Target YAML path '{resolved_path}' is outside project root '{project_root}'"
         )
     logger.debug(":star2: Target YAML path => %s", path)
@@ -226,7 +223,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
         resolved_path = src_yaml_path_obj.resolve()
         project_root = Path(context.project.runtime_cfg.project_root).resolve()
         if not resolved_path.is_relative_to(project_root):
-            raise ValueError(
+            raise PathResolutionError(
                 f"Security violation: Source YAML path '{resolved_path}' is outside project root '{project_root}'"
             )
 

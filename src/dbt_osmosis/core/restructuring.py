@@ -26,7 +26,10 @@ __all__ = [
     "_remove_seeds",
     "_remove_sources",
     "apply_restructure_plan",
+    "PLAN_OUTPUT_TRUNCATION_LENGTH",
 ]
+
+PLAN_OUTPUT_TRUNCATION_LENGTH = 80
 
 
 @dataclass
@@ -219,7 +222,7 @@ def pretty_print_plan(plan: RestructureDeltaPlan) -> None:
     """Pretty print the restructure plan for the dbt project."""
     logger.info(":mega: Restructure plan includes => %s operations.", len(plan.operations))
     for op in plan.operations:
-        str_content = str(op.content)[:80] + "..."
+        str_content = str(op.content)[:PLAN_OUTPUT_TRUNCATION_LENGTH] + "..."
         logger.info(":sparkles: Processing => %s", str_content)
         if not op.superseded_paths:
             logger.info(":blue_book: CREATE or MERGE => %s", op.file_path)

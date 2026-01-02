@@ -75,6 +75,17 @@ class YamlRefactorContext:
     - A ruamel.yaml instance
     - A tuple of placeholder strings
     - The mutation count incremented during refactoring operations
+
+    Resource Management:
+        The context manager should be used to ensure resources are properly cleaned up:
+            with YamlRefactorContext(project, settings) as context:
+                ...  # use context
+        Or explicitly call close() when done:
+            context = YamlRefactorContext(project, settings)
+            try:
+                ...  # use context
+            finally:
+                context.close()
     """
 
     project: DbtProjectContext  # Forward reference to avoid circular import
@@ -97,6 +108,53 @@ class YamlRefactorContext:
 
     _mutation_count: int = field(default=0, init=False)
     _catalog: CatalogResults | None = field(default=None, init=False)
+    _closed: bool = field(default=False, init=False, repr=False)
+    """Track whether the context has been closed to prevent double-cleanup."""
+
+    def __enter__(self) -> "YamlRefactorContext":
+        """Enter the context manager.
+
+        Returns:
+            self for use in with statements
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit the context manager, ensuring resources are cleaned up.
+
+        Args:
+            exc_type: Exception type if an exception was raised
+            exc_val: Exception value if an exception was raised
+            exc_tb: Exception traceback if an exception was raised
+        """
+        self.close()
+
+    def close(self) -> None:
+        """Close the thread pool and cleanup resources.
+
+        This method is idempotent - calling it multiple times is safe.
+        It shuts down the thread pool and closes the project context
+        to prevent resource leaks.
+        """
+        if self._closed:
+            return
+
+        try:
+            # Shutdown the thread pool
+            if hasattr(self, "pool") and self.pool is not None:
+                logger.debug(":lock: Shutting down thread pool")
+                self.pool.shutdown(wait=True)
+        except Exception as e:
+            logger.warning(":warning: Error shutting down thread pool: %s", e)
+
+        try:
+            # Close the project context
+            if hasattr(self, "project") and self.project is not None:
+                self.project.close()
+        except Exception as e:
+            logger.warning(":warning: Error closing project context: %s", e)
+
+        self._closed = True
 
     def register_mutations(self, count: int) -> None:
         """Increment the mutation count by a specified amount."""
@@ -118,6 +176,39 @@ class YamlRefactorContext:
         has_mutated = self._mutation_count > 0
         logger.debug(":white_check_mark: Has the context mutated anything? => %s", has_mutated)
         return has_mutated
+
+    # Convenience properties for commonly accessed nested attributes
+    # These reduce repetition and improve readability throughout the codebase
+
+    @property
+    def manifest(self):
+        """Shortcut to context.project.manifest for brevity."""
+        return self.project.manifest
+
+    @property
+    def runtime_cfg(self):
+        """Shortcut to context.project.runtime_cfg for brevity."""
+        return self.project.runtime_cfg
+
+    @property
+    def adapter(self):
+        """Shortcut to context.project.adapter for brevity."""
+        return self.project.adapter
+
+    @property
+    def project_root(self) -> Path:
+        """Shortcut to context.project.runtime_cfg.project_root for brevity."""
+        return Path(self.project.runtime_cfg.project_root)
+
+    @property
+    def credentials(self):
+        """Shortcut to context.project.runtime_cfg.credentials for brevity."""
+        return self.project.runtime_cfg.credentials
+
+    @property
+    def database_type(self) -> str:
+        """Shortcut to context.project.runtime_cfg.credentials.type for brevity."""
+        return self.project.runtime_cfg.credentials.type
 
     @property
     def source_definitions(self) -> dict[str, t.Any]:
