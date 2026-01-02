@@ -93,12 +93,33 @@ def _sync_doc_section(
         skip_add_types = _get_setting_for_node(
             "skip-add-data-types", node, name, fallback=context.settings.skip_add_data_types
         )
+
+        # Check if we should preserve unrendered descriptions from current YAML
+        # When use_unrendered_descriptions is True and the current description contains
+        # doc blocks (e.g., {{ doc(...) }} or {% docs %}{% enddocs %}), we should
+        # preserve the unrendered version instead of using the rendered version from manifest
+        current_description = current_yaml.get("description")
+        use_unrendered = _get_setting_for_node(
+            "use-unrendered-descriptions",
+            node,
+            name,
+            fallback=context.settings.use_unrendered_descriptions,
+        )
+        preserve_current_description = False
+        if use_unrendered and current_description:
+            # Check if current description contains unrendered doc blocks
+            if "{{ doc(" in current_description or "{% docs " in current_description:
+                preserve_current_description = True
+
         for k, v in cdict.items():
             if k == "data_type" and skip_add_types:
                 # don't add data types if told not to
                 continue
             if k == "constraints" and "constraints" in merged:
                 # keep constraints as is if present, mashumaro dumps too much info :shrug:
+                continue
+            if k == "description" and preserve_current_description:
+                # Preserve the unrendered description from current YAML
                 continue
             merged[k] = v
 
