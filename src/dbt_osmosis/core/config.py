@@ -21,6 +21,7 @@ from types import ModuleType
 # Type imports for compatibility
 from dbt.adapters.base.impl import BaseAdapter
 from dbt.contracts.graph.manifest import Manifest
+from dbt.mp_context import get_mp_context
 from dbt.parser.models import ModelParser
 
 # Import from dbt-core-interface instead of internal dbt modules
@@ -223,9 +224,15 @@ class DbtProjectContext:
             try:
                 if self._project is not None and hasattr(self._project, "adapter"):
                     adapter = self._project.adapter
-                    if hasattr(adapter, "connections") and hasattr(adapter.connections, "close"):
+                    if hasattr(adapter, "connections"):
                         logger.debug(":lock: Closing adapter connections")
-                        adapter.connections.close()
+                        # Use cleanup_all() instead of close() because close() requires
+                        # a connection parameter. cleanup_all() closes all open connections.
+                        if hasattr(adapter.connections, "cleanup_all"):
+                            adapter.connections.cleanup_all()
+                        elif hasattr(adapter.connections, "close_all_connections"):
+                            # Fallback for adapters that have close_all_connections
+                            adapter.connections.close_all_connections()
             except Exception as e:
                 logger.warning(":warning: Error closing adapter connections: %s", e)
             finally:
@@ -380,6 +387,84 @@ def _add_cross_project_references(
     return manifest
 
 
+def _patch_adapter_factory_registration() -> None:
+    """Monkey-patch dbt-core-interface to register adapters in FACTORY.adapters.
+
+    The dbt-core-interface's create_adapter() method sets self.runtime_config.adapter
+    but doesn't call FACTORY.register_adapter(). This causes KeyError when dbt parsers
+    try to get the adapter via get_adapter(config) because FACTORY.lookup_adapter()
+    looks in FACTORY.adapters, not runtime_config.adapter.
+
+    This monkey-patch wraps DbtProject.create_adapter to register the adapter in FACTORY
+    immediately after creation.
+    """
+    from dbt_core_interface import DbtProject
+    from dbt.adapters.factory import FACTORY
+
+    original_create_adapter = DbtProject.create_adapter
+
+    def patched_create_adapter(self, replace: bool = False, verify_connectivity: bool = True):
+        """Wrapper that ensures the adapter is registered in FACTORY.adapters."""
+        # Call the original create_adapter
+        adapter = original_create_adapter(
+            self, replace=replace, verify_connectivity=verify_connectivity
+        )
+
+        # Register the adapter in FACTORY.adapters if not already registered
+        adapter_type = self.runtime_config.credentials.type
+        if adapter_type not in FACTORY.adapters:
+            FACTORY.adapters[adapter_type] = adapter
+            logger.debug(
+                f":wrench: Registered adapter '{adapter_type}' in FACTORY.adapters (monkey-patch)"
+            )
+
+        return adapter
+
+    # Apply the monkey-patch
+    DbtProject.create_adapter = patched_create_adapter
+
+
+def _ensure_adapter_loaded(config: DbtConfiguration) -> None:
+    """Ensure the dbt adapter plugin is loaded before creating the DbtProject.
+
+    This is necessary because dbt-core-interface's DbtProject initialization calls
+    RuntimeConfig.from_args() which needs the adapter to be registered in the factory.
+    Without loading the plugin first, a KeyError will be raised for the adapter type.
+
+    Args:
+        config: The dbt project configuration
+    """
+    try:
+        # Apply the monkey-patch to ensure adapters are registered in FACTORY.adapters
+        _patch_adapter_factory_registration()
+
+        # Try to read the profiles.yml to determine the adapter type
+        from dbt.config.project import read_profile_from_disk
+        from dbt.adapters.factory import FACTORY
+
+        # Read the profile to get the adapter type
+        raw_profile = read_profile_from_disk(
+            config.profiles_dir,
+            config.project_dir,
+            config.profile,
+            config.target,
+        )
+
+        # Get the adapter type from the profile's credentials
+        adapter_type = raw_profile.credentials.type
+
+        # Load the plugin if not already loaded
+        if adapter_type not in FACTORY.plugins:
+            logger.info(f":wrench: Loading dbt adapter plugin for '{adapter_type}'...")
+            FACTORY.load_plugin(adapter_type)
+            logger.info(f":white_check_mark: Successfully loaded adapter plugin '{adapter_type}'")
+    except Exception as e:
+        logger.debug(
+            f":information_source: Could not pre-load adapter plugin: {e}. "
+            "This is OK - the adapter will be loaded on-demand."
+        )
+
+
 def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     """Build a DbtProjectContext from a DbtConfiguration.
 
@@ -394,11 +479,36 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     """
     logger.info(":wave: Creating DBT project context using config => %s", config)
 
+    # Ensure the adapter plugin is loaded before creating the DbtProject
+    # This is necessary because RuntimeConfig.from_args() needs the adapter
+    # to be registered in the factory, and load_plugin needs to be called
+    # before that happens.
+    _ensure_adapter_loaded(config)
+
     # Create the interface config
     interface_config = config.to_interface_config()
 
     # Create DbtProject instance (this loads the manifest)
     project = InterfaceDbtProject.from_config(interface_config)
+
+    # Workaround: Ensure the adapter is registered in FACTORY.adapters
+    # The dbt-core-interface's create_adapter() sets self.runtime_config.adapter
+    # but doesn't call FACTORY.register_adapter(). This causes issues when
+    # dbt parsers try to get the adapter via get_adapter(config) because
+    # FACTORY.lookup_adapter() looks in FACTORY.adapters, not runtime_config.adapter.
+    # We register the adapter here to ensure parsers can find it.
+    try:
+        from dbt.adapters.factory import FACTORY
+
+        adapter_type = project.runtime_config.credentials.type
+        if adapter_type not in FACTORY.adapters:
+            FACTORY.register_adapter(
+                project.runtime_config,  # pyright: ignore[reportArgumentType]
+                get_mp_context("spawn"),  # pyright: ignore[reportArgumentType]
+            )
+            logger.info(f":white_check_mark: Registered adapter '{adapter_type}' in factory")
+    except Exception as e:
+        logger.debug(f":information_source: Could not register adapter in factory: {e}")
 
     # Handle dbt-loom cross-project references if available
     try:
