@@ -1,21 +1,15 @@
 # pyright: reportAny=false, reportUnknownMemberType=false, reportPrivateUsage=false
-import json
 import typing as t
-from pathlib import Path
 from unittest import mock
 
 import dbt.version
 import pytest
-from dbt.contracts.graph.manifest import Manifest
 from packaging.version import Version
 
 from dbt_osmosis.core.osmosis import (
-    DbtConfiguration,
     YamlRefactorContext,
-    YamlRefactorSettings,
     _build_node_ancestor_tree,
     _get_node_yaml,
-    create_dbt_project_context,
     inherit_upstream_column_knowledge,
     sync_node_to_yaml,
 )
@@ -32,29 +26,6 @@ def _filter_config_field(d: dict[str, t.Any]) -> dict[str, t.Any]:
 
 
 dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip_matcher=True))
-
-
-@pytest.fixture(scope="function")
-def yaml_context() -> YamlRefactorContext:
-    # initializing the context is a sanity test in and of itself
-    c = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
-    c.vars = {"dbt-osmosis": {}}
-    project = create_dbt_project_context(c)
-    context = YamlRefactorContext(
-        project,
-        settings=YamlRefactorSettings(
-            dry_run=True,
-        ),
-    )
-    return context
-
-
-def load_manifest() -> Manifest:
-    manifest_path = Path(__file__).parent.parent / "demo_duckdb/target/manifest.json"
-    with manifest_path.open("r") as f:
-        manifest_text = f.read()
-        manifest_dict = json.loads(manifest_text)
-    return Manifest.from_dict(manifest_dict)
 
 
 @pytest.mark.parametrize(
@@ -78,9 +49,11 @@ def load_manifest() -> Manifest:
         ),
     ],
 )
-def test_build_node_ancestor_tree(node_id: str, expected_tree: dict[str, list[str]]):
+def test_build_node_ancestor_tree(
+    yaml_context: YamlRefactorContext, node_id: str, expected_tree: dict[str, list[str]]
+):
     """Test the build node ancestor tree functionality."""
-    manifest = load_manifest()
+    manifest = yaml_context.project.manifest
     target_node = manifest.nodes[node_id]
     assert _build_node_ancestor_tree(manifest, target_node) == expected_tree
 

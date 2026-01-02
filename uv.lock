@@ -447,6 +447,20 @@ wheels = [
 ]
 
 [[package]]
+name = "dbt-core-interface"
+version = "1.1.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dbt-adapters" },
+    { name = "dbt-core" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4b/42/c12a225720d1efff603b7f322ca3c6c7ece4d4f955f0765ce994c715153a/dbt_core_interface-1.1.5.tar.gz", hash = "sha256:9312cba7a9691db0a0bb6b8ffabfcb756203fbaca2d1bc0368969c2758fb1593", size = 26538, upload-time = "2025-07-08T05:00:31.909Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/41/fd269ee6ff9fce31103f89f10926f0aa4e2347c6d2789bcf0c314f381b3c/dbt_core_interface-1.1.5-py3-none-any.whl", hash = "sha256:ab016d85e9ebae09095336fbf7a412e2ad7b638fb5660d5c97d355ed6b38475a", size = 30779, upload-time = "2025-07-08T05:00:30.919Z" },
+]
+
+[[package]]
 name = "dbt-duckdb"
 version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -491,6 +505,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "dbt-core" },
+    { name = "dbt-core-interface" },
     { name = "mysql-mimic" },
     { name = "pluggy" },
     { name = "rich" },
@@ -520,6 +535,8 @@ workbench = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "dbt-duckdb" },
+    { name = "openai" },
     { name = "pytest" },
 ]
 
@@ -527,6 +544,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">7,<9" },
     { name = "dbt-core", specifier = ">=1.8,<1.11" },
+    { name = "dbt-core-interface", specifier = ">=1.1.5" },
     { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1.0.0,<2" },
     { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1.8.0,<=1.10" },
     { name = "feedparser", marker = "extra == 'workbench'", specifier = "~=6.0.12" },
@@ -548,7 +566,11 @@ requires-dist = [
 provides-extras = ["workbench", "openai", "dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.3.5" }]
+dev = [
+    { name = "dbt-duckdb", specifier = ">=1.10.0" },
+    { name = "openai", specifier = ">=1.58.1" },
+    { name = "pytest", specifier = ">=8.3.5" },
+]
 
 [[package]]
 name = "dbt-protos"
@@ -645,7 +667,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [

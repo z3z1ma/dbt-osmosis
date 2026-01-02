@@ -8,6 +8,7 @@ access the same DuckDB file concurrently.
 
 from __future__ import annotations
 
+import gc
 import time
 from typing import Iterator
 
@@ -126,6 +127,16 @@ def yaml_context() -> Iterator[YamlRefactorContext]:
                     print("✓ Adapter connections closed")
     except Exception as e:
         print(f"Warning: Error during teardown: {e}")
+
+    # Delete the DbtProject reference to clear the WeakValueDictionary cache
+    try:
+        if hasattr(project_context, "_project"):
+            del project_context._project
+            # Trigger garbage collection to clear WeakValueDictionary entries
+            gc.collect()
+            print("✓ DbtProject reference deleted and garbage collected")
+    except Exception as e:
+        print(f"Warning: Error deleting DbtProject reference: {e}")
 
     # Clean up cached manifest to prevent test pollution
     try:

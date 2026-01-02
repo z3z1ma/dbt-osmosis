@@ -1,0 +1,8 @@
+# Test profile using in-memory DuckDB to avoid file locking issues
+jaffle_shop:
+  target: test
+  outputs:
+    test:
+      type: duckdb
+      path: ":memory:"
+      threads: 1

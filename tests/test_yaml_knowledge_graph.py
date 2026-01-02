@@ -1,7 +1,6 @@
 # pyright: reportPrivateUsage=false
 import typing as t
 
-
 from dbt_osmosis.core.osmosis import (
     YamlRefactorContext,
     _build_column_knowledge_graph,
