@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import functools
-import io
 import subprocess
 import sys
 import typing as t
 from pathlib import Path
 
 import click
+import yaml as yaml_handler
 
 import dbt_osmosis.core.logger as logger
 from dbt_osmosis.core.osmosis import (
@@ -306,6 +306,7 @@ def refactor(
         target=target,
         profile=profile,
         threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
         disable_introspection=disable_introspection,
     )
     context = YamlRefactorContext(
@@ -314,8 +315,6 @@ def refactor(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
     )
-    if vars:
-        settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
 
     create_missing_source_yamls(context=context)
     apply_restructure_plan(
@@ -372,6 +371,7 @@ def organize(
         target=target,
         profile=profile,
         threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
         disable_introspection=disable_introspection,
     )
     context = YamlRefactorContext(
@@ -380,8 +380,6 @@ def organize(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
     )
-    if vars:
-        settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
 
     create_missing_source_yamls(context=context)
     apply_restructure_plan(
@@ -488,6 +486,7 @@ def document(
         target=target,
         profile=profile,
         threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
         disable_introspection=disable_introspection,
     )
     context = YamlRefactorContext(
@@ -496,8 +495,6 @@ def document(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
     )
-    if vars:
-        settings.vars = context.yaml_handler.load(io.StringIO(vars))  # pyright: ignore[reportUnknownMemberType]
 
     transform = (
         inject_missing_columns >> inherit_upstream_column_knowledge >> sort_columns_as_configured

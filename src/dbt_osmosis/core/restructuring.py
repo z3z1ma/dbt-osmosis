@@ -284,7 +284,7 @@ def apply_restructure_plan(
             existing_data = _read_yaml(
                 context.yaml_handler, context.yaml_handler_lock, op.file_path
             )
-            output_doc.update(existing_data)
+            output_doc.update(existing_data or {})
 
         for key, val in op.content.items():
             if isinstance(val, list):

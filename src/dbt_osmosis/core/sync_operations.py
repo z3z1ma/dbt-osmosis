@@ -49,6 +49,9 @@ def _sync_doc_section(
             )
             continue
         cdict = meta.to_dict(omit_none=True)
+        # Filter out 'config' and 'doc_blocks' fields added in dbt-core >= 1.9.6
+        # These contain redundant meta/tags that duplicate top-level fields
+        cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
         cdict["name"] = name
         from dbt_osmosis.core.introspection import _get_setting_for_node, normalize_column_name
 

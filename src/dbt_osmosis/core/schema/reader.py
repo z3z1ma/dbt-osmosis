@@ -3,6 +3,7 @@ import typing as t
 from pathlib import Path
 
 import ruamel.yaml
+from ruamel.yaml import YAMLError
 
 import dbt_osmosis.core.logger as logger
 
@@ -29,10 +30,22 @@ def _read_yaml(
                     logger.debug(":warning: Path => %s is not a file. Returning empty doc.", path)
                     return _YAML_BUFFER_CACHE.setdefault(path, {})
                 logger.debug(":open_file_folder: Reading YAML doc => %s", path)
-                # Add null check - yaml_handler.load() can return None for empty files
-                content = yaml_handler.load(path)
-                _YAML_BUFFER_CACHE[path] = t.cast(
-                    dict[str, t.Any], content if content is not None else {}
-                )
+                try:
+                    # Add null check - yaml_handler.load() can return None for empty files
+                    content = yaml_handler.load(path)
+                    _YAML_BUFFER_CACHE[path] = t.cast(
+                        dict[str, t.Any], content if content is not None else {}
+                    )
+                except YAMLError as e:
+                    logger.error(
+                        ":boom: Failed to parse YAML file => %s: %s. "
+                        "Please check the file for syntax errors.",
+                        path,
+                        e,
+                    )
+                    raise
+                except (OSError, IOError) as e:
+                    logger.error(":boom: Failed to read YAML file => %s: %s", path, e)
+                    raise
     with _YAML_BUFFER_CACHE_LOCK:
         return t.cast(dict[str, t.Any], _YAML_BUFFER_CACHE[path])

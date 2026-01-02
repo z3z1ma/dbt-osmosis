@@ -62,6 +62,11 @@ def _write_yaml(
                         # Atomic replace: only delete original after successful temp write
                         _replace_atomically(temp_path, path)
 
+                        # Clear cache entry only after successful write
+                        with _YAML_BUFFER_CACHE_LOCK:
+                            if path in _YAML_BUFFER_CACHE:
+                                del _YAML_BUFFER_CACHE[path]
+
                         if mutation_tracker:
                             mutation_tracker(1)
 
@@ -77,9 +82,10 @@ def _write_yaml(
                         raise
                 else:
                     logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
-            with _YAML_BUFFER_CACHE_LOCK:
-                if path in _YAML_BUFFER_CACHE:
-                    del _YAML_BUFFER_CACHE[path]
+                    # Clear cache entry even when no changes (to keep cache consistent)
+                    with _YAML_BUFFER_CACHE_LOCK:
+                        if path in _YAML_BUFFER_CACHE:
+                            del _YAML_BUFFER_CACHE[path]
 
 
 def _replace_atomically(temp_path: Path, target_path: Path) -> None:
@@ -144,6 +150,10 @@ def commit_yamls(
                             # Atomic replace: only delete original after successful temp write
                             _replace_atomically(temp_path, path)
 
+                            # Clear cache entry only after successful write
+                            with _YAML_BUFFER_CACHE_LOCK:
+                                del _YAML_BUFFER_CACHE[path]
+
                             if mutation_tracker:
                                 mutation_tracker(1)
 
@@ -159,5 +169,6 @@ def commit_yamls(
                             raise
                     else:
                         logger.debug(":white_check_mark: Skipping => %s (no changes)", path)
-                with _YAML_BUFFER_CACHE_LOCK:
-                    del _YAML_BUFFER_CACHE[path]
+                        # Clear cache entry even when no changes (to keep cache consistent)
+                        with _YAML_BUFFER_CACHE_LOCK:
+                            del _YAML_BUFFER_CACHE[path]

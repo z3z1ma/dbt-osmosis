@@ -188,10 +188,22 @@ class DbtProjectContext:
 def _add_cross_project_references(
     manifest: Manifest, dbt_loom: ModuleType, project_name: str
 ) -> Manifest:
-    """Add cross-project references to the dbt manifest from dbt-loom defined manifests."""
+    """Add cross-project references to the dbt manifest from dbt-loom defined manifests.
+
+    Wraps dbt_loom API calls with error handling to prevent failures from breaking
+    the manifest loading process.
+    """
     loomnodes: list[t.Any] = []
-    loom = dbt_loom.dbtLoom(project_name)
-    loom_manifests = loom.manifests
+    try:
+        loom = dbt_loom.dbtLoom(project_name)
+        loom_manifests = loom.manifests
+    except (AttributeError, KeyError, TypeError) as e:
+        logger.warning(":warning: Failed to load dbt loom manifests: %s", e)
+        return manifest
+    except Exception as e:
+        logger.warning(":warning: Unexpected error loading dbt loom manifests: %s", e)
+        return manifest
+
     logger.info(":arrows_counterclockwise: Loaded dbt loom manifests!")
     for name, loom_manifest in loom_manifests.items():
         if loom_manifest.get("nodes"):
@@ -201,7 +213,14 @@ def _add_cross_project_references(
                     node_access = node.get("access")
                     if node_access != "protected":
                         if node.get("resource_type") == "model":
-                            loomnodes.append(ModelParser.parse_from_dict(None, node))  # pyright: ignore[reportArgumentType]
+                            try:
+                                loomnodes.append(ModelParser.parse_from_dict(None, node))  # pyright: ignore[reportArgumentType]
+                            except Exception as e:
+                                logger.warning(
+                                    ":warning: Failed to parse node %s from dbt loom: %s",
+                                    node.get("unique_id", "unknown"),
+                                    e,
+                                )
         for node in loomnodes:
             manifest.nodes[node.unique_id] = node
         logger.info(
@@ -239,9 +258,14 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     try:
         dbt_loom = importlib.import_module("dbt_loom")
     except ImportError:
-        pass
+        logger.debug(
+            ":information_source: dbt_loom not available, skipping cross-project references"
+        )
     else:
-        manifest = _add_cross_project_references(manifest, dbt_loom, runtime_cfg.project_name)
+        try:
+            manifest = _add_cross_project_references(manifest, dbt_loom, runtime_cfg.project_name)
+        except Exception as e:
+            logger.warning(":warning: Failed to add cross-project references from dbt_loom: %s", e)
 
     manifest.build_flat_graph()
     logger.info(":arrows_counterclockwise: Loaded the dbt project manifest!")

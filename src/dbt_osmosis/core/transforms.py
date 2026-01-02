@@ -149,19 +149,30 @@ class TransformPipeline:
         )
 
         def _commit() -> None:
+            """Commit changes to YAML files. Designed for use as an atexit handler."""
             logger.info(":hourglass: Committing all changes to YAML files in batch.")
             _commit_start = time.time()
-            from dbt_osmosis.core.sync_operations import sync_node_to_yaml
+            try:
+                from dbt_osmosis.core.sync_operations import sync_node_to_yaml
 
-            sync_node_to_yaml(context, node, commit=True)
-            _commit_end = time.time()
-            logger.info(
-                ":checkered_flag: YAML commits completed in => %.2fs", _commit_end - _commit_start
-            )
+                sync_node_to_yaml(context, node, commit=True)
+                _commit_end = time.time()
+                logger.info(
+                    ":checkered_flag: YAML commits completed in => %.2fs",
+                    _commit_end - _commit_start,
+                )
+            except Exception as e:
+                # Log error but don't raise during atexit (prevents shutdown issues)
+                logger.error(":boom: Failed to commit YAML changes during shutdown: %s", e)
 
         if self.commit_mode == "batch":
             _commit()
         elif self.commit_mode == "defer":
+            logger.warning(
+                ":warning: Using 'defer' commit mode with atexit.register. "
+                "This may cause issues if locks are held during shutdown. "
+                "Consider using 'batch' or 'atomic' mode instead."
+            )
             _ = atexit.register(_commit)
 
         return self
