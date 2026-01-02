@@ -5,6 +5,7 @@ import re
 import threading
 import typing as t
 from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import chain
 from pathlib import Path
@@ -25,12 +26,182 @@ __all__ = [
     "normalize_column_name",
     "_maybe_use_precise_dtype",
     "get_columns",
+    "SettingsResolver",
     "_load_catalog",
     "_generate_catalog",
     "_COLUMN_LIST_CACHE",
 ]
 
 T = t.TypeVar("T")
+
+_COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
+
+
+@dataclass
+class SettingsResolver:
+    """Resolves configuration settings for dbt nodes from multiple sources with clear precedence rules.
+
+    This class encapsulates the complex settings resolution logic that was previously in
+    _get_setting_for_node. It provides a clean, testable interface for retrieving
+    configuration values from various sources with defined precedence.
+
+    Settings Resolution Precedence (highest to lowest):
+    1. Column level settings (if column specified)
+       - Column meta: <key>
+       - Column meta: dbt-osmosis-<key>
+       - Column meta: dbt_osmosis_<key> (python identifier variant)
+       - Column meta: dbt-osmosis-options.<key>
+       - Column meta: dbt_osmosis_options.<key> (python identifier variant)
+
+    2. Node level settings
+       - Node meta: <key>
+       - Node meta: dbt-osmosis-<key>
+       - Node meta: dbt_osmosis_<key> (python identifier variant)
+       - Node meta: dbt-osmosis-options.<key>
+       - Node meta: dbt_osmosis_options.<key> (python identifier variant)
+       - Node config extra: dbt-osmosis-<key>
+       - Node config extra: dbt_osmosis_<key> (python identifier variant)
+       - Node config extra: dbt-osmosis-options.<key>
+       - Node config extra: dbt_osmosis_options.<key> (python identifier variant)
+       - Node config extra: <key> (direct key)
+       - Node config extra: <identifier> (python identifier variant)
+
+    3. Fallback value
+    """
+
+    def resolve(
+        self,
+        setting_name: str,
+        node: ResultNode | None = None,
+        column_name: str | None = None,
+        *,
+        fallback: t.Any | None = None,
+    ) -> t.Any:
+        """Resolve a setting value from the configured sources.
+
+        Args:
+            setting_name: The name of the setting to resolve (supports both kebab-case and snake_case)
+            node: The dbt node to resolve settings for
+            column_name: Optional column name to check column-level settings
+            fallback: Default value if setting not found in any source
+
+        Returns:
+            The resolved setting value or fallback if not found
+        """
+        if node is None:
+            return fallback
+
+        # Convert between kebab-case and snake_case for different naming conventions
+        kebab_name = setting_name.replace("_", "-")
+        snake_name = setting_name.replace("-", "_")
+
+        # Build list of sources in order
+        sources = []
+
+        # Column-level sources (if column specified)
+        if column_name and (column := node.columns.get(column_name)):
+            sources = [
+                column.meta,
+                column.meta.get("dbt-osmosis-options", {}),
+                column.meta.get("dbt_osmosis_options", {}),
+            ]
+            # Add node-level sources after column sources
+            sources.extend([
+                node.meta,
+                node.meta.get("dbt-osmosis-options", {}),
+                node.meta.get("dbt_osmosis_options", {}),
+                node.config.extra,
+                node.config.extra.get("dbt-osmosis-options", {}),
+                node.config.extra.get("dbt_osmosis_options", {}),
+            ])
+        else:
+            # Only node-level sources
+            sources = [
+                node.meta,
+                node.meta.get("dbt-osmosis-options", {}),
+                node.meta.get("dbt_osmosis_options", {}),
+                node.config.extra,
+                node.config.extra.get("dbt-osmosis-options", {}),
+                node.config.extra.get("dbt_osmosis_options", {}),
+            ]
+
+        # Check each source for the setting
+        for source in sources:
+            # Check prefixed variants first
+            for prefixed_name in (f"dbt-osmosis-{kebab_name}", f"dbt_osmosis_{snake_name}"):
+                if prefixed_name in source:
+                    return source[prefixed_name]
+
+            # For non-config.extra sources, check direct key variants
+            if source is not node.config.extra:
+                if kebab_name in source:
+                    return source[kebab_name]
+                if snake_name in source:
+                    return source[snake_name]
+            # config.extra only checks prefixed variants, not direct keys
+
+        return fallback
+
+
+# Global resolver instance for backward compatibility
+_resolver = SettingsResolver()
+
+
+def _get_setting_for_node(
+    opt: str,
+    /,
+    node: ResultNode | None = None,
+    col: str | None = None,
+    *,
+    fallback: t.Any | None = None,
+) -> t.Any:
+    """Get a configuration value for a dbt node from the node's meta and config.
+
+    DEPRECATED: Use SettingsResolver directly instead. This function is kept for
+    backward compatibility and will be removed in a future version.
+
+    models: # dbt_project
+      project:
+        staging:
+          +dbt-osmosis: path/spec.yml
+          +dbt-osmosis-options:
+            string-length: true
+            numeric-precision-and-scale: true
+            skip-add-columns: true
+          +dbt-osmosis-skip-add-tags: true
+
+    models: # schema
+      - name: foo
+        meta:
+          string-length: false
+          prefix: user_ # we strip this prefix to inherit from columns upstream, useful in staging models that prefix everything
+        columns:
+          - bar:
+            meta:
+              dbt-osmosis-skip-meta-merge: true # per-column options
+              dbt-osmosis-options:
+                output-to-lower: true
+
+    {{ config(..., dbt_osmosis_options={"prefix": "account_"}) }} -- sql
+
+    We check for
+    From node column meta
+    - <key>
+    - dbt-osmosis-<key>
+    - dbt-osmosis-options.<key>
+    From node meta
+    - <key>
+    - dbt-osmosis-<key>
+    - dbt-osmosis-options.<key>
+    From node config
+    - dbt-osmosis-<key>
+    - dbt-osmosis-options.<key>
+    - dbt_osmosis_<key> # allows use in {{ config(...) }} by being a valid python identifier
+    - dbt_osmosis_options.<key> # allows use in {{ config(...) }} by being a valid python identifier
+    """
+    # For backward compatibility, use the resolver directly
+    return _resolver.resolve(opt, node, col, fallback=fallback)
+
 
 _COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
 """Cache for column lists to avoid redundant introspection.
