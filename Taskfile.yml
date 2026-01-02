@@ -69,3 +69,19 @@ tasks:
           uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
           uv run pytest
         silent: true
+
+  mutation-test:
+    desc: Run mutation testing with mutmut (ensures tests catch bugs)
+    cmds:
+      - echo "Running mutation testing with mutmut..."
+      - uvx mutmut run --paths-to-mutate src/dbt_osmosis/core/ --runner pytest --no-coverage --max-workers 4
+
+  mutation-results:
+    desc: Show mutation testing results
+    cmds:
+      - uvx mutmut results
+
+  mutation-html:
+    desc: Generate HTML report for mutation testing
+    cmds:
+      - uvx mutmut html

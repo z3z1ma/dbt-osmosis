@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 from unittest import mock
 
-
 from dbt_osmosis.core.config import (
     DbtConfiguration,
     _reload_manifest,

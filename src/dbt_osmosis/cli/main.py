@@ -310,32 +310,32 @@ def refactor(
         vars=yaml_handler.safe_load(vars) if vars else None,
         disable_introspection=disable_introspection,
     )
-    context = YamlRefactorContext(
+
+    with YamlRefactorContext(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
-    )
+    ) as context:
+        create_missing_source_yamls(context=context)
+        apply_restructure_plan(
+            context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
+        )
 
-    create_missing_source_yamls(context=context)
-    apply_restructure_plan(
-        context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
-    )
+        transform = (
+            inject_missing_columns
+            >> remove_columns_not_in_database
+            >> inherit_upstream_column_knowledge
+            >> sort_columns_as_configured
+            >> synchronize_data_types
+        )
+        if synthesize:
+            transform >>= synthesize_missing_documentation_with_openai
 
-    transform = (
-        inject_missing_columns
-        >> remove_columns_not_in_database
-        >> inherit_upstream_column_knowledge
-        >> sort_columns_as_configured
-        >> synchronize_data_types
-    )
-    if synthesize:
-        transform >>= synthesize_missing_documentation_with_openai
+        _ = transform(context=context)
 
-    _ = transform(context=context)
-
-    if check and context.mutated:
-        exit(1)
+        if check and context.mutated:
+            exit(1)
 
 
 @yaml.command(context_settings=_CONTEXT)
@@ -375,20 +375,20 @@ def organize(
         vars=yaml_handler.safe_load(vars) if vars else None,
         disable_introspection=disable_introspection,
     )
-    context = YamlRefactorContext(
+
+    with YamlRefactorContext(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
-    )
+    ) as context:
+        create_missing_source_yamls(context=context)
+        apply_restructure_plan(
+            context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
+        )
 
-    create_missing_source_yamls(context=context)
-    apply_restructure_plan(
-        context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
-    )
-
-    if check and context.mutated:
-        exit(1)
+        if check and context.mutated:
+            exit(1)
 
 
 @yaml.command(context_settings=_CONTEXT)
@@ -490,23 +490,25 @@ def document(
         vars=yaml_handler.safe_load(vars) if vars else None,
         disable_introspection=disable_introspection,
     )
-    context = YamlRefactorContext(
+
+    with YamlRefactorContext(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
-    )
+    ) as context:
+        transform = (
+            inject_missing_columns
+            >> inherit_upstream_column_knowledge
+            >> sort_columns_as_configured
+        )
+        if synthesize:
+            transform >>= synthesize_missing_documentation_with_openai
 
-    transform = (
-        inject_missing_columns >> inherit_upstream_column_knowledge >> sort_columns_as_configured
-    )
-    if synthesize:
-        transform >>= synthesize_missing_documentation_with_openai
+        _ = transform(context=context)
 
-    _ = transform(context=context)
-
-    if check and context.mutated:
-        exit(1)
+        if check and context.mutated:
+            exit(1)
 
 
 @cli.command(

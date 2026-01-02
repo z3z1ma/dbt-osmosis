@@ -11,6 +11,8 @@ from textwrap import dedent
 import openai
 from openai import OpenAI
 
+from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
+
 __all__ = [
     "generate_model_spec_as_json",
     "generate_column_doc",
@@ -55,14 +57,14 @@ def get_llm_client():
     Returns:
         tuple: (client, model_engine) where client is an OpenAI or openai object, and model_engine is the model name.
     Raises:
-        ValueError: If required environment variables are missing or provider is invalid.
+        LLMConfigurationError: If required environment variables are missing or provider is invalid.
     """
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
     if provider == "openai":
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if not openai_api_key:
-            raise ValueError("OPENAI_API_KEY not set for OpenAI provider")
+            raise LLMConfigurationError("OPENAI_API_KEY not set for OpenAI provider")
         client = OpenAI(api_key=openai_api_key)
         model_engine = os.getenv("OPENAI_MODEL", "gpt-4o")
 
@@ -74,7 +76,7 @@ def get_llm_client():
         model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
         if not (openai.api_base and openai.api_key and model_engine):
-            raise ValueError(
+            raise LLMConfigurationError(
                 "Azure environment variables (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT_NAME) not properly set for azure-openai provider"
             )
         # For Azure, the global openai object is used directly (legacy SDK structure preferred)
@@ -104,7 +106,7 @@ def get_llm_client():
         model_engine = os.getenv("GOOGLE_GEMINI_MODEL", "gemini-2.0-flash")
 
         if not client.api_key:
-            raise ValueError(
+            raise LLMConfigurationError(
                 "GEMINI environment variables GOOGLE_GEMINI_API_KEY not set for google-gemini provider"
             )
 
@@ -116,12 +118,12 @@ def get_llm_client():
         model_engine = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
 
         if not client.api_key:
-            raise ValueError(
+            raise LLMConfigurationError(
                 "Anthropic environment variables ANTHROPIC_API_KEY not set for anthropic provider"
             )
 
     else:
-        raise ValueError(
+        raise LLMConfigurationError(
             f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic, lm-studio, ollama."
         )
 
@@ -142,7 +144,7 @@ def get_llm_client():
     # Check for missing environment variables
     missing_vars = [var for var in required_env_vars[provider] if not os.getenv(var)]
     if missing_vars:
-        raise ValueError(
+        raise LLMConfigurationError(
             f"ERROR: Missing environment variables for {provider}: {', '.join(missing_vars)}. Please refer to the documentation to set them correctly."
         )
 
@@ -386,7 +388,7 @@ def generate_model_spec_as_json(
 
     content = response.choices[0].message.content
     if content is None:
-        raise ValueError("LLM returned an empty response")
+        raise LLMResponseError("LLM returned an empty response")
 
     content = content.strip()
     if content.startswith("```") and content.endswith("```"):
@@ -394,7 +396,7 @@ def generate_model_spec_as_json(
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
-        raise ValueError("LLM returned invalid JSON:\n" + content)
+        raise LLMResponseError("LLM returned invalid JSON:\n" + content)
 
     return data
 
@@ -437,7 +439,7 @@ def generate_column_doc(
 
     content = response.choices[0].message.content
     if not content:
-        raise ValueError("LLM returned an empty response")
+        raise LLMResponseError("LLM returned an empty response")
 
     return content.strip()
 
@@ -476,7 +478,7 @@ def generate_table_doc(
 
     content = response.choices[0].message.content
     if not content:
-        raise ValueError("LLM returned an empty response")
+        raise LLMResponseError("LLM returned an empty response")
 
     return content.strip()
 

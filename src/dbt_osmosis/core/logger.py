@@ -12,6 +12,14 @@ from pathlib import Path
 import rich
 from rich.logging import RichHandler
 
+__all__ = [
+    "get_rotating_log_handler",
+    "get_logger",
+    "LOGGER",
+    "set_log_level",
+    "LogMethod",
+]
+
 _LOG_FILE_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
 _LOG_PATH = Path.home().absolute() / ".dbt-osmosis" / "logs"
 _LOGGING_LEVEL = logging.INFO

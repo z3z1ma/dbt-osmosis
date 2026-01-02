@@ -50,6 +50,8 @@ dev = [
   "ruff~=0.8.4",
   "pytest~=8.3.4",
   "pytest-cov~=6.0",
+  "hypothesis",
+  "mutmut",
   "pre-commit>3.0.0,<5",
   "dbt-duckdb>=1.0.0,<2",
 ]

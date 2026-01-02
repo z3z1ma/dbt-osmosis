@@ -37,6 +37,7 @@ __all__ = [
     "create_dbt_project_context",
     "_reload_manifest",
     "MAX_PREVIEW_LENGTH",
+    "DEFAULT_CONNECTION_TTL",
     "config_to_namespace",
 ]
 
@@ -114,6 +115,11 @@ class DbtConfiguration:
         )
 
 
+# Constants
+MAX_PREVIEW_LENGTH = 100
+DEFAULT_CONNECTION_TTL = 3600.0
+
+
 @dataclass
 class DbtProjectContext:
     """A data object that includes references to the dbt project.
@@ -121,9 +127,29 @@ class DbtProjectContext:
     This class wraps dbt-core-interface's DbtProject to provide a cleaner
     API for dbt-osmosis while maintaining backwards compatibility.
 
+    Lazy Adapter Initialization:
+        The DbtProject uses lazy initialization for the adapter property to defer
+        connection overhead until actually needed. This pattern avoids establishing
+        database connections during context creation when they may not be used,
+        improving startup performance and reducing resource consumption. The
+        connection_ttl field implements TTL-based connection recycling on top of
+        this lazy initialization to refresh stale connections in long-running
+        processes.
+
     Thread-safety: The underlying DbtProject handles thread safety for
     adapter and manifest access. Additional mutexes protect manifest reload
     operations to prevent concurrent modifications.
+
+    Resource Management:
+        The context manager should be used to ensure connections are properly closed:
+            with create_dbt_project_context(config) as context:
+                ...  # use context
+        Or explicitly call close() when done:
+            context = create_dbt_project_context(config)
+            try:
+                ...  # use context
+            finally:
+                context.close()
     """
 
     config: DbtConfiguration
@@ -132,8 +158,12 @@ class DbtProjectContext:
     _project: InterfaceDbtProject = field(default=None, init=False, repr=False)
     """The underlying dbt-core-interface DbtProject instance"""
 
-    connection_ttl: float = 3600.0
-    """Max time in seconds to keep a db connection alive before recycling it"""
+    connection_ttl: float = DEFAULT_CONNECTION_TTL
+    """Max time in seconds to keep a db connection alive before recycling it.
+
+    Defaults to DEFAULT_CONNECTION_TTL. Connection recycling ensures stale connections
+    are refreshed, preventing timeouts and connection leaks in long-running processes.
+    """
 
     _manifest_mutex: threading.RLock = field(default_factory=threading.RLock, init=False)
     """Lock protecting manifest reload operations.
@@ -152,6 +182,54 @@ class DbtProjectContext:
 
     Thread-safety: Protected by DbtProject's internal locks. Keys are thread IDs.
     """
+
+    _closed: bool = field(default=False, init=False, repr=False)
+    """Track whether the context has been closed to prevent double-cleanup.
+
+    Thread-safety: Protected by _manifest_mutex when checking/setting.
+    """
+
+    def __enter__(self) -> "DbtProjectContext":
+        """Enter the context manager.
+
+        Returns:
+            self for use in with statements
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit the context manager, ensuring connections are closed.
+
+        Args:
+            exc_type: Exception type if an exception was raised
+            exc_val: Exception value if an exception was raised
+            exc_tb: Exception traceback if an exception was raised
+        """
+        self.close()
+
+    def close(self) -> None:
+        """Close the adapter connections and cleanup resources.
+
+        This method is idempotent - calling it multiple times is safe.
+        It should be called when the DbtProjectContext is no longer needed
+        to prevent connection leaks.
+
+        Thread-safety: This method is thread-safe and can be called from any thread.
+        """
+        with self._manifest_mutex:
+            if self._closed:
+                return
+
+            try:
+                if self._project is not None and hasattr(self._project, "adapter"):
+                    adapter = self._project.adapter
+                    if hasattr(adapter, "connections") and hasattr(adapter.connections, "close"):
+                        logger.debug(":lock: Closing adapter connections")
+                        adapter.connections.close()
+            except Exception as e:
+                logger.warning(":warning: Error closing adapter connections: %s", e)
+            finally:
+                self._closed = True
 
     @classmethod
     def from_project(
@@ -359,10 +437,6 @@ def _reload_manifest(context: DbtProjectContext) -> None:
         # Use DbtProject's parse_project to reload
         context._project.parse_project(write_manifest=False)
         logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)
-
-
-# Constants
-MAX_PREVIEW_LENGTH = 100
 
 
 def config_to_namespace(config: DbtConfiguration) -> argparse.Namespace:

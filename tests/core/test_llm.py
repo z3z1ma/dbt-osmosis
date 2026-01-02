@@ -8,6 +8,7 @@ from unittest import mock
 import pytest
 from openai.types.chat import ChatCompletionMessage
 
+from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 from dbt_osmosis.core.llm import (
     _redact_credentials,
     generate_column_doc,
@@ -65,19 +66,19 @@ def test_get_llm_client_openai(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_llm_client_openai_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised when OPENAI_API_KEY is missing."""
+    """Test that LLMConfigurationError is raised when OPENAI_API_KEY is missing."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("LLM_PROVIDER", "openai")
 
-    with pytest.raises(ValueError, match="OPENAI_API_KEY not set"):
+    with pytest.raises(LLMConfigurationError, match="OPENAI_API_KEY not set"):
         get_llm_client()
 
 
 def test_get_llm_client_invalid_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised for invalid provider."""
+    """Test that LLMConfigurationError is raised for invalid provider."""
     monkeypatch.setenv("LLM_PROVIDER", "invalid-provider")
 
-    with pytest.raises(ValueError, match="Invalid LLM provider"):
+    with pytest.raises(LLMConfigurationError, match="Invalid LLM provider"):
         get_llm_client()
 
 
@@ -155,7 +156,7 @@ def test_generate_model_spec_as_json_with_markdown_fences(monkeypatch: pytest.Mo
 
 
 def test_generate_model_spec_as_json_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised when LLM returns invalid JSON."""
+    """Test that LLMResponseError is raised when LLM returns invalid JSON."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
 
@@ -164,12 +165,12 @@ def test_generate_model_spec_as_json_invalid_json(monkeypatch: pytest.MonkeyPatc
     with mock.patch(
         "openai.resources.chat.completions.Completions.create", return_value=mock_response
     ):
-        with pytest.raises(ValueError, match="LLM returned invalid JSON"):
+        with pytest.raises(LLMResponseError, match="LLM returned invalid JSON"):
             generate_model_spec_as_json(sql_content="SELECT * FROM users")
 
 
 def test_generate_model_spec_as_json_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised when LLM returns empty response."""
+    """Test that LLMResponseError is raised when LLM returns empty response."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
 
@@ -182,7 +183,7 @@ def test_generate_model_spec_as_json_empty_response(monkeypatch: pytest.MonkeyPa
     with mock.patch(
         "openai.resources.chat.completions.Completions.create", return_value=mock_response_with_none
     ):
-        with pytest.raises(ValueError, match="LLM returned an empty response"):
+        with pytest.raises(LLMResponseError, match="LLM returned an empty response"):
             generate_model_spec_as_json(sql_content="SELECT * FROM users")
 
 
@@ -207,7 +208,7 @@ def test_generate_column_doc(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_generate_column_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised when LLM returns empty response for column doc."""
+    """Test that LLMResponseError is raised when LLM returns empty response for column doc."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
 
@@ -216,7 +217,7 @@ def test_generate_column_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> 
     with mock.patch(
         "openai.resources.chat.completions.Completions.create", return_value=mock_response
     ):
-        with pytest.raises(ValueError, match="LLM returned an empty response"):
+        with pytest.raises(LLMResponseError, match="LLM returned an empty response"):
             generate_column_doc(column_name="test_col")
 
 
@@ -240,7 +241,7 @@ def test_generate_table_doc(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_generate_table_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised when LLM returns empty response for table doc."""
+    """Test that LLMResponseError is raised when LLM returns empty response for table doc."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
 
@@ -249,7 +250,7 @@ def test_generate_table_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> N
     with mock.patch(
         "openai.resources.chat.completions.Completions.create", return_value=mock_response
     ):
-        with pytest.raises(ValueError, match="LLM returned an empty response"):
+        with pytest.raises(LLMResponseError, match="LLM returned an empty response"):
             generate_table_doc(sql_content="SELECT * FROM users", table_name="users")
 
 
