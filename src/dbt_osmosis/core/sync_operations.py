@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing as t
 from functools import partial
+from pathlib import Path
 
 from dbt.contracts.graph.nodes import ModelNode, ResultNode
 from dbt.node_types import NodeType
@@ -93,6 +94,288 @@ def _sync_doc_section(
     doc_section["columns"] = incoming_columns
 
 
+def _get_resource_type_key(node: ResultNode) -> str:
+    """Get the resource type key for a node (e.g., 'models', 'sources', 'seeds')."""
+    if node.resource_type == NodeType.Source:
+        return "sources"
+    if node.resource_type == NodeType.Seed:
+        return "seeds"
+    return "models"
+
+
+def _prepare_yaml_document(
+    context: YamlRefactorContextProtocol, node: ResultNode, current_path: t.Optional[Path]
+) -> dict[str, t.Any]:
+    """Prepare or load the YAML document for a node.
+
+    Returns the document dict, creating a minimal structure if needed.
+    """
+    from dbt_osmosis.core.path_management import get_target_yaml_path
+    from dbt_osmosis.core.schema.reader import _read_yaml
+
+    # Determine the path to use
+    if not current_path or not current_path.exists():
+        logger.debug(
+            ":warning: Current path does not exist => %s. Using target path instead.",
+            current_path,
+        )
+        current_path = get_target_yaml_path(context, node)
+
+    doc: dict[str, t.Any] = _read_yaml(
+        context.yaml_handler, context.yaml_handler_lock, current_path
+    )
+    if not doc:
+        doc = {"version": 2}
+    return doc
+
+
+def _get_or_create_source(
+    doc: dict[str, t.Any], source_name: str, table_name: str | None = None
+) -> dict[str, t.Any]:
+    """Find or create a source entry in the YAML document.
+
+    Handles the case where the YAML contains a Jinja template for the source name
+    (e.g., "{{ var('some_source')[target.name] }}") but the manifest contains the
+    resolved value (e.g., "some_source_dev"). In such cases, we try to find the
+    source by checking if any existing source already contains the table we're looking for.
+    """
+    sources = doc.setdefault("sources", [])
+
+    # First, try exact match
+    for source in sources:
+        if source.get("name") == source_name:
+            return source
+
+    # If no exact match and we have a table name, check if any existing source
+    # already contains this table (which could indicate a Jinja template source name)
+    if table_name:
+        for source in sources:
+            for table in source.get("tables", []):
+                if table.get("name") == table_name:
+                    # Found the table in an existing source with a different name
+                    # This is likely a Jinja template source name situation
+                    logger.debug(
+                        ":link: Found table %s in source %s (node source_name is %s), "
+                        "likely Jinja template source name - using existing source",
+                        table_name,
+                        source.get("name"),
+                        source_name,
+                    )
+                    return source
+
+    # Create new source
+    new_source = {"name": source_name, "tables": []}
+    sources.append(new_source)
+    return new_source
+
+
+def _get_or_create_source_table(doc_source: dict[str, t.Any], table_name: str) -> dict[str, t.Any]:
+    """Find or create a table entry within a source."""
+    for table in doc_source["tables"]:
+        if table.get("name") == table_name:
+            return table
+    # Create new table
+    new_table = {"name": table_name, "columns": []}
+    doc_source["tables"].append(new_table)
+    return new_table
+
+
+def _sync_source_node(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    doc: dict[str, t.Any],
+    resource_key: str,
+) -> None:
+    """Sync a source node to its YAML representation.
+
+    Sources have a nested structure: sources -> [source_name] -> tables -> [table_name]
+    """
+    doc_source = _get_or_create_source(doc, node.source_name, table_name=node.name)
+    doc_table = _get_or_create_source_table(doc_source, node.name)
+    _sync_doc_section(context, node, doc_table)
+
+
+def _deduplicate_model_entries(
+    doc_list: list[dict[str, t.Any]], model_name: str
+) -> dict[str, t.Any] | None:
+    """Find and deduplicate model entries by name.
+
+    Returns the first model entry if found, or None if not found.
+    Removes duplicate entries if they exist.
+    """
+    model_indices: list[int] = []
+    for i, item in enumerate(doc_list):
+        if item.get("name") == model_name:
+            model_indices.append(i)
+
+    if len(model_indices) > 1:
+        logger.warning(":warning: Found duplicate entries for model => %s", model_name)
+        doc_model = doc_list[model_indices[0]]
+        # Remove duplicates in reverse order to avoid index shifting
+        for idx in sorted(model_indices[1:], reverse=True):
+            doc_list.pop(idx)
+        return doc_model
+    elif model_indices:
+        return doc_list[model_indices[0]]
+    return None
+
+
+def _get_or_create_model(doc_list: list[dict[str, t.Any]], model_name: str) -> dict[str, t.Any]:
+    """Find or create a model entry in the YAML document."""
+    doc_model = _deduplicate_model_entries(doc_list, model_name)
+    if not doc_model:
+        doc_model = {"name": model_name, "columns": []}
+        doc_list.append(doc_model)
+    return doc_model
+
+
+def _deduplicate_versions(
+    doc_model: dict[str, t.Any],
+) -> dict[t.Union[int, str, float], dict[str, t.Any]]:
+    """Deduplicate version entries by version number.
+
+    Returns a dict mapping version numbers to version dicts.
+    """
+    version_by_v: dict[t.Union[int, str, float], dict[str, t.Any]] = {}
+    for version in doc_model.get("versions", []):
+        v_value = version.get("v")
+        if v_value is not None:
+            version_by_v[v_value] = version
+    # Replace versions list with deduplicated versions
+    doc_model["versions"] = list(version_by_v.values())
+    return version_by_v
+
+
+def _get_or_create_version(
+    doc_model: dict[str, t.Any],
+    version: t.Union[int, str, float],
+) -> dict[str, t.Any]:
+    """Find or create a version entry within a model."""
+    version_by_v = _deduplicate_versions(doc_model)
+    doc_version = version_by_v.get(version)
+    if not doc_version:
+        doc_version = {"v": version, "columns": []}
+        doc_model["versions"].append(doc_version)
+    return doc_version
+
+
+def _sync_versioned_model(
+    context: YamlRefactorContextProtocol,
+    node: ModelNode,
+    doc_model: dict[str, t.Any],
+) -> None:
+    """Sync a versioned model to its YAML representation."""
+    if "versions" not in doc_model:
+        doc_model["versions"] = []
+
+    doc_version = _get_or_create_version(doc_model, node.version)
+
+    # Ensure latest_version is set
+    if "latest_version" not in doc_model:
+        doc_model["latest_version"] = node.version
+
+    # Sync data to the version object
+    _sync_doc_section(context, node, doc_version)
+
+
+def _sync_non_versioned_node(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    doc_model: dict[str, t.Any],
+) -> None:
+    """Sync a non-versioned model or seed to its YAML representation."""
+    _sync_doc_section(context, node, doc_model)
+
+
+def _sync_model_or_seed_node(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    doc: dict[str, t.Any],
+    resource_key: str,
+) -> None:
+    """Sync a model or seed node to its YAML representation."""
+    doc_list = doc.setdefault(resource_key, [])
+    doc_model = _get_or_create_model(doc_list, node.name)
+
+    # Handle versioned models differently
+    if isinstance(node, ModelNode) and node.version is not None:
+        _sync_versioned_model(context, node, doc_model)
+    else:
+        _sync_non_versioned_node(context, node, doc_model)
+
+
+def _cleanup_empty_sections(doc: dict[str, t.Any]) -> None:
+    """Remove empty sections from the YAML document."""
+    for k in ("models", "sources", "seeds"):
+        if len(doc.get(k, [])) == 0:
+            _ = doc.pop(k, None)
+
+
+def _sync_single_node_to_yaml(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    *,
+    commit: bool = True,
+) -> None:
+    """Synchronize a single node's columns, description, tags, meta, etc.
+
+    This is an internal helper that processes one node.
+
+    Args:
+        context: The YAML refactor context
+        node: The node to sync
+        commit: Whether to commit changes to disk
+    """
+    # Skip package models (models from dbt packages) as they don't have writable YAML files
+    if node.package_name != context.project.runtime_cfg.project_name:
+        logger.debug(
+            ":package: Skipping package model => %s from package => %s",
+            node.unique_id,
+            node.package_name,
+        )
+        return
+
+    from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
+
+    current_path = get_current_yaml_path(context, node)
+    doc = _prepare_yaml_document(context, node, current_path)
+    resource_key = _get_resource_type_key(node)
+
+    if node.resource_type == NodeType.Source:
+        _sync_source_node(context, node, doc, resource_key)
+    else:
+        _sync_model_or_seed_node(context, node, doc, resource_key)
+
+    _cleanup_empty_sections(doc)
+
+    if commit:
+        # Commit the changes
+        logger.info(":inbox_tray: Committing YAML doc changes for => %s", node.unique_id)
+        from dbt_osmosis.core.schema.writer import _write_yaml
+
+        _write_yaml(
+            context.yaml_handler,
+            context.yaml_handler_lock,
+            current_path or get_target_yaml_path(context, node),
+            doc,
+            context.settings.dry_run,
+            context.register_mutations,
+        )
+
+
+def _deduplicated_version_nodes(context: YamlRefactorContextProtocol) -> t.Iterator[ResultNode]:
+    """Yield nodes, deduplicating versioned models by base name."""
+    from dbt_osmosis.core.node_filters import _iter_candidate_nodes
+
+    processed_models = set()
+    for _, n in _iter_candidate_nodes(context):
+        # For versioned models, only process each base model name once
+        if n.resource_type == NodeType.Model and n.name in processed_models:
+            continue
+        processed_models.add(n.name) if n.resource_type == NodeType.Model else None
+        yield n
+
+
 def sync_node_to_yaml(
     context: YamlRefactorContextProtocol,
     node: t.Optional[ResultNode] = None,
@@ -111,171 +394,21 @@ def sync_node_to_yaml(
         Manifest Node => YAML
 
     All changes to the Node (columns, metadata, etc.) should happen before calling this function.
+
+    Args:
+        context: The YAML refactor context
+        node: The node to sync. If None, syncs all matched nodes.
+        commit: Whether to commit changes to disk (default: True).
+               When False, only performs the sync in memory without writing.
     """
     if node is None:
         logger.info(":wave: No single node specified; synchronizing all matched nodes.")
-        processed_models = set()
-
-        # Closure to filter nodes to avoid duplicates for versioned models
-        def _deduplicated_version_nodes():
-            from dbt_osmosis.core.node_filters import _iter_candidate_nodes
-
-            for _, n in _iter_candidate_nodes(context):
-                # for versioned models, only process each base model name once
-                if n.resource_type == NodeType.Model and n.name in processed_models:
-                    continue
-                processed_models.add(n.name) if n.resource_type == NodeType.Model else None
-                yield n
-
         for _ in context.pool.map(
             partial(sync_node_to_yaml, context, commit=commit),
-            _deduplicated_version_nodes(),
+            _deduplicated_version_nodes(context),
         ):
             ...
         return
 
-    # Skip package models (models from dbt packages) as they don't have writable YAML files
-    if node.package_name != context.project.runtime_cfg.project_name:
-        logger.debug(
-            ":package: Skipping package model => %s from package => %s",
-            node.unique_id,
-            node.package_name,
-        )
-        return
-
-    from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
-    from dbt_osmosis.core.schema.reader import _read_yaml
-    from dbt_osmosis.core.schema.writer import _write_yaml
-
-    current_path = get_current_yaml_path(context, node)
-    if not current_path or not current_path.exists():
-        logger.debug(
-            ":warning: Current path does not exist => %s. Using target path instead.", current_path
-        )
-        current_path = get_target_yaml_path(context, node)
-
-    doc: dict[str, t.Any] = _read_yaml(
-        context.yaml_handler, context.yaml_handler_lock, current_path
-    )
-    if not doc:
-        doc = {"version": 2}
-
-    if node.resource_type == NodeType.Source:
-        resource_k = "sources"
-    elif node.resource_type == NodeType.Seed:
-        resource_k = "seeds"
-    else:
-        resource_k = "models"
-
-    if node.resource_type == NodeType.Source:
-        # The doc structure => sources: [ { "name": <source_name>, "tables": [...]}, ... ]
-        # Step A: find or create the source
-        doc_source: t.Optional[dict[str, t.Any]] = None
-        for s in doc.setdefault(resource_k, []):
-            if s.get("name") == node.source_name:
-                doc_source = s
-                break
-        if not doc_source:
-            doc_source = {
-                "name": node.source_name,
-                "tables": [],
-            }
-            doc["sources"].append(doc_source)
-
-        # Step B: find or create the table
-        doc_table: t.Optional[dict[str, t.Any]] = None
-        for t_ in doc_source["tables"]:
-            if t_.get("name") == node.name:
-                doc_table = t_
-                break
-        if not doc_table:
-            doc_table = {
-                "name": node.name,
-                "columns": [],
-            }
-            doc_source["tables"].append(doc_table)
-
-        # We'll store the columns & description on "doc_table"
-        # For source, "description" is stored at table-level in the Node
-        _sync_doc_section(context, node, doc_table)
-
-    else:
-        # Models or Seeds => doc[ "models" ] or doc[ "seeds" ] is a list of { "name", "description", "columns", ... }
-        doc_list = doc.setdefault(resource_k, [])
-        doc_model: t.Optional[dict[str, t.Any]] = None
-        doc_version: t.Optional[dict[str, t.Any]] = None
-
-        # First, check for duplicate model entries and remove them
-        # FIXED: Collect indices first, then remove in reverse order to avoid modification during iteration
-        model_indices: list[int] = []
-        for i, item in enumerate(doc_list):
-            if item.get("name") == node.name:
-                model_indices.append(i)
-
-        # Keep only the first instance and remove others if there are duplicates
-        if len(model_indices) > 1:
-            logger.warning(":warning: Found duplicate entries for model => %s", node.name)
-            # Keep the first one and remove the rest
-            doc_model = doc_list[model_indices[0]]
-            # Remove duplicates in reverse order to avoid index shifting
-            for idx in sorted(model_indices[1:], reverse=True):
-                doc_list.pop(idx)
-        elif model_indices:
-            doc_model = doc_list[model_indices[0]]
-
-        # If the model doesn't exist in the document, create it
-        if not doc_model:
-            doc_model = {
-                "name": node.name,
-                "columns": [],
-            }
-            doc_list.append(doc_model)
-
-        # Handle versioned models differently
-        if isinstance(node, ModelNode) and node.version is not None:
-            # Ensure versions array exists
-            if "versions" not in doc_model:
-                doc_model["versions"] = []
-
-            # Deduplicate versions with the same 'v' value
-            version_by_v: dict[t.Union[int, str, float], dict[str, t.Any]] = {}
-            for version in doc_model.get("versions", []):
-                v_value = version.get("v")
-                if v_value is not None:
-                    version_by_v[v_value] = version
-
-            # Replace versions list with deduplicated versions
-            doc_model["versions"] = list(version_by_v.values())
-
-            # Try to find the specific version
-            doc_version = version_by_v.get(node.version)
-
-            # If version doesn't exist, create it
-            if not doc_version:
-                doc_version = {"v": node.version, "columns": []}
-                doc_model["versions"].append(doc_version)
-
-            # Ensure latest_version is set
-            if "latest_version" not in doc_model:
-                doc_model["latest_version"] = node.version
-
-            # Sync data to the version object
-            _sync_doc_section(context, node, doc_version)
-        else:
-            # For non-versioned models, sync directly to the model object
-            _sync_doc_section(context, node, doc_model)
-
-    for k in ("models", "sources", "seeds"):
-        if len(doc.get(k, [])) == 0:
-            _ = doc.pop(k, None)
-
-    if commit:
-        logger.info(":inbox_tray: Committing YAML doc changes for => %s", node.unique_id)
-        _write_yaml(
-            context.yaml_handler,
-            context.yaml_handler_lock,
-            current_path,
-            doc,
-            context.settings.dry_run,
-            context.register_mutations,
-        )
+    # Sync the single node
+    _sync_single_node_to_yaml(context, node, commit=commit)

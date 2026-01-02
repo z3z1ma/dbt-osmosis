@@ -241,6 +241,20 @@ def inherit_upstream_column_knowledge(
             if extra not in inheritable:
                 inheritable.append(extra)
 
+        # Special case: osmosis_progenitor should always be inherited if add-progenitor-to-meta is enabled,
+        # regardless of skip-merge-meta setting. This ensures progenitor tracking works independently.
+        if _get_setting_for_node(
+            "add-progenitor-to-meta",
+            node,
+            name,
+            fallback=context.settings.add_progenitor_to_meta,
+        ):
+            # Check if meta has osmosis_progenitor in kwargs
+            if kwargs.get("meta", {}).get("osmosis_progenitor"):
+                # Ensure meta is in inheritable if not already present
+                if "meta" not in inheritable:
+                    inheritable.append("meta")
+
         updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
         logger.debug(
             ":star2: Inheriting updated metadata => %s for column => %s", updated_metadata, name
