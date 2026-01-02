@@ -12,9 +12,9 @@ common_options=(
 )
 
 # Run the tests
-uv run dbt-osmosis yaml organize "${common_options[@]}"
+uv run dbt-osmosis yaml organize --auto-apply "${common_options[@]}"
 uv run dbt-osmosis yaml document "${common_options[@]}"
-uv run dbt-osmosis yaml refactor "${common_options[@]}"
-uv run dbt-osmosis yaml --help > /dev/null
+uv run dbt-osmosis yaml refactor --auto-apply "${common_options[@]}"
+uv run dbt-osmosis yaml --help >/dev/null
 
 echo "All dbt-osmosis yaml integration tests passed!"
