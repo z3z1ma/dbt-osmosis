@@ -1,9 +1,0 @@
-# Test profile using in-memory DuckDB for tests
-# Note: The conftest.yaml_context fixture handles database setup via dbt seed/run
-jaffle_shop:
-  target: test
-  outputs:
-    test:
-      type: duckdb
-      path: ":memory:"
-      threads: 1

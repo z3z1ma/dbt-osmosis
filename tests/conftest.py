@@ -66,6 +66,27 @@ def _run_dbt_commands(project_dir: str, profiles_dir: str, target: str = "test")
             f"dbt run failed: {run_result.exception if hasattr(run_result, 'exception') else 'Unknown error'}"
         )
 
+    # Generate catalog to use for introspection instead of live database queries
+    # This avoids connection issues when DbtProjectContext creates a new connection pool
+    start = time.time()
+    docs_result = dbtRunner().invoke([
+        "docs",
+        "generate",
+        "--project-dir",
+        project_dir,
+        "--profiles-dir",
+        profiles_dir,
+        "--target",
+        target,
+    ])
+    elapsed = time.time() - start
+    if docs_result.success:
+        print(f"✓ dbt docs generate completed successfully ({elapsed:.2f}s)")
+    else:
+        print(
+            f"dbt docs generate failed: {docs_result.exception if hasattr(docs_result, 'exception') else 'Unknown error'}"
+        )
+
 
 def _create_temp_project_copy(source_dir: Path, temp_dir: Path) -> Path:
     """Create a copy of the source project in a temporary directory."""

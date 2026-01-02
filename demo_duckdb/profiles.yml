@@ -3,8 +3,9 @@ jaffle_shop:
   outputs:
     dev:
       type: duckdb
-      path: "demo_duckdb/jaffle_shop.duckdb"
+      path: "jaffle_shop.duckdb"
       threads: 4
     test:
       type: duckdb
-      path: "{{env_var('PWD')}}/jaffle_shop.duckdb"
+      path: "test.db"
+      threads: 1
