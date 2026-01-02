@@ -301,7 +301,7 @@ def test_use_unrendered_descriptions(
         mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
     ):
         _ = inherit_upstream_column_knowledge(yaml_context, target_node)
-        sync_node_to_yaml(yaml_context, target_node)
+        sync_node_to_yaml(yaml_context, target_node, commit=False)
 
     assert target_node.columns["status"].description.startswith(expected_start)
 

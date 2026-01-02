@@ -1,14 +1,10 @@
 # pyright: reportPrivateUsage=false
 import typing as t
 
-import pytest
 
 from dbt_osmosis.core.osmosis import (
-    DbtConfiguration,
     YamlRefactorContext,
-    YamlRefactorSettings,
     _build_column_knowledge_graph,
-    create_dbt_project_context,
 )
 
 
@@ -22,19 +18,11 @@ def _filter_config_field(d: dict[str, t.Any]) -> dict[str, t.Any]:
     return {k: v for k, v in d.items() if k not in ("config", "doc_blocks")}
 
 
-@pytest.fixture(scope="module")
-def yaml_context() -> YamlRefactorContext:
-    c = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
-    c.vars = {"dbt-osmosis": {}}
-    project = create_dbt_project_context(c)
-    context = YamlRefactorContext(
-        project, settings=YamlRefactorSettings(add_progenitor_to_meta=True, dry_run=True)
-    )
-    return context
-
-
 class TestDbtYamlManager:
     def test_get_prior_knowledge(self, yaml_context: YamlRefactorContext):
+        # Configure settings for this test
+        yaml_context.settings.add_progenitor_to_meta = True
+
         # Progenitor gives us an idea of where the inherited traits will come from
         knowledge: dict[str, t.Any] = {
             "customer_id": {
