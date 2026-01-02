@@ -33,10 +33,18 @@ __all__ = [
 T = t.TypeVar("T")
 
 _COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
-"""Cache for column lists to avoid redundant introspection."""
+"""Cache for column lists to avoid redundant introspection.
+
+Thread-safety: Protected by _COLUMN_LIST_CACHE_LOCK. All reads and writes
+must be guarded by this lock. The cache is unbounded and may grow indefinitely.
+"""
 
 _COLUMN_LIST_CACHE_LOCK = threading.Lock()
-"""Lock to protect _COLUMN_LIST_CACHE from concurrent access."""
+"""Lock to protect _COLUMN_LIST_CACHE from concurrent access.
+
+Critical sections: get_columns() function performs cache reads and writes
+under this lock. All access to _COLUMN_LIST_CACHE must be synchronized.
+"""
 
 
 @t.overload
@@ -169,7 +177,15 @@ def _get_setting_for_node(
 def get_columns(
     context: t.Any, relation: BaseRelation | ResultNode | None
 ) -> dict[str, ColumnMetadata]:
-    """Equivalent to get_columns_meta in old code but directly referencing a key, not a node."""
+    """Collect column metadata from database or catalog.
+
+    Thread-safety: This function is thread-safe. It uses _COLUMN_LIST_CACHE_LOCK
+    to synchronize access to the shared _COLUMN_LIST_CACHE. Multiple threads can
+    safely call this function concurrently.
+
+    Returns:
+        OrderedDict mapping normalized column names to ColumnMetadata.
+    """
     normalized_columns: OrderedDict[str, ColumnMetadata] = OrderedDict()
 
     if relation is None:

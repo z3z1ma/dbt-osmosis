@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 import ruamel.yaml
 
 if t.TYPE_CHECKING:
+    from dbt.artifacts.resources.types import NodeType
     from dbt.contracts.results import CatalogResults
 
 
@@ -139,6 +140,92 @@ class YamlRefactorContextProtocol(t.Protocol):
         ...
 
 
+class ColumnInfoProtocol(t.Protocol):
+    """Protocol for column metadata in dbt nodes.
+
+    Represents a column's documentation and metadata within a dbt model/source.
+    """
+
+    name: str
+    description: str | None
+    meta: dict[str, t.Any]
+    tags: list[str]
+    data_type: str | None
+
+    def to_dict(self, omit_none: bool = False) -> dict[str, t.Any]:
+        """Convert column info to dictionary representation."""
+        ...
+
+
+class ResultNodeProtocol(t.Protocol):
+    """Protocol for dbt result nodes (models, sources, seeds, etc.).
+
+    Base protocol for all dbt resource nodes that can be documented.
+    """
+
+    unique_id: str
+    name: str
+    database: str
+    schema: str
+    resource_type: NodeType
+    package_name: str
+    path: str
+    original_file_path: str
+    description: str
+    meta: dict[str, t.Any]
+    tags: list[str]
+    config: t.Any  # NodeConfig
+    unrendered_config: dict[str, t.Any]
+    columns: dict[str, ColumnInfoProtocol]
+    patch_path: str | None
+
+    @property
+    def is_relational(self) -> bool:
+        """Check if this is a relational node (has columns)."""
+        ...
+
+    @property
+    def is_ephemeral_model(self) -> bool:
+        """Check if this is an ephemeral model."""
+        ...
+
+
+class ModelNodeProtocol(ResultNodeProtocol, t.Protocol):
+    """Protocol for dbt model nodes.
+
+    Extends ResultNode with model-specific properties.
+    """
+
+    version: t.Union[int, str, float, None]
+    alias: str
+
+    @property
+    def has_documented_parent(self) -> bool:
+        """Check if this model has a documented parent."""
+        ...
+
+
+class SourceDefinitionProtocol(ResultNodeProtocol, t.Protocol):
+    """Protocol for dbt source definitions.
+
+    Extends ResultNode with source-specific properties.
+    """
+
+    source_name: str
+    loader: str
+    identifier: str
+    quoting: t.Any  # Quoting spec
+
+
+class SeedNodeProtocol(ResultNodeProtocol, t.Protocol):
+    """Protocol for dbt seed nodes.
+
+    Extends ResultNode with seed-specific properties.
+    """
+
+    alias: str
+
+
 # Export all protocols
 __all__ = [
     "DbtAdapterProtocol",
@@ -146,4 +233,9 @@ __all__ = [
     "DbtManifestProtocol",
     "DbtProjectContextProtocol",
     "YamlRefactorContextProtocol",
+    "ColumnInfoProtocol",
+    "ResultNodeProtocol",
+    "ModelNodeProtocol",
+    "SourceDefinitionProtocol",
+    "SeedNodeProtocol",
 ]

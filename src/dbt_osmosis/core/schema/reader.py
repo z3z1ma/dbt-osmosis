@@ -1,3 +1,12 @@
+"""YAML file reading and caching for dbt-osmosis.
+
+Thread-safety:
+    - _YAML_BUFFER_CACHE is protected by _YAML_BUFFER_CACHE_LOCK
+    - All cache reads and writes must be synchronized using this lock
+    - _read_yaml() acquires both yaml_handler_lock and _YAML_BUFFER_CACHE_LOCK
+    - The cache is unbounded and may grow indefinitely (known issue: dbt-osmosis-5n7)
+"""
+
 import threading
 import typing as t
 from pathlib import Path
@@ -13,16 +22,32 @@ __all__ = [
 ]
 
 _YAML_BUFFER_CACHE: dict[Path, t.Any] = {}
-"""Cache for yaml file buffers to avoid redundant disk reads/writes and simplify edits."""
+"""Cache for yaml file buffers to avoid redundant disk reads/writes and simplify edits.
+
+Thread-safety: Protected by _YAML_BUFFER_CACHE_LOCK. All reads and writes
+must be guarded by this lock. The cache is unbounded and may grow indefinitely.
+"""
 
 _YAML_BUFFER_CACHE_LOCK = threading.Lock()
-"""Lock to protect _YAML_BUFFER_CACHE from concurrent access."""
+"""Lock to protect _YAML_BUFFER_CACHE from concurrent access.
+
+Critical sections: _read_yaml() and _write_yaml() perform cache operations
+under this lock. All access to _YAML_BUFFER_CACHE must be synchronized.
+"""
 
 
 def _read_yaml(
     yaml_handler: ruamel.yaml.YAML, yaml_handler_lock: threading.Lock, path: Path
 ) -> dict[str, t.Any]:
-    """Read a yaml file from disk. Adds an entry to the buffer cache so all operations on a path are consistent."""
+    """Read a yaml file from disk. Adds an entry to the buffer cache so all operations on a path are consistent.
+
+    Thread-safety: This function is thread-safe. It acquires both yaml_handler_lock
+    and _YAML_BUFFER_CACHE_LOCK to ensure synchronized access to the shared cache.
+    Multiple threads can safely call this function concurrently.
+
+    Returns:
+        Parsed YAML content as a dictionary, or empty dict if file doesn't exist.
+    """
     with yaml_handler_lock:
         with _YAML_BUFFER_CACHE_LOCK:
             if path not in _YAML_BUFFER_CACHE:

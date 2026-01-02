@@ -1,3 +1,11 @@
+"""YAML file writing for dbt-osmosis.
+
+Thread-safety:
+    - _write_yaml() acquires yaml_handler_lock for the entire write operation
+    - Cache invalidation is performed under _YAML_BUFFER_CACHE_LOCK
+    - Multiple threads can safely write to different files concurrently
+"""
+
 import io
 import threading
 import typing as t
@@ -23,6 +31,10 @@ def _write_yaml(
     mutation_tracker: t.Callable[[int], None] | None = None,
 ) -> None:
     """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache.
+
+    Thread-safety: This function is thread-safe. It acquires yaml_handler_lock
+    to ensure exclusive access to the yaml handler, and _YAML_BUFFER_CACHE_LOCK
+    for cache invalidation. Multiple threads can safely write to different files.
 
     Uses a write-validate-replace pattern to prevent data loss:
     1. Write to temporary file (.yml.tmp)

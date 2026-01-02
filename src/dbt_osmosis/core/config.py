@@ -139,9 +139,28 @@ class DbtProjectContext:
     """Max time in seconds to keep a db connection alive before recycling it, mostly useful for very long runs"""
 
     _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
+    """Lock protecting adapter initialization and connection lifecycle.
+
+    Thread-safety: Guards access to _adapter and _connection_created_at. Acquired
+    by the adapter property to ensure thread-safe adapter creation and connection
+    refresh. Critical section: adapter property getter.
+    """
     _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
+    """Lock protecting manifest reload operations.
+
+    Thread-safety: Exposed via manifest_mutex property for external synchronization
+    of manifest operations. Used by _reload_manifest() to prevent concurrent reloads.
+    """
     _adapter: BaseAdapter | None = field(default=None, init=False)
+    """Cached dbt adapter instance.
+
+    Thread-safety: Protected by _adapter_mutex. Access only via adapter property.
+    """
     _connection_created_at: dict[int, float] = field(default_factory=dict, init=False)
+    """Per-thread connection creation timestamps for TTL tracking.
+
+    Thread-safety: Protected by _adapter_mutex. Keys are thread IDs.
+    """
 
     @property
     def is_connection_expired(self) -> bool:
@@ -155,7 +174,12 @@ class DbtProjectContext:
 
     @property
     def adapter(self) -> BaseAdapter:
-        """Get the adapter instance, creating a new one if the current one has expired."""
+        """Get the adapter instance, creating a new one if the current one has expired.
+
+        Thread-safety: This property is thread-safe. It acquires _adapter_mutex
+        to ensure atomic adapter creation and connection refresh. Multiple threads
+        can safely access the adapter concurrently.
+        """
         with self._adapter_mutex:
             if not self._adapter:
                 logger.info(":wrench: Instantiating new adapter because none is currently set.")
@@ -181,7 +205,10 @@ class DbtProjectContext:
 
     @property
     def manifest_mutex(self) -> threading.Lock:
-        """Return the manifest mutex for thread safety."""
+        """Return the manifest mutex for thread safety.
+
+        Thread-safety: Use this lock to synchronize manifest reload operations.
+        """
         return self._manifest_mutex
 
 
