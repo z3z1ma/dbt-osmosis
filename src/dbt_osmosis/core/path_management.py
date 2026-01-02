@@ -106,20 +106,21 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
 
     # Create a simple node object with common attributes for format strings
     # Avoid exposing fqn/tags as indexed dicts to prevent TOCTOU issues
+    node_attrs = {
+        "name": node.name,
+        "schema": node.schema,
+        "database": node.database,
+        "package": node.package_name,
+    }
+    # Add source_name only for Source nodes (non-source nodes don't have this attribute)
+    if node.resource_type == NodeType.Source:
+        node_attrs["source_name"] = node.source_name
+
     format_dict = {
         "model": node.name,
         "parent": path.parent.name,
         "schema": node.schema,
-        "node": type(
-            "obj",
-            (object,),
-            {
-                "name": node.name,
-                "schema": node.schema,
-                "database": node.database,
-                "package": node.package_name,
-            },
-        )(),
+        "node": type("obj", (object,), node_attrs)(),
     }
 
     rendered = tpl.format(**format_dict)
