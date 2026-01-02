@@ -103,40 +103,28 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
         logger.warning(":warning: No path template found for => %s", node.unique_id)
         return Path(context.project.runtime_cfg.project_root, node.original_file_path)
 
-    # Use copies to avoid TOCTOU race conditions from mutating node objects
-    fqn_ = list(node.fqn)
-    tags_ = list(node.tags)
+    # Use local copies to avoid TOCTOU race conditions from mutating node objects
+    # Build a safe format dict with only immutable/copy data
+    path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
 
-    # NOTE: this permits negative index lookups in fqn within format strings
-    lr_index: dict[int, str] = {i: s for i, s in enumerate(fqn_)}
-    rl_index: dict[str, str] = {
-        str(-len(fqn_) + i): s for i, s in enumerate(reversed(fqn_), start=1)
-    }
-    fqn_index = {**rl_index, **lr_index}
-
-    # NOTE: this permits negative index lookups in tags within format strings
-    tags_lr_index: dict[int, str] = {i: s for i, s in enumerate(tags_)}
-    tags_rl_index: dict[str, str] = {
-        str(-len(tags_) + i): s for i, s in enumerate(reversed(tags_), start=1)
-    }
-    tags_index = {**tags_rl_index, **tags_lr_index}
-
-    # Create a dict for format string that provides indexed access without mutating node
+    # Create a simple node object with common attributes for format strings
+    # Avoid exposing fqn/tags as indexed dicts to prevent TOCTOU issues
     format_dict = {
+        "model": node.name,
+        "parent": path.parent.name,
+        "schema": node.schema,
         "node": type(
             "obj",
             (object,),
             {
-                "fqn": fqn_index,
-                "tags": tags_index,
-                **{k: v for k, v in node.__dict__.items() if not k.startswith("_")},
+                "name": node.name,
+                "schema": node.schema,
+                "database": node.database,
+                "package": node.package_name,
             },
         )(),
-        "model": node.name,
     }
 
-    path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
-    format_dict["parent"] = path.parent.name
     rendered = tpl.format(**format_dict)
 
     segments: list[t.Union[Path, str]] = []

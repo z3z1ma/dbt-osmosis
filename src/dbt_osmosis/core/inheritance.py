@@ -24,6 +24,7 @@ def _build_node_ancestor_tree(
     tree: dict[str, list[str]] | None = None,
     visited: set[str] | None = None,
     depth: int = 1,
+    max_depth: int = 100,
 ) -> dict[str, list[str]]:
     """Build a flat graph of a node and it's ancestors."""
     logger.debug(":seedling: Building ancestor tree/branch for => %s", node.unique_id)
@@ -35,15 +36,33 @@ def _build_node_ancestor_tree(
     if not hasattr(node, "depends_on"):
         return tree
 
+    # Prevent unbounded recursion
+    if depth > max_depth:
+        logger.warning(
+            ":rotating_light: Max depth %d exceeded for node %s, possible circular dependency",
+            max_depth,
+            node.unique_id,
+        )
+        return tree
+
     for dep in getattr(node.depends_on, "nodes", []):
         if not dep.startswith(("model.", "seed.", "source.")):
             continue
-        if dep not in visited:
-            visited.add(dep)
-            member = manifest.nodes.get(dep, manifest.sources.get(dep))
-            if member:
-                tree.setdefault(f"generation_{depth}", []).append(dep)
-                _ = _build_node_ancestor_tree(manifest, member, tree, visited, depth + 1)
+
+        # Cycle detection: skip if already visited
+        if dep in visited:
+            logger.warning(
+                ":rotating_light: Circular dependency detected: %s -> %s",
+                node.unique_id,
+                dep,
+            )
+            continue
+
+        visited.add(dep)
+        member = manifest.nodes.get(dep, manifest.sources.get(dep))
+        if member:
+            tree.setdefault(f"generation_{depth}", []).append(dep)
+            _ = _build_node_ancestor_tree(manifest, member, tree, visited, depth + 1, max_depth)
 
     for generation in tree.values():
         generation.sort()  # For deterministic ordering

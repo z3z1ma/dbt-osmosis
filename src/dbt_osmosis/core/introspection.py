@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import typing as t
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -33,6 +34,9 @@ T = t.TypeVar("T")
 
 _COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
 """Cache for column lists to avoid redundant introspection."""
+
+_COLUMN_LIST_CACHE_LOCK = threading.Lock()
+"""Lock to protect _COLUMN_LIST_CACHE from concurrent access."""
 
 
 @t.overload
@@ -185,9 +189,10 @@ def get_columns(
         )
 
     rendered_relation = relation.render()
-    if rendered_relation in _COLUMN_LIST_CACHE:
-        logger.debug(":blue_book: Column list cache HIT => %s", rendered_relation)
-        return _COLUMN_LIST_CACHE[rendered_relation]
+    with _COLUMN_LIST_CACHE_LOCK:
+        if rendered_relation in _COLUMN_LIST_CACHE:
+            logger.debug(":blue_book: Column list cache HIT => %s", rendered_relation)
+            return _COLUMN_LIST_CACHE[rendered_relation]
 
     logger.info(":mag_right: Collecting columns for table => %s", rendered_relation)
     index = 0
