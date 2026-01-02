@@ -270,7 +270,11 @@ def apply_restructure_plan(
         logger.warning(":loudspeaker: Please respond with 'y' or 'n'.")
 
     from dbt_osmosis.core.config import _reload_manifest
-    from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE, _read_yaml
+    from dbt_osmosis.core.schema.reader import (
+        _YAML_BUFFER_CACHE,
+        _YAML_BUFFER_CACHE_LOCK,
+        _read_yaml,
+    )
     from dbt_osmosis.core.schema.writer import _write_yaml
 
     for op in plan.operations:
@@ -316,8 +320,9 @@ def apply_restructure_plan(
                         path.unlink(missing_ok=True)
                         if path.parent.exists() and not any(path.parent.iterdir()):
                             path.parent.rmdir()
-                        if path in _YAML_BUFFER_CACHE:
-                            del _YAML_BUFFER_CACHE[path]
+                        with _YAML_BUFFER_CACHE_LOCK:
+                            if path in _YAML_BUFFER_CACHE:
+                                del _YAML_BUFFER_CACHE[path]
                     context.register_mutations(1)
                     logger.info(":heavy_minus_sign: Superseded entire file => %s", path)
                 else:

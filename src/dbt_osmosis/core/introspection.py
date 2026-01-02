@@ -258,7 +258,8 @@ def get_columns(
     except Exception as ex:
         logger.warning(":warning: Could not introspect columns for %s: %s", rendered_relation, ex)
 
-    _COLUMN_LIST_CACHE[rendered_relation] = normalized_columns
+    with _COLUMN_LIST_CACHE_LOCK:
+        _COLUMN_LIST_CACHE[rendered_relation] = normalized_columns
     return normalized_columns
 
 
