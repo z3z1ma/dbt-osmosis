@@ -4,7 +4,6 @@ from unittest import mock
 
 import pytest
 
-from dbt_osmosis.core.config import DbtConfiguration, create_dbt_project_context
 from dbt_osmosis.core.introspection import (
     _find_first,
     _get_setting_for_node,
@@ -13,25 +12,6 @@ from dbt_osmosis.core.introspection import (
     normalize_column_name,
 )
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
-
-
-@pytest.fixture(scope="module")
-def yaml_context() -> YamlRefactorContext:
-    """
-    Creates a YamlRefactorContext for the real 'demo_duckdb' project.
-    """
-    cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
-    cfg.vars = {"dbt-osmosis": {}}
-
-    project_context = create_dbt_project_context(cfg)
-    context = YamlRefactorContext(
-        project_context,
-        settings=YamlRefactorSettings(
-            dry_run=True,
-            use_unrendered_descriptions=True,
-        ),
-    )
-    return context
 
 
 @pytest.fixture(scope="function")
@@ -45,7 +25,7 @@ def fresh_caches():
         yield
 
 
-def test_get_columns_simple(yaml_context: YamlRefactorContext, fresh_caches):
+def test_get_columns_simple(yaml_context: YamlRefactorContext):
     """
     Tests the get_columns flow on a known table, e.g., 'customers'.
     """
