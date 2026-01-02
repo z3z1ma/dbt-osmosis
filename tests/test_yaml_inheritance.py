@@ -368,6 +368,8 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
 
     yaml_context.placeholders = ("",)
     yaml_context.settings.add_progenitor_to_meta = True
+    # Disable unrendered descriptions so the test's manifest modifications are respected
+    yaml_context.settings.use_unrendered_descriptions = False
 
     # Perform inheritance on the node
     with (

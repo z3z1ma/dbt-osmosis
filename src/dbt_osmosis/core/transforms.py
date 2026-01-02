@@ -255,6 +255,20 @@ def inherit_upstream_column_knowledge(
                 if "meta" not in inheritable:
                     inheritable.append("meta")
 
+        # Special case: if force_inherit_descriptions is False and the local column already has
+        # a description, don't inherit the description from upstream (preserve local description)
+        if (
+            "description" in inheritable
+            and not _get_setting_for_node(
+                "force-inherit-descriptions",
+                node,
+                name,
+                fallback=context.settings.force_inherit_descriptions,
+            )
+            and node_column.description
+        ):
+            inheritable.remove("description")
+
         updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
         logger.debug(
             ":star2: Inheriting updated metadata => %s for column => %s", updated_metadata, name
