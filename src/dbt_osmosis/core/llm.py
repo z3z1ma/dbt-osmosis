@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import json
 import os
 import typing as t
@@ -15,6 +17,35 @@ __all__ = [
     "generate_column_doc",
     "generate_table_doc",
 ]
+
+
+def _redact_credentials(text: str) -> str:
+    """Redact potential API keys and credentials from text before logging.
+
+    This function prevents sensitive credentials from being logged in error messages
+    or debug output. It matches common patterns for API keys, tokens, and secrets.
+
+    Args:
+        text: The text to sanitize
+
+    Returns:
+        The text with credentials redacted
+    """
+    if not text:
+        return text
+
+    # Redact common API key patterns (sk-, Bearer, etc.)
+    patterns = [
+        (r"(sk-[a-zA-Z0-9]{20,})", "sk-REDACTED"),
+        (r"(Bearer\s+[a-zA-Z0-9._-]{20,})", "Bearer REDACTED"),
+        (r"([a-zA-Z0-9_-]{32,})", "REDACTED_KEY"),  # Long alphanumeric strings
+    ]
+
+    redacted = text
+    for pattern, replacement in patterns:
+        redacted = re.sub(pattern, replacement, redacted)
+
+    return redacted
 
 
 # Dynamic client creation function

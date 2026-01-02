@@ -98,29 +98,41 @@ def get_target_yaml_path(context: t.Any, node: ResultNode) -> Path:
         logger.warning(":warning: No path template found for => %s", node.unique_id)
         return Path(context.project.runtime_cfg.project_root, node.original_file_path)
 
-    fqn_ = node.fqn
-    tags_ = node.tags
+    # Use copies to avoid TOCTOU race conditions from mutating node objects
+    fqn_ = list(node.fqn)
+    tags_ = list(node.tags)
 
     # NOTE: this permits negative index lookups in fqn within format strings
     lr_index: dict[int, str] = {i: s for i, s in enumerate(fqn_)}
     rl_index: dict[str, str] = {
         str(-len(fqn_) + i): s for i, s in enumerate(reversed(fqn_), start=1)
     }
-    node.fqn = {**rl_index, **lr_index}  # type: ignore[assignment]
+    fqn_index = {**rl_index, **lr_index}
 
     # NOTE: this permits negative index lookups in tags within format strings
     tags_lr_index: dict[int, str] = {i: s for i, s in enumerate(tags_)}
     tags_rl_index: dict[str, str] = {
         str(-len(tags_) + i): s for i, s in enumerate(reversed(tags_), start=1)
     }
-    node.tags = {**tags_rl_index, **tags_lr_index}  # type: ignore[assignment]
+    tags_index = {**tags_rl_index, **tags_lr_index}
+
+    # Create a dict for format string that provides indexed access without mutating node
+    format_dict = {
+        "node": type(
+            "obj",
+            (object,),
+            {
+                "fqn": fqn_index,
+                "tags": tags_index,
+                **{k: v for k, v in node.__dict__.items() if not k.startswith("_")},
+            },
+        )(),
+        "model": node.name,
+    }
 
     path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
-    rendered = tpl.format(node=node, model=node.name, parent=path.parent.name)
-
-    # restore original values
-    node.fqn = fqn_
-    node.tags = tags_
+    format_dict["parent"] = path.parent.name
+    rendered = tpl.format(**format_dict)
 
     segments: list[t.Union[Path, str]] = []
 
@@ -128,7 +140,8 @@ def get_target_yaml_path(context: t.Any, node: ResultNode) -> Path:
         segments.append(context.project.runtime_cfg.model_paths[0])
     elif rendered.startswith("/"):
         segments.append(context.project.runtime_cfg.model_paths[0])
-        rendered = rendered.lstrip("/")
+        # SECURITY: Remove only the first leading slash, not all slashes (prevents path traversal)
+        rendered = rendered[1:] if rendered.startswith("/") else rendered
     else:
         segments.append(path.parent)
 
@@ -137,6 +150,13 @@ def get_target_yaml_path(context: t.Any, node: ResultNode) -> Path:
     segments.append(rendered)
 
     path = Path(context.project.runtime_cfg.project_root, *segments)
+    # SECURITY: Validate path is within project root to prevent directory traversal
+    resolved_path = path.resolve()
+    project_root = Path(context.project.runtime_cfg.project_root).resolve()
+    if not resolved_path.is_relative_to(project_root):
+        raise ValueError(
+            f"Security violation: Target YAML path '{resolved_path}' is outside project root '{project_root}'"
+        )
     logger.debug(":star2: Target YAML path => %s", path)
     return path
 
@@ -202,11 +222,20 @@ def create_missing_source_yamls(context: t.Any) -> None:
             )
             continue
 
+        # SECURITY: Remove only the first leading separator, not all (prevents path traversal)
+        cleaned_path = src_yaml_path[1:] if src_yaml_path.startswith(os.sep) else src_yaml_path
         src_yaml_path_obj = Path(
             context.project.runtime_cfg.project_root,
             context.project.runtime_cfg.model_paths[0],
-            src_yaml_path.lstrip(os.sep),
+            cleaned_path,
         )
+        # SECURITY: Validate path is within project root to prevent directory traversal
+        resolved_path = src_yaml_path_obj.resolve()
+        project_root = Path(context.project.runtime_cfg.project_root).resolve()
+        if not resolved_path.is_relative_to(project_root):
+            raise ValueError(
+                f"Security violation: Source YAML path '{resolved_path}' is outside project root '{project_root}'"
+            )
 
         def _describe(relation: t.Any) -> dict[str, t.Any]:
             assert relation.identifier, "No identifier found for relation."

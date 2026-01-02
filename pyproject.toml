@@ -33,10 +33,10 @@ dependencies = [
 
 [project.optional-dependencies]
 workbench = [
-  "streamlit>=1.20.0,<1.34.0",
+  "streamlit>=1.20.0,<1.42.0",
   "streamlit-ace~=0.1.1",
-  "ydata-profiling~=4.12.1",
-  "feedparser~=6.0.11",
+  "ydata-profiling~=4.13.0",
+  "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
   "dbt-duckdb>=1.8.0,<=1.10",
   "setuptools>=70",
