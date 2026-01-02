@@ -1,3 +1,10 @@
+"""Dbt project configuration and context management.
+
+This module provides a high-level interface to dbt-core for dbt-osmosis.
+It wraps dbt-core-interface to provide a cleaner API and reduce coupling to
+internal dbt-core modules.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -11,19 +18,14 @@ from pathlib import Path
 from threading import get_ident
 from types import ModuleType
 
-import dbt.flags as dbt_flags
+# Import from dbt-core-interface instead of internal dbt modules
+from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
+from dbt_core_interface import DbtProject as InterfaceDbtProject
+
+# Type imports for compatibility
 from dbt.adapters.base.impl import BaseAdapter
-from dbt.adapters.factory import get_adapter, register_adapter
-from dbt.config.runtime import RuntimeConfig
-from dbt.context.providers import generate_runtime_macro_context
 from dbt.contracts.graph.manifest import Manifest
-from dbt.mp_context import get_mp_context
-from dbt.parser.manifest import ManifestLoader
 from dbt.parser.models import ModelParser
-from dbt.parser.sql import SqlBlockParser, SqlMacroParser
-from dbt.tracking import disable_tracking
-from dbt_common.clients.system import get_env
-from dbt_common.context import set_invocation_context
 
 import dbt_osmosis.core.logger as logger
 
@@ -35,9 +37,8 @@ __all__ = [
     "create_dbt_project_context",
     "_reload_manifest",
     "MAX_PREVIEW_LENGTH",
+    "config_to_namespace",
 ]
-
-disable_tracking()
 
 
 def discover_project_dir() -> str:
@@ -75,7 +76,11 @@ def discover_profiles_dir() -> str:
 
 @dataclass
 class DbtConfiguration:
-    """Configuration for a dbt project."""
+    """Configuration for a dbt project.
+
+    This is a simplified configuration class that maps to dbt-core-interface's
+    DbtConfiguration while maintaining dbt-osmosis-specific settings.
+    """
 
     project_dir: str = field(default_factory=discover_project_dir)
     profiles_dir: str = field(default_factory=discover_profiles_dir)
@@ -88,120 +93,161 @@ class DbtConfiguration:
     disable_introspection: bool = False  # Internal
 
     def __post_init__(self) -> None:
-        logger.debug(":bookmark_tabs: Setting invocation context with environment variables.")
-        set_invocation_context(get_env())
         if self.threads and self.threads > 1:
             self.single_threaded = False
 
-
-def config_to_namespace(cfg: DbtConfiguration) -> argparse.Namespace:
-    """Convert a DbtConfiguration into a dbt-friendly argparse.Namespace."""
-    logger.debug(":blue_book: Converting DbtConfiguration to argparse.Namespace => %s", cfg)
-    ns = argparse.Namespace(
-        project_dir=cfg.project_dir,
-        profiles_dir=cfg.profiles_dir,
-        target=cfg.target or os.getenv("DBT_TARGET"),
-        profile=cfg.profile or os.getenv("DBT_PROFILE"),
-        threads=cfg.threads,
-        single_threaded=cfg.single_threaded,
-        vars=cfg.vars,
-        which="parse",
-        quiet=cfg.quiet,
-        DEBUG=False,
-        REQUIRE_RESOURCE_NAMES_WITHOUT_SPACES=False,
-    )
-    return ns
+    def to_interface_config(self) -> InterfaceDbtConfiguration:
+        """Convert to dbt-core-interface DbtConfiguration."""
+        return InterfaceDbtConfiguration(
+            project_dir=self.project_dir,
+            profiles_dir=self.profiles_dir,
+            target=self.target,
+            profile=self.profile,
+            threads=self.threads or 1,
+            vars=self.vars,
+            quiet=self.quiet,
+            use_experimental_parser=True,
+            static_parser=True,
+            partial_parse=True,
+            defer=True,
+            favor_state=False,
+        )
 
 
 @dataclass
 class DbtProjectContext:
-    """A data object that includes references to:
+    """A data object that includes references to the dbt project.
 
-    - The loaded dbt config
-    - The manifest
-    - The sql/macro parsers
+    This class wraps dbt-core-interface's DbtProject to provide a cleaner
+    API for dbt-osmosis while maintaining backwards compatibility.
 
-    With mutexes for thread safety. The adapter is lazily instantiated and has a TTL which allows
-    for re-use across multiple operations in long-running processes. (is the idea)
+    Thread-safety: The underlying DbtProject handles thread safety for
+    adapter and manifest access. Additional mutexes protect manifest reload
+    operations to prevent concurrent modifications.
     """
 
     config: DbtConfiguration
-    """The configuration for the dbt project used to initialize the runtime cfg and manifest"""
-    runtime_cfg: RuntimeConfig
-    """The dbt project runtime config associated with the context"""
-    manifest: Manifest
-    """The dbt project manifest"""
-    sql_parser: SqlBlockParser
-    """Parser for dbt Jinja SQL blocks"""
-    macro_parser: SqlMacroParser
-    """Parser for dbt Jinja macros"""
+    """The configuration for the dbt project"""
+
+    _project: InterfaceDbtProject = field(default=None, init=False, repr=False)
+    """The underlying dbt-core-interface DbtProject instance"""
+
     connection_ttl: float = 3600.0
-    """Max time in seconds to keep a db connection alive before recycling it, mostly useful for very long runs"""
+    """Max time in seconds to keep a db connection alive before recycling it"""
 
-    _adapter_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
-    """Lock protecting adapter initialization and connection lifecycle.
-
-    Thread-safety: Guards access to _adapter and _connection_created_at. Acquired
-    by the adapter property to ensure thread-safe adapter creation and connection
-    refresh. Critical section: adapter property getter.
-    """
-    _manifest_mutex: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _manifest_mutex: threading.RLock = field(default_factory=threading.RLock, init=False)
     """Lock protecting manifest reload operations.
 
-    Thread-safety: Exposed via manifest_mutex property for external synchronization
-    of manifest operations. Used by _reload_manifest() to prevent concurrent reloads.
-    """
-    _adapter: BaseAdapter | None = field(default=None, init=False)
-    """Cached dbt adapter instance.
+    Thread-safety: Use this lock to synchronize manifest reload operations.
+    The underlying DbtProject has its own thread-safety mechanisms; this
+    additional lock provides extra protection for manifest reloads.
 
-    Thread-safety: Protected by _adapter_mutex. Access only via adapter property.
+    Uses RLock (reentrant lock) to allow nested acquisitions within the same thread,
+    which is necessary because the adapter property may be accessed while holding
+    this lock (e.g., in compile_sql_code).
     """
+
     _connection_created_at: dict[int, float] = field(default_factory=dict, init=False)
     """Per-thread connection creation timestamps for TTL tracking.
 
-    Thread-safety: Protected by _adapter_mutex. Keys are thread IDs.
+    Thread-safety: Protected by DbtProject's internal locks. Keys are thread IDs.
     """
 
+    @classmethod
+    def from_project(
+        cls, config: DbtConfiguration, project: InterfaceDbtProject
+    ) -> "DbtProjectContext":
+        """Create a DbtProjectContext from an existing DbtProject instance.
+
+        This is used internally to avoid creating the DbtProject twice.
+
+        Args:
+            config: The dbt project configuration
+            project: The already-created DbtProject instance
+
+        Returns:
+            A DbtProjectContext wrapping the DbtProject
+        """
+        instance = cls(config=config)
+        instance._project = project
+        return instance
+
     @property
-    def is_connection_expired(self) -> bool:
-        """Check if the adapter has expired based on the adapter TTL."""
-        expired = (
-            time.time() - self._connection_created_at.setdefault(get_ident(), 0.0)
-            > self.connection_ttl
-        )
-        logger.debug(":hourglass_flowing_sand: Checking if connection is expired => %s", expired)
-        return expired
+    def runtime_cfg(self):
+        """Get the dbt runtime config.
+
+        Delegates to the underlying DbtProject's runtime_config.
+        """
+        return self._project.runtime_config
+
+    @property
+    def manifest(self) -> Manifest:
+        """Get the dbt project manifest.
+
+        Delegates to the underlying DbtProject's manifest.
+        """
+        return self._project.manifest
+
+    @manifest.setter
+    def manifest(self, value: Manifest) -> None:
+        """Set the dbt project manifest.
+
+        This allows manifest reloading while maintaining the same DbtProject instance.
+        """
+        # We need to update the internal manifest in DbtProject
+        # DbtProject doesn't expose a setter, so we set it on the object
+        object.__setattr__(self._project, "_DbtProject__manifest", value)
+
+    @property
+    def sql_parser(self):
+        """Get the SQL parser.
+
+        Delegates to the underlying DbtProject's sql_parser property.
+        """
+        return self._project.sql_parser
+
+    @property
+    def macro_parser(self):
+        """Get the macro parser.
+
+        Delegates to the underlying DbtProject's macro_parser property.
+        """
+        return self._project.macro_parser
 
     @property
     def adapter(self) -> BaseAdapter:
-        """Get the adapter instance, creating a new one if the current one has expired.
+        """Get the dbt adapter instance.
 
-        Thread-safety: This property is thread-safe. It acquires _adapter_mutex
-        to ensure atomic adapter creation and connection refresh. Multiple threads
-        can safely access the adapter concurrently.
+        Delegates to the underlying DbtProject's adapter property.
+        Implements TTL-based connection recycling.
         """
-        with self._adapter_mutex:
-            if not self._adapter:
-                logger.info(":wrench: Instantiating new adapter because none is currently set.")
-                adapter = _instantiate_adapter(self.runtime_cfg)
-                adapter.set_macro_resolver(self.manifest)
-                _ = adapter.acquire_connection()
-                self._adapter = adapter
-                self._connection_created_at[get_ident()] = time.time()
+        with self._manifest_mutex:
+            if not hasattr(self, "_connection_created_at"):
+                self._connection_created_at = {}
+
+            ident = get_ident()
+            current_time = time.time()
+            last_created = self._connection_created_at.get(ident, 0.0)
+
+            if current_time - last_created > self.connection_ttl:
                 logger.info(
-                    ":wrench: Successfully acquired new adapter connection for thread => %s",
-                    get_ident(),
+                    ":hourglass_flowing_sand: Connection expired for thread => %s, refreshing",
+                    ident,
                 )
-            elif self.is_connection_expired:
-                logger.info(
-                    ":wrench: Refreshing db connection for thread => %s",
-                    get_ident(),
-                )
-                self._adapter.connections.release()
-                self._adapter.connections.clear_thread_connection()
-                _ = self._adapter.acquire_connection()
-                self._connection_created_at[get_ident()] = time.time()
-        return self._adapter
+                # Force adapter refresh by clearing and reacquiring
+                adapter = self._project.adapter
+                # Trigger connection refresh by accessing connections
+                if hasattr(adapter, "connections"):
+                    try:
+                        adapter.connections.release()
+                        adapter.connections.clear_thread_connection()
+                        adapter.acquire_connection()
+                    except Exception:
+                        # If refresh fails, continue with existing adapter
+                        pass
+                self._connection_created_at[ident] = current_time
+
+            return self._project.adapter
 
     @property
     def manifest_mutex(self) -> threading.Lock:
@@ -248,40 +294,35 @@ def _add_cross_project_references(
                                     node.get("unique_id", "unknown"),
                                     e,
                                 )
-        for node in loomnodes:
-            manifest.nodes[node.unique_id] = node
-        logger.info(
-            f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!"
-        )
+            for node in loomnodes:
+                manifest.nodes[node.unique_id] = node
+            logger.info(
+                f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!"
+            )
     return manifest
 
 
-def _instantiate_adapter(runtime_config: RuntimeConfig) -> BaseAdapter:
-    """Instantiate a dbt adapter based on the runtime configuration."""
-    logger.debug(":mag: Registering adapter for runtime config => %s", runtime_config)
-    adapter = get_adapter(runtime_config)
-    adapter.set_macro_context_generator(t.cast(t.Any, generate_runtime_macro_context))
-    adapter.connections.set_connection_name("dbt-osmosis")
-    logger.debug(":hammer_and_wrench: Adapter instantiated => %s", adapter)
-    return t.cast(BaseAdapter, t.cast(t.Any, adapter))
-
-
 def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
-    """Build a DbtProjectContext from a DbtConfiguration."""
+    """Build a DbtProjectContext from a DbtConfiguration.
+
+    This creates a DbtProject instance using dbt-core-interface and wraps it
+    in a DbtProjectContext for backwards compatibility with existing dbt-osmosis code.
+
+    Args:
+        config: The dbt project configuration
+
+    Returns:
+        A DbtProjectContext with initialized manifest, adapter, and parsers
+    """
     logger.info(":wave: Creating DBT project context using config => %s", config)
-    args = config_to_namespace(config)
-    dbt_flags.set_from_args(args, args)
-    runtime_cfg = RuntimeConfig.from_args(args)
 
-    logger.info(":bookmark_tabs: Registering adapter as part of project context creation.")
-    register_adapter(runtime_cfg, get_mp_context())
+    # Create the interface config
+    interface_config = config.to_interface_config()
 
-    loader = ManifestLoader(
-        runtime_cfg,
-        runtime_cfg.load_dependencies(),
-    )
-    manifest = loader.load()
+    # Create DbtProject instance (this loads the manifest)
+    project = InterfaceDbtProject.from_config(interface_config)
 
+    # Handle dbt-loom cross-project references if available
     try:
         dbt_loom = importlib.import_module("dbt_loom")
     except ImportError:
@@ -290,42 +331,60 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
         )
     else:
         try:
-            manifest = _add_cross_project_references(manifest, dbt_loom, runtime_cfg.project_name)
+            manifest = _add_cross_project_references(
+                project.manifest, dbt_loom, project.project_name
+            )
+            # Update the manifest in the project
+            project.manifest = manifest
         except Exception as e:
             logger.warning(":warning: Failed to add cross-project references from dbt_loom: %s", e)
 
-    manifest.build_flat_graph()
-    logger.info(":arrows_counterclockwise: Loaded the dbt project manifest!")
-
-    if not config.disable_introspection:
-        adapter = _instantiate_adapter(runtime_cfg)
-        runtime_cfg.adapter = adapter  # pyright: ignore[reportAttributeAccessIssue]
-        adapter.set_macro_resolver(manifest)
-
-    sql_parser = SqlBlockParser(runtime_cfg, manifest, runtime_cfg)
-    macro_parser = SqlMacroParser(runtime_cfg, manifest)
-
     logger.info(":sparkles: DbtProjectContext successfully created!")
-    return DbtProjectContext(
-        config=config,
-        runtime_cfg=runtime_cfg,
-        manifest=manifest,
-        sql_parser=sql_parser,
-        macro_parser=macro_parser,
-    )
+
+    # Create the context wrapper with the existing project
+    return DbtProjectContext.from_project(config=config, project=project)
 
 
 def _reload_manifest(context: DbtProjectContext) -> None:
-    """Reload the dbt project manifest. Useful for picking up mutations."""
+    """Reload the dbt project manifest. Useful for picking up mutations.
+
+    This uses DbtProject's parse_project method to reload the manifest
+    from disk, ensuring all changes are picked up.
+
+    Args:
+        context: The DbtProjectContext to reload the manifest for
+    """
     logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
-    loader = ManifestLoader(context.runtime_cfg, context.runtime_cfg.load_dependencies())
-    manifest = loader.load()
-    manifest.build_flat_graph()
-    if not context.config.disable_introspection:
-        context.adapter.set_macro_resolver(manifest)
-    context.manifest = manifest
-    logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)
+    with context.manifest_mutex:
+        # Use DbtProject's parse_project to reload
+        context._project.parse_project(write_manifest=False)
+        logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)
 
 
 # Constants
 MAX_PREVIEW_LENGTH = 100
+
+
+def config_to_namespace(config: DbtConfiguration) -> argparse.Namespace:
+    """Convert a DbtConfiguration to an argparse.Namespace for backwards compatibility.
+
+    This function is maintained for backwards compatibility with code that expects
+    an argparse.Namespace object. The dbt-core-interface uses DbtConfiguration directly.
+
+    Args:
+        config: The DbtConfiguration to convert
+
+    Returns:
+        An argparse.Namespace with the same attributes as the config
+    """
+    return argparse.Namespace(
+        project_dir=config.project_dir,
+        profiles_dir=config.profiles_dir,
+        target=config.target,
+        profile=config.profile,
+        threads=config.threads,
+        single_threaded=config.single_threaded,
+        vars=config.vars,
+        quiet=config.quiet,
+        disable_introspection=config.disable_introspection,
+    )

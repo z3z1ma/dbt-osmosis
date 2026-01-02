@@ -25,6 +25,7 @@ dependencies = [
   "click>7,<9",
   # NOTE: Custom loosen version constraint to allow for dbt 1.10.x by Ubie
   "dbt-core>=1.8,<1.11",
+  "dbt-core-interface>=1.1.5",
   "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
   "pluggy>=1.5.0,<2",
@@ -115,5 +116,7 @@ skip_covered = false
 
 [dependency-groups]
 dev = [
+    "dbt-duckdb>=1.10.0",
+    "openai>=1.58.1",
     "pytest>=8.3.5",
 ]
