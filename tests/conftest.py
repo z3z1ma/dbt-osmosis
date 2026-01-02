@@ -116,11 +116,16 @@ def yaml_context() -> Iterator[YamlRefactorContext]:
         project_context = create_dbt_project_context(cfg)
         print(f"✓ create_dbt_project_context took {time.time() - start:.2f}s")
 
+        # Set catalog_path to use the catalog.json copied from source project
+        # The catalog.json is generated when the source demo_duckdb was previously run
+        catalog_path = str(project_dir / "target" / "catalog.json")
+
         context = YamlRefactorContext(
             project_context,
             settings=YamlRefactorSettings(
                 dry_run=True,
                 use_unrendered_descriptions=True,
+                catalog_path=catalog_path,
             ),
         )
 

@@ -141,3 +141,5 @@ dmypy.json
 
 # Repos
 _deps/
+*.duckdb
+test.db

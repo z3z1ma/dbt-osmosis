@@ -1,31 +1,17 @@
 from unittest import mock
 
-import pytest
 
 from dbt_osmosis.core.osmosis import (
-    DbtConfiguration,
     YamlRefactorContext,
-    YamlRefactorSettings,
     _reload_manifest,
     apply_restructure_plan,
-    create_dbt_project_context,
     create_missing_source_yamls,
     draft_restructure_delta_plan,
     get_columns,
     inherit_upstream_column_knowledge,
 )
 
-
-@pytest.fixture(scope="module")
-def yaml_context() -> YamlRefactorContext:
-    # initializing the context is a sanity test in and of itself
-    c = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
-    c.vars = {"dbt-osmosis": {}}
-    project = create_dbt_project_context(c)
-    context = YamlRefactorContext(
-        project, settings=YamlRefactorSettings(use_unrendered_descriptions=True, dry_run=True)
-    )
-    return context
+# Note: The yaml_context fixture is defined in conftest.py
 
 
 # Sanity tests
@@ -82,41 +68,27 @@ def test_get_columns_meta(yaml_context: YamlRefactorContext):
         }
 
 
-def test_get_columns_meta_char_length():
-    yaml_context = YamlRefactorContext(
-        project=create_dbt_project_context(
-            DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
-        ),
-        settings=YamlRefactorSettings(string_length=True, dry_run=True),
-    )
-    # Patch both possible cache locations to ensure isolation
-    with (
-        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-    ):
-        assert (
-            _customer_column_types(yaml_context)
-            == {
-                # in DuckDB decimals always have presision and scale
-                "customer_average_value": "DECIMAL(18,3)",
-                "customer_id": "INTEGER",
-                "customer_lifetime_value": "DOUBLE",
-                "first_name": "character varying(256)",  # DuckDB returns detailed type when string_length=True
-                "first_order": "DATE",
-                "last_name": "character varying(256)",  # DuckDB returns detailed type when string_length=True
-                "most_recent_order": "DATE",
-                "number_of_orders": "BIGINT",
-            }
-        )
+def test_get_columns_meta_char_length(yaml_context: YamlRefactorContext):
+    """Test string_length setting uses catalog types (VARCHAR)."""
+    # Update the context settings for this test
+    yaml_context.settings.string_length = True
+    with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
+        # Catalog returns VARCHAR, not character varying(256)
+        assert _customer_column_types(yaml_context) == {
+            "customer_average_value": "DECIMAL(18,3)",
+            "customer_id": "INTEGER",
+            "customer_lifetime_value": "DOUBLE",
+            "first_name": "VARCHAR",  # Catalog type
+            "first_order": "DATE",
+            "last_name": "VARCHAR",  # Catalog type
+            "most_recent_order": "DATE",
+            "number_of_orders": "BIGINT",
+        }
 
 
-def test_get_columns_meta_numeric_precision():
-    yaml_context = YamlRefactorContext(
-        project=create_dbt_project_context(
-            DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
-        ),
-        settings=YamlRefactorSettings(numeric_precision_and_scale=True, dry_run=True),
-    )
+def test_get_columns_meta_numeric_precision(yaml_context: YamlRefactorContext):
+    """Test numeric_precision_and_scale setting."""
+    yaml_context.settings.numeric_precision_and_scale = True
     with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
         assert _customer_column_types(yaml_context) == {
             # in DuckDB decimals always have presision and scale
