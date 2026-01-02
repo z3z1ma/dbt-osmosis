@@ -115,8 +115,10 @@ def _build_column_knowledge_graph(
 
         raw_column_metadata = _find_first(
             raw_columns,
-            lambda c: normalize_column_name(c["name"], context.project.runtime_cfg.credentials.type)
-            in node_column_variants[name],
+            lambda c: (
+                normalize_column_name(c["name"], context.project.runtime_cfg.credentials.type)
+                in node_column_variants[name]
+            ),
             {},
         )
         return raw_column_metadata.get(k)

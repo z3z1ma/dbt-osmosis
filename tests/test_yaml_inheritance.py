@@ -20,6 +20,17 @@ from dbt_osmosis.core.osmosis import (
     sync_node_to_yaml,
 )
 
+
+def _filter_config_field(d: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Filter out the 'config' and 'doc_blocks' fields from column dicts.
+
+    Newer versions of dbt-core (1.9+) include 'config' in to_dict() output,
+    which contains redundant 'meta' and 'tags' that duplicate top-level fields.
+    The 'doc_blocks' field is also added but not relevant for these tests.
+    """
+    return {k: v for k, v in d.items() if k not in ("config", "doc_blocks")}
+
+
 dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip_matcher=True))
 
 
@@ -392,4 +403,6 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
     ):
         _ = inherit_upstream_column_knowledge(yaml_context, target_node)
 
-    assert {k: v.to_dict() for k, v in target_node.columns.items()} == expect
+    # Filter out 'config' field for comparison (dbt-core 1.9+ includes it)
+    actual = {k: _filter_config_field(v.to_dict()) for k, v in target_node.columns.items()}
+    assert actual == expect
