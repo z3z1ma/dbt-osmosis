@@ -6,6 +6,9 @@ from types import MappingProxyType
 from dbt.contracts.graph.manifest import Manifest
 from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDefinition
 
+if t.TYPE_CHECKING:
+    from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
+
 import dbt_osmosis.core.logger as logger
 
 __all__ = [
@@ -48,7 +51,9 @@ def _build_node_ancestor_tree(
     return tree
 
 
-def _get_node_yaml(context: t.Any, member: ResultNode) -> MappingProxyType[str, t.Any] | None:
+def _get_node_yaml(
+    context: YamlRefactorContextProtocol, member: ResultNode
+) -> MappingProxyType[str, t.Any] | None:
     """Get a read-only view of the parsed YAML for a dbt model or source node."""
     from pathlib import Path
 
@@ -87,7 +92,9 @@ def _get_node_yaml(context: t.Any, member: ResultNode) -> MappingProxyType[str, 
     return None
 
 
-def _build_column_knowledge_graph(context: t.Any, node: ResultNode) -> dict[str, dict[str, t.Any]]:
+def _build_column_knowledge_graph(
+    context: YamlRefactorContextProtocol, node: ResultNode
+) -> dict[str, dict[str, t.Any]]:
     """Generate a column knowledge graph for a dbt model or source node."""
     tree = _build_node_ancestor_tree(context.project.manifest, node)
     logger.debug(":family_tree: Node ancestor tree => %s", tree)
