@@ -21,6 +21,9 @@ __all__ = [
     "_clean_graph_edge",
     "_find_matching_column",
     "_merge_graph_node_data",
+    "_apply_progenitor_overrides",
+    "_get_progenitor_override",
+    "_get_inherited_metadata_from_progenitor",
 ]
 
 
@@ -280,6 +283,168 @@ def _merge_graph_node_data(graph_node: dict[str, t.Any], graph_edge: dict[str, t
     graph_node.update(graph_edge)
 
 
+def _get_progenitor_override(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    column_name: str,
+    node_yaml: t.Mapping[str, t.Any] | None,
+) -> str | None:
+    """Get the progenitor override for a column.
+
+    Checks for column-level override first (column_default_progenitor), then
+    model-level default (default_progenitor).
+
+    Args:
+        context: The refactor context
+        node: The dbt node
+        column_name: Name of the column
+        node_yaml: The parsed YAML for the node
+
+    Returns:
+        The unique_id of the override progenitor, or None
+    """
+    from dbt_osmosis.core.introspection import _find_first
+
+    # Check for column-level override first (highest priority)
+    if node_yaml:
+        columns = t.cast(list[dict[str, t.Any]], node_yaml.get("columns", []))
+        column_meta = _find_first(columns, lambda c: c.get("name") == column_name, {})
+        column_default_progenitor = column_meta.get("meta", {}).get("column_default_progenitor")
+        if column_default_progenitor:
+            return column_default_progenitor
+
+    # Check for model-level default
+    if node_yaml:
+        default_progenitor = node_yaml.get("meta", {}).get("default_progenitor")
+        if default_progenitor:
+            return default_progenitor
+
+    return None
+
+
+def _get_inherited_metadata_from_progenitor(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    column_name: str,
+    progenitor_id: str,
+    node_column_variants: dict[str, list[str]],
+) -> dict[str, t.Any] | None:
+    """Get inherited metadata from a specific progenitor.
+
+    Args:
+        context: The refactor context
+        node: The dbt node
+        column_name: Name of the column
+        progenitor_id: The unique_id of the progenitor
+        node_column_variants: Column name variants
+
+    Returns:
+        Dictionary of inherited metadata, or None if progenitor not found
+    """
+    progenitor = context.project.manifest.nodes.get(
+        progenitor_id, context.project.manifest.sources.get(progenitor_id)
+    )
+    if not isinstance(progenitor, (SourceDefinition, SeedNode, ModelNode)):
+        return None
+
+    # Find matching column in progenitor
+    incoming = _find_matching_column(progenitor, node_column_variants[column_name])
+    if incoming is None:
+        return None
+
+    # Build graph edge from progenitor
+    graph_edge = _build_graph_edge(
+        context, node, column_name, incoming, progenitor, node_column_variants
+    )
+
+    return graph_edge
+
+
+def _apply_progenitor_overrides(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    column_knowledge_graph: dict[str, dict[str, t.Any]],
+    progenitor_alternatives: dict[str, list[str]],
+    node_yaml: t.Mapping[str, t.Any] | None,
+    node_column_variants: dict[str, list[str]],
+) -> None:
+    """Apply progenitor overrides based on column_default_progenitor and default_progenitor.
+
+    This is a second pass that allows users to override the automatically selected
+    progenitor with a specific ancestor. This is useful when you want to inherit
+    from a specific upstream source rather than the closest one.
+
+    Args:
+        context: The refactor context
+        node: The dbt node
+        column_knowledge_graph: The column knowledge graph (modified in-place)
+        progenitor_alternatives: Map of column name to list of potential progenitors
+        node_yaml: The parsed YAML for the node
+        node_column_variants: Column name variants
+    """
+    from dbt_osmosis.core.introspection import _find_first
+
+    for column_name, graph_node in column_knowledge_graph.items():
+        current_progenitor = graph_node.get("meta", {}).get("osmosis_progenitor")
+        if not current_progenitor:
+            continue
+
+        alternatives = progenitor_alternatives.get(column_name, [])
+
+        # Get the override progenitor (column-level takes precedence over model-level)
+        override_progenitor = _get_progenitor_override(context, node, column_name, node_yaml)
+
+        if not override_progenitor:
+            continue
+
+        # Only apply override if:
+        # 1. The override is in the alternatives list (valid ancestor)
+        # 2. The override is different from the current progenitor
+        if override_progenitor not in alternatives or override_progenitor == current_progenitor:
+            continue
+
+        logger.debug(
+            ":fork_and_knife: Applying progenitor override for column %s: %s -> %s",
+            column_name,
+            current_progenitor,
+            override_progenitor,
+        )
+
+        # Get inherited metadata from the override progenitor
+        inherited = _get_inherited_metadata_from_progenitor(
+            context, node, column_name, override_progenitor, node_column_variants
+        )
+
+        if not inherited:
+            logger.warning(
+                ":warning: Could not find progenitor %s for column %s",
+                override_progenitor,
+                column_name,
+            )
+            continue
+
+        # Update the graph node with inherited metadata
+        for key in ["description", "tags"]:
+            if key in inherited:
+                graph_node[key] = inherited[key]
+
+        # Update progenitor in meta
+        graph_node.setdefault("meta", {})["osmosis_progenitor"] = inherited.get("meta", {}).get(
+            "osmosis_progenitor", override_progenitor
+        )
+
+        # Preserve column_default_progenitor if it was the reason for this change
+        override_source = _get_progenitor_override(context, node, column_name, node_yaml)
+        if override_source:
+            column_meta = _find_first(
+                node_yaml.get("columns", []) if node_yaml else [],
+                lambda c: c.get("name") == column_name,
+                {},
+            )
+            if column_meta.get("meta", {}).get("column_default_progenitor"):
+                graph_node.setdefault("meta", {})["column_default_progenitor"] = override_source
+
+
 def _build_column_knowledge_graph(
     context: YamlRefactorContextProtocol, node: ResultNode
 ) -> dict[str, dict[str, t.Any]]:
@@ -287,6 +452,7 @@ def _build_column_knowledge_graph(
     tree = _build_node_ancestor_tree(context.project.manifest, node)
     logger.debug(":family_tree: Node ancestor tree => %s", tree)
 
+    node_yaml = _get_node_yaml(context, node)
     node_column_variants = _collect_column_variants(context, node)
 
     # Initialize the column knowledge graph with the local node's column data
@@ -311,6 +477,10 @@ def _build_column_knowledge_graph(
     # Track which columns have been processed in each generation to avoid
     # multiple ancestors in the same generation from overwriting each other
     processed_columns_in_generation: dict[str, set[str]] = {}
+
+    # Track potential progenitor alternatives for each column
+    # This allows for column-level and model-level progenitor overrides
+    progenitor_alternatives: dict[str, list[str]] = {}
 
     # Process ancestors from farthest to closest
     for generation in reversed(sorted(tree.keys())):
@@ -373,6 +543,13 @@ def _build_column_knowledge_graph(
                 if incoming is None:
                     continue
 
+                # Track this ancestor as a potential progenitor alternative
+                # (excluding self-reference which happens in generation_0 above)
+                if ancestor_uid != node.unique_id:
+                    alternatives = progenitor_alternatives.setdefault(name, [])
+                    if ancestor_uid not in alternatives:
+                        alternatives.append(ancestor_uid)
+
                 # Mark this column as processed in this generation
                 processed_columns_in_generation[generation].add(name)
 
@@ -387,5 +564,17 @@ def _build_column_knowledge_graph(
                 # Merge with existing graph node (which already has local column data)
                 graph_node = column_knowledge_graph.setdefault(name, {})
                 _merge_graph_node_data(graph_node, graph_edge)
+
+    # Apply progenitor overrides based on column_default_progenitor and default_progenitor
+    # This is a second pass that allows users to override the automatically selected
+    # progenitor with a specific ancestor
+    _apply_progenitor_overrides(
+        context,
+        node,
+        column_knowledge_graph,
+        progenitor_alternatives,
+        node_yaml,
+        node_column_variants,
+    )
 
     return column_knowledge_graph
