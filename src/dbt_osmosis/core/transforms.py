@@ -386,7 +386,7 @@ def sort_columns_as_in_database(context: t.Any, node: ResultNode | None = None) 
         inc = incoming_columns.get(
             normalize_column_name(column, context.project.runtime_cfg.credentials.type)
         )
-        if inc is None or inc.index is None:  # pyright: ignore[reportUnnecessaryComparison]
+        if inc is None or inc.index is None:
             return 99_999
         return inc.index
 
@@ -433,7 +433,9 @@ def sort_columns_as_configured(context: t.Any, node: ResultNode | None = None) -
 
 
 @_transform_op("Synchronize Data Types")
-def synchronize_data_types(context: t.Any, node: ResultNode | None = None) -> None:
+def synchronize_data_types(
+    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+) -> None:
     """Populate data types for columns in a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.introspection import (
         _get_setting_for_node,
