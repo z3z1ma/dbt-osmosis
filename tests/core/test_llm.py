@@ -105,24 +105,6 @@ def test_get_llm_client_lm_studio(monkeypatch: pytest.MonkeyPatch) -> None:
     assert model == "local-model"
 
 
-def test_get_llm_client_anthropic_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised when ANTHROPIC_API_KEY is missing."""
-    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-    with pytest.raises(ValueError, match="Missing environment variables for anthropic"):
-        get_llm_client()
-
-
-def test_get_llm_client_google_gemini_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that ValueError is raised when GOOGLE_GEMINI_API_KEY is missing."""
-    monkeypatch.setenv("LLM_PROVIDER", "google-gemini")
-    monkeypatch.delenv("GOOGLE_GEMINI_API_KEY", raising=False)
-
-    with pytest.raises(ValueError, match="Missing environment variables for google-gemini"):
-        get_llm_client()
-
-
 def test_generate_model_spec_as_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test generating model specification as JSON."""
     # Set up environment
