@@ -1,11 +1,19 @@
-# pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
+# pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
+
+"""Behavior tests for YAML path resolution.
+
+These tests validate the behavior of path resolution based on dbt_project.yml configuration.
+Tests use the public API get_target_yaml_path() to verify that:
+- MissingOsmosisConfig is raised for nodes without dbt-osmosis config
+- Path templates work correctly for different node types
+- Template variables like {node.source_name} are available for the right node types
+"""
 
 import pytest
 from dbt.artifacts.resources.types import NodeType
 
 from dbt_osmosis.core.path_management import (
     MissingOsmosisConfig,
-    _get_yaml_path_template,
     get_target_yaml_path,
 )
 from dbt_osmosis.core.settings import YamlRefactorContext
@@ -13,8 +21,8 @@ from dbt_osmosis.core.settings import YamlRefactorContext
 
 def test_missing_osmosis_config_error(yaml_context: YamlRefactorContext):
     """
-    Ensures MissingOsmosisConfig is raised if there's no path template
-    for a model. We'll mock the node config so we remove any 'dbt-osmosis' key.
+    Behavior test: Ensures MissingOsmosisConfig is raised if there's no path template
+    for a model. Tests the public API get_target_yaml_path() rather than internal function.
     """
     node = None
     # Find some real model node
@@ -26,13 +34,17 @@ def test_missing_osmosis_config_error(yaml_context: YamlRefactorContext):
 
     # We'll forcibly remove the dbt_osmosis config from node.config.extra
     old = node.config.extra.pop("dbt-osmosis", None)
-    node.unrendered_config.pop("dbt-osmosis", None)
+    old_unrendered = node.unrendered_config.pop("dbt-osmosis", None)
 
+    # Use public API - should raise MissingOsmosisConfig
     with pytest.raises(MissingOsmosisConfig):
-        _ = _get_yaml_path_template(yaml_context, node)
+        get_target_yaml_path(yaml_context, node)
 
-    node.config.extra["dbt-osmosis"] = old
-    node.unrendered_config["dbt-osmosis"] = old
+    # Restore original config
+    if old is not None:
+        node.config.extra["dbt-osmosis"] = old
+    if old_unrendered is not None:
+        node.unrendered_config["dbt-osmosis"] = old_unrendered
 
 
 def test_source_name_in_path_template(yaml_context: YamlRefactorContext):

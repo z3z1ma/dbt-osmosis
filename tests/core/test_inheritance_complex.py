@@ -1,6 +1,18 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
-"""Tests for complex inheritance scenarios including circular dependencies and multiple inheritance paths."""
+"""Tests for complex inheritance scenarios including circular dependencies and multiple inheritance paths.
+
+These tests use mocks because setting up real dbt projects with these edge cases would be
+extremely complex. The tests validate important behaviors:
+
+- Circular dependencies don't cause infinite loops
+- Multiple inheritance paths (diamond pattern) are handled correctly
+- Depth limits prevent unbounded recursion
+- Only model/seed/source dependencies are included
+
+These are behavior tests that validate the observable behavior of the ancestor tree algorithm
+under edge case conditions, using mocks only where necessary to set up those conditions.
+"""
 
 from unittest import mock
 

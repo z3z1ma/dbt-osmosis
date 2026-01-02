@@ -1,4 +1,14 @@
-# pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
+# pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
+
+"""Tests for database introspection and column metadata retrieval.
+
+This module contains:
+- Behavior tests: test_get_columns_simple() validates end-to-end column retrieval
+- Unit tests for utility functions with clear behavior contracts
+
+The utility function tests (_find_first, _maybe_use_precise_dtype, etc.) test
+well-defined behaviors of helper functions that have clear input/output contracts.
+"""
 
 from unittest import mock
 
