@@ -78,6 +78,33 @@ class LRUCache:
         with self._lock:
             self._cache.clear()
 
+    def keys(self) -> t.Any:
+        """Return a view of the cache's keys.
+
+        This method provides dict-like interface for iteration.
+        Returns the keys view from the internal OrderedDict.
+        """
+        with self._lock:
+            return self._cache.keys()
+
+    def values(self) -> t.Any:
+        """Return a view of the cache's values.
+
+        This method provides dict-like interface for iteration.
+        Returns the values view from the internal OrderedDict.
+        """
+        with self._lock:
+            return self._cache.values()
+
+    def items(self) -> t.Any:
+        """Return a view of the cache's items.
+
+        This method provides dict-like interface for iteration.
+        Returns the items view from the internal OrderedDict.
+        """
+        with self._lock:
+            return self._cache.items()
+
     def __len__(self) -> int:
         """Return the number of items in the cache."""
         with self._lock:
