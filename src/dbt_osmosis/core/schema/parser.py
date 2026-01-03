@@ -7,7 +7,58 @@ import dbt_osmosis.core.logger as logger
 
 __all__ = [
     "create_yaml_instance",
+    "OsmosisYAML",
 ]
+
+
+def _filter_yaml_content(data: dict) -> dict:
+    """Filters a parsed YAML dictionary to only include keys relevant to dbt-osmosis.
+
+    This prevents the tool from processing or being aware of semantic_models, macros, etc.
+    """
+    allowed_keys = {"version", "models", "sources", "seeds"}
+
+    # Create a new dictionary containing only the allowed keys from the parsed file
+    filtered_data = {key: value for key, value in data.items() if key in allowed_keys}
+
+    # Log which keys were ignored for debugging and transparency
+    ignored_keys = set(data.keys()) - allowed_keys
+    if ignored_keys:
+        logger.debug(
+            ":magnifying_glass_left: Parser ignoring irrelevant top-level keys in YAML: %s",
+            ignored_keys,
+        )
+
+    return filtered_data
+
+
+class OsmosisYAML(ruamel.yaml.YAML):
+    """A custom ruamel.yaml.YAML subclass that filters loaded data.
+
+    This class extends ruamel.yaml to automatically filter out YAML keys that
+    are not relevant to dbt-osmosis, such as semantic_models, macros, etc.
+    This prevents the tool from accidentally processing or modifying content
+    it shouldn't touch.
+    """
+
+    def load(self, stream: t.Any) -> t.Any:
+        """Loads a YAML stream and filters it for relevant dbt-osmosis content.
+
+        Args:
+            stream: The YAML stream to load (file-like object or string)
+
+        Returns:
+            The filtered YAML content, with only relevant keys preserved
+        """
+        # First, parse the YAML file into a standard dictionary using the parent method
+        raw_data = super().load(stream)
+
+        # If the parsed data is a dictionary, pass it through our content filter
+        if isinstance(raw_data, dict):
+            return _filter_yaml_content(raw_data)
+
+        # If it's not a dictionary (e.g., an empty file parsing to None), return it as-is
+        return raw_data
 
 
 def create_yaml_instance(
@@ -21,7 +72,7 @@ def create_yaml_instance(
 ) -> ruamel.yaml.YAML:
     """Returns a ruamel.yaml.YAML instance configured with the provided settings."""
     logger.debug(":notebook: Creating ruamel.yaml.YAML instance with custom formatting.")
-    y = ruamel.yaml.YAML()
+    y = OsmosisYAML()
     y.indent(mapping=indent_mapping, sequence=indent_sequence, offset=indent_offset)
     y.width = width
     y.preserve_quotes = preserve_quotes

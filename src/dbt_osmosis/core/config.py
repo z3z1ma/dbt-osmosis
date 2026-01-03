@@ -28,7 +28,25 @@ from dbt.parser.models import ModelParser
 from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
 from dbt_core_interface import DbtProject as InterfaceDbtProject
 
+from packaging.version import parse as parse_version
+
 import dbt_osmosis.core.logger as logger
+
+# Import dbt version for compatibility checking
+# Use a try/except in case the version module structure changes
+try:
+    from dbt.version import get_installed_version
+
+    _raw_version = str(get_installed_version())
+    # Version may be returned as "=1.10.17" or similar, strip the prefix
+    _dbt_version = _raw_version.lstrip("=")
+except (ImportError, AttributeError):
+    try:
+        from dbt import version as _dbt_version_module
+
+        _dbt_version = getattr(_dbt_version_module, "__version__", "1.8.0")
+    except (ImportError, AttributeError):
+        _dbt_version = "1.8.0"
 
 __all__ = [
     "discover_project_dir",
@@ -190,6 +208,16 @@ class DbtProjectContext:
     Thread-safety: Protected by _manifest_mutex when checking/setting.
     """
 
+    dbt_version: str = field(init=False, repr=True)
+    """The dbt-core version being used (e.g., "1.10.0")."""
+
+    is_dbt_v1_10_or_greater: bool = field(init=False, repr=False)
+    """Whether the dbt version is 1.10.0 or higher.
+
+    This is used for compatibility handling of the meta/tags namespace change
+    in dbt 1.10, where these fields moved from top-level to the config block.
+    """
+
     def __enter__(self) -> "DbtProjectContext":
         """Enter the context manager.
 
@@ -255,6 +283,8 @@ class DbtProjectContext:
         """
         instance = cls(config=config)
         instance._project = project
+        instance.dbt_version = _dbt_version
+        instance.is_dbt_v1_10_or_greater = parse_version(_dbt_version) >= parse_version("1.10.0")
         return instance
 
     @property
