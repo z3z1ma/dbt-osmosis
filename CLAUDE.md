@@ -538,12 +538,16 @@ repos:
 - **YAML Path Logic**: src/dbt_osmosis/core/path_management.py:45 (`get_target_yaml_path()`)
 - **Column Inheritance**: src/dbt_osmosis/core/inheritance.py:22 (`_build_column_knowledge_graph()`)
 - **Database Introspection**: src/dbt_osmosis/core/introspection.py:33 (`get_columns()`)
+- **Configuration Resolution**: src/dbt_osmosis/core/introspection.py:533 (`SettingsResolver`)
+- **Property Access**: src/dbt_osmosis/core/introspection.py:1153 (`PropertyAccessor`)
+- **Public API Exports**: src/dbt_osmosis/core/osmosis.py (re-exports all public APIs)
 
 ## Documentation and Resources
 
 - **Official Docs**: https://z3z1ma.github.io/dbt-osmosis/
 - **Migration Guide**: https://z3z1ma.github.io/dbt-osmosis/docs/migrating (for 0.x.x → 1.x.x)
 - **Workbench Demo**: https://dbt-osmosis-playground.streamlit.app/
+- **Quickstart Guide**: `specs/001-unified-config-resolution/quickstart.md` - Developer quickstart for the unified configuration resolution system
 
 ## Landing the Plane (Session Completion)
 
