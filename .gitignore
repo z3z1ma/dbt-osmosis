@@ -143,3 +143,6 @@ dmypy.json
 _deps/
 *.duckdb
 test.db
+
+# bv (beads viewer) local config and caches
+.bv/

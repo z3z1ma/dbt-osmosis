@@ -1,0 +1,3 @@
+kind: Fixed
+body: Fix data type handling to only skip when flag is specified
+time: 2026-01-02T22:04:17.259033-07:00

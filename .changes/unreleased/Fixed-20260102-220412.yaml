@@ -1,0 +1,3 @@
+kind: Fixed
+body: Fix removal of empty config keys from injected columns
+time: 2026-01-02T22:04:12.718957-07:00

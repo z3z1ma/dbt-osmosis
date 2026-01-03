@@ -1,0 +1,3 @@
+kind: Fixed
+body: Fix test fixtures to use conftest.py yaml_context
+time: 2026-01-02T22:04:10.828209-07:00
