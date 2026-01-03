@@ -378,6 +378,8 @@ class TestSchemaValidation:
 
         context = Mock()
         context.source_definitions = {}
+        # Properly mock the global var fallback to return empty dict
+        context.project.runtime_cfg.vars.to_dict.return_value = {}
 
         # Empty template should raise MissingOsmosisConfig
         with pytest.raises(Exception):  # MissingOsmosisConfig
