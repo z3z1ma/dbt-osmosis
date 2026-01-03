@@ -4,9 +4,11 @@ import json
 import re
 import threading
 import typing as t
+from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from itertools import chain
 from pathlib import Path
 
@@ -30,11 +32,159 @@ __all__ = [
     "_load_catalog",
     "_generate_catalog",
     "_COLUMN_LIST_CACHE",
+    # Foundational classes for unified config resolution
+    "ConfigurationError",
+    "ConfigSourceName",
+    "PropertySource",
+    "ConfigurationSource",
 ]
 
 T = t.TypeVar("T")
 
 _COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
+
+
+# =============================================================================
+# Foundational Classes for Unified Configuration Resolution System
+# =============================================================================
+
+
+class ConfigurationError(Exception):
+    """Exception raised when configuration file is invalid or cannot be read.
+
+    This exception is used throughout the unified configuration resolution system
+    to indicate errors related to configuration file parsing, validation, or access.
+
+    Attributes:
+        message: The error message describing what went wrong.
+        file_path: Optional path to the configuration file that caused the error.
+
+    Example:
+        >>> raise ConfigurationError("Invalid YAML syntax", "/path/to/config.yml")
+        ConfigurationError: Invalid YAML syntax (file: /path/to/config.yml)
+    """
+
+    def __init__(self, message: str, file_path: str | None = None) -> None:
+        """Initialize a ConfigurationError.
+
+        Args:
+            message: The error message describing what went wrong.
+            file_path: Optional path to the configuration file that caused the error.
+        """
+        self.file_path = file_path
+        self.message = message
+        if file_path:
+            full_message = f"{message} (file: {file_path})"
+        else:
+            full_message = message
+        super().__init__(full_message)
+
+
+class ConfigSourceName(Enum):
+    """Enumeration of configuration source names for logging and identification.
+
+    Each source name corresponds to a specific location where configuration
+    values can be retrieved. These names are used for logging which source
+    provided a resolved value.
+
+    Values:
+        COLUMN_META: Column-level meta dictionary (highest priority)
+        NODE_META: Node-level meta dictionary
+        CONFIG_EXTRA: Node config.extra dictionary
+        CONFIG_META: Node config.meta dictionary (dbt 1.10+)
+        UNRENDERED_CONFIG: Node unrendered_config dictionary (dbt 1.10+)
+        PROJECT_VARS: Project-level vars from dbt_project.yml
+        SUPPLEMENTARY_FILE: Supplementary dbt-osmosis.yml file
+        FALLBACK: Default fallback value (lowest priority)
+    """
+
+    COLUMN_META = "column_meta"
+    NODE_META = "node_meta"
+    CONFIG_EXTRA = "config_extra"
+    CONFIG_META = "config_meta"
+    UNRENDERED_CONFIG = "unrendered_config"
+    PROJECT_VARS = "project_vars"
+    SUPPLEMENTARY_FILE = "supplementary_file"
+    FALLBACK = "fallback"
+
+
+class PropertySource(Enum):
+    """Enumeration of property sources for model and column metadata.
+
+    This enum defines where model properties (like descriptions, tags, meta)
+    can be retrieved from. It's used by the PropertyAccessor to specify
+    which source to read from.
+
+    Values:
+        MANIFEST: Parsed manifest.json with rendered jinja values
+        YAML: Raw YAML files with unrendered jinja templates
+        DATABASE: Warehouse metadata via introspection (future use)
+
+    Example:
+        >>> # Get unrendered description from YAML
+        >>> accessor.get_description(node, source=PropertySource.YAML)
+    """
+
+    MANIFEST = "manifest"
+    YAML = "yaml"
+    DATABASE = "database"
+
+
+class ConfigurationSource(ABC):
+    """Abstract base class for configuration sources in the resolution chain.
+
+    Each configuration source knows how to extract values from a specific
+    location (column meta, node meta, config.extra, etc.). Sources are
+    checked in precedence order, and the first non-None value is returned.
+
+    Concrete implementations must implement the get() method to retrieve
+    values from their specific location.
+
+    Attributes:
+        name: The ConfigSourceName enum value for this source (used for logging).
+
+    Example:
+        >>> class ColumnMetaSource(ConfigurationSource):
+        ...     def __init__(self, node: ResultNode, column: str):
+        ...         super().__init__(ConfigSourceName.COLUMN_META)
+        ...         self.node = node
+        ...         self.column = column
+        ...
+        ...     def get(self, key: str) -> Any | None:
+        ...         if column := self.node.columns.get(self.column):
+        ...             return column.meta.get(key)
+        ...         return None
+    """
+
+    def __init__(self, name: ConfigSourceName) -> None:
+        """Initialize a ConfigurationSource.
+
+        Args:
+            name: The ConfigSourceName enum value for this source.
+        """
+        self._name = name
+
+    @property
+    def name(self) -> ConfigSourceName:
+        """Return the ConfigSourceName enum value for this source."""
+        return self._name
+
+    @abstractmethod
+    def get(self, key: str) -> t.Any | None:
+        """Get a configuration value from this source.
+
+        Args:
+            key: The configuration key to look up.
+
+        Returns:
+            The configuration value if found, None otherwise.
+        """
+        pass
+
+
+# =============================================================================
+# Existing Settings Resolver (to be extended)
+# =============================================================================
 
 
 @dataclass
