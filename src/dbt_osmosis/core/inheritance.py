@@ -11,9 +11,6 @@ if t.TYPE_CHECKING:
 
 import dbt_osmosis.core.logger as logger
 
-# Import dbt compatibility functions for version-aware meta/tags handling
-from dbt_osmosis.core.dbt_compat import get_meta, get_tags, set_meta, set_tags
-
 __all__ = [
     "_build_node_ancestor_tree",
     "_get_node_yaml",
@@ -182,7 +179,7 @@ def _build_graph_edge(
         name,
         fallback=context.settings.add_progenitor_to_meta,
     ):
-        graph_edge.setdefault("meta", {}).setdefault("osmosis_progenitor", ancestor.unique_id)
+        graph_edge.setdefault("meta", {})["osmosis_progenitor"] = ancestor.unique_id
 
     # Use unrendered descriptions if configured
     if _get_setting_for_node(
@@ -263,51 +260,27 @@ def _find_matching_column(ancestor: ResultNode, column_variants: list[str]) -> t
 
 
 def _merge_graph_node_data(
-    context: YamlRefactorContextProtocol,
     graph_node: dict[str, t.Any],
     graph_edge: dict[str, t.Any],
 ) -> None:
-    """Merge graph edge data into existing graph node, handling tags and meta merging.
+    """Merge graph edge data into existing graph node, handling tags and meta merging."""
+    # Merge tags
+    current_tags = graph_node.get("tags", [])
+    if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
+        graph_edge["tags"] = list(merged_tags)
 
-    Uses the dbt compatibility layer to handle version differences in meta/tags location.
-    """
-    # Merge tags using compat layer
-    current_tags = get_tags(context, graph_node)
-    incoming_tags = get_tags(context, graph_edge)
-    if merged_tags := list(set(incoming_tags) | set(current_tags)):
-        set_tags(context, graph_node, sorted(merged_tags))
-
-    # Remove tags from edge to prevent double-merging by update()
-    if (
-        hasattr(context.project, "is_dbt_v1_10_or_greater")
-        and context.project.is_dbt_v1_10_or_greater
-    ):
-        graph_edge.get("config", {}).pop("tags", None)
-    else:
-        graph_edge.pop("tags", None)
-
-    # Merge meta using compat layer, but preserve osmosis_progenitor from the first (farthest) generation
+    # Merge meta, but preserve osmosis_progenitor from the first (farthest) generation
     # The osmosis_progenitor should always point to the original source, not intermediate sources
-    current_meta = get_meta(context, graph_node)
-    edge_meta = get_meta(context, graph_edge)
+    current_meta = graph_node.get("meta", {})
+    edge_meta = graph_edge.pop("meta", {})
 
     # Preserve existing osmosis_progenitor if it exists in current_meta
     progenitor = current_meta.get("osmosis_progenitor")
     if merged_meta := {**current_meta, **edge_meta}:
-        set_meta(context, graph_node, merged_meta)
+        graph_edge["meta"] = merged_meta
         # Restore the original progenitor if it existed
         if progenitor:
-            final_meta = get_meta(context, graph_node)
-            final_meta["osmosis_progenitor"] = progenitor
-
-    # Remove meta from edge to prevent double-merging by update()
-    if (
-        hasattr(context.project, "is_dbt_v1_10_or_greater")
-        and context.project.is_dbt_v1_10_or_greater
-    ):
-        graph_edge.get("config", {}).pop("meta", None)
-    else:
-        graph_edge.pop("meta", None)
+            graph_edge["meta"]["osmosis_progenitor"] = progenitor
 
     # Update graph node with merged data
     graph_node.update(graph_edge)
@@ -559,7 +532,7 @@ def _build_column_knowledge_graph(
 
                             # Merge with existing graph node
                             graph_node = column_knowledge_graph.setdefault(name, {})
-                            _merge_graph_node_data(context, graph_node, graph_edge)
+                            _merge_graph_node_data(graph_node, graph_edge)
                 continue
 
             # Process each column in the target node
@@ -593,7 +566,7 @@ def _build_column_knowledge_graph(
 
                 # Merge with existing graph node (which already has local column data)
                 graph_node = column_knowledge_graph.setdefault(name, {})
-                _merge_graph_node_data(context, graph_node, graph_edge)
+                _merge_graph_node_data(graph_node, graph_edge)
 
     # Apply progenitor overrides based on column_default_progenitor and default_progenitor
     # This is a second pass that allows users to override the automatically selected

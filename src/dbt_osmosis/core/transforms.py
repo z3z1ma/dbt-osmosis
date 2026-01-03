@@ -256,8 +256,11 @@ def inherit_upstream_column_knowledge(
             name,
             fallback=context.settings.add_progenitor_to_meta,
         ):
-            # Check if meta has osmosis_progenitor in kwargs
-            if kwargs.get("meta", {}).get("osmosis_progenitor"):
+            # Check if meta has osmosis_progenitor in kwargs (check both top-level and config.meta for dbt 1.10)
+            meta_progenitor = kwargs.get("meta", {}).get("osmosis_progenitor")
+            if not meta_progenitor:
+                meta_progenitor = kwargs.get("config", {}).get("meta", {}).get("osmosis_progenitor")
+            if meta_progenitor:
                 # Ensure meta is in inheritable if not already present
                 if "meta" not in inheritable:
                     inheritable.append("meta")
