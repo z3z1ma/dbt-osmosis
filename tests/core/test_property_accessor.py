@@ -15,10 +15,10 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock, patch
 
-# These imports will work once the PropertyAccessor is implemented
-# For now, we'll set up the test structure
-# from dbt_osmosis.core.introspection import PropertyAccessor
+# Import will work once PropertyAccessor is implemented
+from dbt_osmosis.core.introspection import PropertyAccessor
 
 
 class MockColumn:
@@ -59,6 +59,8 @@ class MockNode:
         tags: list[str] | None = None,
         columns: dict[str, MockColumn] | None = None,
         raw_code: str | None = None,
+        patch_path: str | None = "models/my_model.yml",
+        resource_type: str = "model",
     ) -> None:
         """Initialize a mock node.
 
@@ -69,6 +71,8 @@ class MockNode:
             tags: Optional list of tags
             columns: Optional dictionary of columns
             raw_code: Optional raw SQL code
+            patch_path: Optional YAML file path
+            resource_type: Optional resource type (model, source, seed, etc.)
         """
         self.unique_id = unique_id
         self.description = description
@@ -76,6 +80,8 @@ class MockNode:
         self.tags = tags or []
         self.columns = columns or {}
         self.raw_code = raw_code
+        self.patch_path = patch_path
+        self.resource_type = resource_type
 
 
 @pytest.fixture
@@ -126,7 +132,7 @@ def sample_node_with_unrendered() -> MockNode:
     return MockNode(
         unique_id="model.test.my_model",
         description="This model uses {{ doc('my_doc_block') }} for documentation.",
-        tags=[" nightly", "piña"],
+        tags=["nightly", "piña"],
         columns={
             "id": MockColumn(
                 "id",
@@ -168,6 +174,21 @@ def sample_node_rendered() -> MockNode:
     )
 
 
+@pytest.fixture
+def mock_context() -> Mock:
+    """Create a mock YamlRefactorContext.
+
+    Returns:
+        Mock context with necessary attributes
+    """
+    context = Mock()
+    context.project = Mock()
+    context.project.manifest = Mock()
+    context.yaml_handler = Mock()
+    context.yaml_handler_lock = Mock()
+    return context
+
+
 class TestPropertyAccessor:
     """Test suite for PropertyAccessor class.
 
@@ -181,91 +202,222 @@ class TestPropertyAccessor:
     - Handling of missing properties
     """
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_get_property_from_manifest(self, sample_node_rendered: MockNode) -> None:
+    def test_get_property_from_manifest(
+        self, sample_node_rendered: MockNode, mock_context: Mock
+    ) -> None:
         """Test getting a property from the manifest (rendered)."""
-        # PropertyAccessor will be imported once implemented
-        # accessor = PropertyAccessor(manifest=mock_manifest)
-        # result = accessor.get("description", sample_node_rendered, source="manifest")
-        # assert "comprehensive documentation" in result
-        pass
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("description", sample_node_rendered, source="manifest")
+        assert "comprehensive documentation" in result
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
+    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
     def test_get_property_from_yaml(
-        self, sample_node_with_unrendered: MockNode, sample_yaml_file: Path
+        self,
+        mock_get_yaml,
+        sample_node_with_unrendered: MockNode,
+        sample_yaml_file: Path,
+        mock_context: Mock,
     ) -> None:
         """Test getting a property from YAML (unrendered)."""
-        pass
+        # Mock the YAML reading to return unrendered content
+        mock_get_yaml.return_value = {
+            "name": "my_model",
+            "description": "This model uses {{ doc('my_doc_block') }} for documentation.",
+            "columns": [
+                {
+                    "name": "id",
+                    "description": "Unique identifier using {{ doc('id_doc') }}",
+                    "meta": {"dbt-osmosis": {"output-to-lower": True}},
+                }
+            ],
+        }
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("description", sample_node_with_unrendered, source="yaml")
+        assert "{{ doc('my_doc_block') }}" in result
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
+    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
     def test_prefer_unrendered_true(
-        self, sample_node_rendered: MockNode, sample_yaml_file: Path
+        self,
+        mock_get_yaml,
+        sample_node_rendered: MockNode,
+        sample_yaml_file: Path,
+        mock_context: Mock,
     ) -> None:
-        """Test that prefer_unrendered=True uses YAML source."""
-        pass
+        """Test that source='auto' with unrendered jinja prefers YAML."""
+        # Mock the YAML reading to return unrendered content
+        mock_get_yaml.return_value = {
+            "name": "my_model",
+            "description": "This model uses {{ doc('my_doc_block') }} for documentation.",
+        }
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("description", sample_node_rendered, source="auto")
+        # Should prefer YAML when unrendered jinja is detected
+        assert "{{ doc" in result
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
     def test_prefer_unrendered_false(
-        self, sample_node_rendered: MockNode, sample_yaml_file: Path
+        self, sample_node_rendered: MockNode, sample_yaml_file: Path, mock_context: Mock
     ) -> None:
-        """Test that prefer_unrendered=False uses manifest source."""
-        pass
+        """Test that source='manifest' always uses manifest."""
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("description", sample_node_rendered, source="manifest")
+        assert "comprehensive documentation" in result
+        assert "{{ doc" not in result
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
     def test_get_column_property(
-        self, sample_node_rendered: MockNode, sample_yaml_file: Path
+        self, sample_node_rendered: MockNode, sample_yaml_file: Path, mock_context: Mock
     ) -> None:
         """Test getting a column-level property."""
-        pass
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get(
+            "description", sample_node_rendered, column_name="id", source="manifest"
+        )
+        assert "unique identifier documentation" in result
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_get_tags(self, sample_node_rendered: MockNode) -> None:
+    def test_get_tags(self, sample_node_rendered: MockNode, mock_context: Mock) -> None:
         """Test getting tags from a node."""
-        pass
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("tags", sample_node_rendered, source="manifest")
+        assert "nightly" in result
+        assert "piña" in result
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_get_meta(self, sample_node_rendered: MockNode) -> None:
+    def test_get_meta(self, sample_node_rendered: MockNode, mock_context: Mock) -> None:
         """Test getting meta from a node."""
-        pass
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get_meta(sample_node_rendered, column_name="id", source="manifest")
+        assert result is not None
+        assert "output-to-lower" in str(result).lower() or "dbt-osmosis" in str(result).lower()
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_get_data_type(self) -> None:
+    def test_get_data_type(self, mock_context: Mock) -> None:
         """Test getting data type for a column."""
-        pass
+        node = MockNode(
+            columns={
+                "id": MockColumn("id", data_type="integer"),
+                "name": MockColumn("name", data_type="varchar"),
+            }
+        )
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("data_type", node, column_name="id", source="manifest")
+        assert result == "integer"
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_missing_yaml_file(self, sample_node_rendered: MockNode) -> None:
+    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    def test_missing_yaml_file(
+        self, mock_get_yaml, sample_node_rendered: MockNode, mock_context: Mock
+    ) -> None:
         """Test behavior when YAML file doesn't exist (fallback to manifest)."""
-        pass
+        # Mock missing YAML file
+        mock_get_yaml.return_value = None
+        accessor = PropertyAccessor(context=mock_context)
+        # Should fall back to manifest
+        result = accessor.get("description", sample_node_rendered, source="yaml")
+        # Should still get manifest value as fallback
+        assert result is not None
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_missing_property_returns_none(self, sample_node_rendered: MockNode) -> None:
+    def test_missing_property_returns_none(self, mock_context: Mock) -> None:
         """Test that missing properties return None."""
-        pass
+        node = MockNode(description="Existing description")
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("nonexistent_property", node, source="manifest")
+        assert result is None
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_ephemeral_model_handling(self) -> None:
+    def test_ephemeral_model_handling(self, mock_context: Mock) -> None:
         """Test handling of ephemeral models that may not have YAML files."""
-        pass
+        ephemeral_node = MockNode(
+            unique_id="model.test.ephemeral_model",
+            description="Ephemeral model",
+            patch_path=None,  # No YAML file for ephemeral models
+        )
+        accessor = PropertyAccessor(context=mock_context)
+        # Should handle gracefully
+        result = accessor.get("description", ephemeral_node, source="yaml")
+        # Should fall back to manifest or return None
+        assert result is None or result == "Ephemeral model"
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
+    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
     def test_column_not_in_yaml(
-        self, sample_node_rendered: MockNode, sample_yaml_file: Path
+        self,
+        mock_get_yaml,
+        sample_node_rendered: MockNode,
+        sample_yaml_file: Path,
+        mock_context: Mock,
     ) -> None:
         """Test accessing a column that exists in manifest but not in YAML."""
-        pass
+        # Add a column that doesn't exist in YAML
+        sample_node_rendered.columns["extra_column"] = MockColumn(
+            "extra_column", description="Extra"
+        )
+        # Mock YAML that doesn't have the extra_column
+        mock_get_yaml.return_value = {
+            "name": "my_model",
+            "columns": [
+                {"name": "id", "description": "ID column"},
+            ],
+        }
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get(
+            "description", sample_node_rendered, column_name="extra_column", source="yaml"
+        )
+        # Should fall back to manifest if column not in YAML
+        assert result is not None
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
+    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
     def test_unrendered_jinja_preservation(
-        self, sample_node_with_unrendered: MockNode, sample_yaml_file: Path
+        self,
+        mock_get_yaml,
+        sample_node_with_unrendered: MockNode,
+        sample_yaml_file: Path,
+        mock_context: Mock,
     ) -> None:
         """Test that unrendered jinja templates are preserved."""
-        pass
+        mock_get_yaml.return_value = {
+            "name": "my_model",
+            "columns": [
+                {
+                    "name": "id",
+                    "description": "Unique identifier using {{ doc('id_doc') }}",
+                },
+            ],
+        }
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get(
+            "description", sample_node_with_unrendered, column_name="id", source="yaml"
+        )
+        assert "{{ doc('id_doc') }}" in result
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
-    def test_multiple_doc_blocks(self) -> None:
+    def test_multiple_doc_blocks(self, mock_context: Mock) -> None:
         """Test handling of multiple doc blocks in a single description."""
-        pass
+        node = MockNode(description="Start {{ doc('first') }} middle {{ doc('second') }} end")
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get("description", node, source="manifest")
+        # Manifest should have rendered version
+        assert "{{ doc" not in result or result == node.description
+
+    def test_get_description_convenience(
+        self, sample_node_rendered: MockNode, mock_context: Mock
+    ) -> None:
+        """Test get_description() convenience method."""
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.get_description(sample_node_rendered, source="manifest")
+        assert "comprehensive documentation" in result
+
+    def test_has_property_true(self, sample_node_rendered: MockNode, mock_context: Mock) -> None:
+        """Test has_property() returns True for existing properties."""
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.has_property("description", sample_node_rendered)
+        assert result is True
+
+    def test_has_property_false(self, sample_node_rendered: MockNode, mock_context: Mock) -> None:
+        """Test has_property() returns False for missing properties."""
+        accessor = PropertyAccessor(context=mock_context)
+        result = accessor.has_property("nonexistent", sample_node_rendered)
+        assert result is False
+
+    def test_invalid_source_raises_error(
+        self, sample_node_rendered: MockNode, mock_context: Mock
+    ) -> None:
+        """Test that invalid source raises ValueError."""
+        accessor = PropertyAccessor(context=mock_context)
+        with pytest.raises(ValueError, match="Invalid source"):
+            accessor.get("description", sample_node_rendered, source="invalid_source")
 
 
 class TestPropertyAccessorIntegration:
@@ -274,17 +426,17 @@ class TestPropertyAccessorIntegration:
     These tests use the demo_duckdb project to verify end-to-end functionality.
     """
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
+    @pytest.mark.skip(reason="Demo project fixture not yet set up")
     def test_access_with_demo_project(self, demo_project: Path) -> None:
         """Test property accessor with the demo_duckdb project."""
         pass
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
+    @pytest.mark.skip(reason="Demo project fixture not yet set up")
     def test_source_definitions(self, demo_project: Path) -> None:
         """Test accessing properties from source definitions."""
         pass
 
-    @pytest.mark.skip(reason="PropertyAccessor not yet implemented")
+    @pytest.mark.skip(reason="Demo project fixture not yet set up")
     def test_seed_definitions(self, demo_project: Path) -> None:
         """Test accessing properties from seed definitions."""
         pass
