@@ -1,3 +1,0 @@
-kind: Fixed
-body: 'Fix KeyError: ''duckdb'' and adapter.connections.close() issues'
-time: 2026-01-02T22:04:07.156249-07:00

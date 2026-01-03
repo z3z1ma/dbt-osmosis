@@ -1,3 +1,0 @@
-kind: Changed
-body: _get_setting_for_node() now delegates to SettingsResolver internally, maintaining full backward compatibility with all 24 existing call sites
-time: 2026-01-02T23:57:08.716108-07:00

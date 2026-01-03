@@ -1,3 +1,0 @@
-kind: Fixed
-body: Fix dbt 1.10 compat layer that broke osmosis_progenitor tracking
-time: 2026-01-02T22:04:05.284244-07:00

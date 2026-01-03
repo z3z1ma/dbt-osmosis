@@ -1,3 +1,0 @@
-kind: Changed
-body: Extract helper functions from _build_column_knowledge_graph for better modularity
-time: 2026-01-02T22:04:43.790489-07:00

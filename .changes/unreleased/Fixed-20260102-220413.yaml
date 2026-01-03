@@ -1,3 +1,0 @@
-kind: Fixed
-body: Fix YAML inheritance test isolation with function-scoped fixtures
-time: 2026-01-02T22:04:13.630682-07:00

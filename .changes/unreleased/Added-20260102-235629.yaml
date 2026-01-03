@@ -1,3 +1,0 @@
-kind: Added
-body: PropertyAccessor class for unified model property access from manifest (rendered) or YAML (unrendered jinja) sources
-time: 2026-01-02T23:56:29.449254-07:00

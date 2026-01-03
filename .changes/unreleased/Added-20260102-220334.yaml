@@ -1,3 +1,0 @@
-kind: Added
-body: Add LRU cache implementation to prevent memory leaks in YAML buffer cache
-time: 2026-01-02T22:03:34.870864-07:00

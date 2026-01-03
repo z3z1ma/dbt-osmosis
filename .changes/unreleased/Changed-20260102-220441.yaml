@@ -1,3 +1,0 @@
-kind: Changed
-body: Drop support for Python 3.9 (minimum is now Python 3.10)
-time: 2026-01-02T22:04:41.427156-07:00

@@ -1,3 +1,0 @@
-kind: Added
-body: 'Add --prefer-yaml-values flag to preserve unrendered jinja templates in YAML fields. Fixes #266'
-time: 2026-01-03T00:35:09.892345-07:00

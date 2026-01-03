@@ -1,3 +1,0 @@
-kind: Added
-body: Column-level configuration override support allowing individual columns to override node-level dbt-osmosis settings
-time: 2026-01-02T23:56:38.970901-07:00
