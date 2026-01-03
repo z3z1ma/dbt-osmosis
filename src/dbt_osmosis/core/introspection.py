@@ -4,9 +4,11 @@ import json
 import re
 import threading
 import typing as t
+from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from itertools import chain
 from pathlib import Path
 
@@ -30,11 +32,529 @@ __all__ = [
     "_load_catalog",
     "_generate_catalog",
     "_COLUMN_LIST_CACHE",
+    # Foundational classes for unified config resolution
+    "ConfigurationError",
+    "ConfigSourceName",
+    "PropertySource",
+    "ConfigurationSource",
+    # Unified property access for US2
+    "PropertyAccessor",
+    # New configuration sources for US1
+    "ConfigMetaSource",
+    "UnrenderedConfigSource",
+    "ProjectVarsSource",
+    "SupplementaryFileSource",
 ]
 
 T = t.TypeVar("T")
 
 _COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
+
+
+# =============================================================================
+# Foundational Classes for Unified Configuration Resolution System
+# =============================================================================
+
+
+class ConfigurationError(Exception):
+    """Exception raised when configuration file is invalid or cannot be read.
+
+    This exception is used throughout the unified configuration resolution system
+    to indicate errors related to configuration file parsing, validation, or access.
+
+    Attributes:
+        message: The error message describing what went wrong.
+        file_path: Optional path to the configuration file that caused the error.
+
+    Example:
+        >>> raise ConfigurationError("Invalid YAML syntax", "/path/to/config.yml")
+        ConfigurationError: Invalid YAML syntax (file: /path/to/config.yml)
+    """
+
+    def __init__(self, message: str, file_path: str | None = None) -> None:
+        """Initialize a ConfigurationError.
+
+        Args:
+            message: The error message describing what went wrong.
+            file_path: Optional path to the configuration file that caused the error.
+        """
+        self.file_path = file_path
+        self.message = message
+        if file_path:
+            full_message = f"{message} (file: {file_path})"
+        else:
+            full_message = message
+        super().__init__(full_message)
+
+
+class ConfigSourceName(Enum):
+    """Enumeration of configuration source names for logging and identification.
+
+    Each source name corresponds to a specific location where configuration
+    values can be retrieved. These names are used for logging which source
+    provided a resolved value.
+
+    Values:
+        COLUMN_META: Column-level meta dictionary (highest priority)
+        NODE_META: Node-level meta dictionary
+        CONFIG_EXTRA: Node config.extra dictionary
+        CONFIG_META: Node config.meta dictionary (dbt 1.10+)
+        UNRENDERED_CONFIG: Node unrendered_config dictionary (dbt 1.10+)
+        PROJECT_VARS: Project-level vars from dbt_project.yml
+        SUPPLEMENTARY_FILE: Supplementary dbt-osmosis.yml file
+        FALLBACK: Default fallback value (lowest priority)
+    """
+
+    COLUMN_META = "column_meta"
+    NODE_META = "node_meta"
+    CONFIG_EXTRA = "config_extra"
+    CONFIG_META = "config_meta"
+    UNRENDERED_CONFIG = "unrendered_config"
+    PROJECT_VARS = "project_vars"
+    SUPPLEMENTARY_FILE = "supplementary_file"
+    FALLBACK = "fallback"
+
+
+class PropertySource(Enum):
+    """Enumeration of property sources for model and column metadata.
+
+    This enum defines where model properties (like descriptions, tags, meta)
+    can be retrieved from. It's used by the PropertyAccessor to specify
+    which source to read from.
+
+    Values:
+        MANIFEST: Parsed manifest.json with rendered jinja values
+        YAML: Raw YAML files with unrendered jinja templates
+        DATABASE: Warehouse metadata via introspection (future use)
+
+    Example:
+        >>> # Get unrendered description from YAML
+        >>> accessor.get_description(node, source=PropertySource.YAML)
+    """
+
+    MANIFEST = "manifest"
+    YAML = "yaml"
+    DATABASE = "database"
+
+
+class ConfigurationSource(ABC):
+    """Abstract base class for configuration sources in the resolution chain.
+
+    Each configuration source knows how to extract values from a specific
+    location (column meta, node meta, config.extra, etc.). Sources are
+    checked in precedence order, and the first non-None value is returned.
+
+    Concrete implementations must implement the get() method to retrieve
+    values from their specific location.
+
+    Attributes:
+        name: The ConfigSourceName enum value for this source (used for logging).
+
+    Example:
+        >>> class ColumnMetaSource(ConfigurationSource):
+        ...     def __init__(self, node: ResultNode, column: str):
+        ...         super().__init__(ConfigSourceName.COLUMN_META)
+        ...         self.node = node
+        ...         self.column = column
+        ...
+        ...     def get(self, key: str) -> Any | None:
+        ...         if column := self.node.columns.get(self.column):
+        ...             return column.meta.get(key)
+        ...         return None
+    """
+
+    def __init__(self, name: ConfigSourceName) -> None:
+        """Initialize a ConfigurationSource.
+
+        Args:
+            name: The ConfigSourceName enum value for this source.
+        """
+        self._name = name
+
+    @property
+    def name(self) -> ConfigSourceName:
+        """Return the ConfigSourceName enum value for this source."""
+        return self._name
+
+    @abstractmethod
+    def get(self, key: str) -> t.Any | None:
+        """Get a configuration value from this source.
+
+        Args:
+            key: The configuration key to look up.
+
+        Returns:
+            The configuration value if found, None otherwise.
+        """
+        pass
+
+
+class ConfigMetaSource(ConfigurationSource):
+    """Configuration source for node.config.meta (dbt 1.10+).
+
+    This source reads configuration from the config.meta dictionary,
+    which is available in dbt 1.10 and later versions. It gracefully
+    handles versions where this field doesn't exist.
+
+    Supported key variants:
+    - dbt-osmosis-<key> (kebab-case with prefix)
+    - dbt_osmosis_<key> (snake_case with prefix)
+    - <key> (direct key without prefix)
+    - dbt-osmosis-options.<key> (nested options object)
+
+    Example:
+        >>> source = ConfigMetaSource(node)
+        >>> value = source.get("output-to-lower")
+    """
+
+    def __init__(self, node: ResultNode) -> None:
+        """Initialize ConfigMetaSource.
+
+        Args:
+            node: The dbt node to read config.meta from.
+        """
+        super().__init__(ConfigSourceName.CONFIG_META)
+        self._node = node
+
+    def get(self, key: str) -> t.Any | None:
+        """Get a configuration value from config.meta.
+
+        Args:
+            key: The configuration key to look up.
+
+        Returns:
+            The configuration value if found, None otherwise.
+        """
+        # Gracefully handle dbt versions < 1.10 where config.meta doesn't exist
+        if not hasattr(self._node, "config") or not hasattr(self._node.config, "meta"):
+            return None
+
+        config_meta = self._node.config.meta
+        if not isinstance(config_meta, dict):
+            return None
+
+        # Normalize key to both kebab and snake variants
+        kebab_key = key.replace("_", "-")
+        snake_key = key.replace("-", "_")
+
+        # Check prefixed variants first (highest precedence within this source)
+        prefixed_kebab = f"dbt-osmosis-{kebab_key}"
+        prefixed_snake = f"dbt_osmosis_{snake_key}"
+
+        if prefixed_kebab in config_meta:
+            return config_meta[prefixed_kebab]
+        if prefixed_snake in config_meta:
+            return config_meta[prefixed_snake]
+
+        # Check direct key variants
+        if kebab_key in config_meta:
+            return config_meta[kebab_key]
+        if snake_key in config_meta:
+            return config_meta[snake_key]
+
+        # Check options objects
+        options_kebab = config_meta.get("dbt-osmosis-options", {})
+        options_snake = config_meta.get("dbt_osmosis_options", {})
+
+        if isinstance(options_kebab, dict) and kebab_key in options_kebab:
+            return options_kebab[kebab_key]
+        if isinstance(options_snake, dict) and kebab_key in options_snake:
+            return options_snake[kebab_key]
+
+        return None
+
+
+class UnrenderedConfigSource(ConfigurationSource):
+    """Configuration source for node.unrendered_config (dbt 1.10+).
+
+    This source reads configuration from the unrendered_config dictionary,
+    which is available in dbt 1.10 and later versions. It gracefully
+    handles versions where this field doesn't exist.
+
+    Supported key variants:
+    - dbt-osmosis-<key> (kebab-case with prefix)
+    - dbt_osmosis_<key> (snake_case with prefix)
+    - dbt-osmosis-options.<key> (nested options object)
+
+    Note: This source only supports prefixed variants (not direct keys),
+    as unrendered_config is typically used for config() blocks which
+    require valid Python identifiers.
+
+    Example:
+        >>> source = UnrenderedConfigSource(node)
+        >>> value = source.get("skip-add-columns")
+    """
+
+    def __init__(self, node: ResultNode) -> None:
+        """Initialize UnrenderedConfigSource.
+
+        Args:
+            node: The dbt node to read unrendered_config from.
+        """
+        super().__init__(ConfigSourceName.UNRENDERED_CONFIG)
+        self._node = node
+
+    def get(self, key: str) -> t.Any | None:
+        """Get a configuration value from unrendered_config.
+
+        Args:
+            key: The configuration key to look up.
+
+        Returns:
+            The configuration value if found, None otherwise.
+        """
+        # Gracefully handle dbt versions < 1.10 where unrendered_config doesn't exist
+        if not hasattr(self._node, "unrendered_config"):
+            return None
+
+        unrendered_config = self._node.unrendered_config
+        if not isinstance(unrendered_config, dict):
+            return None
+
+        # Normalize key to both kebab and snake variants
+        kebab_key = key.replace("_", "-")
+        snake_key = key.replace("-", "_")
+
+        # Check prefixed variants only (unrendered_config is for config() blocks)
+        prefixed_kebab = f"dbt-osmosis-{kebab_key}"
+        prefixed_snake = f"dbt_osmosis_{snake_key}"
+
+        if prefixed_kebab in unrendered_config:
+            return unrendered_config[prefixed_kebab]
+        if prefixed_snake in unrendered_config:
+            return unrendered_config[prefixed_snake]
+
+        # Check options objects
+        options_kebab = unrendered_config.get("dbt-osmosis-options", {})
+        options_snake = unrendered_config.get("dbt_osmosis_options", {})
+
+        if isinstance(options_kebab, dict) and kebab_key in options_kebab:
+            return options_kebab[kebab_key]
+        if isinstance(options_snake, dict) and kebab_key in options_snake:
+            return options_snake[kebab_key]
+
+        return None
+
+
+class ProjectVarsSource(ConfigurationSource):
+    """Configuration source for project-level vars in dbt_project.yml.
+
+    This source reads configuration from the project's runtime_cfg.vars,
+    which contains variables defined in dbt_project.yml under the vars: section.
+
+    Supported key variants:
+    - dbt-osmosis.<key> (under dbt-osmosis top-level key)
+    - dbt_osmosis.<key> (under dbt_osmosis top-level key)
+    - <key> (direct key, if at top level of vars)
+
+    Example:
+        >>> source = ProjectVarsSource(context)
+        >>> value = source.get("skip-add-tags")
+    """
+
+    def __init__(self, context: t.Any) -> None:
+        """Initialize ProjectVarsSource.
+
+        Args:
+            context: The dbt context with project.runtime_cfg.vars.
+        """
+        super().__init__(ConfigSourceName.PROJECT_VARS)
+        self._context = context
+
+    def get(self, key: str) -> t.Any | None:
+        """Get a configuration value from project vars.
+
+        Args:
+            key: The configuration key to look up.
+
+        Returns:
+            The configuration value if found, None otherwise.
+        """
+        # Safely access runtime_cfg.vars
+        if not hasattr(self._context, "project"):
+            return None
+        if not hasattr(self._context.project, "runtime_cfg"):
+            return None
+        if not hasattr(self._context.project.runtime_cfg, "vars"):
+            return None
+
+        # Get vars as dictionary
+        vars_dict = self._context.project.runtime_cfg.vars
+        if hasattr(vars_dict, "to_dict"):
+            vars_dict = vars_dict.to_dict()
+        if not isinstance(vars_dict, dict):
+            return None
+
+        # Normalize key
+        kebab_key = key.replace("_", "-")
+        snake_key = key.replace("-", "_")
+
+        # Check dbt-osmosis top-level key
+        dbt_osmosis_vars = vars_dict.get("dbt-osmosis", {})
+        if isinstance(dbt_osmosis_vars, dict):
+            # Check both kebab and snake variants
+            if kebab_key in dbt_osmosis_vars:
+                return dbt_osmosis_vars[kebab_key]
+            if snake_key in dbt_osmosis_vars:
+                return dbt_osmosis_vars[snake_key]
+
+        # Check dbt_osmosis top-level key (snake_case variant)
+        dbt_osmosis_vars_snake = vars_dict.get("dbt_osmosis", {})
+        if isinstance(dbt_osmosis_vars_snake, dict):
+            if kebab_key in dbt_osmosis_vars_snake:
+                return dbt_osmosis_vars_snake[kebab_key]
+            if snake_key in dbt_osmosis_vars_snake:
+                return dbt_osmosis_vars_snake[snake_key]
+
+        return None
+
+
+class SupplementaryFileSource(ConfigurationSource):
+    """Configuration source for dbt-osmosis.yml supplementary file.
+
+    This source reads configuration from a dbt-osmosis.yml file in the
+    project root, allowing users to define configuration outside of
+    dbt's hot path.
+
+    Supported key variants:
+    - dbt-osmosis-<key> (kebab-case with prefix)
+    - dbt_osmosis_<key> (snake_case with prefix)
+    - <key> (direct key without prefix)
+    - dbt-osmosis-options.<key> (nested options object)
+
+    The file is optional - if it doesn't exist, this source returns None
+    for all keys without error.
+
+    Example:
+        >>> source = SupplementaryFileSource(context)
+        >>> value = source.get("skip-add-tags")
+    """
+
+    def __init__(self, context: t.Any) -> None:
+        """Initialize SupplementaryFileSource.
+
+        Args:
+            context: The dbt context with project root path.
+        """
+        super().__init__(ConfigSourceName.SUPPLEMENTARY_FILE)
+        self._context = context
+        self._config_cache: dict[str, t.Any] | None = None
+
+    def _load_config(self) -> dict[str, t.Any]:
+        """Load dbt-osmosis.yml from project root.
+
+        Returns:
+            Configuration dictionary, empty dict if file doesn't exist.
+
+        Raises:
+            ConfigurationError: If the file exists but contains invalid YAML syntax.
+        """
+        if self._config_cache is not None:
+            return self._config_cache
+
+        # Get project root
+        if not hasattr(self._context, "project"):
+            return {}
+        if not hasattr(self._context.project, "runtime_cfg"):
+            return {}
+        if not hasattr(self._context.project.runtime_cfg, "project_root"):
+            return {}
+
+        project_root = Path(self._context.project.runtime_cfg.project_root)
+        config_file = project_root / "dbt-osmosis.yml"
+
+        # Check if file exists first
+        if not config_file.is_file():
+            return {}
+
+        # Use standard ruamel.yaml (not OsmosisYAML) to avoid filtering
+        # dbt-osmosis.yml contains arbitrary config keys, not dbt structures
+        import ruamel.yaml
+
+        yaml_handler = ruamel.yaml.YAML()
+        yaml_handler.preserve_quotes = True
+
+        try:
+            with open(config_file, "r") as f:
+                content = yaml_handler.load(f)
+                # Empty file or None content is OK, treat as empty config
+                if content is None:
+                    self._config_cache = {}
+                elif isinstance(content, dict):
+                    self._config_cache = content
+                else:
+                    # File exists but content is not a dict (e.g., just a string)
+                    # This is invalid configuration
+                    raise ConfigurationError(
+                        f"Invalid configuration in {config_file.name}: "
+                        f"expected a dictionary, got {type(content).__name__}",
+                        file_path=str(config_file),
+                    )
+        except ruamel.yaml.YAMLError as e:
+            # Invalid YAML syntax - raise ConfigurationError with helpful message
+            raise ConfigurationError(
+                f"Invalid YAML syntax in {config_file.name}: {e}",
+                file_path=str(config_file),
+            ) from e
+        except ConfigurationError:
+            # Re-raise ConfigurationError as-is
+            raise
+        except Exception as e:
+            # Other errors (file read permissions, etc.) - also raise
+            raise ConfigurationError(
+                f"Error reading {config_file.name}: {e}",
+                file_path=str(config_file),
+            ) from e
+
+        return self._config_cache
+
+    def get(self, key: str) -> t.Any | None:
+        """Get a configuration value from dbt-osmosis.yml.
+
+        Args:
+            key: The configuration key to look up.
+
+        Returns:
+            The configuration value if found, None otherwise.
+        """
+        config = self._load_config()
+        if not isinstance(config, dict):
+            return None
+
+        # Normalize key
+        kebab_key = key.replace("_", "-")
+        snake_key = key.replace("-", "_")
+
+        # Check prefixed variants first
+        prefixed_kebab = f"dbt-osmosis-{kebab_key}"
+        prefixed_snake = f"dbt_osmosis_{snake_key}"
+
+        if prefixed_kebab in config:
+            return config[prefixed_kebab]
+        if prefixed_snake in config:
+            return config[prefixed_snake]
+
+        # Check direct key variants
+        if kebab_key in config:
+            return config[kebab_key]
+        if snake_key in config:
+            return config[snake_key]
+
+        # Check options objects
+        options_kebab = config.get("dbt-osmosis-options", {})
+        options_snake = config.get("dbt_osmosis_options", {})
+
+        if isinstance(options_kebab, dict) and kebab_key in options_kebab:
+            return options_kebab[kebab_key]
+        if isinstance(options_snake, dict) and kebab_key in options_snake:
+            return options_snake[kebab_key]
+
+        return None
+
+
+# =============================================================================
+# Existing Settings Resolver (to be extended)
+# =============================================================================
 
 
 @dataclass
@@ -95,10 +615,10 @@ class SettingsResolver:
         kebab_name = setting_name.replace("_", "-")
         snake_name = setting_name.replace("-", "_")
 
-        # Build list of sources in order
+        # Build list of sources in precedence order
         sources = []
 
-        # Column-level sources (if column specified)
+        # Column-level sources (if column specified) - HIGHEST precedence
         if column_name and (column := node.columns.get(column_name)):
             sources = [
                 column.meta,
@@ -125,22 +645,234 @@ class SettingsResolver:
                 node.config.extra.get("dbt_osmosis_options", {}),
             ]
 
-        # Check each source for the setting
+        # Check each source for the setting (in order - highest precedence first)
         for source in sources:
             # Check prefixed variants first
             for prefixed_name in (f"dbt-osmosis-{kebab_name}", f"dbt_osmosis_{snake_name}"):
                 if prefixed_name in source:
+                    logger.debug(
+                        ":gear: Resolved setting '%s' from source (prefixed variant)",
+                        setting_name,
+                    )
                     return source[prefixed_name]
 
             # For non-config.extra sources, check direct key variants
             if source is not node.config.extra:
                 if kebab_name in source:
+                    logger.debug(
+                        ":gear: Resolved setting '%s' from source (direct kebab variant)",
+                        setting_name,
+                    )
                     return source[kebab_name]
                 if snake_name in source:
+                    logger.debug(
+                        ":gear: Resolved setting '%s' from source (direct snake variant)",
+                        setting_name,
+                    )
                     return source[snake_name]
             # config.extra only checks prefixed variants, not direct keys
 
+        # Check dbt 1.10+ sources AFTER existing sources (lower precedence)
+        # Check config.meta (dbt 1.10+)
+        if hasattr(node, "config") and hasattr(node.config, "meta"):
+            config_meta_source = ConfigMetaSource(node)
+            value = config_meta_source.get(setting_name)
+            if value is not None:
+                logger.debug(
+                    ":gear: Resolved setting '%s' from config.meta (dbt 1.10+)",
+                    setting_name,
+                )
+                return value
+
+        # Check unrendered_config (dbt 1.10+)
+        if hasattr(node, "unrendered_config"):
+            unrendered_source = UnrenderedConfigSource(node)
+            value = unrendered_source.get(setting_name)
+            if value is not None:
+                logger.debug(
+                    ":gear: Resolved setting '%s' from unrendered_config (dbt 1.10+)",
+                    setting_name,
+                )
+                return value
+
+        logger.debug(
+            ":gear: Setting '%s' not found, using fallback: %s",
+            setting_name,
+            fallback,
+        )
         return fallback
+
+    def has(
+        self,
+        setting_name: str,
+        node: ResultNode | None = None,
+        column_name: str | None = None,
+    ) -> bool:
+        """Check if a setting exists in any source.
+
+        Args:
+            setting_name: The name of the setting to check
+            node: The dbt node to check for settings
+            column_name: Optional column name to check column-level settings
+
+        Returns:
+            True if the setting exists in any source, False otherwise
+        """
+        if node is None:
+            return False
+
+        # Use resolve with a sentinel value to check if setting exists
+        sentinel = object()
+        result = self.resolve(setting_name, node, column_name, fallback=sentinel)
+        return result is not sentinel
+
+    def get_precedence_chain(
+        self,
+        setting_name: str,
+        node: ResultNode | None = None,
+        column_name: str | None = None,
+    ) -> list[tuple[ConfigSourceName, t.Any | None]]:
+        """Get the full precedence chain for a setting with values from each source.
+
+        This is useful for debugging and understanding which source provided
+        the final value.
+
+        Args:
+            setting_name: The name of the setting to check
+            node: The dbt node to check for settings
+            column_name: Optional column name to check column-level settings
+
+        Returns:
+            A list of tuples (source_name, value) for each source in precedence order.
+            Values are None if the source doesn't have the setting.
+        """
+        chain = []
+
+        if node is None:
+            chain.append((ConfigSourceName.FALLBACK, None))
+            return chain
+
+        # Convert between kebab-case and snake_case
+        kebab_name = setting_name.replace("_", "-")
+        snake_name = setting_name.replace("-", "_")
+
+        # Helper to extract value from a dict source
+        def extract_value(source: dict[str, t.Any]) -> t.Any | None:
+            # Check prefixed variants
+            for prefixed_name in (f"dbt-osmosis-{kebab_name}", f"dbt_osmosis_{snake_name}"):
+                if prefixed_name in source:
+                    return source[prefixed_name]
+            # Check direct variants
+            if kebab_name in source:
+                return source[kebab_name]
+            if snake_name in source:
+                return source[snake_name]
+            return None
+
+        # Column-level sources
+        if column_name and (column := node.columns.get(column_name)):
+            value = extract_value(column.meta)
+            chain.append((ConfigSourceName.COLUMN_META, value))
+
+        # Node meta sources
+        value = extract_value(node.meta)
+        chain.append((ConfigSourceName.NODE_META, value))
+
+        # Node config.extra
+        value = extract_value(node.config.extra)
+        chain.append((ConfigSourceName.CONFIG_EXTRA, value))
+
+        # Config.meta (dbt 1.10+)
+        if hasattr(node, "config") and hasattr(node.config, "meta"):
+            config_meta_source = ConfigMetaSource(node)
+            value = config_meta_source.get(setting_name)
+            chain.append((ConfigSourceName.CONFIG_META, value))
+        else:
+            chain.append((ConfigSourceName.CONFIG_META, None))
+
+        # Unrendered config (dbt 1.10+)
+        if hasattr(node, "unrendered_config"):
+            unrendered_source = UnrenderedConfigSource(node)
+            value = unrendered_source.get(setting_name)
+            chain.append((ConfigSourceName.UNRENDERED_CONFIG, value))
+        else:
+            chain.append((ConfigSourceName.UNRENDERED_CONFIG, None))
+
+        # Note: Project vars and supplementary file require context,
+        # which isn't available in this stateless resolver
+
+        return chain
+
+    def get_yaml_path_template(
+        self,
+        node: ResultNode,
+    ) -> str | None:
+        """Get the YAML path template for a node.
+
+        The path template is a special configuration value that specifies where
+        the node's YAML file should be located. It uses the bare `dbt-osmosis` or
+        `dbt_osmosis` key (without a setting suffix) in config sources.
+
+        Precedence (highest to lowest):
+            1. node.config.extra["dbt-osmosis"] or ["dbt_osmosis"]
+            2. node.config.meta["dbt-osmosis"] or ["dbt_osmosis"] (dbt 1.10+)
+            3. node.unrendered_config["dbt-osmosis"] or ["dbt_osmosis"] (dbt 1.10+)
+
+        Args:
+            node: The dbt node to get the path template for.
+
+        Returns:
+            The path template string, or None if not found.
+        """
+        if node is None:
+            return None
+
+        # Keys to check (both kebab and snake variants)
+        keys = ("dbt-osmosis", "dbt_osmosis")
+
+        # Helper to check a dict for the path template
+        def check_dict(source: dict[str, t.Any]) -> str | None:
+            for key in keys:
+                if key in source:
+                    return source[key]
+            return None
+
+        # Check config.extra first (highest priority)
+        if hasattr(node, "config") and hasattr(node.config, "extra"):
+            result = check_dict(node.config.extra)
+            if result:
+                logger.debug(
+                    ":gear: Found YAML path template in config.extra: %s",
+                    result,
+                )
+                return result
+
+        # Check config.meta (dbt 1.10+)
+        if hasattr(node, "config") and hasattr(node.config, "meta"):
+            config_meta = node.config.meta
+            if isinstance(config_meta, dict):
+                result = check_dict(config_meta)
+                if result:
+                    logger.debug(
+                        ":gear: Found YAML path template in config.meta: %s",
+                        result,
+                    )
+                    return result
+
+        # Check unrendered_config (dbt 1.10+)
+        if hasattr(node, "unrendered_config"):
+            unrendered = node.unrendered_config
+            if isinstance(unrendered, dict):
+                result = check_dict(unrendered)
+                if result:
+                    logger.debug(
+                        ":gear: Found YAML path template in unrendered_config: %s",
+                        result,
+                    )
+                    return result
+
+        logger.debug(":gear: No YAML path template found in node config")
+        return None
 
 
 # Global resolver instance for backward compatibility
@@ -509,3 +1241,332 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
     logger.info(":bookmark_tabs: Writing fresh catalog => %s", artifact_path)
     artifact.write(str(artifact_path.resolve()))  # Cache it, same as dbt
     return t.cast(CatalogResults, artifact)
+
+
+# =============================================================================
+# PropertyAccessor: Unified Model Property Access
+# =============================================================================
+
+
+class PropertyAccessor:
+    """Unified interface for accessing model properties from multiple sources.
+
+    The PropertyAccessor provides a single interface for accessing model properties
+    (descriptions, tags, meta, data types) from either:
+    - Manifest: Rendered jinja values (pre-compiled by dbt)
+    - YAML: Unrendered jinja templates (raw {{ doc(...) }} syntax)
+    - Auto: Automatically selects based on unrendered jinja detection
+
+    This enables the unrendered jinja feature (doc blocks) by allowing users to
+    choose between rendered and unrendered property values.
+
+    Example:
+        >>> accessor = PropertyAccessor(context)
+        >>> # Get rendered description from manifest
+        >>> desc = accessor.get_description(node, source="manifest")
+        >>> # Get unrendered description from YAML (preserves {{ doc(...) }})
+        >>> desc = accessor.get_description(node, source="yaml")
+        >>> # Auto-detect based on jinja presence
+        >>> desc = accessor.get_description(node, source="auto")
+    """
+
+    def __init__(self, context: t.Any) -> None:
+        """Initialize the PropertyAccessor.
+
+        Args:
+            context: YamlRefactorContext containing project, manifest, yaml_handler, etc.
+        """
+        self._context = context
+
+    def _get_from_manifest(
+        self,
+        node: ResultNode,
+        property_key: str,
+        column_name: str | None = None,
+    ) -> t.Any | None:
+        """Get a property value from the manifest (rendered jinja).
+
+        The manifest contains pre-rendered values where jinja templates
+        like {{ doc('foo') }} have already been resolved.
+
+        Args:
+            node: The dbt node (model, source, seed, etc.)
+            property_key: The property to retrieve (e.g., "description", "tags", "meta")
+            column_name: Optional column name for column-level properties
+
+        Returns:
+            The property value from manifest, or None if not found
+        """
+        # Handle column-level properties
+        if column_name:
+            column = node.columns.get(column_name)
+            if column is None:
+                return None
+            # Map property keys to column attributes
+            if property_key == "description":
+                return getattr(column, "description", None)
+            elif property_key == "data_type":
+                return getattr(column, "data_type", None)
+            elif property_key == "tags":
+                return getattr(column, "tags", None)
+            elif property_key == "meta":
+                return getattr(column, "meta", None)
+            elif property_key == "name":
+                return getattr(column, "name", None)
+            else:
+                # Try generic attribute access
+                return getattr(column, property_key, None)
+
+        # Handle node-level properties
+        if property_key == "description":
+            return getattr(node, "description", None)
+        elif property_key == "tags":
+            return getattr(node, "tags", None)
+        elif property_key == "meta":
+            return getattr(node, "meta", None)
+        elif property_key == "name":
+            return getattr(node, "name", None)
+        else:
+            # Try generic attribute access
+            return getattr(node, property_key, None)
+
+    def _get_from_yaml(
+        self,
+        node: ResultNode,
+        property_key: str,
+        column_name: str | None = None,
+    ) -> t.Any | None:
+        """Get a property value from YAML files (unrendered jinja).
+
+        YAML files contain raw jinja templates like {{ doc('foo') }} that
+        haven't been rendered yet. This is useful for preserving doc blocks.
+
+        Args:
+            node: The dbt node (model, source, seed, etc.)
+            property_key: The property to retrieve (e.g., "description", "tags", "meta")
+            column_name: Optional column name for column-level properties
+
+        Returns:
+            The property value from YAML, or None if not found
+        """
+
+        from dbt_osmosis.core.inheritance import _get_node_yaml
+
+        # Check if node has a YAML file (ephemeral models may not)
+        if not hasattr(node, "patch_path") or node.patch_path is None:
+            logger.debug(
+                ":page_facing_up: Node %s has no patch_path, skipping YAML access",
+                getattr(node, "unique_id", "unknown"),
+            )
+            return None
+
+        try:
+            # Get the YAML content for this node
+            yaml_content = _get_node_yaml(self._context, node)
+            if yaml_content is None:
+                logger.debug(
+                    ":page_facing_up: No YAML content found for node %s",
+                    getattr(node, "unique_id", "unknown"),
+                )
+                return None
+
+            # Handle column-level properties
+            if column_name:
+                columns = yaml_content.get("columns", [])
+                for column in columns:
+                    if column.get("name") == column_name:
+                        return column.get(property_key)
+                return None
+
+            # Handle node-level properties
+            return yaml_content.get(property_key)
+
+        except FileNotFoundError:
+            logger.warning(
+                ":warning: YAML file not found for node %s, falling back to manifest",
+                getattr(node, "unique_id", "unknown"),
+            )
+            return None
+        except Exception as ex:
+            logger.warning(
+                ":warning: Error reading YAML for node %s: %s",
+                getattr(node, "unique_id", "unknown"),
+                ex,
+            )
+            return None
+
+    def _has_unrendered_jinja(self, value: t.Any) -> bool:
+        """Check if a value contains unrendered jinja templates.
+
+        Detects common jinja patterns used in dbt documentation:
+        - {{ doc('block_name') }} for doc blocks
+        - {% docs block_name %}...{% enddocs %} for doc blocks
+
+        Args:
+            value: The value to check (typically a string)
+
+        Returns:
+            True if unrendered jinja is detected, False otherwise
+        """
+        if not isinstance(value, str):
+            return False
+
+        # Check for common unrendered jinja patterns
+        patterns = [
+            "{{ doc(",  # Doc block function
+            "{% docs ",  # Doc block start tag
+            "{% enddocs %}",  # Doc block end tag
+        ]
+
+        return any(pattern in value for pattern in patterns)
+
+    def get(
+        self,
+        property_key: str,
+        node: ResultNode,
+        *,
+        column_name: str | None = None,
+        source: PropertySource | str = PropertySource.MANIFEST,
+    ) -> t.Any | None:
+        """Get a property value from the specified source.
+
+        Args:
+            property_key: The property to retrieve (e.g., "description", "tags", "meta")
+            node: The dbt node (model, source, seed, etc.)
+            column_name: Optional column name for column-level properties
+            source: The source to read from ("manifest", "yaml", or "auto")
+
+        Returns:
+            The property value, or None if not found
+
+        Raises:
+            ValueError: If an invalid source is specified
+        """
+        # Handle "auto" as a special case before enum conversion
+        if isinstance(source, str) and source == "auto":
+            # Auto-detect: prefer YAML if it has unrendered jinja
+            yaml_value = self._get_from_yaml(node, property_key, column_name)
+            if yaml_value is not None and self._has_unrendered_jinja(yaml_value):
+                logger.debug(
+                    ":magic_wand: Detected unrendered jinja in YAML for %s, using YAML source",
+                    getattr(node, "unique_id", "unknown"),
+                )
+                return yaml_value
+            # Fall back to manifest
+            return self._get_from_manifest(node, property_key, column_name)
+
+        # Normalize source to enum
+        if isinstance(source, str):
+            try:
+                source = PropertySource(source)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid source '{source}'. Must be one of: "
+                    f"'auto', {', '.join([s.value for s in PropertySource])}"
+                )
+
+        if source == PropertySource.MANIFEST:
+            return self._get_from_manifest(node, property_key, column_name)
+
+        elif source == PropertySource.YAML:
+            yaml_value = self._get_from_yaml(node, property_key, column_name)
+            # Fall back to manifest if YAML doesn't have the value
+            if yaml_value is None:
+                logger.debug(
+                    ":page_facing_up: Property '%s' not in YAML for %s, falling back to manifest",
+                    property_key,
+                    getattr(node, "unique_id", "unknown"),
+                )
+                return self._get_from_manifest(node, property_key, column_name)
+            return yaml_value
+
+        elif source == PropertySource.DATABASE:
+            # Database introspection not yet implemented for PropertyAccessor
+            logger.debug(
+                ":mag: Database source not yet implemented for PropertyAccessor, "
+                "falling back to manifest"
+            )
+            return self._get_from_manifest(node, property_key, column_name)
+
+        else:
+            # This shouldn't happen with enum validation, but just in case
+            raise ValueError(
+                f"Invalid source '{source}'. Must be one of: "
+                f"'auto', {', '.join([s.value for s in PropertySource])}"
+            )
+
+    def get_description(
+        self,
+        node: ResultNode,
+        *,
+        column_name: str | None = None,
+        source: PropertySource | str = PropertySource.MANIFEST,
+    ) -> str | None:
+        """Get the description for a node or column.
+
+        Convenience method for getting descriptions.
+
+        Args:
+            node: The dbt node (model, source, seed, etc.)
+            column_name: Optional column name for column-level descriptions
+            source: The source to read from ("manifest", "yaml", or "auto")
+
+        Returns:
+            The description string, or None if not found
+        """
+        return t.cast(
+            str | None, self.get("description", node, column_name=column_name, source=source)
+        )
+
+    def get_meta(
+        self,
+        node: ResultNode,
+        *,
+        column_name: str | None = None,
+        source: PropertySource | str = PropertySource.MANIFEST,
+        meta_key: str | None = None,
+    ) -> t.Any | None:
+        """Get the meta dictionary for a node or column.
+
+        Convenience method for getting metadata.
+
+        Args:
+            node: The dbt node (model, source, seed, etc.)
+            column_name: Optional column name for column-level meta
+            source: The source to read from ("manifest", "yaml", or "auto")
+            meta_key: Optional specific key within the meta dictionary
+
+        Returns:
+            The meta dictionary if meta_key is None, or the specific meta value
+            if meta_key is specified. Returns None if not found.
+        """
+        meta = self.get("meta", node, column_name=column_name, source=source)
+        if meta is None:
+            return None
+        if meta_key is not None:
+            return meta.get(meta_key) if isinstance(meta, dict) else None
+        return meta
+
+    def has_property(
+        self,
+        property_key: str,
+        node: ResultNode,
+        *,
+        column_name: str | None = None,
+    ) -> bool:
+        """Check if a property exists in either manifest or YAML.
+
+        Args:
+            property_key: The property to check for
+            node: The dbt node (model, source, seed, etc.)
+            column_name: Optional column name for column-level properties
+
+        Returns:
+            True if the property exists in manifest or YAML, False otherwise
+        """
+        manifest_value = self._get_from_manifest(node, property_key, column_name)
+        if manifest_value is not None:
+            return True
+
+        yaml_value = self._get_from_yaml(node, property_key, column_name)
+        return yaml_value is not None

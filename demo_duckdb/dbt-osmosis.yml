@@ -1,0 +1,220 @@
+# dbt-osmosis Configuration File
+# =================================
+#
+# This is a supplementary configuration file for dbt-osmosis.
+# It allows you to specify dbt-osmosis settings outside of dbt_project.yml,
+# keeping your dbt project configuration clean and avoiding pollution of the
+# dbt hot path.
+#
+# Configuration Precedence (highest to lowest):
+#   1. Column-level meta (in model YAML files)
+#   2. Node-level config.meta (dbt 1.10+)
+#   3. Node-level meta (in model YAML files)
+#   4. Node-level config.extra (in model YAML files)
+#   5. This file (dbt-osmosis.yml) - project-level defaults
+#   6. Project vars in dbt_project.yml
+#   7. Fallback values (dbt-osmosis defaults)
+#
+# All settings in this file use kebab-case naming (e.g., skip-add-tags).
+# Snake_case variants (e.g., skip_add_tags) are also supported.
+# You may optionally use the "dbt-osmosis-" prefix (e.g., dbt-osmosis-skip-add-tags)
+# but it's not required in this file since all keys are already dbt-osmosis-specific.
+
+# ============================================================================
+# YAML Output Settings
+# ============================================================================
+# These settings control how dbt-osmosis formats and structures YAML files.
+# They can be overridden per-node using the +dbt-osmosis:yaml_settings config.
+
+yaml_settings:
+  # Indentation for mappings (key-value pairs)
+  map_indent: 2
+
+  # Indentation for sequences (lists)
+  sequence_indent: 4
+
+  # Use flow style for single-entry mappings in sequences
+  # Example: [key: value] instead of:
+  #          - key: value
+  brace_single_entry_mapping_in_flow_sequence: true
+
+  # Always include the YAML document start marker (---)
+  explicit_start: true
+
+  # Width at which to wrap long strings (0 for no wrapping)
+  width: 80
+
+# ============================================================================
+# Documentation Inheritance Settings
+# ============================================================================
+# Control how dbt-osmosis inherits documentation and metadata from upstream
+# models and sources.
+
+# Skip appending upstream tags to columns
+skip_add_tags: false
+
+# Skip adding missing columns from the database to YAML files
+skip_add_columns: false
+
+# Skip merging upstream meta fields into YAML files
+skip_merge_meta: false
+
+# Skip adding data types to column definitions
+skip_add_data_types: false
+
+# Skip adding columns in source definitions specifically
+skip_add_source_columns: false
+
+# Force inheritance of descriptions from upstream models, even if the
+# node already has a valid description
+force_inherit_descriptions: false
+
+# Use unrendered descriptions from YAML files, preserving jinja templates
+# like {{ doc('my_doc') }} and {% docs %} blocks
+# When true, dbt-osmosis reads raw YAML instead of pre-rendered manifest values
+use_unrendered_descriptions: false
+
+# Add a custom "progenitor" field to column meta indicating the column's origin
+add_progenitor_to_meta: false
+
+# Additional keys to include in the inheritance process
+# Specify any custom keys that should be inherited from upstream models
+add_inheritance_for_specified_keys:
+  # - owner
+  # - sensitivity_level
+  # - pii
+
+# ============================================================================
+# Data Type Formatting Settings
+# ============================================================================
+# Control how data types are formatted and displayed in YAML files.
+
+# Include numeric precision and scale in data types
+# Example: DECIMAL(18,3) instead of DECIMAL
+numeric_precision_and_scale: false
+
+# Include character length in string data types
+# Example: VARCHAR(255) instead of VARCHAR
+string_length: false
+
+# Force column name and data type output to lowercase in YAML files
+output_to_lower: false
+
+# Force column name and data type output to uppercase in YAML files
+output_to_upper: false
+
+# Note: output_to_lower and output_to_upper are mutually exclusive.
+# If both are true, output_to_lower takes precedence.
+
+# ============================================================================
+# Project-Level Defaults
+# ============================================================================
+# These settings provide default values for the entire project.
+# They can be overridden at the node level or column level.
+
+include_external: false
+  # Include models and sources from external dbt packages in processing
+
+# ============================================================================
+# Node-Level Configuration Examples
+# ============================================================================
+# You can override settings for specific nodes using node selectors.
+# These examples show how to configure specific models, sources, or seeds.
+
+# Configure specific models
+# models:
+#   jaffle_shop_duckdb:
+#     staging:
+#       # Skip adding tags for all staging models
+#       skip_add_tags: true
+#
+#       # Use unrendered descriptions for staging models
+#       use_unrendered_descriptions: true
+#
+#     main:
+#       customers:
+#         # Specific configuration for customers model
+#         force_inherit_descriptions: true
+#         numeric_precision_and_scale: true
+
+# Configure specific sources
+# sources:
+#   jaffle_shop_duckdb:
+#     raw_stripe:
+#       # Skip adding source columns for Stripe data
+#       skip_add_source_columns: true
+
+# Configure specific seeds
+# seeds:
+#   jaffle_shop_duckdb:
+#     raw_countries:
+#       # Add progenitor meta for seed columns
+#       add_progenitor_to_meta: true
+
+# ============================================================================
+# Column-Level Configuration Examples
+# ============================================================================
+# Column-level configuration is specified in the model YAML files, not here.
+# Example (in models/stripe/stripe_payments.yml):
+#
+# columns:
+#   - name: payment_method
+#     description: Payment method type
+#     meta:
+#       # Column-level override: don't convert to lowercase
+#       dbt-osmosis-output-to-lower: false
+#
+#   - name: amount
+#     description: Payment amount in cents
+#     meta:
+#       # Column-level: include numeric precision
+#       dbt-osmosis-numeric-precision-and-scale: true
+
+# ============================================================================
+# Advanced: Nested Options Object
+# ============================================================================
+# You can group multiple settings under a "dbt-osmosis-options" or
+# "dbt_osmosis_options" key. This is useful when you want to set multiple
+# related options at once.
+
+# Example at project level (this file):
+# dbt-osmosis-options:
+#   output-to-lower: true
+#   numeric-precision-and-scale: true
+#   string-length: true
+
+# Example at node level (in model YAML):
+# models:
+#   my_model:
+#     config:
+#       meta:
+#         dbt-osmosis-options:
+#           skip-add-tags: true
+#           use-unrendered-descriptions: true
+
+# ============================================================================
+# Version Compatibility Notes
+# ============================================================================
+#
+# dbt < 1.11: Top-level custom keys are supported
+#   models:
+#     +dbt-osmosis-skip-add-tags: true
+#
+# dbt >= 1.11: Top-level custom keys are deprecated, use nested config:
+#   models:
+#     +config:
+#       meta:
+#         dbt-osmosis-skip-add-tags: true
+#
+# This file (dbt-osmosis.yml) works across all dbt versions since it's
+# outside of dbt's configuration system.
+
+# ============================================================================
+# More Information
+# ============================================================================
+#
+# For complete documentation on dbt-osmosis configuration:
+# https://z3z1ma.github.io/dbt-osmosis/
+#
+# For migration guides and examples:
+# https://z3z1ma.github.io/dbt-osmosis/docs/migrating

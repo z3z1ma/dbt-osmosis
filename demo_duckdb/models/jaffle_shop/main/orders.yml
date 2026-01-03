@@ -5,6 +5,13 @@ models:
     description: >-
       This table has basic information about orders, as well as some derived facts based on payments
 
+    # User Story 4: Column-Level Configuration Override Examples
+    # This model demonstrates column-level dbt-osmosis configuration overrides.
+    # The node-level setting below applies to all columns by default,
+    # but individual columns can override it.
+    meta:
+      # Node-level default: all columns should use lowercase output
+      dbt-osmosis-output-to-lower: false
 
     columns:
       - name: order_id
@@ -13,6 +20,9 @@ models:
           - not_null
         description: This is a unique identifier for an order
         data_type: INTEGER
+        # Column-level override: force this column name to lowercase
+        meta:
+          dbt-osmosis-output-to-lower: true
       - name: customer_id
         description: Foreign key to the customers table
         tests:
@@ -20,8 +30,9 @@ models:
           - relationships:
               to: ref('customers')
               field: customer_id
-
         data_type: INTEGER
+        # This column inherits from node-level (no override)
+        # So it will use dbt-osmosis-output-to-lower: false
       - name: order_date
         description: Date (UTC) that the order was placed
         data_type: DATE
@@ -60,3 +71,6 @@ models:
         tests:
           - not_null
         data_type: DOUBLE
+        # Column-level override: enable string-length for this column
+        meta:
+          dbt-osmosis-string-length: true

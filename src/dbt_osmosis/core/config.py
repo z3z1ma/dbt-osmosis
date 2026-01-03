@@ -27,7 +27,6 @@ from dbt.parser.models import ModelParser
 # Import from dbt-core-interface instead of internal dbt modules
 from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
 from dbt_core_interface import DbtProject as InterfaceDbtProject
-
 from packaging.version import parse as parse_version
 
 import dbt_osmosis.core.logger as logger
@@ -428,8 +427,8 @@ def _patch_adapter_factory_registration() -> None:
     This monkey-patch wraps DbtProject.create_adapter to register the adapter in FACTORY
     immediately after creation.
     """
-    from dbt_core_interface import DbtProject
     from dbt.adapters.factory import FACTORY
+    from dbt_core_interface import DbtProject
 
     original_create_adapter = DbtProject.create_adapter
 
@@ -469,8 +468,8 @@ def _ensure_adapter_loaded(config: DbtConfiguration) -> None:
         _patch_adapter_factory_registration()
 
         # Try to read the profiles.yml to determine the adapter type
-        from dbt.config.project import read_profile_from_disk
         from dbt.adapters.factory import FACTORY
+        from dbt.config.project import read_profile_from_disk
 
         # Read the profile to get the adapter type
         raw_profile = read_profile_from_disk(

@@ -129,7 +129,7 @@ The core functionality is split into specialized modules:
 5. **schema/writer.py**: Writes YAML back to disk with formatting preservation
 
 #### Documentation Inheritance Pipeline
-1. **introspection.py**: Queries database for column schema, caches results
+1. **introspection.py**: Queries database for column schema, caches results, **provides SettingsResolver and PropertyAccessor APIs**
 2. **inheritance.py**: Builds column knowledge graph from upstream models
 3. **transforms.py**: Pipeline of transforms that can be composed with `>>` operator:
    - `inject_missing_columns`: Adds columns from database not in YAML
@@ -138,6 +138,221 @@ The core functionality is split into specialized modules:
    - `sort_columns_as_configured`: Orders columns
    - `synchronize_data_types`: Updates data types from database
    - `synthesize_missing_documentation_with_openai`: AI-generated docs (requires OpenAI)
+
+### Configuration Resolution System
+
+**dbt-osmosis** provides a unified configuration resolution system through two main APIs:
+
+#### SettingsResolver (`dbt_osmosis.core.introspection.SettingsResolver`)
+
+The `SettingsResolver` class provides a clean, testable interface for retrieving configuration values from multiple sources with defined precedence rules.
+
+**Configuration Precedence (highest to lowest):**
+1. **Column-level meta** (e.g., `columns.name.meta.dbt-osmosis-<key>`)
+2. **Node-level meta** (e.g., `models.project.model.meta.dbt-osmosis-<key>`)
+3. **Node-level config.extra** (e.g., `{{ config(dbt_osmosis_<key>=value) }}`)
+4. **Node-level config.meta** (dbt 1.10+, e.g., `{{ config(meta={'dbt-osmosis-<key>': value}) }}`)
+5. **Node-level unrendered_config** (dbt 1.10+)
+6. **Project-level vars** (e.g., `dbt_project.yml` vars.dbt-osmosis.<key>)
+7. **Supplementary file** (`dbt-osmosis.yml` in project root)
+8. **Fallback value** (default if not found)
+
+**Public API:**
+```python
+from dbt_osmosis.core.osmosis import SettingsResolver
+
+resolver = SettingsResolver()
+
+# Resolve a setting value
+value = resolver.resolve(
+    "output-to-lower",           # Setting name (kebab-case or snake_case)
+    node,                        # dbt node (model, source, etc.)
+    column_name="user_id",       # Optional: check column-level settings
+    fallback=False               # Optional: default value if not found
+)
+
+# Check if a setting exists
+has_setting = resolver.has(
+    "output-to-lower",
+    node,
+    column_name="user_id"        # Optional
+)
+
+# Get full precedence chain (for debugging)
+chain = resolver.get_precedence_chain(
+    "output-to-lower",
+    node,
+    column_name="user_id"        # Optional
+)
+# Returns: [('column_meta', value), ('node_meta', value), ...]
+```
+
+**Key Features:**
+- **Key normalization**: Supports both kebab-case (`output-to-lower`) and snake_case (`output_to_lower`)
+- **Prefix handling**: Recognizes `dbt-osmosis-<key>`, `dbt_osmosis_<key>`, and direct `<key>` variants
+- **Options object**: Supports nested `dbt-osmosis-options.<key>` syntax
+- **Cross-version compatibility**: Gracefully handles dbt 1.8-1.11+ differences
+- **Column overrides**: Column-level settings take precedence over node-level settings
+
+**Example Usage:**
+```python
+# In a transform function
+from dbt_osmosis.core.osmosis import SettingsResolver
+
+def my_transform(context: YamlRefactorContext) -> YamlRefactorContext:
+    resolver = SettingsResolver()
+
+    for node in context.nodes:
+        # Check if node has a specific setting
+        if resolver.has("skip-add-tags", node):
+            continue
+
+        # Get setting with fallback
+        output_lower = resolver.resolve("output-to-lower", node, fallback=False)
+
+        # Get column-specific setting
+        for column_name in node.columns:
+            skip_meta = resolver.resolve(
+                "skip-meta-merge",
+                node,
+                column_name=column_name,
+                fallback=False
+            )
+            if skip_meta:
+                # Skip meta merge for this column
+                pass
+
+    return context
+```
+
+#### PropertyAccessor (`dbt_osmosis.core.introspection.PropertyAccessor`)
+
+The `PropertyAccessor` class provides a unified interface for accessing model properties (descriptions, tags, meta, data types) from multiple sources with support for unrendered jinja templates.
+
+**Property Sources:**
+- **`manifest`**: Rendered jinja values (pre-compiled by dbt, default)
+- **`yaml`**: Unrendered jinja templates (raw `{{ doc(...) }}` syntax)
+- **`auto`**: Automatically detects and prefers YAML if unrendered jinja is present
+
+**Public API:**
+```python
+from dbt_osmosis.core.osmosis import PropertyAccessor, PropertySource
+
+accessor = PropertyAccessor(context=context)
+
+# Get any property from a specific source
+description = accessor.get(
+    "description",                # Property name
+    node,                         # dbt node
+    column_name="user_id",        # Optional: column-level property
+    source=PropertySource.MANIFEST # or "yaml", "auto"
+)
+
+# Convenience method for descriptions
+description = accessor.get_description(
+    node,
+    column_name="user_id",        # Optional
+    source="manifest"             # or "yaml", "auto"
+)
+
+# Convenience method for metadata
+metadata = accessor.get_meta(
+    node,
+    column_name="user_id",        # Optional
+    source="manifest",            # or "yaml", "auto"
+    meta_key="pii"                # Optional: get specific key from meta dict
+)
+
+# Check if a property exists
+has_desc = accessor.has_property(
+    "description",
+    node,
+    column_name="user_id"         # Optional
+)
+```
+
+**Key Features:**
+- **Unrendered jinja preservation**: Preserves `{{ doc('block_name') }}` templates when using `source="yaml"`
+- **Auto-detection**: Automatically chooses YAML when unrendered jinja is detected (`source="auto"`)
+- **Graceful fallback**: Falls back to manifest when YAML is unavailable
+- **Column-level access**: Supports both node-level and column-level properties
+- **Multiple property types**: Supports description, tags, meta, data_type, name, and custom properties
+
+**Example Usage:**
+```python
+# In a transform that preserves doc blocks
+from dbt_osmosis.core.osmosis import PropertyAccessor, PropertySource
+
+def inherit_docs_preserving_blocks(context: YamlRefactorContext) -> YamlRefactorContext:
+    accessor = PropertyAccessor(context=context)
+
+    for node in context.nodes:
+        # Get unrendered description if it contains doc blocks
+        description = accessor.get_description(
+            node,
+            source="auto"  # Preserves {{ doc(...) }} if present
+        )
+
+        # Get column descriptions
+        for column_name in node.columns:
+            col_desc = accessor.get_description(
+                node,
+                column_name=column_name,
+                source="yaml"  # Force YAML to preserve templates
+            )
+
+            # Get metadata
+            is_pii = accessor.get_meta(
+                node,
+                column_name=column_name,
+                meta_key="pii",
+                source="manifest"
+            )
+
+    return context
+```
+
+#### Backward Compatibility
+
+**For existing code using `_get_setting_for_node`:**
+
+The legacy `_get_setting_for_node()` function is now a backward compatibility wrapper that delegates to `SettingsResolver`. All existing code continues to work without changes:
+
+```python
+# Old way (still works)
+from dbt_osmosis.core.introspection import _get_setting_for_node
+
+value = _get_setting_for_node(
+    "output-to-lower",
+    node,
+    col="column_name",           # Optional column
+    fallback=False               # Optional fallback
+)
+
+# New recommended way
+from dbt_osmosis.core.osmosis import SettingsResolver
+
+resolver = SettingsResolver()
+value = resolver.resolve(
+    "output-to-lower",
+    node,
+    column_name="column_name",   # Optional column
+    fallback=False               # Optional fallback
+)
+```
+
+**Migration guide:**
+- Replace `_get_setting_for_node(opt, node, col, fallback=X)` with `resolver.resolve(opt, node, column_name=col, fallback=X)`
+- Use `resolver.has()` instead of checking if result is not None
+- Use `PropertyAccessor` for accessing model properties (descriptions, tags, meta)
+- Use `source="auto"` or `source="yaml"` to preserve unrendered jinja templates
+
+**Why migrate?**
+- **Better API**: Clearer parameter names and method names
+- **More features**: `has()`, `get_precedence_chain()`, PropertyAccessor
+- **Type safety**: Full type hints for better IDE support
+- **Testability**: Easier to test and mock
+- **Future-proof**: New features will only be added to the new APIs
 
 #### Other Key Modules
 - **node_filters.py**: Filters dbt nodes by FQN/path, topological sorting
@@ -181,6 +396,83 @@ vars:
       sequence_indent: 4
       brace_single_entry_mapping_in_flow_sequence: true
       explicit_start: true
+```
+
+### Column-Level Configuration Override (User Story 4)
+dbt-osmosis supports column-level configuration overrides, allowing individual columns to have different settings than the node-level default. This is useful when you want specific columns to behave differently.
+
+**Precedence Order** (highest to lowest):
+1. Column-level meta (highest precedence)
+2. Node-level meta
+3. Node-level config.extra
+4. Node-level config.meta (dbt 1.10+)
+5. Node-level unrendered_config (dbt 1.10+)
+6. Project vars
+7. Supplementary file (dbt-osmosis.yml)
+8. Fallback defaults
+
+**Example: Column-level overrides in schema.yml**
+```yaml
+version: 2
+models:
+  - name: orders
+    description: "Orders table with column-specific configurations"
+
+    # Node-level default: all columns use uppercase output
+    meta:
+      dbt-osmosis-output-to-upper: true
+
+    columns:
+      - name: order_id
+        description: "Unique order identifier"
+        # Column-level override: force this column to lowercase
+        meta:
+          dbt-osmosis-output-to-lower: true
+
+      - name: customer_id
+        description: "Foreign key to customers"
+        # No override - inherits node-level (output-to-upper: true)
+
+      - name: amount
+        description: "Order total amount"
+        # Different setting: enable string-length for this column only
+        meta:
+          dbt-osmosis-string-length: true
+```
+
+**Supported key formats** in column meta:
+- Direct keys: `output-to-lower: true`
+- Prefixed kebab: `dbt-osmosis-output-to-lower: true`
+- Prefixed snake: `dbt_osmosis_output_to_lower: true`
+- Options object: `dbt-osmosis-options: {output-to-lower: true}`
+
+**Using SettingsResolver programmatically**:
+```python
+from dbt_osmosis.core.introspection import SettingsResolver
+
+resolver = SettingsResolver()
+
+# Resolve setting for a specific column
+output_lower = resolver.resolve(
+    "output-to-lower",
+    node=orders_node,
+    column_name="order_id"
+)
+
+# Check if a column has a setting
+has_setting = resolver.has(
+    "string-length",
+    node=orders_node,
+    column_name="amount"
+)
+
+# Get full precedence chain for debugging
+chain = resolver.get_precedence_chain(
+    "output-to-lower",
+    node=orders_node,
+    column_name="order_id"
+)
+# Returns: [(ConfigSourceName.COLUMN_META, True), (ConfigSourceName.NODE_META, False), ...]
 ```
 
 ### Testing Approach
@@ -246,12 +538,16 @@ repos:
 - **YAML Path Logic**: src/dbt_osmosis/core/path_management.py:45 (`get_target_yaml_path()`)
 - **Column Inheritance**: src/dbt_osmosis/core/inheritance.py:22 (`_build_column_knowledge_graph()`)
 - **Database Introspection**: src/dbt_osmosis/core/introspection.py:33 (`get_columns()`)
+- **Configuration Resolution**: src/dbt_osmosis/core/introspection.py:533 (`SettingsResolver`)
+- **Property Access**: src/dbt_osmosis/core/introspection.py:1153 (`PropertyAccessor`)
+- **Public API Exports**: src/dbt_osmosis/core/osmosis.py (re-exports all public APIs)
 
 ## Documentation and Resources
 
 - **Official Docs**: https://z3z1ma.github.io/dbt-osmosis/
 - **Migration Guide**: https://z3z1ma.github.io/dbt-osmosis/docs/migrating (for 0.x.x → 1.x.x)
 - **Workbench Demo**: https://dbt-osmosis-playground.streamlit.app/
+- **Quickstart Guide**: `specs/001-unified-config-resolution/quickstart.md` - Developer quickstart for the unified configuration resolution system
 
 ## Landing the Plane (Session Completion)
 
@@ -278,3 +574,9 @@ repos:
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
+
+## Active Technologies
+- Python 3.10-3.12 (as specified in pyproject.toml) (001-unified-config-resolution)
+
+## Recent Changes
+- 001-unified-config-resolution: Added Python 3.10-3.12 (as specified in pyproject.toml)

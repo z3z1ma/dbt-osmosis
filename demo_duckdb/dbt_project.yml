@@ -19,6 +19,27 @@ clean-targets:
 
 require-dbt-version: [">=1.0.0", "<2.0.0"]
 
+# =============================================================================
+# dbt-osmosis Configuration
+# =============================================================================
+#
+# dbt-osmosis settings can be configured in multiple locations with the
+# following precedence (highest to lowest):
+#
+#   1. Column-level meta (in model YAML files)
+#   2. Node-level config.meta (dbt 1.10+)
+#   3. Node-level meta (in model YAML files)
+#   4. Node-level config.extra (in model YAML files)
+#   5. dbt-osmosis.yml (project-level defaults) - See ./dbt-osmosis.yml
+#   6. Project vars (below in this file)
+#   7. Fallback values (dbt-osmosis defaults)
+#
+# This demo project uses both dbt-osmosis.yml for comprehensive documentation
+# and vars below for core YAML formatting settings.
+#
+# For complete configuration reference, see: ./dbt-osmosis.yml
+# =============================================================================
+
 models:
   jaffle_shop_duckdb:
     +dbt-osmosis: "{node.database}/{node.schema}/{node.name}.yml"
@@ -32,6 +53,7 @@ seeds:
 
 flags: {}
 
+# Project-level dbt-osmosis configuration (can be overridden in dbt-osmosis.yml)
 vars:
   dbt-osmosis:
     yaml_settings:

@@ -157,8 +157,9 @@ def test_target_path_resolution_with_custom_template(yaml_context: YamlRefactorC
     """
     Behavior test: Verify that custom path templates are correctly rendered.
     """
-    from dbt_osmosis.core.path_management import get_target_yaml_path
     from unittest import mock
+
+    from dbt_osmosis.core.path_management import get_target_yaml_path
 
     # Find a model node
     model_nodes = [
@@ -205,8 +206,9 @@ def test_target_path_auto_extension_addition(yaml_context: YamlRefactorContext):
     """
     Behavior test: Verify that .yml extension is automatically added if missing.
     """
-    from dbt_osmosis.core.path_management import get_target_yaml_path
     from unittest import mock
+
+    from dbt_osmosis.core.path_management import get_target_yaml_path
 
     model_nodes = [
         node
@@ -236,8 +238,9 @@ def test_missing_osmosis_config_raises_error(yaml_context: YamlRefactorContext):
     Behavior test: Verify that models without dbt-osmosis config raise
     MissingOsmosisConfig.
     """
-    from dbt_osmosis.core.path_management import get_target_yaml_path
     from unittest import mock
+
+    from dbt_osmosis.core.path_management import get_target_yaml_path
 
     model_nodes = [
         node
@@ -262,9 +265,10 @@ def test_path_traversal_attack_prevented(yaml_context: YamlRefactorContext):
     """
     Security test: Verify that path traversal attempts are blocked.
     """
-    from dbt_osmosis.core.path_management import get_target_yaml_path
-    from dbt_osmosis.core.exceptions import PathResolutionError
     from unittest import mock
+
+    from dbt_osmosis.core.exceptions import PathResolutionError
+    from dbt_osmosis.core.path_management import get_target_yaml_path
 
     model_nodes = [
         node
@@ -291,8 +295,9 @@ def test_absolute_path_within_project_allowed(yaml_context: YamlRefactorContext)
     Behavior test: Verify that absolute paths starting with / are allowed
     as long as they're within project root (single leading slash is stripped).
     """
-    from dbt_osmosis.core.path_management import get_target_yaml_path
     from unittest import mock
+
+    from dbt_osmosis.core.path_management import get_target_yaml_path
 
     model_nodes = [
         node
@@ -360,8 +365,9 @@ def test_yaml_file_merge_with_existing(yaml_context: YamlRefactorContext, tmp_pa
     """
     Behavior test: Verify that new content is merged with existing YAML content.
     """
-    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
     import yaml
+
+    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
 
     target_file = tmp_path / "models" / "existing.yml"
     target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -402,11 +408,13 @@ def test_superseded_file_cleanup(yaml_context: YamlRefactorContext, tmp_path):
     """
     Behavior test: Verify that superseded files are cleaned up after migration.
     """
-    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
-    from dbt.contracts.graph.nodes import ModelNode
-    from dbt.artifacts.resources.types import NodeType
     from unittest import mock as mock_patch
+
     import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
 
     old_file = tmp_path / "models" / "old.yml"
     old_file.parent.mkdir(parents=True, exist_ok=True)
@@ -485,8 +493,9 @@ def test_conflict_resolution_file_already_exists(yaml_context: YamlRefactorConte
     Behavior test: Verify behavior when target file already exists.
     Content should be merged, not overwritten.
     """
-    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
     import yaml
+
+    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
 
     target_file = tmp_path / "models" / "conflict.yml"
     target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -524,11 +533,13 @@ def test_empty_superseded_file_removal(yaml_context: YamlRefactorContext, tmp_pa
     """
     Behavior test: Verify that empty superseded files are deleted.
     """
-    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
-    from dbt.contracts.graph.nodes import ModelNode
-    from dbt.artifacts.resources.types import NodeType
     from unittest import mock as mock_patch
+
     import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
 
     old_file = tmp_path / "models" / "to_empty.yml"
     old_file.parent.mkdir(parents=True, exist_ok=True)
@@ -565,11 +576,13 @@ def test_partial_superseded_file_preserved(yaml_context: YamlRefactorContext, tm
     Behavior test: Verify that partially superseded files are preserved
     with remaining content.
     """
-    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
-    from dbt.contracts.graph.nodes import ModelNode
-    from dbt.artifacts.resources.types import NodeType
     from unittest import mock as mock_patch
+
     import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
 
     old_file = tmp_path / "models" / "partial.yml"
     old_file.parent.mkdir(parents=True, exist_ok=True)
@@ -626,10 +639,12 @@ def test_catalog_data_type_used_in_sync(yaml_context: YamlRefactorContext, fresh
     """
     from unittest import mock as mock_patch
     from unittest.mock import PropertyMock
-    from dbt.contracts.results import CatalogResults
-    from dbt_common.contracts.metadata import TableMetadata, ColumnMetadata
-    from dbt.contracts.graph.nodes import ModelNode
+
     from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+    from dbt.contracts.results import CatalogResults
+    from dbt_common.contracts.metadata import ColumnMetadata, TableMetadata
+
     from dbt_osmosis.core.sync_operations import _sync_doc_section
 
     # Create a mock catalog table with specific data types
@@ -708,8 +723,10 @@ def test_sync_without_catalog_falls_back_to_manifest(
     """
     from unittest import mock as mock_patch
     from unittest.mock import PropertyMock
-    from dbt.contracts.graph.nodes import ModelNode
+
     from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
     from dbt_osmosis.core.sync_operations import _sync_doc_section
 
     # Create a mock node with data types in manifest

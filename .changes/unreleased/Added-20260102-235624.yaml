@@ -1,0 +1,3 @@
+kind: Added
+body: Unified configuration resolution system with SettingsResolver class supporting 7-source precedence chain (column meta, node meta, config.extra, config.meta, unrendered_config, project vars, dbt-osmosis.yml)
+time: 2026-01-02T23:56:24.628184-07:00

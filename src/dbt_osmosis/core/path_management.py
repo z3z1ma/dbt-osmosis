@@ -55,10 +55,10 @@ class SchemaFileMigration:
 def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNode) -> str | None:
     """Get the yaml path template for a dbt model or source node.
 
-    First checks for a model-specific `+dbt-osmosis` config, then falls back to
-    the global `dbt_osmosis_default_path` var from dbt_project.yml.
+    First checks for a model-specific `+dbt-osmosis` config via SettingsResolver,
+    then falls back to the global `dbt_osmosis_default_path` var from dbt_project.yml.
     """
-    from dbt_osmosis.core.introspection import _find_first
+    from dbt_osmosis.core.introspection import SettingsResolver
 
     if node.resource_type == NodeType.Source:
         def_or_path = context.source_definitions.get(node.source_name)
@@ -66,13 +66,9 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
             return def_or_path.get("path")
         return def_or_path
 
-    # First, check for model-specific config
-    conf = [
-        c.get(k)
-        for k in ("dbt-osmosis", "dbt_osmosis")
-        for c in (node.config.extra, node.config.meta, node.unrendered_config)
-    ]
-    path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
+    # Use SettingsResolver to get the path template from config sources
+    resolver = SettingsResolver()
+    path_template = resolver.get_yaml_path_template(node)
 
     # If no model-specific config, check for global var
     if not path_template:
@@ -207,9 +203,9 @@ def create_missing_source_yamls(context: t.Any) -> None:
     from dbt_osmosis.core.config import _reload_manifest
     from dbt_osmosis.core.introspection import _find_first, get_columns
     from dbt_osmosis.core.schema.reader import (
-        _read_yaml,
         _YAML_BUFFER_CACHE,
         _YAML_BUFFER_CACHE_LOCK,
+        _read_yaml,
     )
     from dbt_osmosis.core.schema.writer import _write_yaml
 
