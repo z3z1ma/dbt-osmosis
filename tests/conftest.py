@@ -88,10 +88,32 @@ def _run_dbt_commands(project_dir: str, profiles_dir: str, target: str = "test")
         )
 
 
-def _create_temp_project_copy(source_dir: Path, temp_dir: Path) -> Path:
-    """Create a copy of the source project in a temporary directory."""
+def _create_temp_project_copy(
+    source_dir: Path, temp_dir: Path, exclude_target: bool = False
+) -> Path:
+    """Create a copy of the source project in a temporary directory.
+
+    Args:
+        source_dir: Source directory to copy
+        temp_dir: Temporary directory to copy into
+        exclude_target: If True, exclude the target/ directory to avoid
+            copying cached manifest.json with wrong paths
+
+    Returns:
+        Path: Path to the copied project directory
+    """
     project_dir = temp_dir / source_dir.name
-    shutil.copytree(source_dir, project_dir)
+
+    # Function to exclude target directory and other build artifacts
+    def _ignore_filter(src: str, names: list[str]) -> list[str]:
+        # Get the relative path from the source directory
+        src_path = Path(src).relative_to(source_dir)
+        # Exclude target directory (contains cached manifest)
+        if exclude_target and "target" in names and src_path == Path("."):
+            return ["target"]
+        return []
+
+    shutil.copytree(source_dir, project_dir, ignore=_ignore_filter)
     return project_dir
 
 
@@ -118,7 +140,10 @@ def built_duckdb_template() -> Iterator[Path]:
     # Create a session-scoped temp directory for the template
     template_temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_template_"))
     source_dir = Path("demo_duckdb")
-    template_project_dir = _create_temp_project_copy(source_dir, template_temp_dir)
+    # Exclude target directory to avoid copying cached manifest.json with wrong paths
+    template_project_dir = _create_temp_project_copy(
+        source_dir, template_temp_dir, exclude_target=True
+    )
 
     try:
         # Build the database and generate artifacts ONCE per session
@@ -193,7 +218,10 @@ def built_postgres_template() -> Iterator[Path | None]:
     # Create a session-scoped temp directory for the template
     template_temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_postgres_template_"))
     source_dir = Path("demo_duckdb")
-    template_project_dir = _create_temp_project_copy(source_dir, template_temp_dir)
+    # Exclude target directory to avoid copying cached manifest.json with wrong paths
+    template_project_dir = _create_temp_project_copy(
+        source_dir, template_temp_dir, exclude_target=True
+    )
 
     try:
         # Create profiles_postgres.yml pointing to the PostgreSQL database
