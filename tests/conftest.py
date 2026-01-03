@@ -95,50 +95,208 @@ def _create_temp_project_copy(source_dir: Path, temp_dir: Path) -> Path:
     return project_dir
 
 
+@pytest.fixture(scope="session")
+def built_duckdb_template() -> Iterator[Path]:
+    """Builds a dbt project template once per test session.
+
+    This session-scoped fixture:
+    1. Creates a session-scoped temporary directory
+    2. Copies the demo_duckdb project to it
+    3. Runs dbt seed, dbt run, and dbt docs generate ONCE
+    4. Yields the path to the built template project
+    5. Cleans up the template directory at session end
+
+    The resulting template includes:
+    - Populated test.db file (DuckDB database)
+    - Generated catalog.json (for introspection)
+    - Generated manifest.json
+    - All other dbt artifacts in target/
+
+    Yields:
+        Path: Path to the built template project directory
+    """
+    # Create a session-scoped temp directory for the template
+    template_temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_template_"))
+    source_dir = Path("demo_duckdb")
+    template_project_dir = _create_temp_project_copy(source_dir, template_temp_dir)
+
+    try:
+        # Build the database and generate artifacts ONCE per session
+        print("\n" + "=" * 60)
+        print("SESSION SETUP: Building dbt project template")
+        print("=" * 60)
+
+        # Change to the project directory before running dbt commands
+        # This is necessary because DuckDB uses relative paths based on CWD
+        old_cwd = os.getcwd()
+        os.chdir(str(template_project_dir))
+        try:
+            _run_dbt_commands(str(template_project_dir), str(template_project_dir))
+        finally:
+            os.chdir(old_cwd)
+
+        # Verify the database file was created
+        db_file = template_project_dir / "test.db"
+        if not db_file.exists():
+            raise RuntimeError(f"Database file not created at {db_file}")
+        print(f"✓ Template database created: {db_file} ({db_file.stat().st_size} bytes)")
+
+        # Verify catalog.json was created
+        catalog_file = template_project_dir / "target" / "catalog.json"
+        if not catalog_file.exists():
+            raise RuntimeError(f"Catalog file not created at {catalog_file}")
+        print(f"✓ Template catalog created: {catalog_file}")
+
+        print("=" * 60)
+        print("SESSION SETUP: Template build complete")
+        print("=" * 60 + "\n")
+
+        yield template_project_dir
+
+    finally:
+        # Clean up the template directory at session end
+        print("\n" + "=" * 60)
+        print(f"SESSION TEARDOWN: Removing template directory {template_temp_dir}")
+        print("=" * 60)
+        try:
+            shutil.rmtree(template_temp_dir)
+            print("✓ Removed template directory")
+        except Exception as e:
+            print(f"Warning: Error removing template directory: {e}")
+        print("=" * 60 + "\n")
+
+
+@pytest.fixture(scope="session")
+def built_postgres_template() -> Iterator[Path | None]:
+    """Builds a PostgreSQL-backed dbt project template once per test session.
+
+    This session-scoped fixture:
+    1. Checks if POSTGRES_URL is set (skips if not)
+    2. Creates a session-scoped temporary directory
+    3. Copies the demo_duckdb project to it
+    4. Creates a profiles_postgres.yml pointing to POSTGRES_URL
+    5. Runs dbt seed, dbt run, and dbt docs generate ONCE against PostgreSQL
+    6. Yields the path to the built template project
+    7. Cleans up the template directory at session end
+
+    This fixture is skipped if POSTGRES_URL is not set in the environment.
+
+    Yields:
+        Path | None: Path to the built template project directory, or None if skipped
+    """
+    postgres_url = os.environ.get("POSTGRES_URL")
+    if not postgres_url:
+        print("\n=== POSTGRES_URL not set, skipping PostgreSQL template build ===\n")
+        yield None
+        return
+
+    # Create a session-scoped temp directory for the template
+    template_temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_postgres_template_"))
+    source_dir = Path("demo_duckdb")
+    template_project_dir = _create_temp_project_copy(source_dir, template_temp_dir)
+
+    try:
+        # Create profiles_postgres.yml pointing to the PostgreSQL database
+        postgres_profile_content = f"""
+jaffle_shop:
+  target: postgres
+  outputs:
+    postgres:
+      type: postgres
+      host: {os.environ.get("POSTGRES_HOST", "localhost")}
+      user: {os.environ.get("POSTGRES_USER", "postgres")}
+      password: {os.environ.get("POSTGRES_PASSWORD", "")}
+      port: {int(os.environ.get("POSTGRES_PORT", 5432))}
+      dbname: {os.environ.get("POSTGRES_DBNAME", "postgres")}
+      schema: {os.environ.get("POSTGRES_SCHEMA", "public")}
+      threads: 1
+"""
+        profile_path = template_project_dir / "profiles_postgres.yml"
+        profile_path.write_text(postgres_profile_content)
+        print(f"✓ Created {profile_path}")
+
+        # Build the database and generate artifacts ONCE per session
+        print("\n" + "=" * 60)
+        print("SESSION SETUP: Building PostgreSQL dbt project template")
+        print(f"Using PostgreSQL: {postgres_url}")
+        print("=" * 60)
+
+        # Change to the project directory before running dbt commands
+        # This is necessary because dbt uses relative paths based on CWD
+        old_cwd = os.getcwd()
+        os.chdir(str(template_project_dir))
+        try:
+            _run_dbt_commands(
+                str(template_project_dir), str(template_project_dir), target="postgres"
+            )
+        finally:
+            os.chdir(old_cwd)
+
+        print("=" * 60)
+        print("SESSION SETUP: PostgreSQL template build complete")
+        print("=" * 60 + "\n")
+
+        yield template_project_dir
+
+    finally:
+        # Clean up the template directory at session end
+        print("\n" + "=" * 60)
+        print(f"SESSION TEARDOWN: Removing PostgreSQL template directory {template_temp_dir}")
+        print("=" * 60)
+        try:
+            shutil.rmtree(template_temp_dir)
+            print("✓ Removed PostgreSQL template directory")
+        except Exception as e:
+            print(f"Warning: Error removing template directory: {e}")
+        print("=" * 60 + "\n")
+
+
 @pytest.fixture(scope="function")
-def yaml_context() -> Iterator[YamlRefactorContext]:
-    """Creates a YamlRefactorContext with an in-memory DuckDB database.
+def yaml_context(built_duckdb_template: Path) -> Iterator[YamlRefactorContext]:
+    """Creates a YamlRefactorContext with a DuckDB database from the session template.
 
     This function-scoped fixture:
-    1. Copies the demo_duckdb directory to a unique temp directory (avoids DbtProject cache)
-    2. Runs dbt seed and dbt run to populate the in-memory database
+    1. Copies the session-built template project to a unique temp directory (avoids DbtProject cache)
+    2. Uses the pre-built test.db file copied from the template
     3. Creates and yields a YamlRefactorContext
     4. Properly closes connections on teardown
-    5. Cleans up the temp directory and cached manifest.json
+    5. Cleans up the temp directory
 
     Using a unique temp directory for each test ensures complete isolation from
-    the DbtProject WeakValueDictionary cache.
+    the DbtProject WeakValueDictionary cache while reusing the pre-built database.
+
+    Args:
+        built_duckdb_template: Path to the session-built template project
 
     Yields:
         YamlRefactorContext: Configured context with populated database
     """
     # Create a unique temp directory for this test
     temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_test_"))
-    source_dir = Path("demo_duckdb")
-    project_dir = _create_temp_project_copy(source_dir, temp_dir)
+
+    # Copy the ENTIRE template project to preserve isolation
+    project_dir = _create_temp_project_copy(built_duckdb_template, temp_dir)
+
+    # Verify the database file was copied
+    db_file = project_dir / "test.db"
+    if not db_file.exists():
+        raise RuntimeError(f"Database file not copied to {db_file}")
 
     try:
-        # Use the test profile with in-memory database
+        # Use the test profile with file-based database
         cfg = DbtConfiguration(
             project_dir=str(project_dir),
             profiles_dir=str(project_dir),
-            target="test",  # Uses profiles_test.yml with :memory:
+            target="test",  # Uses profiles.yml with test.db
         )
         cfg.vars = {"dbt-osmosis": {}}
 
-        # Run dbt seed and run BEFORE creating the project context
-        # This ensures the in-memory database is populated
-        print("\n=== Setting up in-memory DuckDB database ===")
-        _run_dbt_commands(str(project_dir), str(project_dir))
-        print("=== Database setup complete ===\n")
-
-        # Create the project context (will use the populated in-memory database)
+        # Create the project context (will use the copied test.db)
         start = time.time()
         project_context = create_dbt_project_context(cfg)
         print(f"✓ create_dbt_project_context took {time.time() - start:.2f}s")
 
-        # Set catalog_path to use the catalog.json copied from source project
-        # The catalog.json is generated when the source demo_duckdb was previously run
+        # Set catalog_path to use the catalog.json copied from template
         catalog_path = str(project_dir / "target" / "catalog.json")
 
         context = YamlRefactorContext(
@@ -192,49 +350,43 @@ def yaml_context() -> Iterator[YamlRefactorContext]:
 
 
 @pytest.fixture(scope="function")
-def postgres_yaml_context() -> Iterator[YamlRefactorContext]:
-    """Creates a YamlRefactorContext with PostgreSQL database.
+def postgres_yaml_context(built_postgres_template: Path | None) -> Iterator[YamlRefactorContext]:
+    """Creates a YamlRefactorContext with PostgreSQL database from the session template.
 
     This function-scoped fixture:
-    1. Creates a temporary copy of the demo_duckdb project
-    2. Uses PostgreSQL database if POSTGRES_URL is set in environment
-    3. Sets up dbt configuration for PostgreSQL
-    4. Runs dbt seed and dbt run to populate the PostgreSQL database
-    5. Creates and yields a YamlRefactorContext
-    6. Properly closes connections and cleans up on teardown
+    1. Checks if POSTGRES_URL is set (skips if not)
+    2. Copies the session-built template project to a unique temp directory
+    3. Creates and yields a YamlRefactorContext
+    4. Properly closes connections and cleans up on teardown
 
     This fixture is skipped if POSTGRES_URL is not set in the environment.
+    PostgreSQL database is reused across tests (no per-test database reset).
+
+    Args:
+        built_postgres_template: Path to the session-built PostgreSQL template project, or None
 
     Yields:
         YamlRefactorContext: Configured context with PostgreSQL database
     """
-    postgres_url = os.environ.get("POSTGRES_URL")
-    if not postgres_url:
+    if built_postgres_template is None:
         pytest.skip("POSTGRES_URL environment variable not set. Skipping PostgreSQL tests.")
 
     # Create a unique temp directory for this test
     temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_postgres_test_"))
-    source_dir = Path("demo_duckdb")
-    project_dir = _create_temp_project_copy(source_dir, temp_dir)
+
+    # Copy the ENTIRE template project to preserve isolation
+    project_dir = _create_temp_project_copy(built_postgres_template, temp_dir)
 
     try:
         # Use PostgreSQL target
         cfg = DbtConfiguration(
             project_dir=str(project_dir),
             profiles_dir=str(project_dir),
-            target="postgres",  # Will use profiles_postgres.yml
+            target="postgres",  # Uses profiles_postgres.yml created in template
         )
         cfg.vars = {"dbt-osmosis": {}}
 
-        # Set up PostgreSQL database
-        print("\n=== Setting up PostgreSQL database ===")
-        print(f"Using PostgreSQL URL: {postgres_url}")
-
-        # Run dbt seed and run with PostgreSQL
-        _run_dbt_commands(str(project_dir), str(project_dir), target="postgres")
-        print("=== PostgreSQL database setup complete ===\n")
-
-        # Create the project context
+        # Create the project context (will connect to PostgreSQL)
         start = time.time()
         project_context = create_dbt_project_context(cfg)
         print(f"✓ create_dbt_project_context took {time.time() - start:.2f}s")
