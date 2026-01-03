@@ -414,7 +414,7 @@ wheels = [
 
 [[package]]
 name = "dbt-core"
-version = "1.10.17"
+version = "1.11.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agate" },
@@ -441,9 +441,9 @@ dependencies = [
     { name = "sqlparse" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/2c/a614f4c41af9b63cafb88e182c3a30aa36faf7eb4cad9b99b927709a7f0d/dbt_core-1.10.17.tar.gz", hash = "sha256:b3b7a9d9ff839405840659034e6f92d07fb27c4714476dc8cfdc5359a7b864c2", size = 900268, upload-time = "2025-12-20T01:32:13.059Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/82/662621bd430fc6d8ee8e0e917bc551efba1b08b82372b3c0f37fd3ef4746/dbt_core-1.11.2.tar.gz", hash = "sha256:3306fee149b9f4e648071f2c9a46c0551100e1c829f13ad7ce026eb7226ad454", size = 914480, upload-time = "2025-12-22T19:14:04.488Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/f1/d68b24831e8855d0b4ecc54f8341cf8d3e0a60046af08a65817954f3f4ab/dbt_core-1.10.17-py3-none-any.whl", hash = "sha256:a4a807dc37ecd88899616689c68a6446b46231c11d7e3776f4f1a06e7becce76", size = 986991, upload-time = "2025-12-20T01:32:11.079Z" },
+    { url = "https://files.pythonhosted.org/packages/02/57/dad11af27a21840252234b05d682d73ca8eb721fc79d1b4aa9502bb1b6f5/dbt_core-1.11.2-py3-none-any.whl", hash = "sha256:ac332fd61a4494494f48e1bbdc0696e309e79036b94eb0a929233bb71f4b3898", size = 1004018, upload-time = "2025-12-22T19:14:03.213Z" },
 ]
 
 [[package]]
@@ -545,10 +545,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">7,<9" },
-    { name = "dbt-core", specifier = ">=1.8,<1.11" },
+    { name = "dbt-core", specifier = ">=1.8" },
     { name = "dbt-core-interface", specifier = ">=1.1.5" },
-    { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1.0.0,<2" },
-    { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1.8.0,<=1.10" },
+    { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1,<2" },
+    { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1.8.0" },
     { name = "feedparser", marker = "extra == 'workbench'", specifier = "~=6.0.12" },
     { name = "hypothesis", marker = "extra == 'dev'" },
     { name = "mutmut", marker = "extra == 'dev'" },
