@@ -278,3 +278,9 @@ repos:
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
+
+## Active Technologies
+- Python 3.10-3.12 (as specified in pyproject.toml) (001-unified-config-resolution)
+
+## Recent Changes
+- 001-unified-config-resolution: Added Python 3.10-3.12 (as specified in pyproject.toml)
