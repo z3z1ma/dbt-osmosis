@@ -12,10 +12,11 @@ by allowing users to choose between rendered and unrendered property values.
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Import will work once PropertyAccessor is implemented
 from dbt_osmosis.core.introspection import PropertyAccessor

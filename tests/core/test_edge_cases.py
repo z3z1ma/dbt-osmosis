@@ -17,10 +17,9 @@ import pytest
 
 from dbt_osmosis.core.inheritance import _build_column_knowledge_graph
 from dbt_osmosis.core.schema.parser import create_yaml_instance
-from dbt_osmosis.core.schema.reader import _read_yaml, _YAML_BUFFER_CACHE
+from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE, _read_yaml
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sync_operations import sync_node_to_yaml
-
 
 # ============================================================================
 # Empty Models (No Columns)

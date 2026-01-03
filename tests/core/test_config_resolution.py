@@ -17,18 +17,19 @@ settings with proper precedence handling across dbt versions 1.8-1.11+.
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+import pytest
+
 from dbt_osmosis.core.introspection import (
     ConfigMetaSource,
-    UnrenderedConfigSource,
-    ProjectVarsSource,
-    SupplementaryFileSource,
-    SettingsResolver,
     ConfigSourceName,
+    ProjectVarsSource,
+    SettingsResolver,
+    SupplementaryFileSource,
+    UnrenderedConfigSource,
 )
 from dbt_osmosis.core.settings import YamlRefactorContext
 
@@ -1411,7 +1412,7 @@ class TestBackwardCompatibility:
     def test_exports_available_from_osmosis(self) -> None:
         """T069/T070: Test SettingsResolver and PropertyAccessor are exported from osmosis module."""
         # Test that we can import from osmosis
-        from dbt_osmosis.core.osmosis import SettingsResolver, PropertyAccessor
+        from dbt_osmosis.core.osmosis import PropertyAccessor, SettingsResolver
 
         # Verify they're the correct classes
         assert SettingsResolver is not None
@@ -1424,10 +1425,10 @@ class TestBackwardCompatibility:
     def test_exports_available_from_introspection(self) -> None:
         """T069: Test SettingsResolver and PropertyAccessor are exported from introspection module."""
         from dbt_osmosis.core.introspection import (
-            SettingsResolver,
-            PropertyAccessor,
             ConfigSourceName,
+            PropertyAccessor,
             PropertySource,
+            SettingsResolver,
         )
 
         # Verify all expected exports are available

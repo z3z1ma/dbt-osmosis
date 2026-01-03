@@ -7,7 +7,7 @@ Implementations must follow this contract to ensure compatibility.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, Literal
+from typing import Any, Literal, Protocol
 
 # Type aliases for clarity
 NodeRef = Any  # dbt.contracts.graph.nodes.ResultNode

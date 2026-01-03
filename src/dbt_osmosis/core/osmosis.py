@@ -27,8 +27,8 @@ from dbt_osmosis.core.inheritance import (
 # Introspection utilities
 from dbt_osmosis.core.introspection import (
     _COLUMN_LIST_CACHE,
-    SettingsResolver,
     PropertyAccessor,
+    SettingsResolver,
     _find_first,
     _get_setting_for_node,
     _maybe_use_precise_dtype,

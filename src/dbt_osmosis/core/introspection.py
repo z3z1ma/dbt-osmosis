@@ -803,6 +803,77 @@ class SettingsResolver:
 
         return chain
 
+    def get_yaml_path_template(
+        self,
+        node: ResultNode,
+    ) -> str | None:
+        """Get the YAML path template for a node.
+
+        The path template is a special configuration value that specifies where
+        the node's YAML file should be located. It uses the bare `dbt-osmosis` or
+        `dbt_osmosis` key (without a setting suffix) in config sources.
+
+        Precedence (highest to lowest):
+            1. node.config.extra["dbt-osmosis"] or ["dbt_osmosis"]
+            2. node.config.meta["dbt-osmosis"] or ["dbt_osmosis"] (dbt 1.10+)
+            3. node.unrendered_config["dbt-osmosis"] or ["dbt_osmosis"] (dbt 1.10+)
+
+        Args:
+            node: The dbt node to get the path template for.
+
+        Returns:
+            The path template string, or None if not found.
+        """
+        if node is None:
+            return None
+
+        # Keys to check (both kebab and snake variants)
+        keys = ("dbt-osmosis", "dbt_osmosis")
+
+        # Helper to check a dict for the path template
+        def check_dict(source: dict[str, t.Any]) -> str | None:
+            for key in keys:
+                if key in source:
+                    return source[key]
+            return None
+
+        # Check config.extra first (highest priority)
+        if hasattr(node, "config") and hasattr(node.config, "extra"):
+            result = check_dict(node.config.extra)
+            if result:
+                logger.debug(
+                    ":gear: Found YAML path template in config.extra: %s",
+                    result,
+                )
+                return result
+
+        # Check config.meta (dbt 1.10+)
+        if hasattr(node, "config") and hasattr(node.config, "meta"):
+            config_meta = node.config.meta
+            if isinstance(config_meta, dict):
+                result = check_dict(config_meta)
+                if result:
+                    logger.debug(
+                        ":gear: Found YAML path template in config.meta: %s",
+                        result,
+                    )
+                    return result
+
+        # Check unrendered_config (dbt 1.10+)
+        if hasattr(node, "unrendered_config"):
+            unrendered = node.unrendered_config
+            if isinstance(unrendered, dict):
+                result = check_dict(unrendered)
+                if result:
+                    logger.debug(
+                        ":gear: Found YAML path template in unrendered_config: %s",
+                        result,
+                    )
+                    return result
+
+        logger.debug(":gear: No YAML path template found in node config")
+        return None
+
 
 # Global resolver instance for backward compatibility
 _resolver = SettingsResolver()

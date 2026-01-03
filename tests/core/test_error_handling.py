@@ -27,7 +27,6 @@ from dbt_osmosis.core.schema.parser import create_yaml_instance
 from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.settings import YamlRefactorContext
 
-
 # ============================================================================
 # Invalid YAML Files
 # ============================================================================
@@ -275,6 +274,7 @@ models:
 def test_yaml_cache_thread_safety():
     """Test that YAML cache is thread-safe."""
     import threading
+
     from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE
 
     yaml_handler = create_yaml_instance()
