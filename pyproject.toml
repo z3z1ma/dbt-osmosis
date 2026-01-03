@@ -23,8 +23,7 @@ requires-python = ">=3.10,<3.13"
 
 dependencies = [
   "click>7,<9",
-  # NOTE: Custom loosen version constraint to allow for dbt 1.10.x by Ubie
-  "dbt-core>=1.8,<1.11",
+  "dbt-core>=1.8",
   "dbt-core-interface>=1.1.5",
   "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
@@ -39,7 +38,7 @@ workbench = [
   "ydata-profiling~=4.13.0",
   "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
-  "dbt-duckdb>=1.8.0,<=1.10",
+  "dbt-duckdb>=1.8.0",
   "setuptools>=70",
 ]
 
@@ -52,7 +51,7 @@ dev = [
   "hypothesis",
   "mutmut",
   "pre-commit>3.0.0,<5",
-  "dbt-duckdb>=1.0.0,<2",
+  "dbt-duckdb>=1,<2",
 ]
 
 [project.scripts]

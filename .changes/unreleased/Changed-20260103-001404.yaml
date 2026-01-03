@@ -1,0 +1,3 @@
+kind: Changed
+body: Upgrade dbt-core to 1.11.2 and remove upper version constraints on dbt dependencies
+time: 2026-01-03T00:14:04.20736-07:00
