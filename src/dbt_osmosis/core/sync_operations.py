@@ -105,11 +105,38 @@ def _sync_doc_section(
             name,
             fallback=context.settings.use_unrendered_descriptions,
         )
+        prefer_yaml = _get_setting_for_node(
+            "prefer-yaml-values",
+            node,
+            name,
+            fallback=context.settings.prefer_yaml_values,
+        )
         preserve_current_description = False
         if use_unrendered and current_description:
             # Check if current description contains unrendered doc blocks
             if "{{ doc(" in current_description or "{% docs " in current_description:
                 preserve_current_description = True
+
+        # Fields to preserve from current YAML when prefer_yaml_values is enabled
+        # This includes ANY field that has unrendered jinja templates
+        preserved_yaml_fields: set[str] = set()
+        if prefer_yaml:
+            from dbt_osmosis.core.introspection import PropertyAccessor
+
+            accessor = PropertyAccessor(context=context)
+            for field_key, field_value in current_yaml.items():
+                if field_key == "name":
+                    continue
+                # Check if the field value contains unrendered jinja
+                # Handles strings, lists (e.g., policy_tags), and nested dicts
+                if accessor._has_unrendered_jinja(field_value):
+                    preserved_yaml_fields.add(field_key)
+                    logger.debug(
+                        ":magic_wand: Preserving unrendered YAML field '%s' for column %s "
+                        "(prefer-yaml-values enabled)",
+                        field_key,
+                        name,
+                    )
 
         for k, v in cdict.items():
             if k == "data_type" and skip_add_types:
@@ -120,6 +147,9 @@ def _sync_doc_section(
                 continue
             if k == "description" and preserve_current_description:
                 # Preserve the unrendered description from current YAML
+                continue
+            if k in preserved_yaml_fields:
+                # Preserve unrendered jinja templates from current YAML (prefer-yaml-values)
                 continue
             merged[k] = v
 

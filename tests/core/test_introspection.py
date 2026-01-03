@@ -112,3 +112,94 @@ def test_get_setting_for_node_basic():
     # key = "test-key", which means we look for 'dbt-osmosis-options' => "test-key"
     val = _get_setting_for_node("test-key", node=node, col=None, fallback=None)
     assert val == "test-value"
+
+
+class TestPropertyAccessorHasUnrenderedJinja:
+    """Tests for PropertyAccessor._has_unrendered_jinja method."""
+
+    def test_has_unrendered_jinja_doc_function(self):
+        """Test detection of {{ doc() }} function calls."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja("{{ doc('my_doc') }}") is True
+        assert accessor._has_unrendered_jinja("Some text {{ doc('my_doc') }} more") is True
+
+    def test_has_unrendered_jinja_var_function(self):
+        """Test detection of {{ var() }} function calls."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja("{{ var('policy_tag_user_id') }}") is True
+        assert accessor._has_unrendered_jinja('{{ var("my_var") }}') is True
+
+    def test_has_unrendered_jinja_env_var_function(self):
+        """Test detection of {{ env_var() }} function calls."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja('{{ env_var("MY_ENV_VAR") }}') is True
+
+    def test_has_unrendered_jinja_generic_expression(self):
+        """Test detection of generic {{ }} jinja expressions."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja("{{ 'my_value' }}") is True
+        assert accessor._has_unrendered_jinja("{{ some_var }}") is True
+
+    def test_has_unrendered_jinja_docs_block(self):
+        """Test detection of {% docs %} blocks."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja("{% docs my_block %}{% enddocs %}") is True
+        assert accessor._has_unrendered_jinja("{% docs my_block %}content{% enddocs %}") is True
+
+    def test_has_unrendered_jinja_generic_statement(self):
+        """Test detection of generic {% %} jinja statements."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja("{% if condition %}") is True
+        assert accessor._has_unrendered_jinja("{% for item in items %}") is True
+
+    def test_has_unrendered_jinja_no_jinja(self):
+        """Test that non-jinja strings return False."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja("Plain text") is False
+        assert accessor._has_unrendered_jinja("projects/my_project/locations/us") is False
+        assert accessor._has_unrendered_jinja("") is False
+
+    def test_has_unrendered_jinja_list_values(self):
+        """Test detection of unrendered jinja in list values (e.g., policy_tags)."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        # List with jinja
+        assert accessor._has_unrendered_jinja(["{{ var('tag1') }}", "regular_value"]) is True
+        assert accessor._has_unrendered_jinja(["{{ env_var('TAG') }}"]) is True
+        # List without jinja
+        assert accessor._has_unrendered_jinja(["value1", "value2"]) is False
+
+    def test_has_unrendered_jinja_dict_values(self):
+        """Test detection of unrendered jinja in dict values (e.g., meta fields)."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        # Dict with jinja
+        assert accessor._has_unrendered_jinja({"key": "{{ var('value') }}"}) is True
+        assert accessor._has_unrendered_jinja({"nested": {"key": "{{ doc('x') }}"}}) is True
+        # Dict without jinja
+        assert accessor._has_unrendered_jinja({"key": "value"}) is False
+
+    def test_has_unrendered_jinja_non_string_types(self):
+        """Test that non-string, non-iterable types return False."""
+        from dbt_osmosis.core.introspection import PropertyAccessor
+
+        accessor = PropertyAccessor(context=mock.Mock())
+        assert accessor._has_unrendered_jinja(123) is False
+        assert accessor._has_unrendered_jinja(True) is False
+        assert accessor._has_unrendered_jinja(None) is False

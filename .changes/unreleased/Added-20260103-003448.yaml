@@ -1,0 +1,3 @@
+kind: Added
+body: 'Add `prefer-yaml-values` setting and `--prefer-yaml-values` CLI flag to preserve unrendered jinja templates ({{ var() }}, {{ env_var() }}, etc.) in YAML fields. This addresses issue #266 where `{{ var() }}` in `policy_tags` was being replaced with rendered values. Additionally, expanded `PropertyAccessor._has_unrendered_jinja()` to detect all jinja patterns including {{ var() }}, {{ env_var() }}, and generic {{ }} expressions, with support for nested list and dict structures.'
+time: 2026-01-03T00:34:48.942271-07:00
