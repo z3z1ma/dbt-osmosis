@@ -59,6 +59,8 @@ class YamlRefactorSettings:
     """Include additional keys in the inheritance process."""
     output_to_lower: bool = False
     """Force column name and data type output to lowercase in the yaml files."""
+    output_to_upper: bool = False
+    """Force column name and data type output to uppercase in the yaml files."""
     catalog_path: str | None = None
     """Path to the dbt catalog.json file to use preferentially instead of live warehouse introspection"""
     create_catalog_if_not_exists: bool = False

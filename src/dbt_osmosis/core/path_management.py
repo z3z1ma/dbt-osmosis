@@ -53,7 +53,11 @@ class SchemaFileMigration:
 
 
 def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNode) -> str | None:
-    """Get the yaml path template for a dbt model or source node."""
+    """Get the yaml path template for a dbt model or source node.
+
+    First checks for a model-specific `+dbt-osmosis` config, then falls back to
+    the global `dbt_osmosis_default_path` var from dbt_project.yml.
+    """
     from dbt_osmosis.core.introspection import _find_first
 
     if node.resource_type == NodeType.Source:
@@ -62,15 +66,30 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
             return def_or_path.get("path")
         return def_or_path
 
+    # First, check for model-specific config
     conf = [
         c.get(k)
         for k in ("dbt-osmosis", "dbt_osmosis")
         for c in (node.config.extra, node.config.meta, node.unrendered_config)
     ]
     path_template = _find_first(t.cast("list[str | None]", conf), lambda v: v is not None)
+
+    # If no model-specific config, check for global var
+    if not path_template:
+        try:
+            project_vars = context.project.runtime_cfg.vars.to_dict()
+            path_template = project_vars.get("dbt_osmosis_default_path")
+            if path_template:
+                logger.debug(
+                    ":earth_americas: Using global var 'dbt_osmosis_default_path': %s",
+                    path_template,
+                )
+        except Exception:
+            path_template = None
+
     if not path_template:
         raise MissingOsmosisConfig(
-            f"Config key `dbt-osmosis: <path>` not set for model {node.name}"
+            f"Config key `+dbt-osmosis:` or var `dbt_osmosis_default_path` not set for model {node.name}"
         )
     logger.debug(":gear: Resolved YAML path template => %s", path_template)
     return path_template
@@ -200,6 +219,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
     logger.info(":factory: Creating missing source YAMLs and updating existing sources (if any).")
     database: str = context.project.runtime_cfg.credentials.database
     lowercase: bool = context.settings.output_to_lower
+    uppercase: bool = context.settings.output_to_upper
 
     did_side_effect: bool = False
     for source, spec in context.source_definitions.items():
@@ -247,14 +267,24 @@ def create_missing_source_yamls(context: t.Any) -> None:
 
         def _describe(relation: t.Any) -> dict[str, t.Any]:
             assert relation.identifier, "No identifier found for relation."
+            identifier_name = relation.identifier
+            if uppercase:
+                identifier_name = identifier_name.upper()
+            elif lowercase:
+                identifier_name = identifier_name.lower()
+
             s = {
-                "name": relation.identifier.lower() if lowercase else relation.identifier,
+                "name": identifier_name,
                 "description": "",
                 "columns": [
                     {
-                        "name": name.lower() if lowercase else name,
+                        "name": name.upper()
+                        if uppercase
+                        else (name.lower() if lowercase else name),
                         "description": meta.comment or "",
-                        "data_type": meta.type.lower() if lowercase else meta.type,
+                        "data_type": meta.type.upper()
+                        if uppercase
+                        else (meta.type.lower() if lowercase else meta.type),
                     }
                     for name, meta in get_columns(context, relation).items()
                 ],

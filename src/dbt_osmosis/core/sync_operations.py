@@ -12,6 +12,9 @@ if t.TYPE_CHECKING:
 
 import dbt_osmosis.core.logger as logger
 
+# Import dbt compatibility functions for version-aware meta/tags handling
+from dbt_osmosis.core.dbt_compat import set_meta, set_tags
+
 __all__ = [
     "_sync_doc_section",
     "sync_node_to_yaml",
@@ -135,13 +138,33 @@ def _sync_doc_section(
                 merged.pop(k)
 
         if _get_setting_for_node(
+            "output-to-upper", node, name, fallback=context.settings.output_to_upper
+        ):
+            merged["name"] = merged["name"].upper()
+        elif _get_setting_for_node(
             "output-to-lower", node, name, fallback=context.settings.output_to_lower
         ):
             merged["name"] = merged["name"].lower()
 
         incoming_columns.append(merged)
 
-    doc_section["columns"] = incoming_columns
+    # Restructure columns for dbt v1.10+ compatibility before assignment
+    # In dbt 1.10+, meta and tags moved to the config namespace
+    final_columns = []
+    for col_dict in incoming_columns:
+        # Extract meta and tags if they exist at the top level
+        meta_content = col_dict.pop("meta", None)
+        tags_content = col_dict.pop("tags", None)
+
+        # Use the compatibility layer to set them back in the correct structure
+        if meta_content:
+            set_meta(context, col_dict, meta_content)
+        if tags_content:
+            set_tags(context, col_dict, tags_content)
+
+        final_columns.append(col_dict)
+
+    doc_section["columns"] = final_columns
 
 
 def _get_resource_type_key(node: ResultNode) -> str:

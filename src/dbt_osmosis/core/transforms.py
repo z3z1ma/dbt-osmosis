@@ -329,7 +329,12 @@ def inject_missing_columns(
             if (dtype := incoming_meta.type) and not _get_setting_for_node(
                 "skip-add-data-types", node, fallback=context.settings.skip_add_data_types
             ):
-                gen_col["data_type"] = dtype.lower() if context.settings.output_to_lower else dtype
+                if context.settings.output_to_upper:
+                    gen_col["data_type"] = dtype.upper()
+                elif context.settings.output_to_lower:
+                    gen_col["data_type"] = dtype.lower()
+                else:
+                    gen_col["data_type"] = dtype
             node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
             if hasattr(node.columns[incoming_name], "config"):
                 delattr(node.columns[incoming_name], "config")
@@ -482,12 +487,20 @@ def synchronize_data_types(
         lowercase = _get_setting_for_node(
             "output-to-lower", node, name, fallback=context.settings.output_to_lower
         )
+        uppercase = _get_setting_for_node(
+            "output-to-upper", node, name, fallback=context.settings.output_to_upper
+        )
         if inc_c := incoming_columns.get(
             normalize_column_name(name, context.project.runtime_cfg.credentials.type)
         ):
             is_lower = column.data_type and column.data_type.islower()
             if inc_c.type:
-                column.data_type = inc_c.type.lower() if lowercase or is_lower else inc_c.type
+                if uppercase:
+                    column.data_type = inc_c.type.upper()
+                elif lowercase or is_lower:
+                    column.data_type = inc_c.type.lower()
+                else:
+                    column.data_type = inc_c.type
 
 
 @_transform_op("Synthesize Missing Documentation")
