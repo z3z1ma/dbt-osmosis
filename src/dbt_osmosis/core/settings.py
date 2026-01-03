@@ -55,6 +55,8 @@ class YamlRefactorSettings:
     """Force inheritance of descriptions from upstream models, even if node has a valid description."""
     use_unrendered_descriptions: bool = False
     """Use unrendered descriptions preserving things like {{ doc(...) }} which are otherwise pre-rendered in the manifest object"""
+    prefer_yaml_values: bool = False
+    """Prefer YAML values as-is for all fields, preserving unrendered jinja templates like {{ var(...) }} and {{ env_var(...) }}"""
     add_inheritance_for_specified_keys: list[str] = field(default_factory=list)
     """Include additional keys in the inheritance process."""
     output_to_lower: bool = False

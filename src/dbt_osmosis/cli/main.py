@@ -220,6 +220,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     help="Use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
 )
 @click.option(
+    "--prefer-yaml-values",
+    is_flag=True,
+    help="Prefer YAML values as-is for ALL fields, preserving unrendered jinja templates like {{ var(...) }}, {{ env_var(...) }}, etc. Takes precedence over use-unrendered-descriptions.",
+)
+@click.option(
     "--skip-add-columns",
     is_flag=True,
     help="Skip adding missing columns to any yaml. Useful if you want to document your models without adding large volume of columns present in the database.",
@@ -415,6 +420,11 @@ def organize(
     "--use-unrendered-descriptions",
     is_flag=True,
     help="Use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
+)
+@click.option(
+    "--prefer-yaml-values",
+    is_flag=True,
+    help="Prefer YAML values as-is for ALL fields, preserving unrendered jinja templates like {{ var(...) }}, {{ env_var(...) }}, etc. Takes precedence over use-unrendered-descriptions.",
 )
 @click.option(
     "--skip-add-columns",

@@ -1398,16 +1398,30 @@ class PropertyAccessor:
     def _has_unrendered_jinja(self, value: t.Any) -> bool:
         """Check if a value contains unrendered jinja templates.
 
-        Detects common jinja patterns used in dbt documentation:
+        Detects common jinja patterns used in dbt:
         - {{ doc('block_name') }} for doc blocks
         - {% docs block_name %}...{% enddocs %} for doc blocks
+        - {{ var('variable_name') }} for variables
+        - {{ env_var('ENV_VAR') }} for environment variables
+        - {{ ... }} for generic jinja expressions
+        - {% ... %} for generic jinja statements
+
+        Handles nested structures (lists, dicts) by recursively checking values.
 
         Args:
-            value: The value to check (typically a string)
+            value: The value to check (string, list, dict, etc.)
 
         Returns:
             True if unrendered jinja is detected, False otherwise
         """
+        # Handle lists (e.g., policy_tags)
+        if isinstance(value, list):
+            return any(self._has_unrendered_jinja(item) for item in value)
+
+        # Handle dicts (e.g., meta fields)
+        if isinstance(value, dict):
+            return any(self._has_unrendered_jinja(v) for v in value.values())
+
         if not isinstance(value, str):
             return False
 
@@ -1416,6 +1430,10 @@ class PropertyAccessor:
             "{{ doc(",  # Doc block function
             "{% docs ",  # Doc block start tag
             "{% enddocs %}",  # Doc block end tag
+            "{{ var(",  # Variable substitution
+            "{{ env_var(",  # Environment variable substitution
+            "{{ ",  # Generic jinja expression start
+            "{% ",  # Generic jinja statement start
         ]
 
         return any(pattern in value for pattern in patterns)
