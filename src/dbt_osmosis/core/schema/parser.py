@@ -1,5 +1,6 @@
 import re
 import typing as t
+from types import MappingProxyType
 
 import ruamel.yaml
 
@@ -108,7 +109,22 @@ def create_yaml_instance(
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
         return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
+    def mapping_proxy_representer(
+        dumper: ruamel.yaml.RoundTripDumper, data: MappingProxyType
+    ) -> t.Any:
+        """Representer for MappingProxyType to allow dumping read-only dicts.
+
+        MappingProxyType is used internally by dbt-osmosis to provide read-only
+        views of YAML data (e.g., from _get_node_yaml()). This representer converts
+        it to a regular dict for YAML serialization.
+        """
+        return dumper.represent_mapping(
+            "tag:yaml.org,2002:map",
+            dict(data),
+        )
+
     y.representer.add_representer(str, str_representer)
+    y.representer.add_representer(MappingProxyType, mapping_proxy_representer)
 
     logger.debug(":notebook: YAML instance created => %s", y)
     return y
