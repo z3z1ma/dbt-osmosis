@@ -17,7 +17,7 @@ def _filter_yaml_content(data: dict) -> dict:
 
     This prevents the tool from processing or being aware of semantic_models, macros, etc.
     """
-    allowed_keys = {"version", "models", "sources", "seeds"}
+    allowed_keys = {"version", "models", "sources", "seeds", "unit_tests"}
 
     # Create a new dictionary containing only the allowed keys from the parsed file
     filtered_data = {key: value for key, value in data.items() if key in allowed_keys}
@@ -40,6 +40,8 @@ class OsmosisYAML(ruamel.yaml.YAML):
     are not relevant to dbt-osmosis, such as semantic_models, macros, etc.
     This prevents the tool from accidentally processing or modifying content
     it shouldn't touch.
+
+    The following keys are preserved: version, models, sources, seeds, unit_tests.
     """
 
     def load(self, stream: t.Any) -> t.Any:
