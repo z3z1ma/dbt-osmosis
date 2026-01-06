@@ -97,6 +97,16 @@ uv run dbt-osmosis sql compile "SELECT * FROM {{ ref('my_model') }}"
 
 # Execute SQL
 uv run dbt-osmosis sql run "SELECT 1"
+
+# Natural language interface (NEW)
+# Generate SQL from natural language
+uv run dbt-osmosis nl query "Show me the top 10 customers by lifetime value"
+
+# Generate a complete dbt model from natural language
+uv run dbt-osmosis nl generate "Show me customers who churned in the last 30 days"
+
+# Generate model with custom name and dry-run preview
+uv run dbt-osmosis nl generate "Monthly revenue by region" --model-name monthly_revenue --dry-run
 ```
 
 ### Demo Project
@@ -110,7 +120,7 @@ dbt test --profiles-dir . --target test
 ## Code Architecture
 
 ### Entry Points
-- **CLI**: `src/dbt_osmosis/cli/main.py` - Click-based CLI with subcommands for `yaml`, `sql`, and `workbench`
+- **CLI**: `src/dbt_osmosis/cli/main.py` - Click-based CLI with subcommands for `yaml`, `sql`, `nl` (natural language), and `workbench`
 - **Core API**: `src/dbt_osmosis/core/osmosis.py` - Re-exports all public APIs for backwards compatibility
 
 ### Core Module Structure (`src/dbt_osmosis/core/`)

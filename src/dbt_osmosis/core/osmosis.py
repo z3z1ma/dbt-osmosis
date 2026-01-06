@@ -36,6 +36,12 @@ from dbt_osmosis.core.introspection import (
     normalize_column_name,
 )
 
+# Natural language generation (from llm.py)
+from dbt_osmosis.core.llm import (
+    generate_dbt_model_from_nl,
+    generate_sql_from_nl,
+)
+
 # Node filtering and sorting
 from dbt_osmosis.core.node_filters import (
     _topological_sort,
@@ -162,6 +168,8 @@ __all__ = [
     "discover_project_dir",
     "draft_restructure_delta_plan",
     "execute_sql_code",
+    "generate_dbt_model_from_nl",
+    "generate_sql_from_nl",
     "get_columns",
     "get_current_yaml_path",
     "get_plugin_manager",
