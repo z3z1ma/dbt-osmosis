@@ -120,11 +120,12 @@ def test_generate_model_spec_as_json(monkeypatch: pytest.MonkeyPatch) -> None:
                 {"name": "id", "description": "Unique identifier"},
                 {"name": "name", "description": "User name"},
             ],
-        })
+        }),
     )
 
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response
+        "openai.resources.chat.completions.Completions.create",
+        return_value=mock_response,
     ):
         result = generate_model_spec_as_json(
             sql_content="SELECT id, name FROM users",
@@ -144,11 +145,12 @@ def test_generate_model_spec_as_json_with_markdown_fences(monkeypatch: pytest.Mo
     monkeypatch.setenv("LLM_PROVIDER", "openai")
 
     mock_response = MockResponse(
-        '```json\n{\n  "description": "A test model",\n  "columns": []\n}\n```'
+        '```json\n{\n  "description": "A test model",\n  "columns": []\n}\n```',
     )
 
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response
+        "openai.resources.chat.completions.Completions.create",
+        return_value=mock_response,
     ):
         result = generate_model_spec_as_json(sql_content="SELECT * FROM users")
 
@@ -162,11 +164,14 @@ def test_generate_model_spec_as_json_invalid_json(monkeypatch: pytest.MonkeyPatc
 
     mock_response = MockResponse("This is not valid JSON")
 
-    with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response
+    with (
+        mock.patch(
+            "openai.resources.chat.completions.Completions.create",
+            return_value=mock_response,
+        ),
+        pytest.raises(LLMResponseError, match="LLM returned invalid JSON"),
     ):
-        with pytest.raises(LLMResponseError, match="LLM returned invalid JSON"):
-            generate_model_spec_as_json(sql_content="SELECT * FROM users")
+        generate_model_spec_as_json(sql_content="SELECT * FROM users")
 
 
 def test_generate_model_spec_as_json_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,11 +185,14 @@ def test_generate_model_spec_as_json_empty_response(monkeypatch: pytest.MonkeyPa
     mock_choice.message.content = None
     mock_response_with_none.choices = [mock_choice]
 
-    with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response_with_none
+    with (
+        mock.patch(
+            "openai.resources.chat.completions.Completions.create",
+            return_value=mock_response_with_none,
+        ),
+        pytest.raises(LLMResponseError, match="LLM returned an empty response"),
     ):
-        with pytest.raises(LLMResponseError, match="LLM returned an empty response"):
-            generate_model_spec_as_json(sql_content="SELECT * FROM users")
+        generate_model_spec_as_json(sql_content="SELECT * FROM users")
 
 
 def test_generate_column_doc(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -195,7 +203,8 @@ def test_generate_column_doc(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_response = MockResponse("The unique identifier for each user")
 
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response
+        "openai.resources.chat.completions.Completions.create",
+        return_value=mock_response,
     ):
         result = generate_column_doc(
             column_name="user_id",
@@ -214,11 +223,14 @@ def test_generate_column_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> 
 
     mock_response = MockResponse("")
 
-    with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response
+    with (
+        mock.patch(
+            "openai.resources.chat.completions.Completions.create",
+            return_value=mock_response,
+        ),
+        pytest.raises(LLMResponseError, match="LLM returned an empty response"),
     ):
-        with pytest.raises(LLMResponseError, match="LLM returned an empty response"):
-            generate_column_doc(column_name="test_col")
+        generate_column_doc(column_name="test_col")
 
 
 def test_generate_table_doc(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -229,7 +241,8 @@ def test_generate_table_doc(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_response = MockResponse("A table containing user account information")
 
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response
+        "openai.resources.chat.completions.Completions.create",
+        return_value=mock_response,
     ):
         result = generate_table_doc(
             sql_content="SELECT * FROM users",
@@ -247,11 +260,14 @@ def test_generate_table_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> N
 
     mock_response = MockResponse("")
 
-    with mock.patch(
-        "openai.resources.chat.completions.Completions.create", return_value=mock_response
+    with (
+        mock.patch(
+            "openai.resources.chat.completions.Completions.create",
+            return_value=mock_response,
+        ),
+        pytest.raises(LLMResponseError, match="LLM returned an empty response"),
     ):
-        with pytest.raises(LLMResponseError, match="LLM returned an empty response"):
-            generate_table_doc(sql_content="SELECT * FROM users", table_name="users")
+        generate_table_doc(sql_content="SELECT * FROM users", table_name="users")
 
 
 def test_sql_truncation_with_env_var(monkeypatch: pytest.MonkeyPatch) -> None:

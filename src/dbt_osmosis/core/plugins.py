@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import re
 import typing as t
-from functools import lru_cache
+from functools import cache
 
 import pluggy
 from dbt.contracts.graph.nodes import ResultNode
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
-    "_hookspec",
-    "hookimpl",
-    "get_candidates",
     "FuzzyCaseMatching",
     "FuzzyPrefixMatching",
+    "_hookspec",
+    "get_candidates",
     "get_plugin_manager",
+    "hookimpl",
 ]
 
 _hookspec = pluggy.HookspecMarker("dbt-osmosis")
@@ -36,7 +36,7 @@ class FuzzyCaseMatching:
         variants = [
             name.lower(),  # lowercase
             name.upper(),  # UPPERCASE
-            cc := re.sub("_(.)", lambda m: m.group(1).upper(), name),  # camelCase
+            cc := re.sub(r"_(.)", lambda m: m.group(1).upper(), name),  # camelCase
             cc[0].upper() + cc[1:],  # PascalCase
         ]
         logger.debug(":lower_upper_case: FuzzyCaseMatching variants => %s", variants)
@@ -55,13 +55,15 @@ class FuzzyPrefixMatching:
         if p:
             mut_name = name.removeprefix(p)
             logger.debug(
-                ":scissors: FuzzyPrefixMatching => removing prefix '%s' => %s", p, mut_name
+                ":scissors: FuzzyPrefixMatching => removing prefix '%s' => %s",
+                p,
+                mut_name,
             )
             variants.append(mut_name)
         return variants
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_plugin_manager():
     """Get the pluggy plugin manager for dbt-osmosis."""
     manager = pluggy.PluginManager("dbt-osmosis")

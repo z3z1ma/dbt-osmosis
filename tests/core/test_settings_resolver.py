@@ -60,7 +60,8 @@ def sample_node() -> MockNode:
         },
         columns={
             "col1": MockColumn(
-                "col1", {"output-to-lower": True, "dbt-osmosis-output-to-lower": False}
+                "col1",
+                {"output-to-lower": True, "dbt-osmosis-output-to-lower": False},
             ),
             "col2": MockColumn("col2", {"dbt_osmosis_prefix": "col_"}),
         },
@@ -73,7 +74,8 @@ def test_resolve_with_no_node(resolver: SettingsResolver) -> None:
 
 
 def test_resolve_with_no_matching_setting(
-    resolver: SettingsResolver, sample_node: MockNode
+    resolver: SettingsResolver,
+    sample_node: MockNode,
 ) -> None:
     """Test that fallback is returned when no matching setting is found."""
     assert resolver.resolve("unknown-setting", sample_node, fallback="default") == "default"
@@ -89,7 +91,8 @@ def test_resolve_from_column_meta(resolver: SettingsResolver, sample_node: MockN
 
 
 def test_resolve_from_column_prefixed_setting(
-    resolver: SettingsResolver, sample_node: MockNode
+    resolver: SettingsResolver,
+    sample_node: MockNode,
 ) -> None:
     """Test resolving setting from column prefixed setting."""
     # Column col2 has dbt_osmosis_prefix: "col_" (not output-to-lower)
@@ -107,7 +110,8 @@ def test_resolve_from_node_meta(resolver: SettingsResolver, sample_node: MockNod
 
 
 def test_resolve_from_node_prefixed_setting(
-    resolver: SettingsResolver, sample_node: MockNode
+    resolver: SettingsResolver,
+    sample_node: MockNode,
 ) -> None:
     """Test resolving setting from node prefixed setting."""
     result = resolver.resolve("string-length", sample_node, fallback=None)
@@ -123,7 +127,8 @@ def test_resolve_from_node_config(resolver: SettingsResolver, sample_node: MockN
 
 
 def test_resolve_from_node_config_prefixed(
-    resolver: SettingsResolver, sample_node: MockNode
+    resolver: SettingsResolver,
+    sample_node: MockNode,
 ) -> None:
     """Test resolving setting from node config prefixed setting."""
     result = resolver.resolve("skip-add-tags", sample_node, fallback=None)
@@ -171,7 +176,10 @@ def test_fallback_value(resolver: SettingsResolver) -> None:
 def test_column_not_found(resolver: SettingsResolver, sample_node: MockNode) -> None:
     """Test that unknown columns don't break resolution."""
     result = resolver.resolve(
-        "string-length", sample_node, column_name="unknown-column", fallback=False
+        "string-length",
+        sample_node,
+        column_name="unknown-column",
+        fallback=False,
     )
     # Should fall back to node-level settings (prefixed variant takes precedence)
     assert result is False

@@ -293,7 +293,7 @@ class TestInputValidation:
             try:
                 result = Path(path)
                 # Try to use the path
-                str(result)  # noqa: B018
+                str(result)
             except (ValueError, OSError):
                 # Expected - null bytes should be rejected
                 pass
@@ -332,7 +332,6 @@ class TestCredentialProtection:
         # Verify that connection errors don't leak credentials
         # This is more of a documentation test since we can't easily test
         # the actual dbt adapter error handling here
-        pass
 
 
 class TestSchemaValidation:
@@ -478,10 +477,8 @@ class TestConcurrentAccessSafety:
         # This is a documentation test - actual thread safety testing
         # would require more complex setup with threading
         # The code uses locks (_YAML_BUFFER_CACHE_LOCK) which is good
-        pass
 
     def test_manifest_mutex_protection(self):
         """Test that manifest access is protected by mutex."""
         # This is a documentation test - the code uses context.manifest_mutex
         # which provides thread safety
-        pass

@@ -19,24 +19,20 @@ from dbt_osmosis.core.settings import YamlRefactorContext
 
 @pytest.fixture(scope="function")
 def fresh_caches():
-    """
-    Patches the internal caches so each test starts with a fresh state.
-    """
+    """Patches the internal caches so each test starts with a fresh state."""
     with mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}):
         yield
 
 
 def test_create_missing_source_yamls(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Creates missing source YAML files if any are declared in dbt-osmosis sources
+    """Creates missing source YAML files if any are declared in dbt-osmosis sources
     but do not exist in the manifest. Typically, might be none in your project.
     """
     create_missing_source_yamls(yaml_context)
 
 
 def test_draft_restructure_delta_plan(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Ensures we can generate a restructure plan for real models and sources.
+    """Ensures we can generate a restructure plan for real models and sources.
     Usually, this plan might be empty if everything lines up already.
     """
     plan = draft_restructure_delta_plan(yaml_context)
@@ -44,8 +40,7 @@ def test_draft_restructure_delta_plan(yaml_context: YamlRefactorContext, fresh_c
 
 
 def test_apply_restructure_plan(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Applies the restructure plan for the real project (in dry_run mode).
+    """Applies the restructure plan for the real project (in dry_run mode).
     Should not raise errors even if the plan is empty or small.
     """
     plan = draft_restructure_delta_plan(yaml_context)
@@ -53,9 +48,7 @@ def test_apply_restructure_plan(yaml_context: YamlRefactorContext, fresh_caches)
 
 
 def test_pretty_print_plan(caplog):
-    """
-    Test pretty_print_plan logs the correct output for each operation.
-    """
+    """Test pretty_print_plan logs the correct output for each operation."""
     plan = RestructureDeltaPlan(
         operations=[
             RestructureOperation(
@@ -67,7 +60,7 @@ def test_pretty_print_plan(caplog):
                 content={"sources": [{"name": "my_source"}]},
                 superseded_paths={Path("old_file.yml"): []},
             ),
-        ]
+        ],
     )
     test_logger = logging.getLogger("test_logger")
     with mock.patch("dbt_osmosis.core.logger.LOGGER", test_logger):
@@ -81,10 +74,11 @@ def test_pretty_print_plan(caplog):
 
 
 def test_apply_restructure_plan_confirm_prompt(
-    yaml_context: YamlRefactorContext, fresh_caches, capsys
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+    capsys,
 ):
-    """
-    We test apply_restructure_plan with confirm=True, mocking input to 'n' to skip it.
+    """We test apply_restructure_plan with confirm=True, mocking input to 'n' to skip it.
     This ensures we handle user input logic.
     """
     plan = RestructureDeltaPlan(
@@ -92,8 +86,8 @@ def test_apply_restructure_plan_confirm_prompt(
             RestructureOperation(
                 file_path=Path("models/some_file.yml"),
                 content={"models": [{"name": "m1"}]},
-            )
-        ]
+            ),
+        ],
     )
 
     with mock.patch("builtins.input", side_effect=["n"]):
@@ -103,10 +97,11 @@ def test_apply_restructure_plan_confirm_prompt(
 
 
 def test_apply_restructure_plan_confirm_yes(
-    yaml_context: YamlRefactorContext, fresh_caches, capsys
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+    capsys,
 ):
-    """
-    Same as above, but we input 'y' so it actually proceeds with the plan.
+    """Same as above, but we input 'y' so it actually proceeds with the plan.
     (No real writing occurs due to dry_run=True).
     """
     plan = RestructureDeltaPlan(
@@ -114,8 +109,8 @@ def test_apply_restructure_plan_confirm_yes(
             RestructureOperation(
                 file_path=Path("models/whatever.yml"),
                 content={"models": [{"name": "m2"}]},
-            )
-        ]
+            ),
+        ],
     )
 
     with mock.patch("builtins.input", side_effect=["y"]):
@@ -131,8 +126,7 @@ def test_apply_restructure_plan_confirm_yes(
 
 
 def test_target_path_resolution_with_schema_template(yaml_context: YamlRefactorContext):
-    """
-    Behavior test: Verify that {node.schema}/{node.name}.yml template produces
+    """Behavior test: Verify that {node.schema}/{node.name}.yml template produces
     the expected directory structure.
     """
     from dbt_osmosis.core.path_management import get_target_yaml_path
@@ -154,9 +148,7 @@ def test_target_path_resolution_with_schema_template(yaml_context: YamlRefactorC
 
 
 def test_target_path_resolution_with_custom_template(yaml_context: YamlRefactorContext):
-    """
-    Behavior test: Verify that custom path templates are correctly rendered.
-    """
+    """Behavior test: Verify that custom path templates are correctly rendered."""
     from unittest import mock
 
     from dbt_osmosis.core.path_management import get_target_yaml_path
@@ -183,8 +175,7 @@ def test_target_path_resolution_with_custom_template(yaml_context: YamlRefactorC
 
 
 def test_target_path_source_node_handling(yaml_context: YamlRefactorContext):
-    """
-    Behavior test: Verify that source nodes are handled correctly and placed
+    """Behavior test: Verify that source nodes are handled correctly and placed
     under the models directory.
     """
     from dbt_osmosis.core.path_management import get_target_yaml_path
@@ -203,9 +194,7 @@ def test_target_path_source_node_handling(yaml_context: YamlRefactorContext):
 
 
 def test_target_path_auto_extension_addition(yaml_context: YamlRefactorContext):
-    """
-    Behavior test: Verify that .yml extension is automatically added if missing.
-    """
+    """Behavior test: Verify that .yml extension is automatically added if missing."""
     from unittest import mock
 
     from dbt_osmosis.core.path_management import get_target_yaml_path
@@ -234,8 +223,7 @@ def test_target_path_auto_extension_addition(yaml_context: YamlRefactorContext):
 
 
 def test_missing_osmosis_config_raises_error(yaml_context: YamlRefactorContext):
-    """
-    Behavior test: Verify that models without dbt-osmosis config raise
+    """Behavior test: Verify that models without dbt-osmosis config raise
     MissingOsmosisConfig.
     """
     from unittest import mock
@@ -262,9 +250,7 @@ def test_missing_osmosis_config_raises_error(yaml_context: YamlRefactorContext):
 
 
 def test_path_traversal_attack_prevented(yaml_context: YamlRefactorContext):
-    """
-    Security test: Verify that path traversal attempts are blocked.
-    """
+    """Security test: Verify that path traversal attempts are blocked."""
     from unittest import mock
 
     from dbt_osmosis.core.exceptions import PathResolutionError
@@ -282,17 +268,18 @@ def test_path_traversal_attack_prevented(yaml_context: YamlRefactorContext):
     # Attempt path traversal with malicious template
     malicious_template = "../../../etc/passwd"
 
-    with mock.patch(
-        "dbt_osmosis.core.path_management._get_yaml_path_template",
-        return_value=malicious_template,
+    with (
+        mock.patch(
+            "dbt_osmosis.core.path_management._get_yaml_path_template",
+            return_value=malicious_template,
+        ),
+        pytest.raises(PathResolutionError, match="Security violation"),
     ):
-        with pytest.raises(PathResolutionError, match="Security violation"):
-            get_target_yaml_path(yaml_context, test_node)
+        get_target_yaml_path(yaml_context, test_node)
 
 
 def test_absolute_path_within_project_allowed(yaml_context: YamlRefactorContext):
-    """
-    Behavior test: Verify that absolute paths starting with / are allowed
+    """Behavior test: Verify that absolute paths starting with / are allowed
     as long as they're within project root (single leading slash is stripped).
     """
     from unittest import mock
@@ -327,9 +314,7 @@ def test_absolute_path_within_project_allowed(yaml_context: YamlRefactorContext)
 
 
 def test_yaml_file_creation_on_disk(yaml_context: YamlRefactorContext, tmp_path):
-    """
-    Behavior test: Verify that YAML files are actually created on disk.
-    """
+    """Behavior test: Verify that YAML files are actually created on disk."""
     from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
 
     # Create a plan with a new file
@@ -339,8 +324,8 @@ def test_yaml_file_creation_on_disk(yaml_context: YamlRefactorContext, tmp_path)
             RestructureOperation(
                 file_path=target_file,
                 content={"version": 2, "models": [{"name": "test_model", "columns": []}]},
-            )
-        ]
+            ),
+        ],
     )
 
     # Apply with dry_run=False to actually write
@@ -362,9 +347,7 @@ def test_yaml_file_creation_on_disk(yaml_context: YamlRefactorContext, tmp_path)
 
 
 def test_yaml_file_merge_with_existing(yaml_context: YamlRefactorContext, tmp_path):
-    """
-    Behavior test: Verify that new content is merged with existing YAML content.
-    """
+    """Behavior test: Verify that new content is merged with existing YAML content."""
     import yaml
 
     from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
@@ -386,8 +369,8 @@ def test_yaml_file_merge_with_existing(yaml_context: YamlRefactorContext, tmp_pa
             RestructureOperation(
                 file_path=target_file,
                 content={"models": [{"name": "model2", "description": "New model"}]},
-            )
-        ]
+            ),
+        ],
     )
 
     from unittest import mock
@@ -405,9 +388,7 @@ def test_yaml_file_merge_with_existing(yaml_context: YamlRefactorContext, tmp_pa
 
 
 def test_superseded_file_cleanup(yaml_context: YamlRefactorContext, tmp_path):
-    """
-    Behavior test: Verify that superseded files are cleaned up after migration.
-    """
+    """Behavior test: Verify that superseded files are cleaned up after migration."""
     from unittest import mock as mock_patch
 
     import yaml
@@ -440,8 +421,8 @@ def test_superseded_file_cleanup(yaml_context: YamlRefactorContext, tmp_path):
                 file_path=new_file,
                 content={"version": 2, "models": [{"name": "my_model"}]},
                 superseded_paths={old_file: [mock_node]},
-            )
-        ]
+            ),
+        ],
     )
 
     with mock_patch.patch.object(yaml_context.settings, "dry_run", False):
@@ -455,9 +436,7 @@ def test_superseded_file_cleanup(yaml_context: YamlRefactorContext, tmp_path):
 
 
 def test_directory_structure_creation(yaml_context: YamlRefactorContext, tmp_path):
-    """
-    Behavior test: Verify that nested directories are created as needed.
-    """
+    """Behavior test: Verify that nested directories are created as needed."""
     from dbt_osmosis.core.restructuring import RestructureOperation, apply_restructure_plan
 
     # Create a deep nested path
@@ -469,8 +448,8 @@ def test_directory_structure_creation(yaml_context: YamlRefactorContext, tmp_pat
             RestructureOperation(
                 file_path=nested_path,
                 content={"version": 2, "sources": []},
-            )
-        ]
+            ),
+        ],
     )
 
     from unittest import mock
@@ -489,8 +468,7 @@ def test_directory_structure_creation(yaml_context: YamlRefactorContext, tmp_pat
 
 
 def test_conflict_resolution_file_already_exists(yaml_context: YamlRefactorContext, tmp_path):
-    """
-    Behavior test: Verify behavior when target file already exists.
+    """Behavior test: Verify behavior when target file already exists.
     Content should be merged, not overwritten.
     """
     import yaml
@@ -511,8 +489,8 @@ def test_conflict_resolution_file_already_exists(yaml_context: YamlRefactorConte
             RestructureOperation(
                 file_path=target_file,
                 content={"version": 2, "models": [{"name": "model_b"}]},
-            )
-        ]
+            ),
+        ],
     )
 
     from unittest import mock
@@ -530,9 +508,7 @@ def test_conflict_resolution_file_already_exists(yaml_context: YamlRefactorConte
 
 
 def test_empty_superseded_file_removal(yaml_context: YamlRefactorContext, tmp_path):
-    """
-    Behavior test: Verify that empty superseded files are deleted.
-    """
+    """Behavior test: Verify that empty superseded files are deleted."""
     from unittest import mock as mock_patch
 
     import yaml
@@ -560,8 +536,8 @@ def test_empty_superseded_file_removal(yaml_context: YamlRefactorContext, tmp_pa
                 file_path=new_file,
                 content={"version": 2, "models": [{"name": "only_model"}]},
                 superseded_paths={old_file: [mock_node]},
-            )
-        ]
+            ),
+        ],
     )
 
     with mock_patch.patch.object(yaml_context.settings, "dry_run", False):
@@ -572,8 +548,7 @@ def test_empty_superseded_file_removal(yaml_context: YamlRefactorContext, tmp_pa
 
 
 def test_partial_superseded_file_preserved(yaml_context: YamlRefactorContext, tmp_path):
-    """
-    Behavior test: Verify that partially superseded files are preserved
+    """Behavior test: Verify that partially superseded files are preserved
     with remaining content.
     """
     from unittest import mock as mock_patch
@@ -609,8 +584,8 @@ def test_partial_superseded_file_preserved(yaml_context: YamlRefactorContext, tm
                 file_path=new_file,
                 content={"version": 2, "models": [{"name": "model_to_move"}]},
                 superseded_paths={old_file: [mock_node]},
-            )
-        ]
+            ),
+        ],
     )
 
     with mock_patch.patch.object(yaml_context.settings, "dry_run", False):
@@ -632,8 +607,7 @@ def test_partial_superseded_file_preserved(yaml_context: YamlRefactorContext, tm
 
 
 def test_catalog_data_type_used_in_sync(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Behavior test: Verify that data types from catalog are used when
+    """Behavior test: Verify that data types from catalog are used when
     --catalog-path is provided. Catalog data types should take precedence
     over manifest data types.
     """
@@ -715,10 +689,10 @@ def test_catalog_data_type_used_in_sync(yaml_context: YamlRefactorContext, fresh
 
 
 def test_sync_without_catalog_falls_back_to_manifest(
-    yaml_context: YamlRefactorContext, fresh_caches
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
 ):
-    """
-    Behavior test: Verify that when no catalog is available, sync falls back
+    """Behavior test: Verify that when no catalog is available, sync falls back
     to manifest data types.
     """
     from unittest import mock as mock_patch
@@ -761,14 +735,16 @@ def test_sync_without_catalog_falls_back_to_manifest(
     mock_runtime = mock_patch.Mock()
     mock_runtime.credentials.type = "postgres"
 
-    with mock_patch.patch.object(yaml_context, "_catalog", None):
-        with mock_patch.patch.object(
+    with (
+        mock_patch.patch.object(yaml_context, "_catalog", None),
+        mock_patch.patch.object(
             type(yaml_context.project),
             "runtime_cfg",
             new_callable=PropertyMock,
             return_value=mock_runtime,
-        ):
-            _sync_doc_section(yaml_context, mock_node, doc_section)
+        ),
+    ):
+        _sync_doc_section(yaml_context, mock_node, doc_section)
 
     # Verify manifest data types were used (fallback behavior)
     assert len(doc_section["columns"]) == 2

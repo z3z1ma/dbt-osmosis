@@ -7,8 +7,7 @@ from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 
 
 def test_compile_sql_code_no_jinja(yaml_context: YamlRefactorContext):
-    """
-    Check compile_sql_code with a plain SELECT (no Jinja).
+    """Check compile_sql_code with a plain SELECT (no Jinja).
     We should skip calling the 'process_node' logic and the returned node
     should have the raw SQL as is.
     """
@@ -21,8 +20,7 @@ def test_compile_sql_code_no_jinja(yaml_context: YamlRefactorContext):
 
 
 def test_compile_sql_code_with_jinja(yaml_context: YamlRefactorContext):
-    """
-    Compile SQL that has Jinja statements, ensuring 'process_node' is invoked and
+    """Compile SQL that has Jinja statements, ensuring 'process_node' is invoked and
     we get a compiled node.
     """
     raw_sql = "SELECT {{ 1 + 1 }} AS mycol"
@@ -42,9 +40,7 @@ def test_compile_sql_code_with_jinja(yaml_context: YamlRefactorContext):
 
 
 def test_execute_sql_code_no_jinja(yaml_context: YamlRefactorContext):
-    """
-    If there's no jinja, 'execute_sql_code' calls adapter.execute directly with raw_sql.
-    """
+    """If there's no jinja, 'execute_sql_code' calls adapter.execute directly with raw_sql."""
     raw_sql = "SELECT 42 AS meaning"
     with mock.patch.object(yaml_context.project.adapter, "execute") as mock_execute:
         mock_execute.return_value = ("OK", mock.Mock(rows=[(42,)]))
@@ -55,9 +51,7 @@ def test_execute_sql_code_no_jinja(yaml_context: YamlRefactorContext):
 
 
 def test_execute_sql_code_with_jinja(yaml_context: YamlRefactorContext):
-    """
-    If there's Jinja, we compile first, then execute the compiled code.
-    """
+    """If there's Jinja, we compile first, then execute the compiled code."""
     raw_sql = "SELECT {{ 2 + 2 }} AS four"
     with (
         mock.patch.object(yaml_context.project.adapter, "execute") as mock_execute,

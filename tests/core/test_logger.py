@@ -273,7 +273,9 @@ class TestEdgeCases:
         """Test that custom formatter is applied"""
         custom_format = "[%(levelname)s] %(name)s: %(message)s"
         test_logger = get_logger(
-            name="custom-formatter", path=temp_log_dir, formatter=custom_format
+            name="custom-formatter",
+            path=temp_log_dir,
+            formatter=custom_format,
         )
 
         file_handler = [

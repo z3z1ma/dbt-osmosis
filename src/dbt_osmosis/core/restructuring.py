@@ -12,21 +12,21 @@ from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDef
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
-    "RestructureOperation",
+    "PLAN_OUTPUT_TRUNCATION_LENGTH",
     "RestructureDeltaPlan",
+    "RestructureOperation",
+    "_create_operations_for_node",
     "_generate_minimal_model_yaml",
     "_generate_minimal_source_yaml",
-    "_create_operations_for_node",
-    "draft_restructure_delta_plan",
-    "pretty_print_plan",
     "_remove_models",
     "_remove_seeds",
     "_remove_sources",
     "apply_restructure_plan",
-    "PLAN_OUTPUT_TRUNCATION_LENGTH",
+    "draft_restructure_delta_plan",
+    "pretty_print_plan",
 ]
 
 PLAN_OUTPUT_TRUNCATION_LENGTH = 80
@@ -52,7 +52,7 @@ class RestructureDeltaPlan:
     operations: list[RestructureOperation] = field(default_factory=list)
 
 
-def _generate_minimal_model_yaml(node: t.Union[ModelNode, SeedNode]) -> dict[str, t.Any]:
+def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]:
     """Generate a minimal model yaml for a dbt model node.
 
     Includes columns from the manifest to ensure data_type is preserved.
@@ -108,15 +108,15 @@ def _create_operations_for_node(
                 RestructureOperation(
                     file_path=loc.target,
                     content={"version": 2, f"{node.resource_type}s": [minimal]},
-                )
+                ),
             )
         else:
-            minimal = _generate_minimal_source_yaml(t.cast(SourceDefinition, node))
+            minimal = _generate_minimal_source_yaml(t.cast("SourceDefinition", node))
             ops.append(
                 RestructureOperation(
                     file_path=loc.target,
                     content={"version": 2, "sources": [minimal]},
-                )
+                ),
             )
     else:
         from dbt_osmosis.core.schema.reader import _read_yaml
@@ -148,7 +148,7 @@ def _create_operations_for_node(
                 file_path=loc.target,
                 content=injectable,
                 superseded_paths={loc.current: [node]},
-            )
+            ),
         )
     return ops
 
@@ -187,7 +187,8 @@ def draft_restructure_delta_plan(context: YamlRefactorContextProtocol) -> Restru
                 if resource_type not in existing_op.content:
                     existing_op.content[resource_type] = resources
                 elif isinstance(resources, list) and isinstance(
-                    existing_op.content[resource_type], list
+                    existing_op.content[resource_type],
+                    list,
                 ):
                     # for model lists, deduplicate by model name
                     if resource_type in ("models", "seeds"):
@@ -272,7 +273,10 @@ def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> 
 
 
 def apply_restructure_plan(
-    context: YamlRefactorContextProtocol, plan: RestructureDeltaPlan, *, confirm: bool = False
+    context: YamlRefactorContextProtocol,
+    plan: RestructureDeltaPlan,
+    *,
+    confirm: bool = False,
 ) -> None:
     """Apply the restructure plan for the dbt project."""
     if not plan.operations:
@@ -287,7 +291,7 @@ def apply_restructure_plan(
         response = input("Apply the restructure plan? [y/N]: ")
         if response.lower() in ("y", "yes"):
             break
-        elif response.lower() in ("n", "no", ""):
+        if response.lower() in ("n", "no", ""):
             logger.info("Skipping restructure plan.")
             return
         logger.warning(":loudspeaker: Please respond with 'y' or 'n'.")
@@ -305,7 +309,9 @@ def apply_restructure_plan(
         output_doc: dict[str, t.Any] = {"version": 2}
         if op.file_path.exists():
             existing_data = _read_yaml(
-                context.yaml_handler, context.yaml_handler_lock, op.file_path
+                context.yaml_handler,
+                context.yaml_handler_lock,
+                op.file_path,
             )
             output_doc.update(existing_data or {})
 
@@ -358,11 +364,13 @@ def apply_restructure_plan(
                         context.register_mutations,
                     )
                     logger.info(
-                        ":arrow_forward: Migrated doc from => %s to => %s", path, op.file_path
+                        ":arrow_forward: Migrated doc from => %s to => %s",
+                        path,
+                        op.file_path,
                     )
 
     logger.info(
-        ":arrows_counterclockwise: Committing all restructure changes and reloading manifest."
+        ":arrows_counterclockwise: Committing all restructure changes and reloading manifest.",
     )
     from dbt_osmosis.core.schema.writer import commit_yamls
 

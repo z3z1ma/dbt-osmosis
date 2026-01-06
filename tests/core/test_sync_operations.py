@@ -12,9 +12,7 @@ from dbt_osmosis.core.sync_operations import sync_node_to_yaml
 
 @pytest.fixture(scope="function")
 def fresh_caches():
-    """
-    Patches the internal caches so each test starts with a fresh state.
-    """
+    """Patches the internal caches so each test starts with a fresh state."""
     with (
         mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
     ):
@@ -22,8 +20,7 @@ def fresh_caches():
 
 
 def test_sync_node_to_yaml(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    For a single node, we can confirm that sync_node_to_yaml runs without error,
+    """For a single node, we can confirm that sync_node_to_yaml runs without error,
     using the real file or generating one if missing (in dry_run mode).
     """
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
@@ -37,8 +34,7 @@ def test_sync_node_to_yaml_versioned(yaml_context: YamlRefactorContext, fresh_ca
 
 
 def test_commit_yamls_no_write(yaml_context: YamlRefactorContext):
-    """
-    Since dry_run=True, commit_yamls should not actually write anything to disk.
+    """Since dry_run=True, commit_yamls should not actually write anything to disk.
     We just ensure no exceptions are raised.
     """
     commit_yamls(
@@ -50,8 +46,7 @@ def test_commit_yamls_no_write(yaml_context: YamlRefactorContext):
 
 
 def test_preserve_unrendered_descriptions(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Test that when use_unrendered_descriptions is True, descriptions containing
+    """Test that when use_unrendered_descriptions is True, descriptions containing
     doc blocks ({{ doc(...) }} or {% docs %}{% enddocs %}) are preserved instead
     of being replaced with the rendered version from the manifest.
 
@@ -109,8 +104,7 @@ def test_preserve_unrendered_descriptions(yaml_context: YamlRefactorContext, fre
 
 
 def test_prefer_yaml_values_preserves_var_jinja(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Test that when prefer_yaml_values is True, fields containing {{ var() }}
+    """Test that when prefer_yaml_values is True, fields containing {{ var() }}
     jinja templates are preserved instead of being replaced with rendered values.
 
     This addresses GitHub issue #266.
@@ -169,10 +163,10 @@ def test_prefer_yaml_values_preserves_var_jinja(yaml_context: YamlRefactorContex
 
 
 def test_prefer_yaml_values_preserves_env_var_jinja(
-    yaml_context: YamlRefactorContext, fresh_caches
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
 ):
-    """
-    Test that when prefer_yaml_values is True, fields containing {{ env_var() }}
+    """Test that when prefer_yaml_values is True, fields containing {{ env_var() }}
     jinja templates are preserved.
     """
     from dbt_osmosis.core.inheritance import _get_node_yaml
@@ -228,10 +222,10 @@ def test_prefer_yaml_values_preserves_env_var_jinja(
 
 
 def test_prefer_yaml_values_preserves_all_jinja_patterns(
-    yaml_context: YamlRefactorContext, fresh_caches
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
 ):
-    """
-    Test that prefer_yaml_values preserves all types of jinja templates including:
+    """Test that prefer_yaml_values preserves all types of jinja templates including:
     - {{ doc() }}
     - {{ var() }}
     - {{ env_var() }}
@@ -304,10 +298,10 @@ def test_prefer_yaml_values_preserves_all_jinja_patterns(
 
 
 def test_add_inheritance_for_specified_keys_still_works(
-    yaml_context: YamlRefactorContext, fresh_caches
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
 ):
-    """
-    Test that --add-inheritance-for-specified-keys still works for granular control.
+    """Test that --add-inheritance-for-specified-keys still works for granular control.
     This ensures backward compatibility with existing functionality.
     """
     from dbt_osmosis.core.inheritance import _get_node_yaml

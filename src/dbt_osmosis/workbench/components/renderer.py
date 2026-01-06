@@ -49,7 +49,7 @@ class Renderer(Dashboard.Item):
                     key=(
                         md5(
                             state.app.compiled_query.encode("utf-8")
-                            + state.app.target_name.encode("utf-8")
+                            + state.app.target_name.encode("utf-8"),
                         ).hexdigest()
                         if state.app.compiled_query
                         else "__empty__"

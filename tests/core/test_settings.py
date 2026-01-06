@@ -224,9 +224,9 @@ class TestYamlRefactorContext:
                     "my_source": {
                         "table": "my_table",
                         "database": "my_db",
-                    }
-                }
-            }
+                    },
+                },
+            },
         }
         mock_project_context.runtime_cfg.vars.to_dict.return_value = vars_dict
 
@@ -235,7 +235,7 @@ class TestYamlRefactorContext:
             "my_source": {
                 "table": "my_table",
                 "database": "my_db",
-            }
+            },
         }
         assert context.source_definitions == expected
 
@@ -246,9 +246,9 @@ class TestYamlRefactorContext:
                 "sources": {
                     "my_source": {
                         "table": "my_table",
-                    }
-                }
-            }
+                    },
+                },
+            },
         }
         mock_project_context.runtime_cfg.vars.to_dict.return_value = vars_dict
 
@@ -256,7 +256,7 @@ class TestYamlRefactorContext:
         expected = {
             "my_source": {
                 "table": "my_table",
-            }
+            },
         }
         assert context.source_definitions == expected
 
@@ -291,8 +291,8 @@ class TestYamlRefactorContext:
                     "map_indent": 2,
                     "sequence_indent": 4,
                     "width": 120,
-                }
-            }
+                },
+            },
         }
         mock_project_context.runtime_cfg.vars.to_dict.return_value = vars_dict
 
@@ -390,8 +390,8 @@ class TestYamlRefactorContext:
                     "map_indent": 4,
                     "sequence_indent": 2,
                     "width": 120,
-                }
-            }
+                },
+            },
         }
         mock_project_context.runtime_cfg.vars.to_dict.return_value = vars_dict
 

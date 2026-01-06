@@ -8,13 +8,13 @@ from pathlib import Path
 from dbt.artifacts.resources.types import NodeType
 from dbt.contracts.graph.nodes import ResultNode
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
-    "_is_fqn_match",
     "_is_file_match",
-    "_topological_sort",
+    "_is_fqn_match",
     "_iter_candidate_nodes",
+    "_topological_sort",
 ]
 
 
@@ -46,11 +46,13 @@ def _is_file_match(node: ResultNode, paths: list[Path | str], root: Path | str) 
             logger.debug(":white_check_mark: Name match => %s", model_or_dir)
             return True
         if model_or_dir.is_dir():
-            if model_or_dir in node_path.parents or yaml_path and model_or_dir in yaml_path.parents:
+            if model_or_dir in node_path.parents or (
+                yaml_path and model_or_dir in yaml_path.parents
+            ):
                 logger.debug(":white_check_mark: Directory path match => %s", model_or_dir)
                 return True
         if model_or_dir.is_file():
-            if model_or_dir.samefile(node_path) or yaml_path and model_or_dir.samefile(yaml_path):
+            if model_or_dir.samefile(node_path) or (yaml_path and model_or_dir.samefile(yaml_path)):
                 logger.debug(":white_check_mark: File path match => %s", model_or_dir)
                 return True
     return False
@@ -59,8 +61,7 @@ def _is_file_match(node: ResultNode, paths: list[Path | str], root: Path | str) 
 def _topological_sort(
     candidate_nodes: list[tuple[str, ResultNode]],
 ) -> list[tuple[str, ResultNode]]:
-    """
-    Perform a topological sort on the given candidate_nodes (uid, node) pairs
+    """Perform a topological sort on the given candidate_nodes (uid, node) pairs
     based on their dependencies. If a cycle is detected, raise a ValueError.
 
     Kahn's Algorithm:
@@ -102,7 +103,7 @@ def _topological_sort(
 
     if len(sorted_uids) < len(candidate_nodes):
         raise ValueError(
-            "Cycle detected in node dependencies. Cannot produce a valid topological order."
+            "Cycle detected in node dependencies. Cannot produce a valid topological order.",
         )
 
     uid_to_node = dict(candidate_nodes)
@@ -130,7 +131,9 @@ def _iter_candidate_nodes(
         if context.settings.models:
             if (
                 not _is_file_match(
-                    node, context.settings.models, context.project.runtime_cfg.project_root
+                    node,
+                    context.settings.models,
+                    context.project.runtime_cfg.project_root,
                 )
                 and not include_external
             ):

@@ -18,9 +18,7 @@ from dbt_osmosis.core.transforms import (
 
 @pytest.fixture(scope="function")
 def fresh_caches():
-    """
-    Patches the internal caches so each test starts with a fresh state.
-    """
+    """Patches the internal caches so each test starts with a fresh state."""
     with (
         mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
         mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
@@ -29,52 +27,41 @@ def fresh_caches():
 
 
 def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Minimal test that runs the inheritance logic on all matched nodes in the real project.
-    """
+    """Minimal test that runs the inheritance logic on all matched nodes in the real project."""
     inherit_upstream_column_knowledge(yaml_context)
 
 
 def test_inject_missing_columns(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    If the DB has columns the YAML/manifest doesn't, we inject them.
+    """If the DB has columns the YAML/manifest doesn't, we inject them.
     We run on all matched nodes to ensure no errors.
     """
     inject_missing_columns(yaml_context)
 
 
 def test_remove_columns_not_in_database(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    If the manifest has columns the DB does not, we remove them.
+    """If the manifest has columns the DB does not, we remove them.
     Typically, your real project might not have any extra columns, so this is a sanity test.
     """
     remove_columns_not_in_database(yaml_context)
 
 
 def test_sort_columns_as_in_database(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Sort columns in the order the DB sees them.
+    """Sort columns in the order the DB sees them.
     With duckdb, this is minimal but we can still ensure no errors.
     """
     sort_columns_as_in_database(yaml_context)
 
 
 def test_sort_columns_alphabetically(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Check that sort_columns_alphabetically doesn't blow up in real project usage.
-    """
+    """Check that sort_columns_alphabetically doesn't blow up in real project usage."""
     sort_columns_alphabetically(yaml_context)
 
 
 def test_sort_columns_as_configured(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    By default, the sort_by is 'database', but let's confirm it doesn't blow up.
-    """
+    """By default, the sort_by is 'database', but let's confirm it doesn't blow up."""
     sort_columns_as_configured(yaml_context)
 
 
 def test_synchronize_data_types(yaml_context: YamlRefactorContext, fresh_caches):
-    """
-    Synchronizes data types with the DB.
-    """
+    """Synchronizes data types with the DB."""
     synchronize_data_types(yaml_context)

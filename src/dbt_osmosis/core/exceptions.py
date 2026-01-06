@@ -7,20 +7,20 @@ and debugging. All dbt-osmosis specific exceptions inherit from OsmosisError.
 from __future__ import annotations
 
 __all__ = [
-    "OsmosisError",
+    "CatalogGenerationError",
     "ConfigurationError",
-    "MissingOsmosisConfig",
-    "ValidationError",
-    "YamlValidationError",
-    "YAMLError",
-    "PathResolutionError",
     "DatabaseError",
     "IntrospectionError",
-    "CatalogGenerationError",
-    "TransformError",
-    "LLMError",
     "LLMConfigurationError",
+    "LLMError",
     "LLMResponseError",
+    "MissingOsmosisConfig",
+    "OsmosisError",
+    "PathResolutionError",
+    "TransformError",
+    "ValidationError",
+    "YAMLError",
+    "YamlValidationError",
 ]
 
 
@@ -32,8 +32,6 @@ class OsmosisError(Exception):
     except clause: `except OsmosisError`.
     """
 
-    pass
-
 
 class ConfigurationError(OsmosisError):
     """Raised when there's a configuration error.
@@ -41,8 +39,6 @@ class ConfigurationError(OsmosisError):
     This includes missing or invalid configuration values, improperly
     set environment variables, or configuration parsing errors.
     """
-
-    pass
 
 
 class MissingOsmosisConfig(ConfigurationError):
@@ -52,8 +48,6 @@ class MissingOsmosisConfig(ConfigurationError):
     key is not set for a model or source node.
     """
 
-    pass
-
 
 class ValidationError(OsmosisError):
     """Raised when validation fails.
@@ -61,8 +55,6 @@ class ValidationError(OsmosisError):
     This includes schema validation, data validation, or any
     validation checks that fail during processing.
     """
-
-    pass
 
 
 class YamlValidationError(ValidationError):
@@ -72,8 +64,6 @@ class YamlValidationError(ValidationError):
     or invalid data types in YAML files.
     """
 
-    pass
-
 
 class YAMLError(OsmosisError):
     """Raised when there's a YAML processing error.
@@ -81,8 +71,6 @@ class YAMLError(OsmosisError):
     This covers YAML parsing errors, malformed YAML syntax,
     and general YAML file handling issues.
     """
-
-    pass
 
 
 class PathResolutionError(OsmosisError):
@@ -92,8 +80,6 @@ class PathResolutionError(OsmosisError):
     invalid path formats, or paths that don't exist when they should.
     """
 
-    pass
-
 
 class DatabaseError(OsmosisError):
     """Raised when database operations fail.
@@ -101,8 +87,6 @@ class DatabaseError(OsmosisError):
     This covers connection errors, query failures, introspection
     issues, and other database-related problems.
     """
-
-    pass
 
 
 class IntrospectionError(DatabaseError):
@@ -112,8 +96,6 @@ class IntrospectionError(DatabaseError):
     or metadata retrieval from the database fails.
     """
 
-    pass
-
 
 class CatalogGenerationError(DatabaseError):
     """Raised when catalog generation fails.
@@ -121,8 +103,6 @@ class CatalogGenerationError(DatabaseError):
     This is raised during dbt catalog generation when errors occur
     in the process of building the catalog artifact.
     """
-
-    pass
 
 
 class TransformError(OsmosisError):
@@ -132,8 +112,6 @@ class TransformError(OsmosisError):
     invalid operations, chaining errors, or transformation failures.
     """
 
-    pass
-
 
 class LLMError(OsmosisError):
     """Raised when LLM (Large Language Model) operations fail.
@@ -141,8 +119,6 @@ class LLMError(OsmosisError):
     This includes API errors, invalid responses, configuration issues,
     or failures in AI-generated documentation.
     """
-
-    pass
 
 
 class LLMConfigurationError(LLMError, ConfigurationError):
@@ -152,8 +128,6 @@ class LLMConfigurationError(LLMError, ConfigurationError):
     or improperly configured LLM endpoints.
     """
 
-    pass
-
 
 class LLMResponseError(LLMError):
     """Raised when LLM returns an invalid or unexpected response.
@@ -161,5 +135,3 @@ class LLMResponseError(LLMError):
     This includes empty responses, malformed JSON, or responses that
     don't match the expected format.
     """
-
-    pass

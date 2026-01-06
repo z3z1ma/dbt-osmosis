@@ -11,8 +11,8 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
@@ -44,7 +44,7 @@ def _run_dbt_commands(project_dir: str, profiles_dir: str, target: str = "test")
         print(f"✓ dbt seed completed successfully ({elapsed:.2f}s)")
     else:
         print(
-            f"dbt seed failed: {seed_result.exception if hasattr(seed_result, 'exception') else 'Unknown error'}"
+            f"dbt seed failed: {seed_result.exception if hasattr(seed_result, 'exception') else 'Unknown error'}",
         )
 
     start = time.time()
@@ -63,7 +63,7 @@ def _run_dbt_commands(project_dir: str, profiles_dir: str, target: str = "test")
         print(f"✓ dbt run completed successfully ({elapsed:.2f}s)")
     else:
         print(
-            f"dbt run failed: {run_result.exception if hasattr(run_result, 'exception') else 'Unknown error'}"
+            f"dbt run failed: {run_result.exception if hasattr(run_result, 'exception') else 'Unknown error'}",
         )
 
     # Generate catalog to use for introspection instead of live database queries
@@ -84,12 +84,14 @@ def _run_dbt_commands(project_dir: str, profiles_dir: str, target: str = "test")
         print(f"✓ dbt docs generate completed successfully ({elapsed:.2f}s)")
     else:
         print(
-            f"dbt docs generate failed: {docs_result.exception if hasattr(docs_result, 'exception') else 'Unknown error'}"
+            f"dbt docs generate failed: {docs_result.exception if hasattr(docs_result, 'exception') else 'Unknown error'}",
         )
 
 
 def _create_temp_project_copy(
-    source_dir: Path, temp_dir: Path, exclude_target: bool = False
+    source_dir: Path,
+    temp_dir: Path,
+    exclude_target: bool = False,
 ) -> Path:
     """Create a copy of the source project in a temporary directory.
 
@@ -101,6 +103,7 @@ def _create_temp_project_copy(
 
     Returns:
         Path: Path to the copied project directory
+
     """
     project_dir = temp_dir / source_dir.name
 
@@ -109,7 +112,7 @@ def _create_temp_project_copy(
         # Get the relative path from the source directory
         src_path = Path(src).relative_to(source_dir)
         # Exclude target directory (contains cached manifest)
-        if exclude_target and "target" in names and src_path == Path("."):
+        if exclude_target and "target" in names and src_path == Path():
             return ["target"]
         return []
 
@@ -136,13 +139,16 @@ def built_duckdb_template() -> Iterator[Path]:
 
     Yields:
         Path: Path to the built template project directory
+
     """
     # Create a session-scoped temp directory for the template
     template_temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_template_"))
     source_dir = Path("demo_duckdb")
     # Exclude target directory to avoid copying cached manifest.json with wrong paths
     template_project_dir = _create_temp_project_copy(
-        source_dir, template_temp_dir, exclude_target=True
+        source_dir,
+        template_temp_dir,
+        exclude_target=True,
     )
 
     try:
@@ -208,6 +214,7 @@ def built_postgres_template() -> Iterator[Path | None]:
 
     Yields:
         Path | None: Path to the built template project directory, or None if skipped
+
     """
     postgres_url = os.environ.get("POSTGRES_URL")
     if not postgres_url:
@@ -220,7 +227,9 @@ def built_postgres_template() -> Iterator[Path | None]:
     source_dir = Path("demo_duckdb")
     # Exclude target directory to avoid copying cached manifest.json with wrong paths
     template_project_dir = _create_temp_project_copy(
-        source_dir, template_temp_dir, exclude_target=True
+        source_dir,
+        template_temp_dir,
+        exclude_target=True,
     )
 
     try:
@@ -255,7 +264,9 @@ jaffle_shop:
         os.chdir(str(template_project_dir))
         try:
             _run_dbt_commands(
-                str(template_project_dir), str(template_project_dir), target="postgres"
+                str(template_project_dir),
+                str(template_project_dir),
+                target="postgres",
             )
         finally:
             os.chdir(old_cwd)
@@ -298,6 +309,7 @@ def yaml_context(built_duckdb_template: Path) -> Iterator[YamlRefactorContext]:
 
     Yields:
         YamlRefactorContext: Configured context with populated database
+
     """
     # Create a unique temp directory for this test
     temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_test_"))
@@ -348,7 +360,8 @@ def yaml_context(built_duckdb_template: Path) -> Iterator[YamlRefactorContext]:
                     if hasattr(project_context._project, "adapter"):
                         adapter = project_context._project.adapter
                         if hasattr(adapter, "connections") and hasattr(
-                            adapter.connections, "close"
+                            adapter.connections,
+                            "close",
                         ):
                             try:
                                 adapter.connections.close()
@@ -395,6 +408,7 @@ def postgres_yaml_context(built_postgres_template: Path | None) -> Iterator[Yaml
 
     Yields:
         YamlRefactorContext: Configured context with PostgreSQL database
+
     """
     if built_postgres_template is None:
         pytest.skip("POSTGRES_URL environment variable not set. Skipping PostgreSQL tests.")
@@ -439,7 +453,8 @@ def postgres_yaml_context(built_postgres_template: Path | None) -> Iterator[Yaml
                     if hasattr(project_context._project, "adapter"):
                         adapter = project_context._project.adapter
                         if hasattr(adapter, "connections") and hasattr(
-                            adapter.connections, "close"
+                            adapter.connections,
+                            "close",
                         ):
                             try:
                                 adapter.connections.close()

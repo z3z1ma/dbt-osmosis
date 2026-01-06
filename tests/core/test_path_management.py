@@ -20,8 +20,7 @@ from dbt_osmosis.core.settings import YamlRefactorContext
 
 
 def test_missing_osmosis_config_error(yaml_context: YamlRefactorContext):
-    """
-    Behavior test: Ensures MissingOsmosisConfig is raised if there's no path template
+    """Behavior test: Ensures MissingOsmosisConfig is raised if there's no path template
     for a model. Tests the public API get_target_yaml_path() rather than internal function.
     """
     node = None
@@ -48,8 +47,7 @@ def test_missing_osmosis_config_error(yaml_context: YamlRefactorContext):
 
 
 def test_source_name_in_path_template(yaml_context: YamlRefactorContext):
-    """
-    Ensures that {node.source_name} is available in path templates for source nodes.
+    """Ensures that {node.source_name} is available in path templates for source nodes.
     Regression test for GitHub issue #242.
     """
     source_node = None
@@ -62,7 +60,7 @@ def test_source_name_in_path_template(yaml_context: YamlRefactorContext):
 
     # Configure a path template that uses {node.source_name}
     yaml_context.source_definitions[source_node.source_name] = {
-        "path": "sources/{node.source_name}.yml"
+        "path": "sources/{node.source_name}.yml",
     }
 
     target_path = get_target_yaml_path(yaml_context, source_node)
@@ -71,8 +69,7 @@ def test_source_name_in_path_template(yaml_context: YamlRefactorContext):
 
 
 def test_source_name_not_available_for_models(yaml_context: YamlRefactorContext):
-    """
-    Ensures that using {node.source_name} in a path template for a non-source node
+    """Ensures that using {node.source_name} in a path template for a non-source node
     (model, seed) raises an AttributeError.
     """
     model_node = None

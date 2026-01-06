@@ -13,7 +13,7 @@ from pathlib import Path
 
 import ruamel.yaml
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE, _YAML_BUFFER_CACHE_LOCK
 
 __all__ = [
@@ -63,12 +63,12 @@ def _write_yaml(
 
                         # Validate write succeeded
                         if not temp_path.exists():
-                            raise IOError(f"Temporary file not created: {temp_path}")
+                            raise OSError(f"Temporary file not created: {temp_path}")
                         if temp_path.stat().st_size == 0 and len(modified) > 0:
-                            raise IOError(f"Temporary file is empty: {temp_path}")
+                            raise OSError(f"Temporary file is empty: {temp_path}")
                         if bytes_written != len(modified):
-                            raise IOError(
-                                f"Write incomplete: expected {len(modified)} bytes, wrote {bytes_written}"
+                            raise OSError(
+                                f"Write incomplete: expected {len(modified)} bytes, wrote {bytes_written}",
                             )
 
                         # Atomic replace: only delete original after successful temp write
@@ -153,12 +153,12 @@ def commit_yamls(
 
                             # Validate write succeeded
                             if not temp_path.exists():
-                                raise IOError(f"Temporary file not created: {temp_path}")
+                                raise OSError(f"Temporary file not created: {temp_path}")
                             if temp_path.stat().st_size == 0 and len(modified) > 0:
-                                raise IOError(f"Temporary file is empty: {temp_path}")
+                                raise OSError(f"Temporary file is empty: {temp_path}")
                             if bytes_written != len(modified):
-                                raise IOError(
-                                    f"Write incomplete: expected {len(modified)} bytes, wrote {bytes_written}"
+                                raise OSError(
+                                    f"Write incomplete: expected {len(modified)} bytes, wrote {bytes_written}",
                                 )
 
                             # Atomic replace: only delete original after successful temp write

@@ -18,10 +18,7 @@ from dbt.contracts.graph.nodes import ResultNode
 from dbt.contracts.results import CatalogArtifact, CatalogResults, ColumnMetadata
 from dbt.task.docs.generate import Catalog
 
-if t.TYPE_CHECKING:
-    pass
-
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
     "_find_first",
@@ -69,6 +66,7 @@ class ConfigurationError(Exception):
     Example:
         >>> raise ConfigurationError("Invalid YAML syntax", "/path/to/config.yml")
         ConfigurationError: Invalid YAML syntax (file: /path/to/config.yml)
+
     """
 
     def __init__(self, message: str, file_path: str | None = None) -> None:
@@ -77,6 +75,7 @@ class ConfigurationError(Exception):
         Args:
             message: The error message describing what went wrong.
             file_path: Optional path to the configuration file that caused the error.
+
         """
         self.file_path = file_path
         self.message = message
@@ -130,6 +129,7 @@ class PropertySource(Enum):
     Example:
         >>> # Get unrendered description from YAML
         >>> accessor.get_description(node, source=PropertySource.YAML)
+
     """
 
     MANIFEST = "manifest"
@@ -161,6 +161,7 @@ class ConfigurationSource(ABC):
         ...         if column := self.node.columns.get(self.column):
         ...             return column.meta.get(key)
         ...         return None
+
     """
 
     def __init__(self, name: ConfigSourceName) -> None:
@@ -168,6 +169,7 @@ class ConfigurationSource(ABC):
 
         Args:
             name: The ConfigSourceName enum value for this source.
+
         """
         self._name = name
 
@@ -185,8 +187,8 @@ class ConfigurationSource(ABC):
 
         Returns:
             The configuration value if found, None otherwise.
+
         """
-        pass
 
 
 class ConfigMetaSource(ConfigurationSource):
@@ -205,6 +207,7 @@ class ConfigMetaSource(ConfigurationSource):
     Example:
         >>> source = ConfigMetaSource(node)
         >>> value = source.get("output-to-lower")
+
     """
 
     def __init__(self, node: ResultNode) -> None:
@@ -212,6 +215,7 @@ class ConfigMetaSource(ConfigurationSource):
 
         Args:
             node: The dbt node to read config.meta from.
+
         """
         super().__init__(ConfigSourceName.CONFIG_META)
         self._node = node
@@ -224,6 +228,7 @@ class ConfigMetaSource(ConfigurationSource):
 
         Returns:
             The configuration value if found, None otherwise.
+
         """
         # Gracefully handle dbt versions < 1.10 where config.meta doesn't exist
         if not hasattr(self._node, "config") or not hasattr(self._node.config, "meta"):
@@ -283,6 +288,7 @@ class UnrenderedConfigSource(ConfigurationSource):
     Example:
         >>> source = UnrenderedConfigSource(node)
         >>> value = source.get("skip-add-columns")
+
     """
 
     def __init__(self, node: ResultNode) -> None:
@@ -290,6 +296,7 @@ class UnrenderedConfigSource(ConfigurationSource):
 
         Args:
             node: The dbt node to read unrendered_config from.
+
         """
         super().__init__(ConfigSourceName.UNRENDERED_CONFIG)
         self._node = node
@@ -302,6 +309,7 @@ class UnrenderedConfigSource(ConfigurationSource):
 
         Returns:
             The configuration value if found, None otherwise.
+
         """
         # Gracefully handle dbt versions < 1.10 where unrendered_config doesn't exist
         if not hasattr(self._node, "unrendered_config"):
@@ -350,6 +358,7 @@ class ProjectVarsSource(ConfigurationSource):
     Example:
         >>> source = ProjectVarsSource(context)
         >>> value = source.get("skip-add-tags")
+
     """
 
     def __init__(self, context: t.Any) -> None:
@@ -357,6 +366,7 @@ class ProjectVarsSource(ConfigurationSource):
 
         Args:
             context: The dbt context with project.runtime_cfg.vars.
+
         """
         super().__init__(ConfigSourceName.PROJECT_VARS)
         self._context = context
@@ -369,6 +379,7 @@ class ProjectVarsSource(ConfigurationSource):
 
         Returns:
             The configuration value if found, None otherwise.
+
         """
         # Safely access runtime_cfg.vars
         if not hasattr(self._context, "project"):
@@ -428,6 +439,7 @@ class SupplementaryFileSource(ConfigurationSource):
     Example:
         >>> source = SupplementaryFileSource(context)
         >>> value = source.get("skip-add-tags")
+
     """
 
     def __init__(self, context: t.Any) -> None:
@@ -435,6 +447,7 @@ class SupplementaryFileSource(ConfigurationSource):
 
         Args:
             context: The dbt context with project root path.
+
         """
         super().__init__(ConfigSourceName.SUPPLEMENTARY_FILE)
         self._context = context
@@ -448,6 +461,7 @@ class SupplementaryFileSource(ConfigurationSource):
 
         Raises:
             ConfigurationError: If the file exists but contains invalid YAML syntax.
+
         """
         if self._config_cache is not None:
             return self._config_cache
@@ -475,7 +489,7 @@ class SupplementaryFileSource(ConfigurationSource):
         yaml_handler.preserve_quotes = True
 
         try:
-            with open(config_file, "r") as f:
+            with Path(config_file).open("r") as f:
                 content = yaml_handler.load(f)
                 # Empty file or None content is OK, treat as empty config
                 if content is None:
@@ -516,6 +530,7 @@ class SupplementaryFileSource(ConfigurationSource):
 
         Returns:
             The configuration value if found, None otherwise.
+
         """
         config = self._load_config()
         if not isinstance(config, dict):
@@ -607,6 +622,7 @@ class SettingsResolver:
 
         Returns:
             The resolved setting value or fallback if not found
+
         """
         if node is None:
             return fallback
@@ -717,6 +733,7 @@ class SettingsResolver:
 
         Returns:
             True if the setting exists in any source, False otherwise
+
         """
         if node is None:
             return False
@@ -745,6 +762,7 @@ class SettingsResolver:
         Returns:
             A list of tuples (source_name, value) for each source in precedence order.
             Values are None if the source doesn't have the setting.
+
         """
         chain = []
 
@@ -823,6 +841,7 @@ class SettingsResolver:
 
         Returns:
             The path template string, or None if not found.
+
         """
         if node is None:
             return None
@@ -956,12 +975,16 @@ def _find_first(coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: 
 
 @t.overload
 def _find_first(
-    coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: None = ...
+    coll: t.Iterable[T],
+    predicate: t.Callable[[T], bool],
+    default: None = ...,
 ) -> T | None: ...
 
 
 def _find_first(
-    coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: T | None = None
+    coll: t.Iterable[T],
+    predicate: t.Callable[[T], bool],
+    default: T | None = None,
 ) -> T | None:
     """Find the first item in a container that satisfies a predicate."""
     for item in coll:
@@ -974,21 +997,28 @@ def normalize_column_name(column: str, credentials_type: str) -> str:
     """Apply case normalization to a column name based on the credentials type."""
     if credentials_type == "snowflake" and column.startswith('"') and column.endswith('"'):
         logger.debug(":snowflake: Column name found with double-quotes => %s", column)
-        pass
     elif credentials_type == "snowflake":
         return column.upper()
     return column.strip('"').strip("`").strip("[]")
 
 
 def _maybe_use_precise_dtype(
-    col: BaseColumn, settings: t.Any, node: ResultNode | None = None
+    col: BaseColumn,
+    settings: t.Any,
+    node: ResultNode | None = None,
 ) -> str:
     """Use the precise data type if enabled in the settings."""
     use_num_prec = _get_setting_for_node(
-        "numeric-precision-and-scale", node, col.name, fallback=settings.numeric_precision_and_scale
+        "numeric-precision-and-scale",
+        node,
+        col.name,
+        fallback=settings.numeric_precision_and_scale,
     )
     use_chr_prec = _get_setting_for_node(
-        "string-length", node, col.name, fallback=settings.string_length
+        "string-length",
+        node,
+        col.name,
+        fallback=settings.string_length,
     )
     if (col.is_numeric() and use_num_prec) or (col.is_string() and use_chr_prec):
         logger.debug(":ruler: Using precise data type => %s", col.data_type)
@@ -1078,7 +1108,8 @@ def _get_setting_for_node(
 
 
 def get_columns(
-    context: t.Any, relation: BaseRelation | ResultNode | None
+    context: t.Any,
+    relation: BaseRelation | ResultNode | None,
 ) -> dict[str, ColumnMetadata]:
     """Collect column metadata from database or catalog.
 
@@ -1088,6 +1119,7 @@ def get_columns(
 
     Returns:
         OrderedDict mapping normalized column names to ColumnMetadata.
+
     """
     normalized_columns: OrderedDict[str, ColumnMetadata] = OrderedDict()
 
@@ -1126,17 +1158,21 @@ def get_columns(
         for column in columns:
             if any(re.match(b, column.name) for b in context.ignore_patterns):
                 logger.debug(
-                    ":no_entry_sign: Skipping column => %s due to skip pattern match.", column.name
+                    ":no_entry_sign: Skipping column => %s due to skip pattern match.",
+                    column.name,
                 )
                 continue
             normalized = normalize_column_name(
-                column.name, context.project.runtime_cfg.credentials.type
+                column.name,
+                context.project.runtime_cfg.credentials.type,
             )
             if not isinstance(column, ColumnMetadata):
                 dtype = _maybe_use_precise_dtype(column, context.settings, result_node)
                 # BigQuery uses "description" attribute, other adapters use "comment"
                 col_comment = getattr(column, "description", None) or getattr(
-                    column, "comment", None
+                    column,
+                    "comment",
+                    None,
                 )
                 column = ColumnMetadata(
                     name=normalized,
@@ -1164,14 +1200,15 @@ def get_columns(
 
     if context.project.config.disable_introspection:
         logger.warning(
-            ":warning: Introspection is disabled, cannot introspect columns and no catalog entry."
+            ":warning: Introspection is disabled, cannot introspect columns and no catalog entry.",
         )
         return normalized_columns
 
     try:
         logger.info(":mag: Introspecting columns in warehouse for => %s", rendered_relation)
         for column in t.cast(
-            t.Iterable[BaseColumn], context.project.adapter.get_columns_in_relation(relation)
+            "t.Iterable[BaseColumn]",
+            context.project.adapter.get_columns_in_relation(relation),
         ):
             process_column(column)
     except Exception as ex:
@@ -1192,7 +1229,7 @@ def _load_catalog(settings: t.Any) -> CatalogResults | None:
         logger.warning(":warning: Catalog path => %s does not exist.", fp)
         return None
     logger.info(":books: Loading existing catalog => %s", fp)
-    return t.cast(CatalogResults, CatalogArtifact.from_dict(json.loads(fp.read_text())))
+    return t.cast("CatalogResults", CatalogArtifact.from_dict(json.loads(fp.read_text())))
 
 
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
@@ -1204,15 +1241,16 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
         logger.warning(":warning: Introspection is disabled, cannot generate catalog.")
         return None
     logger.info(
-        ":books: Generating a new catalog for the project => %s", context.runtime_cfg.project_name
+        ":books: Generating a new catalog for the project => %s",
+        context.runtime_cfg.project_name,
     )
     catalogable_nodes = chain(
         [
-            t.cast(t.Any, node)  # pyright: ignore[reportInvalidCast]
+            t.cast("t.Any", node)  # pyright: ignore[reportInvalidCast]
             for node in context.manifest.nodes.values()
             if node.is_relational and not node.is_ephemeral_model
         ],
-        [t.cast(t.Any, node) for node in context.manifest.sources.values()],  # pyright: ignore[reportInvalidCast]
+        [t.cast("t.Any", node) for node in context.manifest.sources.values()],  # pyright: ignore[reportInvalidCast]
     )
     table, exceptions = context.adapter.get_filtered_catalog(
         catalogable_nodes,
@@ -1221,7 +1259,7 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
 
     logger.debug(":mag_right: Building catalog from returned table => %s", table)
     catalog = Catalog(
-        [dict(zip(table.column_names, map(dbt_utils._coerce_decimal, row))) for row in table]  # pyright: ignore[reportUnknownArgumentType,reportPrivateUsage]
+        [dict(zip(table.column_names, map(dbt_utils._coerce_decimal, row))) for row in table],  # pyright: ignore[reportUnknownArgumentType,reportPrivateUsage]
     )
 
     errors: list[str] | None = None
@@ -1240,7 +1278,7 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
     artifact_path = Path(context.runtime_cfg.project_target_path, "catalog.json")
     logger.info(":bookmark_tabs: Writing fresh catalog => %s", artifact_path)
     artifact.write(str(artifact_path.resolve()))  # Cache it, same as dbt
-    return t.cast(CatalogResults, artifact)
+    return t.cast("CatalogResults", artifact)
 
 
 # =============================================================================
@@ -1268,6 +1306,7 @@ class PropertyAccessor:
         >>> desc = accessor.get_description(node, source="yaml")
         >>> # Auto-detect based on jinja presence
         >>> desc = accessor.get_description(node, source="auto")
+
     """
 
     def __init__(self, context: t.Any) -> None:
@@ -1275,6 +1314,7 @@ class PropertyAccessor:
 
         Args:
             context: YamlRefactorContext containing project, manifest, yaml_handler, etc.
+
         """
         self._context = context
 
@@ -1296,6 +1336,7 @@ class PropertyAccessor:
 
         Returns:
             The property value from manifest, or None if not found
+
         """
         # Handle column-level properties
         if column_name:
@@ -1305,30 +1346,28 @@ class PropertyAccessor:
             # Map property keys to column attributes
             if property_key == "description":
                 return getattr(column, "description", None)
-            elif property_key == "data_type":
+            if property_key == "data_type":
                 return getattr(column, "data_type", None)
-            elif property_key == "tags":
+            if property_key == "tags":
                 return getattr(column, "tags", None)
-            elif property_key == "meta":
+            if property_key == "meta":
                 return getattr(column, "meta", None)
-            elif property_key == "name":
+            if property_key == "name":
                 return getattr(column, "name", None)
-            else:
-                # Try generic attribute access
-                return getattr(column, property_key, None)
+            # Try generic attribute access
+            return getattr(column, property_key, None)
 
         # Handle node-level properties
         if property_key == "description":
             return getattr(node, "description", None)
-        elif property_key == "tags":
+        if property_key == "tags":
             return getattr(node, "tags", None)
-        elif property_key == "meta":
+        if property_key == "meta":
             return getattr(node, "meta", None)
-        elif property_key == "name":
+        if property_key == "name":
             return getattr(node, "name", None)
-        else:
-            # Try generic attribute access
-            return getattr(node, property_key, None)
+        # Try generic attribute access
+        return getattr(node, property_key, None)
 
     def _get_from_yaml(
         self,
@@ -1348,8 +1387,8 @@ class PropertyAccessor:
 
         Returns:
             The property value from YAML, or None if not found
-        """
 
+        """
         from dbt_osmosis.core.inheritance import _get_node_yaml
 
         # Check if node has a YAML file (ephemeral models may not)
@@ -1413,6 +1452,7 @@ class PropertyAccessor:
 
         Returns:
             True if unrendered jinja is detected, False otherwise
+
         """
         # Handle lists (e.g., policy_tags)
         if isinstance(value, list):
@@ -1459,6 +1499,7 @@ class PropertyAccessor:
 
         Raises:
             ValueError: If an invalid source is specified
+
         """
         # Handle "auto" as a special case before enum conversion
         if isinstance(source, str) and source == "auto":
@@ -1480,13 +1521,13 @@ class PropertyAccessor:
             except ValueError:
                 raise ValueError(
                     f"Invalid source '{source}'. Must be one of: "
-                    f"'auto', {', '.join([s.value for s in PropertySource])}"
+                    f"'auto', {', '.join([s.value for s in PropertySource])}",
                 )
 
         if source == PropertySource.MANIFEST:
             return self._get_from_manifest(node, property_key, column_name)
 
-        elif source == PropertySource.YAML:
+        if source == PropertySource.YAML:
             yaml_value = self._get_from_yaml(node, property_key, column_name)
             # Fall back to manifest if YAML doesn't have the value
             if yaml_value is None:
@@ -1498,20 +1539,19 @@ class PropertyAccessor:
                 return self._get_from_manifest(node, property_key, column_name)
             return yaml_value
 
-        elif source == PropertySource.DATABASE:
+        if source == PropertySource.DATABASE:
             # Database introspection not yet implemented for PropertyAccessor
             logger.debug(
                 ":mag: Database source not yet implemented for PropertyAccessor, "
-                "falling back to manifest"
+                "falling back to manifest",
             )
             return self._get_from_manifest(node, property_key, column_name)
 
-        else:
-            # This shouldn't happen with enum validation, but just in case
-            raise ValueError(
-                f"Invalid source '{source}'. Must be one of: "
-                f"'auto', {', '.join([s.value for s in PropertySource])}"
-            )
+        # This shouldn't happen with enum validation, but just in case
+        raise ValueError(
+            f"Invalid source '{source}'. Must be one of: "
+            f"'auto', {', '.join([s.value for s in PropertySource])}",
+        )
 
     def get_description(
         self,
@@ -1531,9 +1571,11 @@ class PropertyAccessor:
 
         Returns:
             The description string, or None if not found
+
         """
         return t.cast(
-            str | None, self.get("description", node, column_name=column_name, source=source)
+            "str | None",
+            self.get("description", node, column_name=column_name, source=source),
         )
 
     def get_meta(
@@ -1557,6 +1599,7 @@ class PropertyAccessor:
         Returns:
             The meta dictionary if meta_key is None, or the specific meta value
             if meta_key is specified. Returns None if not found.
+
         """
         meta = self.get("meta", node, column_name=column_name, source=source)
         if meta is None:
@@ -1581,6 +1624,7 @@ class PropertyAccessor:
 
         Returns:
             True if the property exists in manifest or YAML, False otherwise
+
         """
         manifest_value = self._get_from_manifest(node, property_key, column_name)
         if manifest_value is not None:

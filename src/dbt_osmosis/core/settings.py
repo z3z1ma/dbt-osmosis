@@ -10,15 +10,15 @@ from pathlib import Path
 import ruamel.yaml
 from dbt.contracts.results import CatalogResults
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.config import DbtProjectContext
 
 __all__ = [
     "EMPTY_STRING",
-    "YamlRefactorSettings",
     "YamlRefactorContext",
+    "YamlRefactorSettings",
 ]
 
 EMPTY_STRING = ""
@@ -97,10 +97,10 @@ class YamlRefactorContext:
     project: DbtProjectContext  # Forward reference to avoid circular import
     settings: YamlRefactorSettings = field(default_factory=YamlRefactorSettings)
     pool: ThreadPoolExecutor = field(
-        default_factory=lambda: ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4))
+        default_factory=lambda: ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)),
     )
     yaml_handler: ruamel.yaml.YAML = field(
-        default_factory=lambda: None
+        default_factory=lambda: None,
     )  # Will be set in __post_init__
     yaml_handler_lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -117,11 +117,12 @@ class YamlRefactorContext:
     _closed: bool = field(default=False, init=False, repr=False)
     """Track whether the context has been closed to prevent double-cleanup."""
 
-    def __enter__(self) -> "YamlRefactorContext":
+    def __enter__(self) -> YamlRefactorContext:
         """Enter the context manager.
 
         Returns:
             self for use in with statements
+
         """
         return self
 
@@ -132,6 +133,7 @@ class YamlRefactorContext:
             exc_type: Exception type if an exception was raised
             exc_val: Exception value if an exception was raised
             exc_tb: Exception traceback if an exception was raised
+
         """
         self.close()
 
@@ -221,7 +223,9 @@ class YamlRefactorContext:
         """The source definitions from the dbt project config."""
         c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = self._find_first(
-            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]],
+            lambda v: bool(v),
+            {},
         )
         return toplevel_conf.get("sources", {})
 
@@ -230,7 +234,9 @@ class YamlRefactorContext:
         """The column name ignore patterns from the dbt project config."""
         c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = self._find_first(
-            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]],
+            lambda v: bool(v),
+            {},
         )
         return toplevel_conf.get("column_ignore_patterns", [])
 
@@ -239,7 +245,9 @@ class YamlRefactorContext:
         """The column name ignore patterns from the dbt project config."""
         c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = self._find_first(
-            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]], lambda v: bool(v), {}
+            [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]],
+            lambda v: bool(v),
+            {},
         )
         return toplevel_conf.get("yaml_settings", {})
 
@@ -252,14 +260,17 @@ class YamlRefactorContext:
             catalog = _load_catalog(self.settings)
             if not catalog and self.settings.create_catalog_if_not_exists:
                 logger.info(
-                    ":bookmark_tabs: No existing catalog found, generating new catalog.json."
+                    ":bookmark_tabs: No existing catalog found, generating new catalog.json.",
                 )
                 catalog = _generate_catalog(self.project)
             self._catalog = catalog
         return self._catalog
 
     def _find_first(
-        self, coll: t.Iterable[t.Any], predicate: t.Callable[[t.Any], bool], default: t.Any = None
+        self,
+        coll: t.Iterable[t.Any],
+        predicate: t.Callable[[t.Any], bool],
+        default: t.Any = None,
     ) -> t.Any:
         """Find the first item in a container that satisfies a predicate."""
         for item in coll:

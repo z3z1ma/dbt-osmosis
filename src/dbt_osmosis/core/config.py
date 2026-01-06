@@ -29,7 +29,7 @@ from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
 from dbt_core_interface import DbtProject as InterfaceDbtProject
 from packaging.version import parse as parse_version
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 # Import dbt version for compatibility checking
 # Use a try/except in case the version module structure changes
@@ -48,15 +48,15 @@ except (ImportError, AttributeError):
         _dbt_version = "1.8.0"
 
 __all__ = [
-    "discover_project_dir",
-    "discover_profiles_dir",
+    "DEFAULT_CONNECTION_TTL",
+    "MAX_PREVIEW_LENGTH",
     "DbtConfiguration",
     "DbtProjectContext",
-    "create_dbt_project_context",
     "_reload_manifest",
-    "MAX_PREVIEW_LENGTH",
-    "DEFAULT_CONNECTION_TTL",
     "config_to_namespace",
+    "create_dbt_project_context",
+    "discover_profiles_dir",
+    "discover_project_dir",
 ]
 
 
@@ -217,11 +217,12 @@ class DbtProjectContext:
     in dbt 1.10, where these fields moved from top-level to the config block.
     """
 
-    def __enter__(self) -> "DbtProjectContext":
+    def __enter__(self) -> DbtProjectContext:
         """Enter the context manager.
 
         Returns:
             self for use in with statements
+
         """
         return self
 
@@ -232,6 +233,7 @@ class DbtProjectContext:
             exc_type: Exception type if an exception was raised
             exc_val: Exception value if an exception was raised
             exc_tb: Exception traceback if an exception was raised
+
         """
         self.close()
 
@@ -267,8 +269,10 @@ class DbtProjectContext:
 
     @classmethod
     def from_project(
-        cls, config: DbtConfiguration, project: InterfaceDbtProject
-    ) -> "DbtProjectContext":
+        cls,
+        config: DbtConfiguration,
+        project: InterfaceDbtProject,
+    ) -> DbtProjectContext:
         """Create a DbtProjectContext from an existing DbtProject instance.
 
         This is used internally to avoid creating the DbtProject twice.
@@ -279,6 +283,7 @@ class DbtProjectContext:
 
         Returns:
             A DbtProjectContext wrapping the DbtProject
+
         """
         instance = cls(config=config)
         instance._project = project
@@ -373,7 +378,9 @@ class DbtProjectContext:
 
 
 def _add_cross_project_references(
-    manifest: Manifest, dbt_loom: ModuleType, project_name: str
+    manifest: Manifest,
+    dbt_loom: ModuleType,
+    project_name: str,
 ) -> Manifest:
     """Add cross-project references to the dbt manifest from dbt-loom defined manifests.
 
@@ -411,7 +418,7 @@ def _add_cross_project_references(
             for node in loomnodes:
                 manifest.nodes[node.unique_id] = node
             logger.info(
-                f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!"
+                f":arrows_counterclockwise: added {len(loomnodes)} exposed nodes from {name} to the dbt manifest!",
             )
     return manifest
 
@@ -436,7 +443,9 @@ def _patch_adapter_factory_registration() -> None:
         """Wrapper that ensures the adapter is registered in FACTORY.adapters."""
         # Call the original create_adapter
         adapter = original_create_adapter(
-            self, replace=replace, verify_connectivity=verify_connectivity
+            self,
+            replace=replace,
+            verify_connectivity=verify_connectivity,
         )
 
         # Register the adapter in FACTORY.adapters if not already registered
@@ -444,7 +453,7 @@ def _patch_adapter_factory_registration() -> None:
         if adapter_type not in FACTORY.adapters:
             FACTORY.adapters[adapter_type] = adapter
             logger.debug(
-                f":wrench: Registered adapter '{adapter_type}' in FACTORY.adapters (monkey-patch)"
+                f":wrench: Registered adapter '{adapter_type}' in FACTORY.adapters (monkey-patch)",
             )
 
         return adapter
@@ -462,6 +471,7 @@ def _ensure_adapter_loaded(config: DbtConfiguration) -> None:
 
     Args:
         config: The dbt project configuration
+
     """
     try:
         # Apply the monkey-patch to ensure adapters are registered in FACTORY.adapters
@@ -490,7 +500,7 @@ def _ensure_adapter_loaded(config: DbtConfiguration) -> None:
     except Exception as e:
         logger.debug(
             f":information_source: Could not pre-load adapter plugin: {e}. "
-            "This is OK - the adapter will be loaded on-demand."
+            "This is OK - the adapter will be loaded on-demand.",
         )
 
 
@@ -505,6 +515,7 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
 
     Returns:
         A DbtProjectContext with initialized manifest, adapter, and parsers
+
     """
     logger.info(":wave: Creating DBT project context using config => %s", config)
 
@@ -544,12 +555,14 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
         dbt_loom = importlib.import_module("dbt_loom")
     except ImportError:
         logger.debug(
-            ":information_source: dbt_loom not available, skipping cross-project references"
+            ":information_source: dbt_loom not available, skipping cross-project references",
         )
     else:
         try:
             manifest = _add_cross_project_references(
-                project.manifest, dbt_loom, project.project_name
+                project.manifest,
+                dbt_loom,
+                project.project_name,
             )
             # Update the manifest in the project
             project.manifest = manifest
@@ -570,6 +583,7 @@ def _reload_manifest(context: DbtProjectContext) -> None:
 
     Args:
         context: The DbtProjectContext to reload the manifest for
+
     """
     logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
     with context.manifest_mutex:
@@ -589,6 +603,7 @@ def config_to_namespace(config: DbtConfiguration) -> argparse.Namespace:
 
     Returns:
         An argparse.Namespace with the same attributes as the config
+
     """
     return argparse.Namespace(
         project_dir=config.project_dir,

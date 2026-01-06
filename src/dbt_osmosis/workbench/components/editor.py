@@ -103,7 +103,7 @@ class Editor(Dashboard.Item):
                         theme="vs-dark" if self._dark_mode else "light",
                         path=path,
                         options=props,
-                        key="editor-{}".format(index),
+                        key=f"editor-{index}",
                     )
 
             with mui.Stack(direction="row", spacing=2, alignItems="center", sx={"padding": "10px"}):

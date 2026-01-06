@@ -22,7 +22,7 @@ from mysql_mimic.schema import (
 from mysql_mimic.session import Query
 from sqlglot import exp
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
     DbtProjectContext,
@@ -33,11 +33,11 @@ from dbt_osmosis.core.osmosis import (
 )
 
 ALTER_TABLE_MODIFY_COLUMN_COMMENT = re.compile(
-    r"(?i)(?:/\*.*?\*/\s*)?ALTER TABLE\s+(?:(?P<schema>[^\s\.]+)\.)?(?P<table>[^\s\.]+)\s+MODIFY COLUMN\s+(?P<column>[^\s]+)\s+.*?COMMENT\s+'(?P<comment>[^']*)';?"
+    r"(?i)(?:/\*.*?\*/\s*)?ALTER TABLE\s+(?:(?P<schema>[^\s\.]+)\.)?(?P<table>[^\s\.]+)\s+MODIFY COLUMN\s+(?P<column>[^\s]+)\s+.*?COMMENT\s+'(?P<comment>[^']*)';?",
 )
 
 ALTER_TABLE_COMMENT = re.compile(
-    r"(?i)(?:/\*.*?\*/\s*)?ALTER TABLE\s+(?:(?P<schema>[^\s\.]+)\.)?(?P<table>[^\s\.]+)\s+COMMENT\s*=\s*'(?P<comment>[^']*)';"
+    r"(?i)(?:/\*.*?\*/\s*)?ALTER TABLE\s+(?:(?P<schema>[^\s\.]+)\.)?(?P<table>[^\s\.]+)\s+COMMENT\s*=\s*'(?P<comment>[^']*)';",
 )
 
 
@@ -84,7 +84,8 @@ class DbtSession(Session):
             ):
                 ref = (doc_update_req["schema"], doc_update_req["table"])
                 for node in chain(
-                    self.project.manifest.sources.values(), self.project.manifest.nodes.values()
+                    self.project.manifest.sources.values(),
+                    self.project.manifest.nodes.values(),
                 ):
                     if ref == (node.schema, node.name):
                         for column in node.columns.values():
@@ -98,7 +99,8 @@ class DbtSession(Session):
             ):
                 ref = (doc_update_req["schema"], doc_update_req["table"])
                 for node in chain(
-                    self.project.manifest.sources.values(), self.project.manifest.nodes.values()
+                    self.project.manifest.sources.values(),
+                    self.project.manifest.nodes.values(),
                 ):
                     if ref == (node.schema, node.name):
                         node.description = doc_update_req["comment"]
@@ -106,23 +108,29 @@ class DbtSession(Session):
         return await q.next()
 
     async def query(
-        self, expression: exp.Expression, sql: str, attrs: dict[str, t.Any]
+        self,
+        expression: exp.Expression,
+        sql: str,
+        attrs: dict[str, t.Any],
     ) -> AllowedResult:
         logger.info("Query: %s", sql)
         resp, table = await asyncio.to_thread(
-            execute_sql_code, self.project, expression.sql(dialect=self.project.adapter.type())
+            execute_sql_code,
+            self.project,
+            expression.sql(dialect=self.project.adapter.type()),
         )
         if resp.code:
             raise QueryException(resp)
-        rows = t.cast(tuple[t.Any], table.rows.values())
-        return [row.values() for row in rows], t.cast(tuple[str], table.column_names)
+        rows = t.cast("tuple[t.Any]", table.rows.values())
+        return [row.values() for row in rows], t.cast("tuple[str]", table.column_names)
 
     async def schema(self):
-        schema: defaultdict[str, dict[str, dict[str, tuple[str, t.Optional[str]]]]] = defaultdict(
-            dict
+        schema: defaultdict[str, dict[str, dict[str, tuple[str, str | None]]]] = defaultdict(
+            dict,
         )
         for node in chain(
-            self.project.manifest.sources.values(), self.project.manifest.nodes.values()
+            self.project.manifest.sources.values(),
+            self.project.manifest.nodes.values(),
         ):
             schema[node.schema][node.name] = {
                 c.name: (c.data_type or "UNKOWN", c.description) for c in node.columns.values()
@@ -164,6 +172,6 @@ def mapping_to_columns(schema: dict[str, t.Any]) -> Iterator[Column]:
 if __name__ == "__main__":
     c = DbtConfiguration()
     server = MysqlServer(
-        session_factory=functools.partial(DbtSession, create_dbt_project_context(c))
+        session_factory=functools.partial(DbtSession, create_dbt_project_context(c)),
     )
     asyncio.run(server.serve_forever())

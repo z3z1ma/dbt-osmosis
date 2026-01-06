@@ -10,7 +10,7 @@ from dbt.node_types import NodeType
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
     "_sync_doc_section",
@@ -19,7 +19,9 @@ __all__ = [
 
 
 def _sync_doc_section(
-    context: YamlRefactorContextProtocol, node: ResultNode, doc_section: dict[str, t.Any]
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    doc_section: dict[str, t.Any],
 ) -> None:
     """Helper function that overwrites 'doc_section' with data from 'node'.
 
@@ -61,7 +63,8 @@ def _sync_doc_section(
         if catalog_entry:
             for col_name, col_meta in catalog_entry.columns.items():
                 norm_name = normalize_column_name(
-                    col_name, context.project.runtime_cfg.credentials.type
+                    col_name,
+                    context.project.runtime_cfg.credentials.type,
                 )
                 catalog_column_types[norm_name] = col_meta.type
 
@@ -87,11 +90,14 @@ def _sync_doc_section(
         if norm_name in catalog_column_types:
             cdict["data_type"] = catalog_column_types[norm_name]
 
-        current_yaml = t.cast(dict[str, t.Any], current_map.get(norm_name, {}))
+        current_yaml = t.cast("dict[str, t.Any]", current_map.get(norm_name, {}))
         merged = dict(current_yaml)
 
         skip_add_types = _get_setting_for_node(
-            "skip-add-data-types", node, name, fallback=context.settings.skip_add_data_types
+            "skip-add-data-types",
+            node,
+            name,
+            fallback=context.settings.skip_add_data_types,
         )
 
         # Check if we should preserve unrendered descriptions from current YAML
@@ -165,11 +171,17 @@ def _sync_doc_section(
                 merged.pop(k)
 
         if _get_setting_for_node(
-            "output-to-upper", node, name, fallback=context.settings.output_to_upper
+            "output-to-upper",
+            node,
+            name,
+            fallback=context.settings.output_to_upper,
         ):
             merged["name"] = merged["name"].upper()
         elif _get_setting_for_node(
-            "output-to-lower", node, name, fallback=context.settings.output_to_lower
+            "output-to-lower",
+            node,
+            name,
+            fallback=context.settings.output_to_lower,
         ):
             merged["name"] = merged["name"].lower()
 
@@ -188,7 +200,9 @@ def _get_resource_type_key(node: ResultNode) -> str:
 
 
 def _prepare_yaml_document(
-    context: YamlRefactorContextProtocol, node: ResultNode, current_path: t.Optional[Path]
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    current_path: Path | None,
 ) -> dict[str, t.Any]:
     """Prepare or load the YAML document for a node.
 
@@ -206,7 +220,9 @@ def _prepare_yaml_document(
         current_path = get_target_yaml_path(context, node)
 
     doc: dict[str, t.Any] = _read_yaml(
-        context.yaml_handler, context.yaml_handler_lock, current_path
+        context.yaml_handler,
+        context.yaml_handler_lock,
+        current_path,
     )
     if not doc:
         doc = {"version": 2}
@@ -214,7 +230,9 @@ def _prepare_yaml_document(
 
 
 def _get_or_create_source(
-    doc: dict[str, t.Any], source_name: str, table_name: str | None = None
+    doc: dict[str, t.Any],
+    source_name: str,
+    table_name: str | None = None,
 ) -> dict[str, t.Any]:
     """Find or create a source entry in the YAML document.
 
@@ -280,7 +298,8 @@ def _sync_source_node(
 
 
 def _deduplicate_model_entries(
-    doc_list: list[dict[str, t.Any]], model_name: str
+    doc_list: list[dict[str, t.Any]],
+    model_name: str,
 ) -> dict[str, t.Any] | None:
     """Find and deduplicate model entries by name.
 
@@ -299,7 +318,7 @@ def _deduplicate_model_entries(
         for idx in sorted(model_indices[1:], reverse=True):
             doc_list.pop(idx)
         return doc_model
-    elif model_indices:
+    if model_indices:
         return doc_list[model_indices[0]]
     return None
 
@@ -315,12 +334,12 @@ def _get_or_create_model(doc_list: list[dict[str, t.Any]], model_name: str) -> d
 
 def _deduplicate_versions(
     doc_model: dict[str, t.Any],
-) -> dict[t.Union[int, str, float], dict[str, t.Any]]:
+) -> dict[int | str | float, dict[str, t.Any]]:
     """Deduplicate version entries by version number.
 
     Returns a dict mapping version numbers to version dicts.
     """
-    version_by_v: dict[t.Union[int, str, float], dict[str, t.Any]] = {}
+    version_by_v: dict[int | str | float, dict[str, t.Any]] = {}
     for version in doc_model.get("versions", []):
         v_value = version.get("v")
         if v_value is not None:
@@ -332,7 +351,7 @@ def _deduplicate_versions(
 
 def _get_or_create_version(
     doc_model: dict[str, t.Any],
-    version: t.Union[int, str, float],
+    version: str | float,
 ) -> dict[str, t.Any]:
     """Find or create a version entry within a model."""
     version_by_v = _deduplicate_versions(doc_model)
@@ -409,6 +428,7 @@ def _sync_single_node_to_yaml(
         context: The YAML refactor context
         node: The node to sync
         commit: Whether to commit changes to disk
+
     """
     # Skip package models (models from dbt packages) as they don't have writable YAML files
     if node.package_name != context.project.runtime_cfg.project_name:
@@ -462,7 +482,7 @@ def _deduplicated_version_nodes(context: YamlRefactorContextProtocol) -> t.Itera
 
 def sync_node_to_yaml(
     context: YamlRefactorContextProtocol,
-    node: t.Optional[ResultNode] = None,
+    node: ResultNode | None = None,
     *,
     commit: bool = True,
 ) -> None:
@@ -484,6 +504,7 @@ def sync_node_to_yaml(
         node: The node to sync. If None, syncs all matched nodes.
         commit: Whether to commit changes to disk (default: True).
                When False, only performs the sync in memory without writing.
+
     """
     if node is None:
         logger.info(":wave: No single node specified; synchronizing all matched nodes.")

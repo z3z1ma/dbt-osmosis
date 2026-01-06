@@ -1,5 +1,4 @@
-"""
-ConfigResolver API Contract
+"""ConfigResolver API Contract
 
 This contract defines the interface for the unified configuration resolution system.
 Implementations must follow this contract to ensure compatibility.
@@ -17,8 +16,7 @@ ConfigValue = Any
 
 
 class ConfigResolver(Protocol):
-    """
-    Protocol for configuration resolution from multiple sources.
+    """Protocol for configuration resolution from multiple sources.
 
     The resolver checks sources in precedence order and returns the first
     non-None value found. If no source has the key, the fallback is returned.
@@ -42,8 +40,7 @@ class ConfigResolver(Protocol):
         *,
         fallback: FallbackValue = None,
     ) -> ConfigValue:
-        """
-        Resolve a configuration setting from the highest-priority source.
+        """Resolve a configuration setting from the highest-priority source.
 
         Args:
             setting_name: The setting to resolve. Supports both kebab-case
@@ -74,6 +71,7 @@ class ConfigResolver(Protocol):
             ...     column_name="user_id",
             ...     fallback=False
             ... )
+
         """
         ...
 
@@ -83,8 +81,7 @@ class ConfigResolver(Protocol):
         node: NodeRef | None,
         column_name: ColumnName = None,
     ) -> bool:
-        """
-        Check if a configuration setting exists in any source.
+        """Check if a configuration setting exists in any source.
 
         Unlike resolve(), this method does not provide a fallback and
         returns a boolean indicating presence.
@@ -101,6 +98,7 @@ class ConfigResolver(Protocol):
             >>> resolver = ConfigResolver()
             >>> if resolver.has("custom-setting", node):
             ...     value = resolver.resolve("custom-setting", node)
+
         """
         ...
 
@@ -110,8 +108,7 @@ class ConfigResolver(Protocol):
         setting_name: str,
         column_name: ColumnName = None,
     ) -> list[str]:
-        """
-        Get the list of source names in precedence order for debugging.
+        """Get the list of source names in precedence order for debugging.
 
         Args:
             node: The dbt node.
@@ -125,6 +122,7 @@ class ConfigResolver(Protocol):
             >>> chain = resolver.get_precedence_chain(node, "user_id")
             >>> print(chain)
             ['column_meta', 'node_meta', 'config_extra', ...]
+
         """
         ...
 
@@ -138,8 +136,7 @@ class PropertySource:
 
 
 class PropertyAccessor(Protocol):
-    """
-    Protocol for unified model property access from manifest or YAML.
+    """Protocol for unified model property access from manifest or YAML.
 
     Provides a single interface for accessing properties like descriptions,
     tags, and meta from either the parsed manifest (rendered values) or
@@ -153,8 +150,7 @@ class PropertyAccessor(Protocol):
         column_name: ColumnName = None,
         source: Literal["manifest", "yaml", "auto"] = "auto",
     ) -> Any:
-        """
-        Get a model or column property from the specified source.
+        """Get a model or column property from the specified source.
 
         Args:
             property_key: The property to retrieve (e.g., "description",
@@ -185,6 +181,7 @@ class PropertyAccessor(Protocol):
             ...     source="yaml"
             ... )
             >>> # desc may contain "{{ doc('my_doc') }}"
+
         """
         ...
 
@@ -194,8 +191,7 @@ class PropertyAccessor(Protocol):
         column_name: ColumnName = None,
         source: Literal["manifest", "yaml", "auto"] = "auto",
     ) -> str | None:
-        """
-        Convenience method for retrieving descriptions.
+        """Convenience method for retrieving descriptions.
 
         Args:
             node: The dbt node.
@@ -208,6 +204,7 @@ class PropertyAccessor(Protocol):
         Example:
             >>> accessor = PropertyAccessor(context)
             >>> desc = accessor.get_description(my_model, "user_id")
+
         """
         ...
 
@@ -218,8 +215,7 @@ class PropertyAccessor(Protocol):
         column_name: ColumnName = None,
         source: Literal["manifest", "yaml", "auto"] = "auto",
     ) -> Any:
-        """
-        Convenience method for retrieving metadata values.
+        """Convenience method for retrieving metadata values.
 
         Args:
             node: The dbt node.
@@ -233,6 +229,7 @@ class PropertyAccessor(Protocol):
         Example:
             >>> accessor = PropertyAccessor(context)
             >>> pii = accessor.get_meta(my_model, "pii", "email")
+
         """
         ...
 
@@ -242,8 +239,7 @@ class PropertyAccessor(Protocol):
         node: NodeRef,
         column_name: ColumnName = None,
     ) -> bool:
-        """
-        Check if a property exists in any source.
+        """Check if a property exists in any source.
 
         Args:
             property_key: The property to check for.
@@ -257,14 +253,14 @@ class PropertyAccessor(Protocol):
             >>> accessor = PropertyAccessor(context)
             >>> if accessor.has_property("description", my_model):
             ...     desc = accessor.get("description", my_model)
+
         """
         ...
 
 
 # Validation rules as type annotations
 class SettingName:
-    """
-    Valid configuration setting name.
+    """Valid configuration setting name.
 
     Rules:
     - Non-empty string
@@ -319,8 +315,7 @@ def _get_setting_for_node(
     *,
     fallback: FallbackValue = None,
 ) -> ConfigValue:
-    """
-    Legacy function for backward compatibility.
+    """Legacy function for backward compatibility.
 
     DEPRECATED: Use ConfigResolver.resolve() instead.
 
@@ -342,17 +337,17 @@ def _get_setting_for_node(
         >>> # New way (preferred)
         >>> resolver = ConfigResolver()
         >>> value = resolver.resolve("skip-add-tags", node, fallback=False)
+
     """
     # Implementation delegates to ConfigResolver
-    ...
 
 
 # Export list for __init__.py
 __all__ = [
     "ConfigResolver",
+    "ConfigurationError",
     "PropertyAccessor",
     "PropertySource",
     "SettingName",
-    "ConfigurationError",
     "_get_setting_for_node",  # Exported for backward compatibility
 ]

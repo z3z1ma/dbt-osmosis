@@ -42,7 +42,7 @@ class Preview(Dashboard.Item):
                 _ = mui.Typography("Query Preview")
                 if state.app.query_state == "success":
                     _ = mui.Typography(
-                        "Adapter Response: {}".format(state.app.query_adapter_resp),
+                        f"Adapter Response: {state.app.query_adapter_resp}",
                         sx={"marginRight": "auto", "color": "text.secondary"},
                     )
 
@@ -51,7 +51,7 @@ class Preview(Dashboard.Item):
                     _ = mui.CircularProgress(sx={"padding": "25px"})
                 elif state.app.query_state == "error":
                     _ = mui.Typography(
-                        "Error running query\n\n{}".format(state.app.query_adapter_resp),
+                        f"Error running query\n\n{state.app.query_adapter_resp}",
                         sx={"padding": "25px"},
                     )
                 elif not state.app.query_result_columns:

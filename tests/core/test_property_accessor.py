@@ -41,6 +41,7 @@ class MockColumn:
             meta: Optional metadata dictionary
             data_type: Optional data type
             tags: Optional list of tags
+
         """
         self.name = name
         self.description = description
@@ -74,6 +75,7 @@ class MockNode:
             raw_code: Optional raw SQL code
             patch_path: Optional YAML file path
             resource_type: Optional resource type (model, source, seed, etc.)
+
         """
         self.unique_id = unique_id
         self.description = description
@@ -94,6 +96,7 @@ def sample_yaml_file(tmp_path: Path) -> Path:
 
     Returns:
         Path to the created YAML file
+
     """
     models_dir = tmp_path / "models"
     models_dir.mkdir()
@@ -117,7 +120,7 @@ models:
         description: Customer name
       - name: created_at
         description: Timestamp with {% docs timestamp_docs %}special formatting{% enddocs %}
-"""
+""",
     )
 
     return yaml_file
@@ -129,6 +132,7 @@ def sample_node_with_unrendered() -> MockNode:
 
     Returns:
         MockNode with unrendered jinja templates in descriptions
+
     """
     return MockNode(
         unique_id="model.test.my_model",
@@ -155,6 +159,7 @@ def sample_node_rendered() -> MockNode:
 
     Returns:
         MockNode with pre-rendered descriptions as they appear in manifest
+
     """
     return MockNode(
         unique_id="model.test.my_model",
@@ -181,6 +186,7 @@ def mock_context() -> Mock:
 
     Returns:
         Mock context with necessary attributes
+
     """
     context = Mock()
     context.project = Mock()
@@ -204,7 +210,9 @@ class TestPropertyAccessor:
     """
 
     def test_get_property_from_manifest(
-        self, sample_node_rendered: MockNode, mock_context: Mock
+        self,
+        sample_node_rendered: MockNode,
+        mock_context: Mock,
     ) -> None:
         """Test getting a property from the manifest (rendered)."""
         accessor = PropertyAccessor(context=mock_context)
@@ -229,7 +237,7 @@ class TestPropertyAccessor:
                     "name": "id",
                     "description": "Unique identifier using {{ doc('id_doc') }}",
                     "meta": {"dbt-osmosis": {"output-to-lower": True}},
-                }
+                },
             ],
         }
         accessor = PropertyAccessor(context=mock_context)
@@ -256,7 +264,10 @@ class TestPropertyAccessor:
         assert "{{ doc" in result
 
     def test_prefer_unrendered_false(
-        self, sample_node_rendered: MockNode, sample_yaml_file: Path, mock_context: Mock
+        self,
+        sample_node_rendered: MockNode,
+        sample_yaml_file: Path,
+        mock_context: Mock,
     ) -> None:
         """Test that source='manifest' always uses manifest."""
         accessor = PropertyAccessor(context=mock_context)
@@ -265,12 +276,18 @@ class TestPropertyAccessor:
         assert "{{ doc" not in result
 
     def test_get_column_property(
-        self, sample_node_rendered: MockNode, sample_yaml_file: Path, mock_context: Mock
+        self,
+        sample_node_rendered: MockNode,
+        sample_yaml_file: Path,
+        mock_context: Mock,
     ) -> None:
         """Test getting a column-level property."""
         accessor = PropertyAccessor(context=mock_context)
         result = accessor.get(
-            "description", sample_node_rendered, column_name="id", source="manifest"
+            "description",
+            sample_node_rendered,
+            column_name="id",
+            source="manifest",
         )
         assert "unique identifier documentation" in result
 
@@ -294,7 +311,7 @@ class TestPropertyAccessor:
             columns={
                 "id": MockColumn("id", data_type="integer"),
                 "name": MockColumn("name", data_type="varchar"),
-            }
+            },
         )
         accessor = PropertyAccessor(context=mock_context)
         result = accessor.get("data_type", node, column_name="id", source="manifest")
@@ -302,7 +319,10 @@ class TestPropertyAccessor:
 
     @patch("dbt_osmosis.core.inheritance._get_node_yaml")
     def test_missing_yaml_file(
-        self, mock_get_yaml, sample_node_rendered: MockNode, mock_context: Mock
+        self,
+        mock_get_yaml,
+        sample_node_rendered: MockNode,
+        mock_context: Mock,
     ) -> None:
         """Test behavior when YAML file doesn't exist (fallback to manifest)."""
         # Mock missing YAML file
@@ -344,7 +364,8 @@ class TestPropertyAccessor:
         """Test accessing a column that exists in manifest but not in YAML."""
         # Add a column that doesn't exist in YAML
         sample_node_rendered.columns["extra_column"] = MockColumn(
-            "extra_column", description="Extra"
+            "extra_column",
+            description="Extra",
         )
         # Mock YAML that doesn't have the extra_column
         mock_get_yaml.return_value = {
@@ -355,7 +376,10 @@ class TestPropertyAccessor:
         }
         accessor = PropertyAccessor(context=mock_context)
         result = accessor.get(
-            "description", sample_node_rendered, column_name="extra_column", source="yaml"
+            "description",
+            sample_node_rendered,
+            column_name="extra_column",
+            source="yaml",
         )
         # Should fall back to manifest if column not in YAML
         assert result is not None
@@ -380,7 +404,10 @@ class TestPropertyAccessor:
         }
         accessor = PropertyAccessor(context=mock_context)
         result = accessor.get(
-            "description", sample_node_with_unrendered, column_name="id", source="yaml"
+            "description",
+            sample_node_with_unrendered,
+            column_name="id",
+            source="yaml",
         )
         assert "{{ doc('id_doc') }}" in result
 
@@ -393,7 +420,9 @@ class TestPropertyAccessor:
         assert "{{ doc" not in result or result == node.description
 
     def test_get_description_convenience(
-        self, sample_node_rendered: MockNode, mock_context: Mock
+        self,
+        sample_node_rendered: MockNode,
+        mock_context: Mock,
     ) -> None:
         """Test get_description() convenience method."""
         accessor = PropertyAccessor(context=mock_context)
@@ -413,7 +442,9 @@ class TestPropertyAccessor:
         assert result is False
 
     def test_invalid_source_raises_error(
-        self, sample_node_rendered: MockNode, mock_context: Mock
+        self,
+        sample_node_rendered: MockNode,
+        mock_context: Mock,
     ) -> None:
         """Test that invalid source raises ValueError."""
         accessor = PropertyAccessor(context=mock_context)
@@ -430,14 +461,11 @@ class TestPropertyAccessorIntegration:
     @pytest.mark.skip(reason="Demo project fixture not yet set up")
     def test_access_with_demo_project(self, demo_project: Path) -> None:
         """Test property accessor with the demo_duckdb project."""
-        pass
 
     @pytest.mark.skip(reason="Demo project fixture not yet set up")
     def test_source_definitions(self, demo_project: Path) -> None:
         """Test accessing properties from source definitions."""
-        pass
 
     @pytest.mark.skip(reason="Demo project fixture not yet set up")
     def test_seed_definitions(self, demo_project: Path) -> None:
         """Test accessing properties from seed definitions."""
-        pass

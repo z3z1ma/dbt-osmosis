@@ -43,6 +43,7 @@ class MockColumn:
         Args:
             name: Column name
             meta: Optional metadata dictionary for the column
+
         """
         self.name = name
         self.meta = meta or {}
@@ -61,6 +62,7 @@ class MockConfig:
         Args:
             extra: Optional extra configuration dictionary
             meta: Optional meta configuration dictionary (dbt 1.10+)
+
         """
         self.extra = extra or {}
         self.meta = meta or {}
@@ -85,6 +87,7 @@ class MockNode:
             config_meta: Optional config.meta dictionary (dbt 1.10+)
             columns: Optional dictionary of columns
             unique_id: Unique identifier for the node
+
         """
         self.meta = meta or {}
         self.config = MockConfig(config_extra, config_meta)
@@ -101,6 +104,7 @@ def sample_project_dir(tmp_path: Path) -> Path:
 
     Returns:
         Path to the temporary project directory
+
     """
     project_dir = tmp_path / "test_project"
     project_dir.mkdir()
@@ -120,7 +124,7 @@ vars:
     skip-add-tags: true
     yaml_settings:
       map_indent: 2
-"""
+""",
     )
 
     return project_dir
@@ -132,6 +136,7 @@ def sample_node_with_config() -> MockNode:
 
     Returns:
         MockNode with populated configuration across multiple sources
+
     """
     return MockNode(
         meta={
@@ -262,7 +267,7 @@ class TestConfigResolver:
                 "dbt_osmosis": {
                     "output-to-lower": False,
                 },
-            }
+            },
         )
 
         source = ProjectVarsSource(mock_context)
@@ -288,7 +293,7 @@ class TestConfigResolver:
                     "skip-add-tags": True,
                     "skip_add_tags": False,
                 },
-            }
+            },
         )
 
         source = ProjectVarsSource(mock_context)
@@ -308,7 +313,7 @@ yaml-settings:
   map_indent: 2
 dbt-osmosis-options:
   output-to-lower: false
-"""
+""",
         )
 
         # Create a mock context with project_dir
@@ -372,7 +377,7 @@ dbt-osmosis-options:
         mock_context.project.runtime_cfg.vars.to_dict = Mock(
             return_value={
                 "dbt-osmosis": {"test-setting": "project-vars"},
-            }
+            },
         )
         mock_context.project.runtime_cfg.project_root = Path()
 
@@ -801,7 +806,8 @@ class TestColumnLevelConfigurationOverride:
         assert chain[1][1] == "node_value"
 
     def test_integration_with_demo_duckdb_column_configs(
-        self, yaml_context: YamlRefactorContext
+        self,
+        yaml_context: YamlRefactorContext,
     ) -> None:
         """T061: Integration test with demo_duckdb column configs.
 
@@ -830,7 +836,9 @@ class TestColumnLevelConfigurationOverride:
 
         # Test 1: order_id column has override to True
         order_id_output_lower = resolver.resolve(
-            "output-to-lower", orders_node, column_name="order_id"
+            "output-to-lower",
+            orders_node,
+            column_name="order_id",
         )
         assert order_id_output_lower is True, (
             "order_id column should have output-to-lower=True from column meta"
@@ -838,7 +846,9 @@ class TestColumnLevelConfigurationOverride:
 
         # Test 2: customer_id column inherits node-level (False)
         customer_id_output_lower = resolver.resolve(
-            "output-to-lower", orders_node, column_name="customer_id"
+            "output-to-lower",
+            orders_node,
+            column_name="customer_id",
         )
         assert customer_id_output_lower is False, (
             "customer_id column should inherit output-to-lower=False from node meta"
@@ -885,7 +895,7 @@ skip-add-columns: false
 dbt-osmosis-options:
   output-to-lower: false
   numeric-precision-and-scale: true
-"""
+""",
         )
 
         # Create a mock context with project_dir
@@ -914,7 +924,7 @@ dbt-osmosis-options:
             """
 skip-add-tags: true
 output-to-lower: false
-"""
+""",
         )
 
         # Create project vars with lower precedence value
@@ -928,8 +938,8 @@ output-to-lower: false
                 "dbt-osmosis": {
                     "skip-add-tags": False,  # Lower precedence
                     "output-to-lower": True,  # Lower precedence
-                }
-            }
+                },
+            },
         )
 
         # Supplementary file should take precedence over project vars
@@ -952,7 +962,7 @@ output-to-lower: false
             """
 skip-add-tags: false
 output-to-lower: true
-"""
+""",
         )
 
         # Create a mock context
@@ -1012,7 +1022,7 @@ yaml_settings:
   map_indent: 2
     sequence_indent: 4  # Invalid indentation
 skip-add-tags: true
-"""
+""",
         )
 
         # Create a mock context
@@ -1044,7 +1054,7 @@ yaml_settings:
   map_indent: 2
   - invalid YAML sequence in mapping
 skip-add-tags: [unclosed list
-"""
+""",
         )
 
         mock_context = Mock()
@@ -1118,7 +1128,7 @@ skip-add-tags: [unclosed list
             """
 # This is a comment
 # Another comment
-"""
+""",
         )
 
         mock_context = Mock()
@@ -1139,7 +1149,7 @@ skip-add-tags: [unclosed list
         config_file.write_text(
             """
 test-setting: "supplementary-file"
-"""
+""",
         )
 
         # Create project vars
@@ -1149,7 +1159,7 @@ test-setting: "supplementary-file"
         mock_context.project.runtime_cfg.project_root = tmp_path
         mock_context.project.runtime_cfg.vars = Mock()
         mock_context.project.runtime_cfg.vars.to_dict = Mock(
-            return_value={"dbt-osmosis": {"test-setting": "project-vars"}}
+            return_value={"dbt-osmosis": {"test-setting": "project-vars"}},
         )
 
         # Verify sources individually

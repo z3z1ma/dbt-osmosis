@@ -9,21 +9,21 @@ from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDef
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
-    "_build_node_ancestor_tree",
-    "_get_node_yaml",
-    "_build_column_knowledge_graph",
-    "_collect_column_variants",
-    "_get_unrendered",
-    "_build_graph_edge",
-    "_clean_graph_edge",
-    "_find_matching_column",
-    "_merge_graph_node_data",
     "_apply_progenitor_overrides",
-    "_get_progenitor_override",
+    "_build_column_knowledge_graph",
+    "_build_graph_edge",
+    "_build_node_ancestor_tree",
+    "_clean_graph_edge",
+    "_collect_column_variants",
+    "_find_matching_column",
     "_get_inherited_metadata_from_progenitor",
+    "_get_node_yaml",
+    "_get_progenitor_override",
+    "_get_unrendered",
+    "_merge_graph_node_data",
 ]
 
 
@@ -80,7 +80,8 @@ def _build_node_ancestor_tree(
 
 
 def _get_node_yaml(
-    context: YamlRefactorContextProtocol, member: ResultNode
+    context: YamlRefactorContextProtocol,
+    member: ResultNode,
 ) -> MappingProxyType[str, t.Any] | None:
     """Get a read-only view of the parsed YAML for a dbt model or source node."""
     from pathlib import Path
@@ -95,7 +96,7 @@ def _get_node_yaml(
             return None
         path = project_dir.joinpath(member.original_file_path)
         sources = t.cast(
-            list[dict[str, t.Any]],
+            "list[dict[str, t.Any]]",
             _read_yaml(context.yaml_handler, context.yaml_handler_lock, path).get("sources", []),
         )
         source = _find_first(sources, lambda s: s["name"] == member.source_name, {})
@@ -110,7 +111,7 @@ def _get_node_yaml(
         path = project_dir.joinpath(member.patch_path.split("://")[-1])
         section = f"{member.resource_type}s"
         models = t.cast(
-            list[dict[str, t.Any]],
+            "list[dict[str, t.Any]]",
             _read_yaml(context.yaml_handler, context.yaml_handler_lock, path).get(section, []),
         )
         maybe_doc = _find_first(models, lambda model: model["name"] == member.name)
@@ -121,7 +122,8 @@ def _get_node_yaml(
 
 
 def _collect_column_variants(
-    context: YamlRefactorContextProtocol, node: ResultNode
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
 ) -> dict[str, list[str]]:
     """Collect column variants from node columns and plugins."""
     from dbt_osmosis.core.plugins import get_plugin_manager
@@ -131,7 +133,7 @@ def _collect_column_variants(
     for column_name, _ in node.columns.items():
         variants = node_column_variants.setdefault(column_name, [column_name])
         for v in pm.hook.get_candidates(name=column_name, node=node, context=context.project):
-            variants.extend(t.cast(list[str], v))
+            variants.extend(t.cast("list[str]", v))
 
     return node_column_variants
 
@@ -145,7 +147,7 @@ def _get_unrendered(
 ) -> t.Any:
     """Get unrendered value for a column from ancestor YAML."""
     raw_yaml: t.Mapping[str, t.Any] = _get_node_yaml(context, ancestor) or {}
-    raw_columns = t.cast(list[dict[str, t.Any]], raw_yaml.get("columns", []))
+    raw_columns = t.cast("list[dict[str, t.Any]]", raw_yaml.get("columns", []))
     from dbt_osmosis.core.introspection import _find_first, normalize_column_name
 
     raw_column_metadata = _find_first(
@@ -189,7 +191,11 @@ def _build_graph_edge(
         fallback=context.settings.use_unrendered_descriptions,
     ):
         if unrendered_description := _get_unrendered(
-            context, "description", name, ancestor, node_column_variants
+            context,
+            "description",
+            name,
+            ancestor,
+            node_column_variants,
         ):
             graph_edge["description"] = unrendered_description
 
@@ -202,7 +208,11 @@ def _build_graph_edge(
     ):
         current_val = graph_edge.get(inheritable)
         if incoming_unrendered_val := _get_unrendered(
-            context, inheritable, name, ancestor, node_column_variants
+            context,
+            inheritable,
+            name,
+            ancestor,
+            node_column_variants,
         ):
             graph_edge[inheritable] = incoming_unrendered_val
         elif incoming_val := graph_edge.pop(inheritable, current_val):
@@ -305,12 +315,13 @@ def _get_progenitor_override(
 
     Returns:
         The unique_id of the override progenitor, or None
+
     """
     from dbt_osmosis.core.introspection import _find_first
 
     # Check for column-level override first (highest priority)
     if node_yaml:
-        columns = t.cast(list[dict[str, t.Any]], node_yaml.get("columns", []))
+        columns = t.cast("list[dict[str, t.Any]]", node_yaml.get("columns", []))
         column_meta = _find_first(columns, lambda c: c.get("name") == column_name, {})
         column_default_progenitor = column_meta.get("meta", {}).get("column_default_progenitor")
         if column_default_progenitor:
@@ -343,9 +354,11 @@ def _get_inherited_metadata_from_progenitor(
 
     Returns:
         Dictionary of inherited metadata, or None if progenitor not found
+
     """
     progenitor = context.project.manifest.nodes.get(
-        progenitor_id, context.project.manifest.sources.get(progenitor_id)
+        progenitor_id,
+        context.project.manifest.sources.get(progenitor_id),
     )
     if not isinstance(progenitor, (SourceDefinition, SeedNode, ModelNode)):
         return None
@@ -357,7 +370,12 @@ def _get_inherited_metadata_from_progenitor(
 
     # Build graph edge from progenitor
     graph_edge = _build_graph_edge(
-        context, node, column_name, incoming, progenitor, node_column_variants
+        context,
+        node,
+        column_name,
+        incoming,
+        progenitor,
+        node_column_variants,
     )
 
     return graph_edge
@@ -384,6 +402,7 @@ def _apply_progenitor_overrides(
         progenitor_alternatives: Map of column name to list of potential progenitors
         node_yaml: The parsed YAML for the node
         node_column_variants: Column name variants
+
     """
     from dbt_osmosis.core.introspection import _find_first
 
@@ -415,7 +434,11 @@ def _apply_progenitor_overrides(
 
         # Get inherited metadata from the override progenitor
         inherited = _get_inherited_metadata_from_progenitor(
-            context, node, column_name, override_progenitor, node_column_variants
+            context,
+            node,
+            column_name,
+            override_progenitor,
+            node_column_variants,
         )
 
         if not inherited:
@@ -433,7 +456,8 @@ def _apply_progenitor_overrides(
 
         # Update progenitor in meta
         graph_node.setdefault("meta", {})["osmosis_progenitor"] = inherited.get("meta", {}).get(
-            "osmosis_progenitor", override_progenitor
+            "osmosis_progenitor",
+            override_progenitor,
         )
 
         # Preserve column_default_progenitor if it was the reason for this change
@@ -449,7 +473,8 @@ def _apply_progenitor_overrides(
 
 
 def _build_column_knowledge_graph(
-    context: YamlRefactorContextProtocol, node: ResultNode
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
 ) -> dict[str, dict[str, t.Any]]:
     """Generate a column knowledge graph for a dbt model or source node."""
     tree = _build_node_ancestor_tree(context.project.manifest, node)
@@ -492,7 +517,8 @@ def _build_column_knowledge_graph(
 
         for ancestor_uid in ancestors:
             ancestor = context.project.manifest.nodes.get(
-                ancestor_uid, context.project.manifest.sources.get(ancestor_uid)
+                ancestor_uid,
+                context.project.manifest.sources.get(ancestor_uid),
             )
             if not isinstance(ancestor, (SourceDefinition, SeedNode, ModelNode)):
                 continue
@@ -558,7 +584,12 @@ def _build_column_knowledge_graph(
 
                 # Build graph edge with inheritance applied
                 graph_edge = _build_graph_edge(
-                    context, node, name, incoming, ancestor, node_column_variants
+                    context,
+                    node,
+                    name,
+                    incoming,
+                    ancestor,
+                    node_column_variants,
                 )
 
                 # Clean up empty values and placeholders

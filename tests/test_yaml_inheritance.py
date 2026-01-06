@@ -50,7 +50,9 @@ dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip
     ],
 )
 def test_build_node_ancestor_tree(
-    yaml_context: YamlRefactorContext, node_id: str, expected_tree: dict[str, list[str]]
+    yaml_context: YamlRefactorContext,
+    node_id: str,
+    expected_tree: dict[str, list[str]],
 ):
     """Test the build node ancestor tree functionality."""
     manifest = yaml_context.project.manifest
@@ -73,7 +75,7 @@ def test_build_node_ancestor_tree(
                     "description": "I will be inherited, forcibly so :)",
                     "meta": {"a": 1, "b": 2},
                     "tags": ["foo", "bar"],
-                }
+                },
             },
             {
                 "description": "I was steadfast and unyielding",
@@ -94,7 +96,7 @@ def test_build_node_ancestor_tree(
                     "description": "I will be inherited, forcibly so :)",
                     "meta": {"a": 1, "b": 2},
                     "tags": ["foo", "bar"],
-                }
+                },
             },
             {
                 "description": "I will be inherited, forcibly so :)",
@@ -115,7 +117,7 @@ def test_build_node_ancestor_tree(
                     "description": "I will not be inherited, since the customer table documents me",
                     "meta": {"a": 1},
                     "tags": ["foo", "bar"],
-                }
+                },
             },
             {
                 "description": "I was steadfast and unyielding",
@@ -131,7 +133,7 @@ def test_build_node_ancestor_tree(
                     "description": "{{ doc('stg_customer_description') }}",
                     "meta": {"d": 4},
                     "tags": ["rendered", "unrendered"],
-                }
+                },
             },
             {
                 "description": "{{ doc('stg_customer_description') }}",
@@ -148,7 +150,7 @@ def test_build_node_ancestor_tree(
                     "meta": {"e": 5},
                     "tags": ["constrainted"],
                     "quote": True,
-                }
+                },
             },
             {
                 "description": "I was steadfast and unyielding",
@@ -163,7 +165,7 @@ def test_build_node_ancestor_tree(
             {
                 "stg_customers.v1.customer_id": {
                     "name": "WTF",
-                }
+                },
             },
             {
                 "name": "wtf",
@@ -186,7 +188,7 @@ def test_build_node_ancestor_tree(
                     "meta": {"a": 1},
                     "tags": ["foo", "bar"],
                     "_extra": {"policy_tags": ["pii_main"]},
-                }
+                },
             },
             {
                 "description": "I will prevail",
@@ -261,7 +263,9 @@ def test_inherit_upstream_column_knowledge_with_various_settings(
     ],
 )
 def test_use_unrendered_descriptions(
-    yaml_context: YamlRefactorContext, use_unrendered_descriptions: bool, expected_start: str
+    yaml_context: YamlRefactorContext,
+    use_unrendered_descriptions: bool,
+    expected_start: str,
 ):
     """Test the handling of unrendered descriptions."""
     manifest = yaml_context.project.manifest
@@ -360,7 +364,7 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
         },
     }
     if dbt_version >= Version("1.9.0"):
-        for column in expect.keys():
+        for column in expect:
             expect[column]["granularity"] = None
 
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]

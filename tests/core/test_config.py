@@ -17,8 +17,7 @@ from dbt_osmosis.core.settings import YamlRefactorContext
 
 
 def test_discover_project_dir(tmp_path):
-    """
-    Ensures discover_project_dir falls back properly if no environment
+    """Ensures discover_project_dir falls back properly if no environment
     variable is set and no dbt_project.yml is found in parents.
     """
     original_cwd = os.getcwd()
@@ -31,8 +30,7 @@ def test_discover_project_dir(tmp_path):
 
 
 def test_discover_profiles_dir(tmp_path):
-    """
-    Ensures discover_profiles_dir falls back to ~/.dbt
+    """Ensures discover_profiles_dir falls back to ~/.dbt
     if no DBT_PROFILES_DIR is set and no local profiles.yml is found.
     """
     original_cwd = os.getcwd()
@@ -45,9 +43,7 @@ def test_discover_profiles_dir(tmp_path):
 
 
 def test_config_to_namespace():
-    """
-    Tests that DbtConfiguration is properly converted to argparse.Namespace.
-    """
+    """Tests that DbtConfiguration is properly converted to argparse.Namespace."""
     cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb", target="dev")
     ns = config_to_namespace(cfg)
     assert ns.project_dir == "demo_duckdb"
@@ -56,15 +52,12 @@ def test_config_to_namespace():
 
 
 def test_reload_manifest(yaml_context: YamlRefactorContext):
-    """
-    Basic check that _reload_manifest doesn't raise, given a real project.
-    """
+    """Basic check that _reload_manifest doesn't raise, given a real project."""
     _reload_manifest(yaml_context.project)
 
 
 def test_adapter_ttl_expiration(yaml_context: YamlRefactorContext):
-    """
-    Check that if the TTL is expired, we refresh the connection in DbtProjectContext.adapter.
+    """Check that if the TTL is expired, we refresh the connection in DbtProjectContext.adapter.
     We patch time.time to simulate a large jump.
     """
     project_ctx = yaml_context.project

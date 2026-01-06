@@ -30,7 +30,10 @@ def mock_manifest() -> Manifest:
 
     # Helper function to create column mocks
     def _make_column(
-        name: str, description: str = "", tags: list | None = None, meta: dict | None = None
+        name: str,
+        description: str = "",
+        tags: list | None = None,
+        meta: dict | None = None,
     ):
         col = mock.Mock()
         col.name = name
@@ -44,7 +47,7 @@ def mock_manifest() -> Manifest:
                 "description": description,
                 "tags": tags or [],
                 "meta": meta or {},
-            }
+            },
         )
         return col
 
@@ -109,7 +112,7 @@ def mock_manifest() -> Manifest:
         "order_date": _make_column("order_date"),
     }
     fct_orders.depends_on = mock.Mock(
-        nodes=["model.my_project.int_users", "model.my_project.stg_orders"]
+        nodes=["model.my_project.int_users", "model.my_project.stg_orders"],
     )
     fct_orders.depends_on_nodes = ["model.my_project.int_users", "model.my_project.stg_orders"]
     fct_orders.description = "Orders fact table"
@@ -226,7 +229,8 @@ def test_build_ancestor_tree_multiple_parents(mock_manifest: Manifest) -> None:
 
 
 def test_build_ancestor_tree_circular_dependency(
-    mock_manifest: Manifest, caplog: pytest.LogCaptureFixture
+    mock_manifest: Manifest,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test that circular dependencies are detected and handled gracefully."""
     import logging
@@ -248,7 +252,8 @@ def test_build_ancestor_tree_circular_dependency(
 
 
 def test_build_ancestor_tree_max_depth(
-    mock_manifest: Manifest, caplog: pytest.LogCaptureFixture
+    mock_manifest: Manifest,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test that max depth limit prevents unbounded recursion."""
     import logging
@@ -289,7 +294,7 @@ def test_build_ancestor_tree_filters_non_model_deps(mock_manifest: Manifest) -> 
         nodes=[
             "model.my_project.stg_users",  # Should be included
             "test.my_project.some_test",  # Should be filtered out
-        ]
+        ],
     )
     node.meta = {}
     node.config = mock.Mock(extra={})

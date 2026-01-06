@@ -3,13 +3,11 @@
 import tempfile
 from pathlib import Path
 
-from dbt_osmosis.core.schema.parser import OsmosisYAML, create_yaml_instance
+from dbt_osmosis.core.schema.parser import create_yaml_instance
 
 
 def test_create_yaml_instance_settings():
-    """
-    Quick check that create_yaml_instance returns a configured YAML object with custom indenting.
-    """
+    """Quick check that create_yaml_instance returns a configured YAML object with custom indenting."""
     y = create_yaml_instance(indent_mapping=4, indent_sequence=2, indent_offset=0)
     assert y.map_indent == 4
     assert y.sequence_indent == 2
@@ -19,8 +17,7 @@ def test_create_yaml_instance_settings():
 
 
 def test_yaml_parser_preserves_unit_tests():
-    """
-    Test that OsmosisYAML preserves the unit_tests section when loading YAML files.
+    """Test that OsmosisYAML preserves the unit_tests section when loading YAML files.
     Regression test for https://github.com/z3z1ma/dbt-osmosis/issues/293
     """
     yaml_content = """version: 2
@@ -52,9 +49,7 @@ unit_tests:
 
 
 def test_yaml_parser_filters_unwanted_keys():
-    """
-    Test that OsmosisYAML filters out keys not relevant to dbt-osmosis.
-    """
+    """Test that OsmosisYAML filters out keys not relevant to dbt-osmosis."""
     yaml_content = """version: 2
 
 models:

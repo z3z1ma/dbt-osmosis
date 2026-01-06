@@ -196,7 +196,7 @@ class ModelNodeProtocol(ResultNodeProtocol, t.Protocol):
     Extends ResultNode with model-specific properties.
     """
 
-    version: t.Union[int, str, float, None]
+    version: int | str | float | None
     alias: str
 
     @property
@@ -228,14 +228,14 @@ class SeedNodeProtocol(ResultNodeProtocol, t.Protocol):
 
 # Export all protocols
 __all__ = [
+    "ColumnInfoProtocol",
     "DbtAdapterProtocol",
-    "DbtRuntimeConfigProtocol",
     "DbtManifestProtocol",
     "DbtProjectContextProtocol",
-    "YamlRefactorContextProtocol",
-    "ColumnInfoProtocol",
-    "ResultNodeProtocol",
+    "DbtRuntimeConfigProtocol",
     "ModelNodeProtocol",
-    "SourceDefinitionProtocol",
+    "ResultNodeProtocol",
     "SeedNodeProtocol",
+    "SourceDefinitionProtocol",
+    "YamlRefactorContextProtocol",
 ]

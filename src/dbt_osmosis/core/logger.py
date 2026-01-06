@@ -13,11 +13,11 @@ import rich
 from rich.logging import RichHandler
 
 __all__ = [
-    "get_rotating_log_handler",
-    "get_logger",
     "LOGGER",
-    "set_log_level",
     "LogMethod",
+    "get_logger",
+    "get_rotating_log_handler",
+    "set_log_level",
 ]
 
 _LOG_FILE_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
@@ -41,7 +41,7 @@ def get_rotating_log_handler(name: str, path: Path, formatter: str) -> RotatingF
 @lru_cache(maxsize=10)
 def get_logger(
     name: str = "dbt-osmosis",
-    level: t.Union[int, str] = _LOGGING_LEVEL,
+    level: int | str = _LOGGING_LEVEL,
     path: Path = _LOG_PATH,
     formatter: str = _LOG_FILE_FORMAT,
 ) -> logging.Logger:
@@ -57,6 +57,7 @@ def get_logger(
 
     Returns:
         logging.Logger: Prepared logger with rotating logs and console streaming. Can be executed directly from function.
+
     """
     if isinstance(level, str):
         level = getattr(logging, level, logging.INFO)
@@ -70,7 +71,7 @@ def get_logger(
             rich_tracebacks=True,
             markup=True,
             show_time=False,
-        )
+        ),
     )
     logger.propagate = False
     return logger
@@ -80,7 +81,7 @@ LOGGER = get_logger()
 """Default logger for dbt-osmosis"""
 
 
-def set_log_level(level: t.Union[int, str]) -> None:
+def set_log_level(level: int | str) -> None:
     """Set the log level for the default logger"""
     global LOGGER
     if isinstance(level, str):

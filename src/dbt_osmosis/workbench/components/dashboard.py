@@ -43,7 +43,13 @@ class Dashboard:
             return {}
 
         def __init__(
-            self, board: Dashboard, x: int, y: int, w: int, h: int, **item_props: t.Any
+            self,
+            board: Dashboard,
+            x: int,
+            y: int,
+            w: int,
+            h: int,
+            **item_props: t.Any,
         ) -> None:
             self._key: str = str(uuid4())
             self._draggable_class: str = Dashboard.DRAGGABLE_CLASS
@@ -73,7 +79,9 @@ class Dashboard:
                         _ = mui.IconButton(mui.icon.DarkMode, onClick=self._switch_theme)
                     else:
                         _ = mui.IconButton(
-                            mui.icon.LightMode, sx={"color": "#ffc107"}, onClick=self._switch_theme
+                            mui.icon.LightMode,
+                            sx={"color": "#ffc107"},
+                            onClick=self._switch_theme,
                         )
 
         @abstractmethod

@@ -16,7 +16,7 @@ if t.TYPE_CHECKING:
         YamlRefactorContextProtocol,
     )
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
     "TransformOperation",
@@ -25,9 +25,9 @@ __all__ = [
     "inherit_upstream_column_knowledge",
     "inject_missing_columns",
     "remove_columns_not_in_database",
-    "sort_columns_as_in_database",
     "sort_columns_alphabetically",
     "sort_columns_as_configured",
+    "sort_columns_as_in_database",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
     "apply_semantic_analysis",
@@ -174,7 +174,7 @@ class TransformPipeline:
             logger.warning(
                 ":warning: Using 'defer' commit mode with atexit.register. "
                 "This may cause issues if locks are held during shutdown. "
-                "Consider using 'batch' or 'atomic' mode instead."
+                "Consider using 'batch' or 'atomic' mode instead.",
             )
             _ = atexit.register(_commit)
 
@@ -213,7 +213,8 @@ def inherit_upstream_column_knowledge(
             (
                 n
                 for _, n in _iter_candidate_nodes(
-                    context, include_external=context.settings.include_external
+                    context,
+                    include_external=context.settings.include_external,
                 )
             ),
         ):
@@ -233,11 +234,17 @@ def inherit_upstream_column_knowledge(
             continue
         inheritable = ["description"]
         if not _get_setting_for_node(
-            "skip-add-tags", node, name, fallback=context.settings.skip_add_tags
+            "skip-add-tags",
+            node,
+            name,
+            fallback=context.settings.skip_add_tags,
         ):
             inheritable.append("tags")
         if not _get_setting_for_node(
-            "skip-merge-meta", node, name, fallback=context.settings.skip_merge_meta
+            "skip-merge-meta",
+            node,
+            name,
+            fallback=context.settings.skip_merge_meta,
         ):
             inheritable.append("meta")
         for extra in _get_setting_for_node(
@@ -282,14 +289,17 @@ def inherit_upstream_column_knowledge(
 
         updated_metadata = {k: v for k, v in kwargs.items() if v is not None and k in inheritable}
         logger.debug(
-            ":star2: Inheriting updated metadata => %s for column => %s", updated_metadata, name
+            ":star2: Inheriting updated metadata => %s for column => %s",
+            updated_metadata,
+            name,
         )
         node.columns[name] = node_column.replace(**updated_metadata)
 
 
 @_transform_op("Inject Missing Columns")
 def inject_missing_columns(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
 ) -> None:
     """Add missing columns to a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.introspection import _get_setting_for_node, get_columns
@@ -308,7 +318,9 @@ def inject_missing_columns(
         return
     if (
         _get_setting_for_node(
-            "skip-add-source-columns", node, fallback=context.settings.skip_add_source_columns
+            "skip-add-source-columns",
+            node,
+            fallback=context.settings.skip_add_source_columns,
         )
         and node.resource_type == NodeType.Source
     ):
@@ -331,7 +343,9 @@ def inject_missing_columns(
             )
             gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
             if (dtype := incoming_meta.type) and not _get_setting_for_node(
-                "skip-add-data-types", node, fallback=context.settings.skip_add_data_types
+                "skip-add-data-types",
+                node,
+                fallback=context.settings.skip_add_data_types,
             ):
                 if context.settings.output_to_upper:
                     gen_col["data_type"] = dtype.upper()
@@ -346,7 +360,8 @@ def inject_missing_columns(
 
 @_transform_op("Remove Extra Columns")
 def remove_columns_not_in_database(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
 ) -> None:
     """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.introspection import get_columns, normalize_column_name
@@ -383,7 +398,8 @@ def remove_columns_not_in_database(
 
 @_transform_op("Sort Columns in DB Order")
 def sort_columns_as_in_database(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.introspection import get_columns, normalize_column_name
@@ -408,7 +424,7 @@ def sort_columns_as_in_database(
 
     def _position(column: str) -> int:
         inc = incoming_columns.get(
-            normalize_column_name(column, context.project.runtime_cfg.credentials.type)
+            normalize_column_name(column, context.project.runtime_cfg.credentials.type),
         )
         if inc is None or inc.index is None:
             return 99_999
@@ -419,7 +435,8 @@ def sort_columns_as_in_database(
 
 @_transform_op("Sort Columns Alphabetically")
 def sort_columns_alphabetically(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section alphabetically. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
@@ -438,7 +455,8 @@ def sort_columns_alphabetically(
 
 @_transform_op("Sort Columns")
 def sort_columns_as_configured(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
 ) -> None:
     from dbt_osmosis.core.introspection import _get_setting_for_node
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
@@ -462,7 +480,8 @@ def sort_columns_as_configured(
 
 @_transform_op("Synchronize Data Types")
 def synchronize_data_types(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
 ) -> None:
     """Populate data types for columns in a dbt node and it's corresponding yaml section. Changes are implicitly buffered until commit_yamls is called."""
     from dbt_osmosis.core.introspection import (
@@ -475,7 +494,8 @@ def synchronize_data_types(
     if node is None:
         logger.info(":wave: Populating data types across all matched nodes.")
         for _ in context.pool.map(
-            partial(synchronize_data_types, context), (n for _, n in _iter_candidate_nodes(context))
+            partial(synchronize_data_types, context),
+            (n for _, n in _iter_candidate_nodes(context)),
         ):
             ...
         return
@@ -485,17 +505,26 @@ def synchronize_data_types(
         return
     for name, column in node.columns.items():
         if _get_setting_for_node(
-            "skip-add-data-types", node, name, fallback=context.settings.skip_add_data_types
+            "skip-add-data-types",
+            node,
+            name,
+            fallback=context.settings.skip_add_data_types,
         ):
             continue
         lowercase = _get_setting_for_node(
-            "output-to-lower", node, name, fallback=context.settings.output_to_lower
+            "output-to-lower",
+            node,
+            name,
+            fallback=context.settings.output_to_lower,
         )
         uppercase = _get_setting_for_node(
-            "output-to-upper", node, name, fallback=context.settings.output_to_upper
+            "output-to-upper",
+            node,
+            name,
+            fallback=context.settings.output_to_upper,
         )
         if inc_c := incoming_columns.get(
-            normalize_column_name(name, context.project.runtime_cfg.credentials.type)
+            normalize_column_name(name, context.project.runtime_cfg.credentials.type),
         ):
             is_lower = column.data_type and column.data_type.islower()
             if inc_c.type:
@@ -507,9 +536,9 @@ def synchronize_data_types(
                     column.data_type = inc_c.type
 
 
-@_transform_op("Synthesize Missing Documentation")
 def _collect_upstream_documents(
-    node: ResultNode, context: YamlRefactorContextProtocol
+    node: ResultNode,
+    context: YamlRefactorContextProtocol,
 ) -> list[str]:
     """Collect upstream documentation from dependency nodes.
 
@@ -519,15 +548,16 @@ def _collect_upstream_documents(
 
     Returns:
         List of strings containing upstream documentation
+
     """
     import textwrap
 
     node_map = ChainMap(
-        t.cast(dict[str, ResultNode], context.project.manifest.nodes),
-        t.cast(dict[str, ResultNode], context.project.manifest.sources),
+        t.cast("dict[str, ResultNode]", context.project.manifest.nodes),
+        t.cast("dict[str, ResultNode]", context.project.manifest.sources),
     )
     upstream_docs: list[str] = ["# The following is not exhaustive, but provides some context."]
-    depends_on_nodes = t.cast(list[str], node.depends_on_nodes)
+    depends_on_nodes = t.cast("list[str]", node.depends_on_nodes)
 
     for i, uid in enumerate(depends_on_nodes):
         dep = node_map.get(uid)
@@ -553,7 +583,9 @@ def _collect_upstream_documents(
 
 
 def _synthesize_bulk_documentation(
-    node: ResultNode, upstream_docs: list[str], context: YamlRefactorContextProtocol
+    node: ResultNode,
+    upstream_docs: list[str],
+    context: YamlRefactorContextProtocol,
 ) -> None:
     """Synthesize documentation in bulk for multiple columns.
 
@@ -561,6 +593,7 @@ def _synthesize_bulk_documentation(
         node: The dbt node to synthesize documentation for
         upstream_docs: List of upstream documentation strings
         context: The YamlRefactorContext instance
+
     """
     from dbt_osmosis.core.llm import generate_model_spec_as_json
 
@@ -596,7 +629,9 @@ def _synthesize_bulk_documentation(
 
 
 def _synthesize_node_documentation(
-    node: ResultNode, upstream_docs: list[str], context: YamlRefactorContextProtocol
+    node: ResultNode,
+    upstream_docs: list[str],
+    context: YamlRefactorContextProtocol,
 ) -> None:
     """Synthesize documentation for the node itself.
 
@@ -604,6 +639,7 @@ def _synthesize_node_documentation(
         node: The dbt node to synthesize documentation for
         upstream_docs: List of upstream documentation strings
         context: The YamlRefactorContext instance
+
     """
     from dbt_osmosis.core.llm import generate_table_doc
 
@@ -624,7 +660,9 @@ def _synthesize_node_documentation(
 
 
 def _synthesize_individual_column_documentation(
-    node: ResultNode, upstream_docs: list[str], context: YamlRefactorContextProtocol
+    node: ResultNode,
+    upstream_docs: list[str],
+    context: YamlRefactorContextProtocol,
 ) -> None:
     """Synthesize documentation for individual columns.
 
@@ -632,6 +670,7 @@ def _synthesize_individual_column_documentation(
         node: The dbt node to synthesize documentation for
         upstream_docs: List of upstream documentation strings
         context: The YamlRefactorContext instance
+
     """
     from dbt_osmosis.core.llm import generate_column_doc
 
@@ -652,7 +691,8 @@ def _synthesize_individual_column_documentation(
 
 
 def synthesize_missing_documentation_with_openai(
-    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
 ) -> None:
     """Synthesize missing documentation for a dbt node using OpenAI's GPT-4o API."""
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
@@ -663,7 +703,7 @@ def synthesize_missing_documentation_with_openai(
         importlib.util.find_spec("dbt_osmosis.core.llm")
     except ImportError:
         raise ImportError(
-            "Please install the 'dbt-osmosis[openai]' extra to use this feature."
+            "Please install the 'dbt-osmosis[openai]' extra to use this feature.",
         ) from None
     if node is None:
         logger.info(":wave: Synthesizing missing documentation across all matched nodes.")
@@ -680,7 +720,8 @@ def synthesize_missing_documentation_with_openai(
     total = len(node.columns)
     if total == 0:
         logger.info(
-            ":no_entry_sign: No columns to synthesize documentation for => %s", node.unique_id
+            ":no_entry_sign: No columns to synthesize documentation for => %s",
+            node.unique_id,
         )
         return
 

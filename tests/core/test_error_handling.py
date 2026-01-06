@@ -48,7 +48,7 @@ models:
     columns:
       - name: column1
       description: "bad indentation - missing dash"
-"""
+""",
         )
 
         with pytest.raises((YAMLError, RuamelYAMLError)):

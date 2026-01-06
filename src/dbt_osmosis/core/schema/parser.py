@@ -4,11 +4,11 @@ from types import MappingProxyType
 
 import ruamel.yaml
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 
 __all__ = [
-    "create_yaml_instance",
     "OsmosisYAML",
+    "create_yaml_instance",
 ]
 
 
@@ -52,6 +52,7 @@ class OsmosisYAML(ruamel.yaml.YAML):
 
         Returns:
             The filtered YAML content, with only relevant keys preserved
+
         """
         # First, parse the YAML file into a standard dictionary using the parent method
         raw_data = super().load(stream)
@@ -100,6 +101,7 @@ def create_yaml_instance(
 
         Returns:
             A YAML scalar node with appropriate style
+
         """
         # https://github.com/commx/ruamel-yaml/blob/280677cf647912c599d8886000020d6ffbbb4216/resolver.py#L32
         if re.match(r"^(y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF)$", data):
@@ -112,7 +114,8 @@ def create_yaml_instance(
         return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
     def mapping_proxy_representer(
-        dumper: ruamel.yaml.RoundTripDumper, data: MappingProxyType
+        dumper: ruamel.yaml.RoundTripDumper,
+        data: MappingProxyType,
     ) -> t.Any:
         """Representer for MappingProxyType to allow dumping read-only dicts.
 

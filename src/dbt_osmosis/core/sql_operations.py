@@ -9,7 +9,7 @@ from dbt.node_types import NodeType
 from dbt.parser.manifest import process_node
 from dbt.task.sql import SqlCompileRunner
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 from dbt_osmosis.core.config import DbtProjectContext
 
 __all__ = [

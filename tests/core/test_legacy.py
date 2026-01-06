@@ -25,9 +25,7 @@ dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip
 
 
 def load_demo_manifest() -> Manifest:
-    """
-    Helper for verifying certain known nodes.
-    """
+    """Helper for verifying certain known nodes."""
     manifest_path = Path("demo_duckdb/target/manifest.json")
     assert manifest_path.is_file(), "Must have a compiled manifest.json in demo_duckdb/target"
     with manifest_path.open("r") as f:
@@ -35,8 +33,7 @@ def load_demo_manifest() -> Manifest:
 
 
 def test_real_manifest_contains_customers():
-    """
-    Quick test ensuring your 'demo_duckdb' project manifest includes 'customers' node
+    """Quick test ensuring your 'demo_duckdb' project manifest includes 'customers' node
     in the expected location (model.jaffle_shop_duckdb.customers).
     """
     manifest = load_demo_manifest()
@@ -44,8 +41,7 @@ def test_real_manifest_contains_customers():
 
 
 def test_backwards_compatibility_imports():
-    """
-    Test that all major functions are available from the main osmosis module.
+    """Test that all major functions are available from the main osmosis module.
     This ensures that existing code using osmosis imports continues to work.
     """
     # Test that key functions are callable (basic smoke test)

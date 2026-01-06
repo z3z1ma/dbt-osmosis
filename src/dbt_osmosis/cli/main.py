@@ -11,7 +11,7 @@ from pathlib import Path
 import click
 import yaml as yaml_handler
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
     YamlRefactorContext,
@@ -49,8 +49,6 @@ _CONTEXT = {"max_content_width": 800}
 def cli() -> None:
     """dbt-osmosis is a CLI tool for dbt that helps you manage, document, and organize your dbt yaml files"""
 
-    pass
-
 
 def test_llm_connection(llm_client=None) -> None:
     """Test the connection to the LLM client."""
@@ -61,19 +59,19 @@ def test_llm_connection(llm_client=None) -> None:
     llm_client = os.getenv("LLM_PROVIDER")
     if not llm_client:
         click.echo(
-            "ERROR: LLM_PROVIDER environment variable is not set. Please set it to one of the available providers."
+            "ERROR: LLM_PROVIDER environment variable is not set. Please set it to one of the available providers.",
         )
         return
 
     client, model_engine = get_llm_client()
     if not client or not model_engine:
         click.echo(
-            f"Connection ERROR: The environment variables for LLM provider {llm_client} are not set correctly."
+            f"Connection ERROR: The environment variables for LLM provider {llm_client} are not set correctly.",
         )
         return
 
     click.echo(
-        f"LLM client connection successful. Provider: {llm_client}, Model Engine: {model_engine}"
+        f"LLM client connection successful. Provider: {llm_client}, Model Engine: {model_engine}",
     )
 
 
@@ -198,7 +196,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         if kwargs.get("disable_introspection") and not kwargs.get("catalog_path"):
             logger.warning(
-                ":construction: You have disabled introspection without providing a catalog path. This will result in some features not working as expected."
+                ":construction: You have disabled introspection without providing a catalog path. This will result in some features not working as expected.",
             )
         return func(*args, **kwargs)
 
@@ -318,8 +316,8 @@ def refactor(
     """
     logger.info(":water_wave: Executing dbt-osmosis\n")
     settings = DbtConfiguration(
-        project_dir=t.cast(str, project_dir),
-        profiles_dir=t.cast(str, profiles_dir),
+        project_dir=t.cast("str", project_dir),
+        profiles_dir=t.cast("str", profiles_dir),
         target=target,
         profile=profile,
         threads=threads,
@@ -330,12 +328,15 @@ def refactor(
     with YamlRefactorContext(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
-            **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
+            **{k: v for k, v in kwargs.items() if v is not None},
+            create_catalog_if_not_exists=False,
         ),
     ) as context:
         create_missing_source_yamls(context=context)
         apply_restructure_plan(
-            context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
+            context=context,
+            plan=draft_restructure_delta_plan(context),
+            confirm=not auto_apply,
         )
 
         transform = (
@@ -383,8 +384,8 @@ def organize(
     """
     logger.info(":water_wave: Executing dbt-osmosis\n")
     settings = DbtConfiguration(
-        project_dir=t.cast(str, project_dir),
-        profiles_dir=t.cast(str, profiles_dir),
+        project_dir=t.cast("str", project_dir),
+        profiles_dir=t.cast("str", profiles_dir),
         target=target,
         profile=profile,
         threads=threads,
@@ -395,12 +396,15 @@ def organize(
     with YamlRefactorContext(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
-            **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
+            **{k: v for k, v in kwargs.items() if v is not None},
+            create_catalog_if_not_exists=False,
         ),
     ) as context:
         create_missing_source_yamls(context=context)
         apply_restructure_plan(
-            context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
+            context=context,
+            plan=draft_restructure_delta_plan(context),
+            confirm=not auto_apply,
         )
 
         if check and context.mutated:
@@ -519,8 +523,8 @@ def document(
     """
     logger.info(":water_wave: Executing dbt-osmosis\n")
     settings = DbtConfiguration(
-        project_dir=t.cast(str, project_dir),
-        profiles_dir=t.cast(str, profiles_dir),
+        project_dir=t.cast("str", project_dir),
+        profiles_dir=t.cast("str", profiles_dir),
         target=target,
         profile=profile,
         threads=threads,
@@ -531,7 +535,8 @@ def document(
     with YamlRefactorContext(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
-            **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
+            **{k: v for k, v in kwargs.items() if v is not None},
+            create_catalog_if_not_exists=False,
         ),
     ) as context:
         transform = (
@@ -554,7 +559,7 @@ def document(
     context_settings=dict(
         ignore_unknown_options=True,
         allow_extra_args=True,
-    )
+    ),
 )
 @logging_opts
 @click.option(
@@ -598,7 +603,7 @@ def workbench(
     logger.info(":water_wave: Executing dbt-osmosis\n")
 
     if "--options" in ctx.args:
-        proc = subprocess.run(["streamlit", "run", "--help"])
+        proc = subprocess.run(["streamlit", "run", "--help"], check=False)
         ctx.exit(proc.returncode)
 
     import os
@@ -606,6 +611,7 @@ def workbench(
     if "--config" in ctx.args:
         proc = subprocess.run(
             ["streamlit", "config", "show"],
+            check=False,
             env=os.environ,
             cwd=Path.cwd(),
         )
@@ -630,6 +636,7 @@ def workbench(
             *ctx.args,
             *script_args,
         ],
+        check=False,
         env=os.environ,
         cwd=Path.cwd(),
     )
@@ -650,15 +657,15 @@ def run(
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""
     settings = DbtConfiguration(
-        project_dir=t.cast(str, project_dir),
-        profiles_dir=t.cast(str, profiles_dir),
+        project_dir=t.cast("str", project_dir),
+        profiles_dir=t.cast("str", profiles_dir),
         target=target,
         **kwargs,
     )
     project = create_dbt_project_context(settings)
     _, table = execute_sql_code(project, sql)
 
-    getattr(table, "print_table")(
+    table.print_table(
         max_rows=50,
         max_columns=6,
         output=sys.stdout,
@@ -681,8 +688,8 @@ def compile(
 ) -> None:
     """Executes a dbt SQL statement writing results to stdout"""
     settings = DbtConfiguration(
-        project_dir=t.cast(str, project_dir),
-        profiles_dir=t.cast(str, profiles_dir),
+        project_dir=t.cast("str", project_dir),
+        profiles_dir=t.cast("str", profiles_dir),
         target=target,
         **kwargs,
     )

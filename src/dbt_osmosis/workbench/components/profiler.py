@@ -33,7 +33,8 @@ class Profiler(Dashboard.Item):
                 _ = mui.Typography("Pandas Profiler")
                 if state.app.query_result_df.empty:
                     _ = mui.Typography(
-                        "No data to profile, execute a query first", sx={"color": "text.secondary"}
+                        "No data to profile, execute a query first",
+                        sx={"color": "text.secondary"},
                     )
 
             with mui.Box(sx={"flex": 1, "minHeight": 0}):

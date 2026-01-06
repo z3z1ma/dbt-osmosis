@@ -11,18 +11,18 @@ from dbt.contracts.graph.nodes import ResultNode
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 from dbt_osmosis.core.exceptions import MissingOsmosisConfig, PathResolutionError
 
 __all__ = [
+    "MissingOsmosisConfig",
     "SchemaFileLocation",
     "SchemaFileMigration",
-    "MissingOsmosisConfig",
     "_get_yaml_path_template",
-    "get_current_yaml_path",
-    "get_target_yaml_path",
     "build_yaml_file_mapping",
     "create_missing_source_yamls",
+    "get_current_yaml_path",
+    "get_target_yaml_path",
 ]
 
 
@@ -47,7 +47,7 @@ class SchemaFileMigration:
     """Describes a schema file migration operation."""
 
     output: dict[str, t.Any] = field(
-        default_factory=lambda: {"version": 2, "models": [], "sources": []}
+        default_factory=lambda: {"version": 2, "models": [], "sources": []},
     )
     supersede: dict[Path, list[ResultNode]] = field(default_factory=dict)
 
@@ -85,19 +85,20 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
 
     if not path_template:
         raise MissingOsmosisConfig(
-            f"Config key `+dbt-osmosis:` or var `dbt_osmosis_default_path` not set for model {node.name}"
+            f"Config key `+dbt-osmosis:` or var `dbt_osmosis_default_path` not set for model {node.name}",
         )
     logger.debug(":gear: Resolved YAML path template => %s", path_template)
     return path_template
 
 
 def get_current_yaml_path(
-    context: YamlRefactorContextProtocol, node: ResultNode
-) -> t.Union[Path, None]:
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+) -> Path | None:
     """Get the current yaml path for a dbt model or source node."""
     if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
         path = Path(context.project.runtime_cfg.project_root).joinpath(
-            t.cast(str, node.patch_path).partition("://")[-1]
+            t.cast("str", node.patch_path).partition("://")[-1],
         )
         logger.debug(":page_facing_up: Current YAML path => %s", path)
         return path
@@ -140,14 +141,14 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
 
     rendered = tpl.format(**format_dict)
 
-    segments: list[t.Union[Path, str]] = []
+    segments: list[Path | str] = []
 
     if node.resource_type == NodeType.Source:
         segments.append(context.project.runtime_cfg.model_paths[0])
     elif rendered.startswith("/"):
         segments.append(context.project.runtime_cfg.model_paths[0])
         # SECURITY: Remove only the first leading slash, not all slashes (prevents path traversal)
-        rendered = rendered[1:] if rendered.startswith("/") else rendered
+        rendered = rendered.removeprefix("/")
     else:
         segments.append(path.parent)
 
@@ -161,14 +162,15 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
     project_root = Path(context.project.runtime_cfg.project_root).resolve()
     if not resolved_path.is_relative_to(project_root):
         raise PathResolutionError(
-            f"Security violation: Target YAML path '{resolved_path}' is outside project root '{project_root}'"
+            f"Security violation: Target YAML path '{resolved_path}' is outside project root '{project_root}'",
         )
     logger.debug(":star2: Target YAML path => %s", path)
     return path
 
 
 def build_yaml_file_mapping(
-    context: t.Any, create_missing_sources: bool = False
+    context: t.Any,
+    create_missing_sources: bool = False,
 ) -> dict[str, SchemaFileLocation]:
     """Build a mapping of dbt model and source nodes to their current and target yaml paths."""
     logger.info(":globe_with_meridians: Building YAML file mapping...")
@@ -223,15 +225,16 @@ def create_missing_source_yamls(context: t.Any) -> None:
             schema = source
             src_yaml_path = spec
         elif isinstance(spec, dict):
-            database = t.cast(str, spec.get("database", database))
-            schema = t.cast(str, spec.get("schema", source))
-            src_yaml_path = t.cast(str, spec["path"])
+            database = t.cast("str", spec.get("database", database))
+            schema = t.cast("str", spec.get("schema", source))
+            src_yaml_path = t.cast("str", spec["path"])
         else:
             continue
 
         # Check if source already exists in the manifest
         existing_source_node = _find_first(
-            context.project.manifest.sources.values(), lambda s: s.source_name == source
+            context.project.manifest.sources.values(),
+            lambda s: s.source_name == source,
         )
 
         if existing_source_node:
@@ -258,7 +261,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
         project_root = Path(context.project.runtime_cfg.project_root).resolve()
         if not resolved_path.is_relative_to(project_root):
             raise PathResolutionError(
-                f"Security violation: Source YAML path '{resolved_path}' is outside project root '{project_root}'"
+                f"Security violation: Source YAML path '{resolved_path}' is outside project root '{project_root}'",
             )
 
         def _describe(relation: t.Any) -> dict[str, t.Any]:
@@ -286,13 +289,13 @@ def create_missing_source_yamls(context: t.Any) -> None:
                 ],
             }
             if context.settings.skip_add_data_types:
-                for col in t.cast(list[dict[str, t.Any]], s["columns"]):
+                for col in t.cast("list[dict[str, t.Any]]", s["columns"]):
                     _ = col.pop("data_type", None)
             return s
 
         # Get all tables from the database
         db_relations = list(
-            context.project.adapter.list_relations(database=database, schema=schema)
+            context.project.adapter.list_relations(database=database, schema=schema),
         )
         db_tables = {rel.identifier: _describe(rel) for rel in db_relations}
 
@@ -308,7 +311,9 @@ def create_missing_source_yamls(context: t.Any) -> None:
                 )
                 # Read the existing YAML file
                 existing_doc = _read_yaml(
-                    context.yaml_handler, context.yaml_handler_lock, src_yaml_path_obj
+                    context.yaml_handler,
+                    context.yaml_handler_lock,
+                    src_yaml_path_obj,
                 )
                 # Find the source entry and add new tables
                 for src_entry in existing_doc.get("sources", []):

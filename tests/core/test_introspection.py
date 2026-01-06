@@ -26,9 +26,7 @@ from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 
 @pytest.fixture(scope="function")
 def fresh_caches():
-    """
-    Patches the internal caches so each test starts with a fresh state.
-    """
+    """Patches the internal caches so each test starts with a fresh state."""
     with (
         mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
     ):
@@ -36,9 +34,7 @@ def fresh_caches():
 
 
 def test_get_columns_simple(yaml_context: YamlRefactorContext):
-    """
-    Tests the get_columns flow on a known table, e.g., 'customers'.
-    """
+    """Tests the get_columns flow on a known table, e.g., 'customers'."""
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
     cols = get_columns(yaml_context, node)
     assert "customer_id" in cols
@@ -73,9 +69,7 @@ def test_normalize_column_name_others():
 
 
 def test_maybe_use_precise_dtype_numeric():
-    """
-    Check that _maybe_use_precise_dtype uses the data_type if numeric_precision_and_scale is enabled.
-    """
+    """Check that _maybe_use_precise_dtype uses the data_type if numeric_precision_and_scale is enabled."""
     from dbt.adapters.base.column import Column
 
     col = Column("col1", "DECIMAL(18,3)", None)  # data_type and dtype
@@ -85,8 +79,7 @@ def test_maybe_use_precise_dtype_numeric():
 
 
 def test_maybe_use_precise_dtype_string():
-    """
-    If string_length is True, we use col.data_type (like 'varchar(256)')
+    """If string_length is True, we use col.data_type (like 'varchar(256)')
     instead of col.dtype (which might be 'VARCHAR').
     """
     from dbt.adapters.base.column import Column
@@ -98,8 +91,7 @@ def test_maybe_use_precise_dtype_string():
 
 
 def test_get_setting_for_node_basic():
-    """
-    Check that _get_setting_for_node can read from node.meta, etc.
+    """Check that _get_setting_for_node can read from node.meta, etc.
     We mock the node to have certain meta fields.
     """
     node = mock.Mock()
@@ -107,7 +99,7 @@ def test_get_setting_for_node_basic():
     node.meta = {
         "dbt-osmosis-options": {
             "test-key": "test-value",
-        }
+        },
     }
     # key = "test-key", which means we look for 'dbt-osmosis-options' => "test-key"
     val = _get_setting_for_node("test-key", node=node, col=None, fallback=None)

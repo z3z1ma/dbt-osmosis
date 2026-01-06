@@ -40,7 +40,7 @@ def _ensure_manifest_exists() -> None:
         print(f"✓ Manifest generated at {manifest_path}")
     else:
         raise RuntimeError(
-            f"dbt parse failed: {result.exception if hasattr(result, 'exception') else 'Unknown error'}"
+            f"dbt parse failed: {result.exception if hasattr(result, 'exception') else 'Unknown error'}",
         )
 
     print("=" * 60 + "\n")
