@@ -142,17 +142,8 @@ from dbt_osmosis.core.voice_learning import (
 )
 
 # LLM functions (require openai extra)
-try:
-    from dbt_osmosis.core.llm import (
-        DocumentationSuggestion,
-        generate_style_aware_column_doc,
-        generate_style_aware_table_doc,
-        suggest_documentation_improvements,
-    )
-
-    _llm_available = True
-except ImportError:
-    _llm_available = False
+import importlib.util
+_llm_available = importlib.util.find_spec("openai") is not None
 
 # Note: process_node is imported in sql_operations.py where it's used
 
