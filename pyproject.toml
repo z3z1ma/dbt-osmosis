@@ -29,6 +29,7 @@ dependencies = [
   "rich>=10",
   "pluggy>=1.5.0,<2",
   "mysql-mimic>=2.5.7",
+  "rapidfuzz>=3.0.0",
 ]
 
 [project.optional-dependencies]

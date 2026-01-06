@@ -1280,6 +1280,455 @@ def compile(
 
 
 @cli.group()
+def diff():
+    """Schema diff and change detection for dbt models"""
+
+
+@diff.command(context_settings=_CONTEXT)
+@dbt_opts
+@yaml_opts
+@logging_opts
+@click.option(
+    "-f",
+    "--format",
+    type=click.Choice(["table", "json", "yaml"]),
+    default="table",
+    help="Output format for diff results (default: table).",
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(),
+    help="Write diff results to a file.",
+)
+@click.option(
+    "--fuzzy-threshold",
+    type=click.FLOAT,
+    default=85.0,
+    help="Fuzzy match threshold for detecting column renames (0-100, default: 85).",
+)
+@click.option(
+    "--detect-renames",
+    is_flag=True,
+    default=True,
+    help="Enable fuzzy matching to detect column renames (default: True).",
+)
+@click.option(
+    "--no-detect-renames",
+    is_flag=True,
+    help="Disable fuzzy matching for column rename detection.",
+)
+@handle_errors
+def detect(
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
+    threads: int | None = None,
+    disable_introspection: bool = False,
+    format: str = "table",
+    output: str | None = None,
+    fuzzy_threshold: float = 85.0,
+    detect_renames: bool = True,
+    no_detect_renames: bool = False,
+    **kwargs: t.Any,
+) -> None:
+    """Detect schema changes between YAML definitions and database.
+
+    \f
+    This command compares your dbt YAML schema definitions with the actual
+    database schema to detect changes such as:
+
+    - Columns added in the database but missing in YAML
+    - Columns in YAML but dropped from the database
+    - Column renames (via fuzzy matching)
+    - Data type changes
+    - Breaking vs non-breaking change classification
+
+    Examples:
+
+        # Show diff in table format
+        dbt-osmosis diff detect
+
+        # Output as JSON
+        dbt-osmosis diff detect --format json
+
+        # Save to file
+        dbt-osmosis diff detect --output diff.json
+
+        # Adjust fuzzy threshold for rename detection
+        dbt-osmosis diff detect --fuzzy-threshold 90
+    """
+    import json as json_module
+
+    from dbt_osmosis.core.diff import SchemaDiff
+
+    # Handle rename detection flag
+    if no_detect_renames:
+        detect_renames = False
+
+    logger.info(":mag: Detecting schema changes\n")
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        profile=profile,
+        threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
+        disable_introspection=disable_introspection,
+    )
+
+    with YamlRefactorContext(
+        project=create_dbt_project_context(settings),
+        settings=YamlRefactorSettings(
+            **{k: v for k, v in kwargs.items() if v is not None},
+            create_catalog_if_not_exists=False,
+        ),
+    ) as context:
+        # Run diff
+        differ = SchemaDiff(
+            context,
+            fuzzy_match_threshold=fuzzy_threshold,
+            detect_column_renames=detect_renames,
+        )
+        results = differ.compare_all()
+
+        # Format output
+        if format == "json":
+            output_data = {
+                "timestamp": t.cast(
+                    str, results[next(iter(results))].timestamp.isoformat() if results else None
+                ),
+                "summary": {
+                    "total_nodes": len(results),
+                    "total_changes": sum(len(r.changes) for r in results.values()),
+                    "breaking_changes": sum(len(r.breaking_changes) for r in results.values()),
+                },
+                "nodes": [
+                    {
+                        "node_id": node_id,
+                        "node_name": result.node.name,
+                        "changes": [
+                            {
+                                "category": change.category.value,
+                                "severity": change.severity.value,
+                                "description": change.description,
+                            }
+                            for change in result.changes
+                        ],
+                    }
+                    for node_id, result in results.items()
+                ],
+            }
+            output_str = json_module.dumps(output_data, indent=2)
+
+        elif format == "yaml":
+            output_data = {
+                "timestamp": results[next(iter(results))].timestamp.isoformat()
+                if results
+                else None,
+                "nodes": {
+                    node_id: {
+                        "node_name": result.node.name,
+                        "changes": [
+                            {
+                                "category": change.category.value,
+                                "severity": change.severity.value,
+                                "description": change.description,
+                            }
+                            for change in result.changes
+                        ],
+                    }
+                    for node_id, result in results.items()
+                },
+            }
+            output_str = yaml_handler.dump(output_data, default_flow_style=False)
+
+        else:
+            # Table format (default)
+            lines = []
+            for node_id, result in results.items():
+                lines.append(f"\n{'=' * 60}")
+                lines.append(f"Node: {result.node.name}")
+                lines.append(f"ID: {node_id}")
+                lines.append(
+                    f"Changes: {len(result.changes)} ({len(result.breaking_changes)} breaking)"
+                )
+                lines.append(f"{'=' * 60}")
+
+                if not result.changes:
+                    lines.append("  No changes detected.")
+                    continue
+
+                for change in result.changes:
+                    severity_icon = {
+                        "safe": "✅",
+                        "moderate": "⚠️",
+                        "breaking": "🔴",
+                    }.get(change.severity.value, "❓")
+                    lines.append(f"\n  {severity_icon} {change.description}")
+
+            # Add summary
+            total_changes = sum(len(r.changes) for r in results.values())
+            breaking = sum(len(r.breaking_changes) for r in results.values())
+            lines.append(f"\n{'=' * 60}")
+            lines.append(
+                f"Summary: {len(results)} nodes with {total_changes} changes ({breaking} breaking)"
+            )
+            lines.append(f"{'=' * 60}\n")
+
+            output_str = "\n".join(lines)
+
+        # Write output
+        if output:
+            Path(output).parent.mkdir(parents=True, exist_ok=True)
+            Path(output).write_text(output_str)
+            logger.info(f":white_check_mark: Wrote diff results to: {output}")
+        else:
+            click.echo(output_str)
+
+
+@cli.group()
+def migration():
+    """Migration planning and SQL generation for schema changes"""
+
+
+@migration.command(context_settings=_CONTEXT)
+@dbt_opts
+@yaml_opts
+@logging_opts
+@click.option(
+    "-f",
+    "--format",
+    type=click.Choice(["sql", "json", "markdown"]),
+    default="sql",
+    help="Output format for migration plan (default: sql).",
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(),
+    help="Write migration plan to a file.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Generate migration plan without applying changes.",
+)
+@click.option(
+    "--safe-only",
+    is_flag=True,
+    help="Only include safe changes in the migration plan.",
+)
+@click.option(
+    "--fuzzy-threshold",
+    type=click.FLOAT,
+    default=85.0,
+    help="Fuzzy match threshold for detecting column renames (0-100, default: 85).",
+)
+@click.option(
+    "--no-detect-renames",
+    is_flag=True,
+    help="Disable fuzzy matching for column rename detection.",
+)
+@handle_errors
+def plan(
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
+    threads: int | None = None,
+    disable_introspection: bool = False,
+    format: str = "sql",
+    output: str | None = None,
+    dry_run: bool = False,
+    safe_only: bool = False,
+    fuzzy_threshold: float = 85.0,
+    no_detect_renames: bool = False,
+    **kwargs: t.Any,
+) -> None:
+    """Generate migration SQL for detected schema changes.
+
+    \f
+    This command generates safe migration SQL scripts for schema changes
+    detected between your YAML definitions and the database. It supports:
+
+    - Automatic SQL generation for safe changes
+    - Rollback script generation
+    - Multi-dialect SQL (Snowflake, Postgres, BigQuery, DuckDB, etc.)
+    - Breaking change validation
+
+    Examples:
+
+        # Generate migration SQL
+        dbt-osmosis migration plan
+
+        # Output as markdown documentation
+        dbt-osmosis migration plan --format markdown
+
+        # Save to file
+        dbt-osmosis migration plan --output migration.sql
+
+        # Only include safe changes (skip breaking)
+        dbt-osmosis migration plan --safe-only
+    """
+    from dbt_osmosis.core.diff import SchemaDiff
+    from dbt_osmosis.core.migration import MigrationPlan, MigrationPlanner
+
+    detect_renames = not no_detect_renames
+
+    logger.info(":blue_book: Generating migration plan\n")
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        profile=profile,
+        threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
+        disable_introspection=disable_introspection,
+    )
+
+    with YamlRefactorContext(
+        project=create_dbt_project_context(settings),
+        settings=YamlRefactorSettings(
+            **{k: v for k, v in kwargs.items() if v is not None},
+            create_catalog_if_not_exists=False,
+        ),
+    ) as context:
+        # Run diff
+        differ = SchemaDiff(
+            context,
+            fuzzy_match_threshold=fuzzy_threshold,
+            detect_column_renames=detect_renames,
+        )
+        diff_results = differ.compare_all()
+
+        if not diff_results:
+            click.echo("No schema changes detected.")
+            return
+
+        # Generate migration plans
+        planner = MigrationPlanner(context, dry_run=dry_run)
+        migration_plans = planner.plan_for_results(diff_results)
+
+        # Filter by safe changes if requested
+        if safe_only:
+            for plan_id, plan in list(migration_plans.items()):
+                # Filter out breaking steps
+                safe_steps = plan.safe_steps
+                if not safe_steps:
+                    del migration_plans[plan_id]
+                else:
+                    # Update plan with only safe steps
+                    migration_plans[plan_id] = t.cast(
+                        "type[MigrationPlan]",
+                        t.cast("t.Any", plan).__class__(
+                            node_id=plan.node_id,
+                            node_name=plan.node_name,
+                            steps=safe_steps,
+                            created_at=plan.created_at,
+                        ),
+                    )
+
+        # Generate output
+        if format == "sql":
+            # Combine all plans into one SQL file
+            lines: list[str] = [
+                "-- Migration Plan",
+                f"-- Generated: {t.cast(str, migration_plans[next(iter(migration_plans))].created_at.isoformat() if migration_plans else '')}",
+                f"-- Nodes: {len(migration_plans)}",
+                f"-- Total Steps: {sum(len(p.steps) for p in migration_plans.values())}",
+                "",
+                "-- This migration script contains forward and rollback SQL",
+                "-- Review all steps before applying, especially BREAKING changes",
+                "",
+            ]
+
+            for plan in migration_plans.values():
+                lines.extend([
+                    f"-- Node: {plan.node_name}",
+                    f"-- Steps: {len(plan.steps)} ({len(plan.breaking_steps)} breaking)",
+                    "",
+                ])
+                lines.append(plan.to_sql(include_rollback=True))
+                lines.append("")
+
+            output_str = "\n".join(lines)
+
+        elif format == "markdown":
+            # Combine all plans into one markdown document
+            lines: list[str] = [
+                "# Migration Plan",
+                "",
+                f"**Generated:** {migration_plans[next(iter(migration_plans))].created_at.isoformat() if migration_plans else ''}",
+                f"**Total Nodes:** {len(migration_plans)}",
+                f"**Total Steps:** {sum(len(p.steps) for p in migration_plans.values())}",
+                "",
+                "## Summary",
+                "",
+            ]
+
+            # Add summary table
+            total_safe = sum(len(p.safe_steps) for p in migration_plans.values())
+            total_breaking = sum(len(p.breaking_steps) for p in migration_plans.values())
+            lines.extend([
+                "| Metric | Count |",
+                "|--------|-------|",
+                f"| Safe changes | {total_safe} |",
+                f"| Breaking changes | {total_breaking} |",
+                "",
+                "## Migration Plans",
+                "",
+            ])
+
+            for plan in migration_plans.values():
+                lines.extend([
+                    f"### {plan.node_name}",
+                    "",
+                    plan.to_markdown(),
+                    "",
+                ])
+
+            output_str = "\n".join(lines)
+
+        else:  # json
+            import json as json_module
+
+            output_data = {
+                "timestamp": migration_plans[next(iter(migration_plans))].created_at.isoformat()
+                if migration_plans
+                else None,
+                "summary": {
+                    "total_nodes": len(migration_plans),
+                    "total_steps": sum(len(p.steps) for p in migration_plans.values()),
+                    "safe_steps": sum(len(p.safe_steps) for p in migration_plans.values()),
+                    "breaking_steps": sum(len(p.breaking_steps) for p in migration_plans.values()),
+                },
+                "plans": {plan_id: plan.to_dict() for plan_id, plan in migration_plans.items()},
+            }
+            output_str = json_module.dumps(output_data, indent=2)
+
+        # Write output
+        if output:
+            Path(output).parent.mkdir(parents=True, exist_ok=True)
+            Path(output).write_text(output_str)
+            logger.info(f":white_check_mark: Wrote migration plan to: {output}")
+        else:
+            click.echo(output_str)
+
+        # Log warnings for breaking changes
+        breaking_count = sum(len(p.breaking_steps) for p in migration_plans.values())
+        if breaking_count > 0:
+            logger.warning(
+                f":warning: Migration contains {breaking_count} breaking changes that require manual review"
+            )
+
+
+@cli.group()
 def test():
     """AI-powered test suggestion and generation for dbt models"""
 
