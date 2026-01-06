@@ -6,6 +6,7 @@ import json
 import os
 import re
 import typing as t
+from dataclasses import dataclass
 from textwrap import dedent
 
 import openai
@@ -21,6 +22,10 @@ __all__ = [
     "generate_semantic_description",
     "generate_sql_from_nl",
     "generate_table_doc",
+    "generate_staging_model_spec",
+    "generate_staging_sql",
+    "ColumnTransformation",
+    "StagingModelSpec",
 ]
 
 
@@ -1074,6 +1079,333 @@ def generate_dbt_model_from_nl(
         )
 
     return data
+# AI-Powered Staging Model Generation
+
+
+@dataclass
+class ColumnTransformation:
+    """Represents a column transformation for staging models.
+
+    Attributes:
+        original_name: The original column name in the source
+        new_name: The new column name after transformation (e.g., id -> customer_id)
+        expression: SQL expression for the transformation (e.g., "amount / 100")
+        description: Documentation for the transformed column
+    """
+
+    original_name: str
+    new_name: str
+    expression: str | None = None
+    description: str = ""
+
+    def to_sql_select(self) -> str:
+        """Generate the SELECT clause for this transformation.
+
+        Returns:
+            SQL SELECT expression for this column
+        """
+        if self.expression:
+            return f"    {self.expression} as {self.new_name}"
+        elif self.original_name != self.new_name:
+            return f"    {self.original_name} as {self.new_name}"
+        else:
+            return f"    {self.original_name}"
+
+
+@dataclass
+class StagingModelSpec:
+    """Specification for an AI-generated staging model.
+
+    Attributes:
+        source_name: Name of the source table or model
+        staging_name: Name for the staging model (e.g., stg_customers)
+        description: Description of what the staging model does
+        columns: List of column transformations
+        materialization: Suggested materialization (view or table)
+    """
+
+    source_name: str
+    staging_name: str
+    description: str
+    columns: list[ColumnTransformation]
+    materialization: str = "view"
+    source_type: str = "source"  # 'source', 'seed', or 'model'
+
+    def to_sql(self) -> str:
+        """Generate the complete staging SQL file content.
+
+        Returns:
+            Complete SQL content for the staging model
+        """
+        column_selects = ",\n".join(col.to_sql_select() for col in self.columns)
+
+        source_ref = (
+            f"{{{{ source('{self.source_name.split('.')[0]}', '{self.source_name.split('.', 1)[1] if '.' in self.source_name else self.source_name}') }}}}"
+            if self.source_type == "source"
+            else f"{{{{ ref('{self.source_name}') }}}}"
+        )
+
+        return f"""{{{{ config(materialized='{self.materialization}') }}}}
+
+with source as (
+
+    select * from {source_ref}
+
+),
+
+renamed as (
+
+    select
+{column_selects}
+
+    from source
+
+)
+
+select * from renamed
+"""
+
+
+def _create_staging_spec_prompt(
+    source_name: str,
+    columns: list[dict[str, t.Any]],
+    table_description: str = "",
+    source_type: str = "source",
+) -> list[dict[str, str]]:
+    """Builds a system + user prompt for generating staging model specifications.
+
+    Args:
+        source_name: Name of the source table
+        columns: List of column definitions with name, data_type, and optional description
+        table_description: Optional description of the source table
+        source_type: Type of source ('source', 'seed', or 'model')
+
+    Returns:
+        List of prompt messages for the LLM
+    """
+    columns_text = "\n".join(
+        f"      - {col.get('name')}: {col.get('data_type', 'unknown')}"
+        + (f" - {col.get('description', '')}" if col.get("description") else "")
+        for col in columns
+    )
+
+    system_prompt = """You are a helpful SQL Developer and an Expert in dbt.
+
+Your task is to generate a specification for a staging model that transforms a source table into a clean, documented staging layer.
+
+KEY PRINCIPLES FOR STAGING MODELS:
+1. **Renaming**: Rename columns to be more descriptive (e.g., `id` -> `customer_id`, `user_id` -> `customer_id`)
+2. **Type Casting**: Apply appropriate type casting for data integrity (e.g., string to date, numeric precision)
+3. **Data Cleaning**: Basic cleaning like trimming strings, handling null values, removing duplicates
+4. **Standardization**: Consistent naming conventions (lowercase with underscores)
+5. **Documentation**: Clear descriptions for each transformation
+
+COMMON TRANSFORMATION PATTERNS:
+- `id` -> `<entity>_id` (prefix with entity name for clarity)
+- `user_id` -> `customer_id` (rename to match business domain)
+- `amount` stored in cents -> `amount / 100.0 as amount` (convert units)
+- String dates -> `cast(date_col as date)` (type casting)
+- `created_at` / `updated_at` -> keep as-is (standard timestamp columns)
+- Phone numbers -> `trim(phone_number) as phone_number` (clean whitespace)
+
+OUTPUT FORMAT:
+Return ONLY valid JSON matching this exact structure:
+{
+    "staging_name": "stg_<table_name>",
+    "description": "Brief description of what this staging model does",
+    "columns": [
+        {
+            "original_name": "original_column_name",
+            "new_name": "transformed_column_name",
+            "expression": "sql_expression or null",
+            "description": "What this column represents and why the transformation"
+        }
+    ],
+    "materialization": "view"
+}
+
+RULES:
+1. DO NOT write extra explanation or Markdown fences
+2. `expression` should be null if just renaming (use original_name as new_name pattern)
+3. Only include SQL expressions for actual transformations (type casting, calculations, etc.)
+4. Provide descriptions that explain WHY the transformation is needed
+5. Use "view" for materialization unless table is explicitly needed
+"""
+
+    user_message = f"""Generate a staging model specification for the following source:
+
+**Source Name:** {source_name}
+**Source Type:** {source_type}
+**Description:** {table_description or "(no description provided)"}
+
+**Columns:**
+    {columns_text}
+
+Analyze the column names and data types to infer appropriate transformations. Return ONLY valid JSON matching the specified structure.
+"""
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message},
+    ]
+
+
+def _create_staging_sql_refinement_prompt(
+    initial_spec: StagingModelSpec,
+    feedback: str = "",
+) -> list[dict[str, str]]:
+    """Builds a prompt for refining a staging model specification.
+
+    Args:
+        initial_spec: The initial staging model specification
+        feedback: Optional feedback for improvements
+
+    Returns:
+        List of prompt messages for the LLM
+    """
+    system_prompt = """You are a helpful SQL Developer and an Expert in dbt.
+
+Your task is to refine a staging model specification based on feedback. Return ONLY valid JSON matching the same structure as the input."""
+
+    columns_text = "\n".join(
+        f"  - {col.original_name} -> {col.new_name}"
+        + (f" ({col.expression})" if col.expression else "")
+        for col in initial_spec.columns
+    )
+
+    user_message = f"""Refine the following staging model specification:
+
+**Current Spec:**
+- Source: {initial_spec.source_name}
+- Staging: {initial_spec.staging_name}
+- Description: {initial_spec.description}
+- Columns:
+{columns_text}
+
+**Feedback:**
+{feedback or "Make any improvements you see fit for better data quality and clarity."}
+
+Return ONLY valid JSON with the refined specification.
+"""
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message},
+    ]
+
+
+def generate_staging_model_spec(
+    source_name: str,
+    columns: list[dict[str, t.Any]],
+    table_description: str = "",
+    source_type: str = "source",
+    temperature: float = 0.3,
+) -> StagingModelSpec:
+    """Generate a staging model specification using AI.
+
+    Analyzes the source table schema and infers appropriate transformations
+    for column renaming, type casting, and basic data cleaning.
+
+    Args:
+        source_name: Name of the source table
+        columns: List of column definitions with name, data_type, and optional description
+        table_description: Optional description of the source table
+        source_type: Type of source ('source', 'seed', or 'model')
+        temperature: LLM temperature for generation
+
+    Returns:
+        StagingModelSpec with AI-generated transformations
+
+    Raises:
+        LLMConfigurationError: If LLM client configuration is invalid
+        LLMResponseError: If LLM returns invalid or empty response
+    """
+    messages = _create_staging_spec_prompt(
+        source_name=source_name,
+        columns=columns,
+        table_description=table_description,
+        source_type=source_type,
+    )
+
+    client, model_engine = get_llm_client()
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "azure-openai":
+        response = client.ChatCompletion.create(
+            engine=model_engine, messages=messages, temperature=temperature
+        )
+    else:
+        response = client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
+
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMResponseError("LLM returned an empty response")
+
+    content = content.strip()
+    if content.startswith("```"):
+        # Extract JSON from markdown code block
+        content = content[content.find("{") : content.rfind("}") + 1]
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        raise LLMResponseError("LLM returned invalid JSON:\n" + content)
+
+    # Convert JSON to StagingModelSpec
+    column_transforms = []
+    for col_data in data.get("columns", []):
+        column_transforms.append(
+            ColumnTransformation(
+                original_name=col_data.get("original_name", col_data.get("name", "")),
+                new_name=col_data.get("new_name", col_data.get("name", "")),
+                expression=col_data.get("expression"),
+                description=col_data.get("description", ""),
+            )
+        )
+
+    return StagingModelSpec(
+        source_name=source_name,
+        staging_name=data.get("staging_name", f"stg_{source_name}"),
+        description=data.get("description", f"Staging model for {source_name}"),
+        columns=column_transforms,
+        materialization=data.get("materialization", "view"),
+        source_type=source_type,
+    )
+
+
+def generate_staging_sql(
+    source_name: str,
+    columns: list[dict[str, t.Any]],
+    table_description: str = "",
+    source_type: str = "source",
+    temperature: float = 0.3,
+) -> tuple[str, StagingModelSpec]:
+    """Generate complete staging SQL file content using AI.
+
+    This is a convenience function that generates both the specification
+    and the complete SQL file content in one call.
+
+    Args:
+        source_name: Name of the source table
+        columns: List of column definitions with name, data_type, and optional description
+        table_description: Optional description of the source table
+        source_type: Type of source ('source', 'seed', or 'model')
+        temperature: LLM temperature for generation
+
+    Returns:
+        Tuple of (sql_content, staging_spec) where sql_content is the complete
+        SQL file content and staging_spec contains the transformation metadata
+    """
+    spec = generate_staging_model_spec(
+        source_name=source_name,
+        columns=columns,
+        table_description=table_description,
+        source_type=source_type,
+        temperature=temperature,
+    )
+    return spec.to_sql(), spec
 
 
 if __name__ == "__main__":

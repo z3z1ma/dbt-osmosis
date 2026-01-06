@@ -102,6 +102,14 @@ from dbt_osmosis.core.sync_operations import (
     sync_node_to_yaml,
 )
 
+# Staging operations
+from dbt_osmosis.core.staging import (
+    StagingGenerationResult,
+    generate_staging_for_all_sources,
+    generate_staging_for_source,
+    write_staging_files,
+)
+
 # Transform operations
 from dbt_osmosis.core.transforms import (
     apply_semantic_analysis,
@@ -144,6 +152,7 @@ __all__ = [
     "RestructureOperation",
     "SettingsResolver",
     "SqlCompileRunner",
+    "StagingGenerationResult",
     "YamlRefactorContext",
     "YamlRefactorSettings",
     "_build_column_knowledge_graph",
@@ -170,6 +179,8 @@ __all__ = [
     "execute_sql_code",
     "generate_dbt_model_from_nl",
     "generate_sql_from_nl",
+    "generate_staging_for_all_sources",
+    "generate_staging_for_source",
     "get_columns",
     "get_current_yaml_path",
     "get_plugin_manager",
@@ -185,4 +196,5 @@ __all__ = [
     "sync_node_to_yaml",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
+    "write_staging_files",
 ]

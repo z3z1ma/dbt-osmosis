@@ -35,6 +35,11 @@ from dbt_osmosis.core.osmosis import (
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
 )
+from dbt_osmosis.core.staging import (
+    generate_staging_for_all_sources,
+    generate_staging_for_source,
+    write_staging_files,
+)
 
 T = t.TypeVar("T")
 if sys.version_info >= (3, 10):
@@ -820,6 +825,136 @@ def query(
             locale=None,
             max_precision=3,
         )
+@yaml.command(context_settings=_CONTEXT)
+@dbt_opts
+@logging_opts
+@click.option(
+    "-s",
+    "--source",
+    type=tuple([str, str]),
+    multiple=False,
+    help="Generate staging for a specific source as 'source_name table_name'",
+)
+@click.option(
+    "--pattern",
+    type=str,
+    help="Filter sources by pattern (e.g., 'raw_*')",
+)
+@click.option(
+    "--exclude",
+    type=str,
+    multiple=True,
+    help="Exclude sources matching these patterns",
+)
+@click.option(
+    "-d",
+    "--dry-run",
+    is_flag=True,
+    help="Generate staging models without writing files",
+)
+@click.option(
+    "--temperature",
+    type=float,
+    default=0.3,
+    help="LLM temperature for generation (0.0-1.0). Lower is more deterministic.",
+)
+def stage(
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
+    source: tuple[str, str] | None = None,
+    pattern: str | None = None,
+    exclude: tuple[str, ...] = (),
+    dry_run: bool = False,
+    temperature: float = 0.3,
+    threads: int | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """Generate AI-powered staging models from source tables.
+
+    \f
+    This command analyzes your source tables and automatically generates
+    staging models with appropriate column renaming, type casting, and
+    basic data cleaning using AI.
+
+    Examples:
+        # Generate staging for all sources
+        dbt-osmosis yaml stage
+
+        # Generate for a specific source
+        dbt-osmosis yaml stage --source raw_stripe customers
+
+        # Generate for sources matching a pattern
+        dbt-osmosis yaml stage --pattern "raw_*"
+    """
+    logger.info(":water_wave: Executing dbt-osmosis staging generation\n")
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        profile=profile,
+        threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
+    )
+
+    with YamlRefactorContext(
+        project=create_dbt_project_context(settings),
+        settings=YamlRefactorSettings(
+            **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
+        ),
+    ) as context:
+        if source:
+            # Generate for a specific source
+            source_name, table_name = source
+            result = generate_staging_for_source(
+                project=context.project,
+                settings=context.settings,
+                source_name=source_name,
+                table_name=table_name,
+                temperature=temperature,
+            )
+
+            if result.spec:
+                write_staging_files(result, dry_run=dry_run)
+                logger.info(
+                    ":white_check_mark: Generated staging model %s for source %s.%s",
+                    result.spec.staging_name,
+                    source_name,
+                    table_name,
+                )
+            elif result.error:
+                logger.error(":boom: Failed to generate staging: %s", result.error)
+                exit(1)
+        else:
+            # Generate for all sources (with optional filtering)
+            results = generate_staging_for_all_sources(
+                project=context.project,
+                settings=context.settings,
+                source_pattern=pattern,
+                exclude_patterns=list(exclude) if exclude else None,
+                temperature=temperature,
+            )
+
+            successful = sum(1 for r in results if r.spec is not None)
+            failed = sum(1 for r in results if r.error is not None)
+
+            logger.info(
+                ":bar_chart: Generated %d staging models, %d failed",
+                successful,
+                failed,
+            )
+
+            # Write all successful results
+            for result in results:
+                write_staging_files(result, dry_run=dry_run)
+
+            if failed > 0:
+                logger.warning(":warning: Some staging models failed to generate")
+                for result in results:
+                    if result.error:
+                        logger.warning("  - %s: %s", result.source_name, result.error)
 
 
 @cli.command(
