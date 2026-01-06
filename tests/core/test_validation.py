@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false, reportUnusedCallResult=false, reportCallIssue=false
 
 """Tests for YAML schema validation and auto-fix functionality."""
@@ -631,8 +630,6 @@ models:
 
         finally:
             temp_path.unlink()
-||||||| parent of 0ad4b6c (feat: Add production data dry-run validation for dbt models)
-=======
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
 from unittest import mock
@@ -883,4 +880,3 @@ class TestValidateModels:
         assert report.successful == 0
         assert report.failed == 1
         assert report.results[0].status == ModelValidationStatus.EXECUTION_ERROR
->>>>>>> 0ad4b6c (feat: Add production data dry-run validation for dbt models)
