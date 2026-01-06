@@ -827,6 +827,8 @@ def query(
             locale=None,
             max_precision=3,
         )
+
+
 @yaml.command(context_settings=_CONTEXT)
 @dbt_opts
 @logging_opts
@@ -957,6 +959,175 @@ def stage(
                 for result in results:
                     if result.error:
                         logger.warning("  - %s: %s", result.source_name, result.error)
+
+
+@yaml.command(context_settings=_CONTEXT)
+@dbt_opts
+@logging_opts
+@click.option(
+    "-f",
+    "--fix",
+    is_flag=True,
+    help="Automatically fix fixable issues",
+)
+@click.option(
+    "--format",
+    type=click.Choice(["table", "json", "yaml"]),
+    default="table",
+    help="Output format for validation results (default: table).",
+)
+@click.option(
+    "--include-formatting",
+    is_flag=True,
+    help="Include formatting validation (trailing whitespace, line endings).",
+)
+@click.option(
+    "--fail-on-warning",
+    is_flag=True,
+    help="Exit with non-zero code on warnings in addition to errors.",
+)
+@handle_errors
+def validate(
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
+    vars: str | None = None,
+    threads: int | None = None,
+    fix: bool = False,
+    format: str = "table",
+    include_formatting: bool = False,
+    fail_on_warning: bool = False,
+    **kwargs: t.Any,
+) -> None:
+    """Validate dbt YAML schemas against project conventions.
+
+    \f
+    This command validates your dbt YAML files for:
+    - Missing required fields (version, name)
+    - Invalid test configurations
+    - Malformed YAML structure
+    - Formatting issues (optional)
+
+    Examples:
+
+        # Validate all YAML files
+        dbt-osmosis yaml validate
+
+        # Validate and auto-fix issues
+        dbt-osmosis yaml validate --fix
+
+        # Output as JSON
+        dbt-osmosis yaml validate --format json
+
+        # Include formatting checks
+        dbt-osmosis yaml validate --include-formatting
+    """
+    import json as json_module
+
+    from dbt_osmosis.core.schema import (
+        FormattingValidator,
+        ModelValidator,
+        SourceValidator,
+        StructureValidator,
+        validate_yaml_file,
+    )
+
+    logger.info(":mag: Validating dbt YAML schemas\n")
+
+    # Build list of validators
+    validators = [StructureValidator(), ModelValidator(), SourceValidator()]
+    if include_formatting:
+        validators.append(FormattingValidator())
+
+    # Find all YAML files in the project
+    yaml_files = list(Path(project_dir).rglob("*.yml")) + list(Path(project_dir).rglob("*.yaml"))
+
+    # Filter out dbt_project.yml and profiles.yml
+    yaml_files = [
+        f for f in yaml_files if f.name not in ("dbt_project.yml", "profiles.yml", "packages.yml")
+    ]
+
+    logger.info(f":page_facing_up: Found {len(yaml_files)} YAML files to validate\n")
+
+    all_results: list[tuple[Path, t.Any]] = []
+    for yaml_file in yaml_files:
+        try:
+            raw_content = yaml_file.read_text() if include_formatting else None
+            result = validate_yaml_file(yaml_file, raw_content, validators)
+            all_results.append((yaml_file, result))
+
+            # Auto-fix if requested
+            if fix and result.get_fixable():
+                import threading
+
+                from dbt_osmosis.core.schema import auto_fix_yaml
+                from dbt_osmosis.core.schema.parser import create_yaml_instance
+                from dbt_osmosis.core.schema.reader import _read_yaml
+                from dbt_osmosis.core.schema.writer import _write_yaml
+
+                yaml_handler = create_yaml_instance()
+                yaml_handler_lock = threading.Lock()
+                data = _read_yaml(yaml_handler, yaml_handler_lock, yaml_file)
+                fixed_data = auto_fix_yaml(data, result)
+                _write_yaml(yaml_handler, yaml_handler_lock, yaml_file, fixed_data)
+                logger.info(f":wrench: Fixed {len(result.fixes_applied)} issues in {yaml_file}")
+
+        except Exception as e:
+            logger.error(f":x: Error validating {yaml_file}: {e}")
+            continue
+
+    # Aggregate results
+    total_errors = sum(len(r.get_errors()) for _, r in all_results)
+    total_warnings = sum(len(r.get_warnings()) for _, r in all_results)
+    total_fixable = sum(len(r.get_fixable()) for _, r in all_results)
+
+    # Format output
+    if format == "json":
+        output = []
+        for yaml_file, result in all_results:
+            output.append({
+                "file": str(yaml_file),
+                "valid": result.is_valid,
+                "issues": [issue.to_dict() for issue in result.issues],
+            })
+        click.echo(json_module.dumps(output, indent=2))
+    elif format == "yaml":
+        output = []
+        for yaml_file, result in all_results:
+            output.append({
+                "file": str(yaml_file),
+                "valid": result.is_valid,
+                "issues": [issue.to_dict() for issue in result.issues],
+            })
+        click.echo(yaml_handler.dump(output, default_flow_style=False))
+    else:
+        # Table format
+        for yaml_file, result in all_results:
+            if result.issues:
+                click.echo(f"\n:file_folder: {yaml_file}")
+                for issue in result.issues:
+                    click.echo(f"  {issue}")
+            else:
+                click.echo(f":white_check_mark: {yaml_file}")
+
+        # Summary
+        click.echo(f"\n{'=' * 60}")
+        click.echo("Validation Summary")
+        click.echo(f"{'=' * 60}")
+        click.echo(f"Files validated: {len(yaml_files)}")
+        click.echo(f"Errors: {total_errors}")
+        click.echo(f"Warnings: {total_warnings}")
+        click.echo(f"Fixable: {total_fixable}")
+
+        is_valid = total_errors == 0
+        if is_valid:
+            click.echo("\n:white_check_mark: All validations passed!")
+        else:
+            click.echo(f"\n:x: Validation failed with {total_errors} error(s)")
+
+    # Exit with appropriate code
+    if not is_valid or (fail_on_warning and total_warnings > 0):
+        exit(1)
 
 
 @cli.command(
