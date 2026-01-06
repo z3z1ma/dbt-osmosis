@@ -16,6 +16,7 @@ from dbt_osmosis.core.exceptions import OsmosisError
 from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
     ModelTestAnalysis,
+    ValidationReport,
     YamlRefactorContext,
     YamlRefactorSettings,
     apply_restructure_plan,
@@ -36,12 +37,14 @@ from dbt_osmosis.core.osmosis import (
     suggest_tests_for_project,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
+    validate_models,
 )
 from dbt_osmosis.core.staging import (
     generate_staging_for_all_sources,
     generate_staging_for_source,
     write_staging_files,
 )
+from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
 T = t.TypeVar("T")
 if sys.version_info >= (3, 10):
@@ -1468,6 +1471,130 @@ def _print_suggestions_as_table(
     click.echo(f"\n{'=' * 60}")
     click.echo(f"Summary: {len(suggestions)} models analyzed")
     click.echo(f"{'=' * 60}\n")
+
+
+@cli.group()
+def validate():
+    """Validate dbt models against production data without materializing"""
+
+
+@validate.command(context_settings=_CONTEXT)
+@dbt_opts
+@yaml_opts
+@logging_opts
+@click.option(
+    "--timeout",
+    type=float,
+    default=None,
+    help="Maximum execution time per query in seconds (default: no timeout).",
+)
+@click.option(
+    "-q",
+    "--quiet",
+    is_flag=True,
+    help="Suppress progress output, only show summary.",
+)
+@click.option(
+    "--fail-on-error",
+    is_flag=True,
+    help="Exit with non-zero status if any model fails validation.",
+)
+@click.option(
+    "--include-external",
+    is_flag=True,
+    help="Include models from external dbt packages in the validation.",
+)
+@handle_errors
+def dry_run(
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
+    threads: int | None = None,
+    timeout: float | None = None,
+    quiet: bool = False,
+    fail_on_error: bool = False,
+    include_external: bool = False,
+    disable_introspection: bool = False,
+    **kwargs: t.Any,
+) -> None:
+    """Run dbt models against production data without materializing.
+
+    \f
+    This command validates dbt models by compiling and executing them against
+    the production database without creating any tables or views. It's useful for:
+
+    - Validating model logic before deployment
+    - Catching SQL errors early
+    - Estimating query costs (execution time, rows processed)
+
+    Examples:
+
+        # Validate all models
+        dbt-osmosis validate dry-run
+
+        # Validate specific models
+        dbt-osmosis validate dry-run my_model another_model
+
+        # Validate with timeout
+        dbt-osmosis validate dry-run --timeout 60
+
+        # Validate specific FQN
+        dbt-osmosis validate dry-run --fqn my_project.staging
+    """
+    logger.info(":microscope: Executing dbt-osmosis dry-run validation\n")
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        profile=profile,
+        threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
+        disable_introspection=disable_introspection,
+    )
+
+    project = create_dbt_project_context(settings)
+
+    # Create a minimal YamlRefactorSettings for filtering
+    from dbt_osmosis.core.settings import YamlRefactorSettings
+
+    refactor_settings = YamlRefactorSettings(
+        models=list(kwargs.get("models", ())),
+        fqn=list(kwargs.get("fqn", ())),
+    )
+
+    # Create a minimal context for node filtering
+    with YamlRefactorContext(
+        project=project,
+        settings=refactor_settings,
+    ) as context:
+        # Collect models to validate
+        models_to_validate = list(_iter_candidate_nodes(context, include_external=include_external))
+
+        if not models_to_validate:
+            logger.warning(":warning: No models found matching the specified criteria.")
+            return
+
+        # Run validation
+        report: ValidationReport = validate_models(
+            context=context.project,
+            models=models_to_validate,
+            timeout_seconds=timeout,
+            quiet=quiet,
+        )
+
+        # Exit with error if any models failed and fail-on-error is set
+        if fail_on_error and report.failed > 0:
+            logger.error(":x: Validation failed for %d model(s)", report.failed)
+            for failed_result in report.get_failed_models():
+                logger.error(
+                    "  - %s: %s",
+                    failed_result.model_name,
+                    failed_result.error_message or failed_result.status.value,
+                )
+            exit(1)
 
 
 if __name__ == "__main__":
