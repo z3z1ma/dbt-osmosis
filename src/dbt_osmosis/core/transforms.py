@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import dataclasses
 import time
 import typing as t
 from collections import ChainMap
@@ -15,6 +16,7 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import (
         YamlRefactorContextProtocol,
     )
+    from dbt_osmosis.core.discovery import DiscoveryResult
 
 import dbt_osmosis.core.logger as logger
 
@@ -31,6 +33,7 @@ __all__ = [
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
     "suggest_improved_documentation",
+    "discover_undocumented_models",
 ]
 
 
@@ -746,7 +749,12 @@ def suggest_improved_documentation(
     if node is None:
         logger.info(":wave: Suggesting improved documentation across all matched nodes.")
         for _ in context.pool.map(
-            partial(suggest_improved_documentation, context, threshold=threshold, learning_mode=learning_mode),
+            partial(
+                suggest_improved_documentation,
+                context,
+                threshold=threshold,
+                learning_mode=learning_mode,
+            ),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
             ...
@@ -867,3 +875,73 @@ def suggest_improved_documentation(
         suggestions_applied,
         node.unique_id,
     )
+
+
+@_transform_op("Discover Undocumented Models")
+def discover_undocumented_models(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
+    min_columns: int = 3,
+    min_priority: float = 40.0,
+) -> DiscoveryResult:
+    """Discover models and columns that need documentation attention.
+
+    This transform scans the dbt project to identify documentation gaps and
+    prioritize them based on model importance, fan-out, and recency.
+
+    Args:
+        context: The YamlRefactorContext instance
+        node: Ignored (always scans all nodes)
+        min_columns: Minimum columns to consider a model
+        min_priority: Minimum priority score to report (0-100)
+
+    Returns:
+        DiscoveryResult with gaps and statistics
+
+    Behavior:
+        - Scans all models in the project
+        - Identifies missing, poor, outdated, or inconsistent documentation
+        - Calculates priority scores based on:
+          - Fan-out (downstream dependencies)
+          - Resource type (sources are foundational)
+          - Recency of changes
+          - Position in DAG (upstream models)
+        - Returns sorted list of gaps by priority
+    """
+    from dbt_osmosis.core.discovery import (
+        discover_undocumented_models as discover,
+    )
+
+    logger.info(":mag: Scanning for undocumented models...")
+
+    result = discover(
+        context=context,
+        min_columns=min_columns,
+        exclude_sources=False,
+    )
+
+    # Filter by minimum priority
+    filtered_gaps = [g for g in result.gaps if g.priority >= min_priority]
+
+    logger.info(
+        ":bar_chart: Discovery complete: %d gaps found (%d above priority %.0f)",
+        len(result.gaps),
+        len(filtered_gaps),
+        min_priority,
+    )
+    logger.info(
+        ":page_facing_up: Documentation coverage: %.1f%%",
+        result.coverage_percent,
+    )
+
+    # Log high-priority gaps
+    for gap in result.high_priority_gaps[:5]:  # Log top 5
+        logger.warning(
+            ":rotating_light: High priority gap: %s (priority: %.0f) - %s",
+            gap.node.name,
+            gap.priority,
+            gap.description,
+        )
+
+    # Return filtered result
+    return dataclasses.replace(result, gaps=filtered_gaps)

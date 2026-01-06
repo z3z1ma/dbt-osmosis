@@ -17,6 +17,18 @@ from dbt_osmosis.core.config import (
     discover_project_dir,
 )
 
+# Discovery utilities
+from dbt_osmosis.core.discovery import (
+    DiscoveryResult,
+    DocumentationGap,
+    calculate_priority_score,
+    discover_undocumented_columns,
+    get_documentation_coverage,
+)
+from dbt_osmosis.core.discovery import (
+    discover_undocumented_models as discover_undocumented_models_impl,
+)
+
 # Inheritance functionality
 from dbt_osmosis.core.inheritance import (
     _build_column_knowledge_graph,
@@ -119,7 +131,7 @@ from dbt_osmosis.core.voice_learning import (
 
 # LLM functions (require openai extra)
 try:
-    from dbt_osmosis.core.llm import (
+    from dbt_osmosis.core.llm import (  # type: ignore[no-redef]
         DocumentationSuggestion,
         generate_style_aware_column_doc,
         generate_style_aware_table_doc,
@@ -203,6 +215,13 @@ __all__ = [
     "analyze_project_documentation_style",
     "extract_style_examples",
     "find_similar_documented_nodes",
+    # Discovery utilities
+    "DocumentationGap",
+    "DiscoveryResult",
+    "calculate_priority_score",
+    "discover_undocumented_columns",
+    "discover_undocumented_models_impl",
+    "get_documentation_coverage",
 ]
 
 # Add LLM exports if available
