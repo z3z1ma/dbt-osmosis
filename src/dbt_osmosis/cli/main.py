@@ -15,6 +15,7 @@ from dbt_osmosis.core import logger
 from dbt_osmosis.core.exceptions import OsmosisError
 from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
+    ModelTestAnalysis,
     YamlRefactorContext,
     YamlRefactorSettings,
     apply_restructure_plan,
@@ -32,6 +33,7 @@ from dbt_osmosis.core.osmosis import (
     inject_missing_columns,
     remove_columns_not_in_database,
     sort_columns_as_configured,
+    suggest_tests_for_project,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
 )
@@ -1101,6 +1103,200 @@ def compile(
     node = compile_sql_code(project, sql)
 
     print(node.compiled_code)
+
+
+@cli.group()
+def test():
+    """AI-powered test suggestion and generation for dbt models"""
+
+
+@test.command(context_settings=_CONTEXT)
+@dbt_opts
+@yaml_opts
+@logging_opts
+@click.option(
+    "--use-ai",
+    is_flag=True,
+    default=True,
+    help="Use AI for test suggestions (default: True). Set to False for pattern-based only.",
+)
+@click.option(
+    "--temperature",
+    type=click.FLOAT,
+    default=0.3,
+    help="LLM temperature for test generation (0.0-1.0, default: 0.3). Higher values are more creative.",
+)
+@click.option(
+    "--format",
+    type=click.Choice(["table", "json", "yaml"]),
+    default="table",
+    help="Output format for test suggestions (default: table).",
+)
+def suggest(
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
+    threads: int | None = None,
+    disable_introspection: bool = False,
+    use_ai: bool = True,
+    temperature: float = 0.3,
+    format: str = "table",
+    **kwargs: t.Any,
+) -> None:
+    """Suggest appropriate tests for dbt models based on project patterns and AI analysis
+
+    \f
+    This command analyzes your dbt project to suggest appropriate tests for your models.
+    It learns from existing test patterns in your project and uses AI to generate
+    contextually relevant test suggestions.
+
+    Examples:
+
+        # Suggest tests for all models (uses AI by default)
+        dbt-osmosis test suggest
+
+        # Suggest tests without AI (pattern-based only)
+        dbt-osmosis test suggest --no-use-ai
+
+        # Suggest tests for specific models
+        dbt-osmosis test suggest --models my_model
+
+        # Output as JSON
+        dbt-osmosis test suggest --format json
+
+        # Output as YAML (ready to paste into schema.yml)
+        dbt-osmosis test suggest --format yaml
+    """
+    import json as json_module
+
+    logger.info(":robot: Analyzing models and suggesting tests\n")
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        profile=profile,
+        threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else None,
+        disable_introspection=disable_introspection,
+    )
+
+    with YamlRefactorContext(
+        project=create_dbt_project_context(settings),
+        settings=YamlRefactorSettings(
+            **{
+                k: v
+                for k, v in kwargs.items()
+                if v is not None and k not in ("check", "models", "fqn")
+            },
+            create_catalog_if_not_exists=False,
+        ),
+    ) as context:
+        # Get test suggestions for all models
+        suggestions = suggest_tests_for_project(
+            context=context, use_ai=use_ai, temperature=temperature
+        )
+
+        # Format output
+        if format == "json":
+            output = _format_suggestions_as_json(suggestions)
+            click.echo(json_module.dumps(output, indent=2))
+        elif format == "yaml":
+            output = _format_suggestions_as_yaml(suggestions)
+            click.echo(yaml_handler.dump(output, default_flow_style=False))
+        else:
+            # Default: table format
+            _print_suggestions_as_table(suggestions)
+
+
+def _format_suggestions_as_json(
+    suggestions: dict[str, "ModelTestAnalysis"],
+) -> dict[str, t.Any]:
+    """Format test suggestions as JSON."""
+    output: dict[str, t.Any] = {"models": []}
+    for model_name, analysis in suggestions.items():
+        model_data: dict[str, t.Any] = {
+            "name": model_name,
+            "summary": analysis.get_test_summary(),
+            "suggested_tests": {},
+        }
+        for col_name, tests in analysis.suggested_tests.items():
+            model_data["suggested_tests"][col_name] = [
+                {
+                    "test_type": t.test_type,
+                    "reason": t.reason,
+                    "config": t.config,
+                    "confidence": t.confidence,
+                }
+                for t in tests
+            ]
+        output["models"].append(model_data)
+    return output
+
+
+def _format_suggestions_as_yaml(
+    suggestions: dict[str, "ModelTestAnalysis"],
+) -> str:
+    """Format test suggestions as YAML ready to paste into schema.yml files.
+
+    This generates YAML in dbt's test format that can be directly pasted
+    into your schema.yml files.
+    """
+    output = []  # type: ignore[var-annotated]
+
+    for model_name, analysis in suggestions.items():
+        model_yaml = {"models": []}  # type: ignore[var-annotated]
+
+        model_entry = {"name": model_name, "columns": []}  # type: ignore[var-annotated]
+
+        for col_name, tests in analysis.suggested_tests.items():
+            col_entry = {"name": col_name, "tests": []}  # type: ignore[var-annotated]
+
+            for test in tests:
+                test_yaml = test.to_yaml_dict()
+                col_entry["tests"].append(test_yaml)
+
+            model_entry["columns"].append(col_entry)
+
+        model_yaml["models"].append(model_entry)
+        output.append(model_yaml)
+
+    return str(yaml_handler.dump(output[0] if output else {}, default_flow_style=False))
+
+
+def _print_suggestions_as_table(
+    suggestions: dict[str, "ModelTestAnalysis"],
+) -> None:
+    """Print test suggestions in a human-readable table format."""
+    for model_name, analysis in suggestions.items():
+        click.echo(f"\n{'=' * 60}")
+        click.echo(f"Model: {model_name}")
+        click.echo(f"{'=' * 60}")
+
+        summary = analysis.get_test_summary()
+        click.echo(f"Columns: {summary['total_columns']}")
+        click.echo(f"Columns with tests: {summary['columns_with_tests']}")
+        click.echo(f"Suggested tests: {summary['total_suggested_tests']}")
+
+        if not analysis.suggested_tests:
+            click.echo("  No new test suggestions.")
+            continue
+
+        for col_name, tests in analysis.suggested_tests.items():
+            click.echo(f"\n  :pushpin: Column: {col_name}")
+            for test in tests:
+                conf_pct = int(test.confidence * 100)
+                click.echo(f"    - {test.test_type} ({conf_pct}% confidence)")
+                if test.reason:
+                    click.echo(f"      Reason: {test.reason}")
+                if test.config:
+                    click.echo(f"      Config: {test.config}")
+
+    click.echo(f"\n{'=' * 60}")
+    click.echo(f"Summary: {len(suggestions)} models analyzed")
+    click.echo(f"{'=' * 60}\n")
 
 
 if __name__ == "__main__":

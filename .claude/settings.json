@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "gt prime && gt mail check --inject && gt nudge deacon session-started"
+            "command": "gt prime --hook && gt mail check --inject && gt nudge deacon session-started"
           }
         ]
       }

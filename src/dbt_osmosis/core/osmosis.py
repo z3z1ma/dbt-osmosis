@@ -123,6 +123,16 @@ from dbt_osmosis.core.transforms import (
     synthesize_missing_documentation_with_openai,
 )
 
+# Test suggestion operations
+from dbt_osmosis.core.test_suggestions import (
+    AITestSuggester,
+    ModelTestAnalysis,
+    TestPatternExtractor,
+    TestSuggestion,
+    suggest_tests_for_model,
+    suggest_tests_for_project,
+)
+
 # Note: process_node is imported in sql_operations.py where it's used
 
 
@@ -153,6 +163,8 @@ __all__ = [
     "SettingsResolver",
     "SqlCompileRunner",
     "StagingGenerationResult",
+    "TestPatternExtractor",
+    "TestSuggestion",
     "YamlRefactorContext",
     "YamlRefactorSettings",
     "_build_column_knowledge_graph",
@@ -164,6 +176,8 @@ __all__ = [
     "_maybe_use_precise_dtype",
     "_reload_manifest",
     "_topological_sort",
+    "AITestSuggester",
+    "ModelTestAnalysis",
     "apply_restructure_plan",
     "apply_semantic_analysis",
     "build_yaml_file_mapping",
@@ -193,6 +207,8 @@ __all__ = [
     "sort_columns_alphabetically",
     "sort_columns_as_configured",
     "sort_columns_as_in_database",
+    "suggest_tests_for_model",
+    "suggest_tests_for_project",
     "sync_node_to_yaml",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
