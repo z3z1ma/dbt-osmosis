@@ -133,6 +133,7 @@ from dbt_osmosis.core.test_suggestions import (
     suggest_tests_for_model,
     suggest_tests_for_project,
 )
+
 # Voice learning and AI co-pilot
 from dbt_osmosis.core.voice_learning import (
     ProjectStyleProfile,
@@ -143,6 +144,7 @@ from dbt_osmosis.core.voice_learning import (
 
 # LLM functions (require openai extra)
 import importlib.util
+
 _llm_available = importlib.util.find_spec("openai") is not None
 
 # Note: process_node is imported in sql_operations.py where it's used

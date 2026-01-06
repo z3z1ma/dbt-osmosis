@@ -884,6 +884,8 @@ def apply_semantic_analysis(
             )
             # Continue with other columns even if one fails
             continue
+
+
 @_transform_op("Suggest Improved Documentation")
 def suggest_improved_documentation(
     context: YamlRefactorContextProtocol,
@@ -929,7 +931,12 @@ def suggest_improved_documentation(
     if node is None:
         logger.info(":wave: Suggesting improved documentation across all matched nodes.")
         for _ in context.pool.map(
-            partial(suggest_improved_documentation, context, threshold=threshold, learning_mode=learning_mode),
+            partial(
+                suggest_improved_documentation,
+                context,
+                threshold=threshold,
+                learning_mode=learning_mode,
+            ),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
             ...

@@ -11,7 +11,6 @@ import re
 import typing as t
 from dataclasses import dataclass, field
 from enum import Enum
-from functools import wraps
 
 from sqlglot import exp, parse
 from sqlglot.dialects import Dialect
@@ -19,8 +18,6 @@ from sqlglot.dialects import Dialect
 from dbt_osmosis.core import logger
 
 if t.TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-
     from dbt_osmosis.core.config import DbtProjectContext
 
 __all__ = [
@@ -40,6 +37,7 @@ __all__ = [
 
 class LintLevel(Enum):
     """Severity levels for lint violations."""
+
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
@@ -192,12 +190,59 @@ class KeywordCapitalizationRule(LintRule):
 
         # Common SQL keywords (not exhaustive)
         self.keywords = {
-            "select", "from", "where", "join", "inner", "outer", "left", "right", "full",
-            "on", "and", "or", "not", "in", "as", "by", "group", "order", "having",
-            "insert", "update", "delete", "create", "drop", "alter", "table", "index",
-            "into", "values", "set", "limit", "offset", "union", "intersect", "except",
-            "case", "when", "then", "else", "end", "distinct", "all", "exists", "between",
-            "like", "is", "null", "true", "false", "with", "recursive", "over", "partition",
+            "select",
+            "from",
+            "where",
+            "join",
+            "inner",
+            "outer",
+            "left",
+            "right",
+            "full",
+            "on",
+            "and",
+            "or",
+            "not",
+            "in",
+            "as",
+            "by",
+            "group",
+            "order",
+            "having",
+            "insert",
+            "update",
+            "delete",
+            "create",
+            "drop",
+            "alter",
+            "table",
+            "index",
+            "into",
+            "values",
+            "set",
+            "limit",
+            "offset",
+            "union",
+            "intersect",
+            "except",
+            "case",
+            "when",
+            "then",
+            "else",
+            "end",
+            "distinct",
+            "all",
+            "exists",
+            "between",
+            "like",
+            "is",
+            "null",
+            "true",
+            "false",
+            "with",
+            "recursive",
+            "over",
+            "partition",
         }
 
     def __call__(self, ast: exp.Expression, sql: str) -> list[LintViolation]:
@@ -406,7 +451,7 @@ class QuotedIdentifierRule(LintRule):
                 # Check if the identifier needs quoting
                 # (contains special chars, spaces, or is a reserved word)
                 needs_quoting = bool(
-                    re.search(r'[^a-zA-Z0-9_]', identifier.name)
+                    re.search(r"[^a-zA-Z0-9_]", identifier.name)
                     or identifier.name.lower() in {"select", "from", "where", "group", "order"}
                 )
 
