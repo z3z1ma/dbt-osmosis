@@ -6,7 +6,6 @@ import json
 import os
 import re
 import typing as t
-from dataclasses import dataclass
 from textwrap import dedent
 
 import openai
@@ -18,10 +17,8 @@ __all__ = [
     "generate_model_spec_as_json",
     "generate_column_doc",
     "generate_table_doc",
-    "generate_style_aware_column_doc",
-    "generate_style_aware_table_doc",
-    "suggest_documentation_improvements",
-    "DocumentationSuggestion",
+    "generate_dbt_model_from_nl",
+    "generate_sql_from_nl",
 ]
 
 
@@ -488,6 +485,285 @@ def generate_table_doc(
     return content.strip()
 
 
+def _create_llm_prompt_for_nl_to_sql(
+    query: str,
+    available_sources: list[dict[str, t.Any]] | None = None,
+    schema_context: str | None = None,
+) -> list[dict[str, str]]:
+    """Builds a system + user prompt for generating SQL from natural language.
+
+    Args:
+        query: The natural language query from the user
+        available_sources: List of available sources/models with their columns
+        schema_context: Additional schema context information
+
+    Returns:
+        list[dict[str, str]]: List of prompt messages for the LLM
+    """
+    if available_sources is None:
+        available_sources = []
+
+    sources_info = ""
+    if available_sources:
+        sources_info = "\nAvailable sources and models:\n"
+        for source in available_sources[:20]:  # Limit to prevent token overflow
+            name = source.get("name", "unknown")
+            source_type = source.get("type", "model")
+            columns = source.get("columns", [])
+            sources_info += f"  - {name} ({source_type}): {', '.join(columns[:10])}\n"
+
+    system_prompt = dedent(
+        f"""
+    You are a helpful SQL Developer and an Expert in dbt.
+    Your job is to translate natural language queries into valid SQL.
+
+    IMPORTANT RULES:
+    1. Use dbt ref() syntax to reference models: {{{{ ref('model_name') }}}}
+    2. Use dbt source() syntax to reference sources: {{{{ source('source_name', 'table_name') }}}}
+    3. Return ONLY the SQL, no extra commentary or Markdown fences
+    4. Use proper SQL syntax compatible with modern data warehouses (Snowflake, BigQuery, Databricks, Postgres, etc.)
+    5. Include helpful comments in the SQL to explain the logic
+    6. Use CTEs (WITH clauses) for complex queries to improve readability
+    7. Handle NULL values appropriately
+    8. Use standard date functions (CURRENT_DATE, DATE_TRUNC, etc.)
+
+    {sources_info}
+
+    {schema_context or ""}
+    """
+    )
+
+    user_message = dedent(
+        f"""
+    Natural language query:
+    {query}
+
+    Return ONLY the SQL code that answers this query.
+    """
+    )
+
+    return [
+        {"role": "system", "content": system_prompt.strip()},
+        {"role": "user", "content": user_message.strip()},
+    ]
+
+
+def _create_llm_prompt_for_nl_to_dbt_model(
+    query: str,
+    available_sources: list[dict[str, t.Any]] | None = None,
+    schema_context: str | None = None,
+) -> list[dict[str, str]]:
+    """Builds a system + user prompt for generating a complete dbt model from natural language.
+
+    Args:
+        query: The natural language query describing the desired model
+        available_sources: List of available sources/models with their columns
+        schema_context: Additional schema context information
+
+    Returns:
+        list[dict[str, str]]: List of prompt messages for the LLM
+    """
+    if available_sources is None:
+        available_sources = []
+
+    sources_info = ""
+    if available_sources:
+        sources_info = "Available sources and models:\n"
+        for source in available_sources[:20]:  # Limit to prevent token overflow
+            name = source.get("name", "unknown")
+            source_type = source.get("type", "model")
+            columns = source.get("columns", [])
+            description = source.get("description", "")
+            if description:
+                sources_info += f"  - {name} ({source_type}): {description}\n"
+                sources_info += f"    Columns: {', '.join(columns[:10])}\n"
+            else:
+                sources_info += f"  - {name} ({source_type}): {', '.join(columns[:10])}\n"
+
+    example_output = dedent("""
+    {{
+      "model_name": "customer_churn_last_30_days",
+      "description": "Identifies customers who have churned in the last 30 days based on inactivity period",
+      "sql": "WITH customer_activity AS (\\n    SELECT\\n        customer_id,\\n        MAX(order_date) as last_order_date\\n    FROM {{{{ ref('orders') }}}}\\n    GROUP BY customer_id\\n)\\nSELECT\\n    c.customer_id,\\n    c.email,\\n    c.created_at,\\n    COALESCE(ca.last_order_date, c.created_at) as last_activity\\nFROM {{{{ ref('customers') }}}} c\\nLEFT JOIN customer_activity ca USING (customer_id)\\nWHERE ac.last_activity < CURRENT_DATE - INTERVAL '30 days'",
+      "materialized": "table",
+      "columns": [
+        {{"name": "customer_id", "description": "Unique customer identifier"}},
+        {{"name": "email", "description": "Customer email address"}},
+        {{"name": "created_at", "description": "Customer account creation date"}},
+        {{"name": "last_activity", "description": "Date of last customer activity"}}
+      ]
+    }}
+    """)
+
+    system_prompt = dedent(
+        f"""
+    You are a helpful SQL Developer and an Expert in dbt.
+    Your job is to understand a natural language request and generate a complete dbt model specification.
+
+    IMPORTANT RULES:
+    1. Return a valid JSON object with keys: model_name, description, sql, materialized, columns
+    2. "model_name" should be snake_case and descriptive
+    3. "description" should briefly explain what the model does
+    4. "sql" should use dbt ref() and source() syntax appropriately
+    5. "materialized" should be one of: table, view, incremental, ephemeral
+    6. "columns" is an array with name and description for each column
+    7. Use CTEs for complex logic
+    8. Include helpful comments in the SQL
+    9. DO NOT output extra text, ONLY valid JSON
+
+    {sources_info}
+
+    {schema_context or ""}
+
+    Example of desired JSON structure:
+    {example_output}
+    """
+    )
+
+    user_message = dedent(
+        f"""
+    Natural language request:
+    {query}
+
+    Return ONLY a valid JSON object that matches the structure described above.
+    """
+    )
+
+    return [
+        {"role": "system", "content": system_prompt.strip()},
+        {"role": "user", "content": user_message.strip()},
+    ]
+
+
+def generate_sql_from_nl(
+    query: str,
+    available_sources: list[dict[str, t.Any]] | None = None,
+    schema_context: str | None = None,
+    temperature: float = 0.3,
+) -> str:
+    """Generates SQL (with dbt refs) from a natural language query.
+
+    Args:
+        query: The natural language query from the user
+        available_sources: Optional list of available sources/models with their columns
+        schema_context: Additional schema context information
+        temperature: LLM temperature (lower = more deterministic)
+
+    Returns:
+        str: The generated SQL code
+
+    Raises:
+        LLMResponseError: If the LLM returns an invalid response
+    """
+    messages = _create_llm_prompt_for_nl_to_sql(query, available_sources, schema_context)
+
+    client, model_engine = get_llm_client()
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "azure-openai":
+        response = client.ChatCompletion.create(
+            engine=model_engine, messages=messages, temperature=temperature
+        )
+    else:
+        response = client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
+
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMResponseError("LLM returned an empty response")
+
+    # Clean up markdown fences if present
+    content = content.strip()
+    if content.startswith("```"):
+        # Extract SQL from markdown code blocks
+        lines = content.split("\n")
+        sql_lines = []
+        in_sql = False
+        for line in lines:
+            if line.startswith("```sql") or line.startswith("```SQL"):
+                in_sql = True
+                continue
+            elif line.startswith("```") and in_sql:
+                break
+            elif in_sql or not line.startswith("```"):
+                sql_lines.append(line)
+        content = "\n".join(sql_lines).strip()
+
+    return content
+
+
+def generate_dbt_model_from_nl(
+    query: str,
+    available_sources: list[dict[str, t.Any]] | None = None,
+    schema_context: str | None = None,
+    temperature: float = 0.3,
+) -> dict[str, t.Any]:
+    """Generates a complete dbt model specification from a natural language query.
+
+    The structure returned is:
+      {
+        "model_name": "...",
+        "description": "...",
+        "sql": "...",  # SQL with dbt refs/sources
+        "materialized": "table|view|incremental|ephemeral",
+        "columns": [
+          {"name": "...", "description": "..."},
+          ...
+        ]
+      }
+
+    Args:
+        query: The natural language query describing the desired model
+        available_sources: Optional list of available sources/models with their columns
+        schema_context: Additional schema context information
+        temperature: LLM temperature (lower = more deterministic)
+
+    Returns:
+        dict[str, t.Any]: A dictionary with the complete model specification
+
+    Raises:
+        LLMResponseError: If the LLM returns an invalid response
+    """
+    messages = _create_llm_prompt_for_nl_to_dbt_model(query, available_sources, schema_context)
+
+    client, model_engine = get_llm_client()
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "azure-openai":
+        response = client.ChatCompletion.create(
+            engine=model_engine, messages=messages, temperature=temperature
+        )
+    else:
+        response = client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
+
+    content = response.choices[0].message.content
+    if content is None:
+        raise LLMResponseError("LLM returned an empty response")
+
+    # Clean up markdown fences if present
+    content = content.strip()
+    if content.startswith("```"):
+        content = content[content.find("{") : content.rfind("}") + 1]
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        raise LLMResponseError("LLM returned invalid JSON:\n" + content)
+
+    # Validate required keys
+    required_keys = {"model_name", "description", "sql", "materialized", "columns"}
+    missing_keys = required_keys - set(data.keys())
+    if missing_keys:
+        raise LLMResponseError(
+            f"LLM response missing required keys: {missing_keys}\nGot keys: {list(data.keys())}"
+        )
+
+    return data
+
+
 if __name__ == "__main__":
     # Kitchen sink
     sample_sql = """
@@ -523,417 +799,3 @@ if __name__ == "__main__":
     )
     print("\n=== Single Column Documentation ===")
     print(f"Column: email => {col_doc}")
-
-
-# =============================================================================
-# AI Documentation Co-Pilot: Style-Aware Generation
-# =============================================================================
-
-if t.TYPE_CHECKING:
-    from dbt_osmosis.core.voice_learning import ProjectStyleProfile
-
-
-@dataclass
-class DocumentationSuggestion:
-    """A documentation suggestion with confidence score.
-
-    Attributes:
-        text: The suggested documentation text
-        confidence: Confidence score from 0.0 to 1.0
-        reason: Explanation for why this suggestion was made
-        source: Source of the suggestion (e.g., "llm", "inheritance")
-    """
-
-    text: str
-    confidence: float
-    reason: str
-    source: str = "llm"
-
-    def __post_init__(self) -> None:
-        """Validate confidence score is in valid range."""
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(f"Confidence must be between 0.0 and 1.0, got {self.confidence}")
-
-
-def _create_style_aware_prompt_for_column(
-    column_name: str,
-    existing_context: str | None = None,
-    table_name: str | None = None,
-    upstream_docs: list[str] | None = None,
-    style_profile: ProjectStyleProfile | None = None,
-    style_examples: list[str] | None = None,
-    current_description: str | None = None,
-) -> list[dict[str, str]]:
-    """Builds a style-aware prompt for generating column documentation.
-
-    Args:
-        column_name: The name of the column to describe
-        existing_context: Any relevant metadata or table definitions
-        table_name: Name of the table/model (optional)
-        upstream_docs: Optional docs or references
-        style_profile: Project style profile for voice learning
-        style_examples: Specific style examples to follow
-        current_description: Current description to improve upon
-
-    Returns:
-        List of prompt messages for the LLM
-    """
-    if upstream_docs is None:
-        upstream_docs = []
-
-    table_context = f"in the table '{table_name}'" if table_name else ""
-
-    # Build style guidance section
-    style_guidance = ""
-    if style_profile:
-        style_guidance = f"\n{style_profile.to_prompt_context(max_examples=3)}"
-    elif style_examples:
-        style_guidance = "\n# Follow these style examples:\n" + "\n".join(style_examples[:3])
-
-    # Build task description
-    if current_description:
-        task = f"IMPROVE the existing description for column '{column_name}'"
-    else:
-        task = f"WRITE a description for column '{column_name}'"
-
-    system_prompt = dedent(
-        f"""
-    You are a helpful SQL Developer and an Expert in dbt.
-    Your job is to {task}{table_context}.
-    {style_guidance}
-
-    IMPORTANT RULES:
-    1. DO NOT output extra commentary or Markdown fences.
-    2. Provide only the column description text, nothing else.
-    3. Match the style and voice of the provided examples.
-    4. Use consistent terminology with the project patterns.
-    5. Keep descriptions concise but informative.
-    6. If improving existing text, preserve key technical details.
-    """
-    )
-
-    user_message_sections = [
-        f"The column name is: {column_name}",
-    ]
-
-    if current_description:
-        user_message_sections.append(f"\nCurrent description to improve:\n{current_description}")
-
-    if existing_context:
-        user_message_sections.append(f"\nExisting context:\n{existing_context}")
-
-    if upstream_docs:
-        user_message_sections.append(f"\nUpstream docs:\n{os.linesep.join(upstream_docs)}")
-
-    user_message_sections.append("\nReturn ONLY the text suitable for the 'description' field.")
-
-    return [
-        {"role": "system", "content": system_prompt.strip()},
-        {"role": "user", "content": "\n".join(user_message_sections).strip()},
-    ]
-
-
-def _create_style_aware_prompt_for_table(
-    sql_content: str,
-    table_name: str,
-    upstream_docs: list[str] | None = None,
-    style_profile: ProjectStyleProfile | None = None,
-    style_examples: list[str] | None = None,
-    current_description: str | None = None,
-) -> list[dict[str, t.Any]]:
-    """Builds a style-aware prompt for generating table documentation.
-
-    Args:
-        sql_content: The SQL code for the table
-        table_name: Name of the table/model
-        upstream_docs: Optional docs or references
-        style_profile: Project style profile for voice learning
-        style_examples: Specific style examples to follow
-        current_description: Current description to improve upon
-
-    Returns:
-        List of prompt messages for the LLM
-    """
-    if upstream_docs is None:
-        upstream_docs = []
-
-    # Build style guidance section
-    style_guidance = ""
-    if style_profile:
-        style_guidance = f"\n{style_profile.to_prompt_context(max_examples=3)}"
-    elif style_examples:
-        style_guidance = "\n# Follow these style examples:\n" + "\n".join(style_examples[:3])
-
-    # Build task description
-    if current_description:
-        task = f"IMPROVE the existing description for table '{table_name}'"
-    else:
-        task = f"WRITE a description for table '{table_name}'"
-
-    system_prompt = dedent(
-        f"""
-    You are a helpful SQL Developer and an Expert in dbt.
-    Your job is to {task}.
-    {style_guidance}
-
-    IMPORTANT RULES:
-    1. DO NOT output extra commentary or Markdown fences.
-    2. Provide only the description text, nothing else.
-    3. Match the style and voice of the provided examples.
-    4. DO NOT list out the columns. Only provide a high-level description.
-    5. Keep descriptions concise but informative.
-    """
-    )
-
-    if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
-        if len(sql_content) > int(max_sql_chars):
-            sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
-
-    user_message_sections = [f"The table name is: {table_name}"]
-
-    if current_description:
-        user_message_sections.append(f"\nCurrent description to improve:\n{current_description}")
-
-    user_message_sections.append(
-        f"""
-The SQL for the model is:
-
->>> SQL CODE START
-{sql_content}
->>> SQL CODE END
-"""
-    )
-
-    if upstream_docs:
-        user_message_sections.append(
-            f"\nThe upstream documentation is:\n{os.linesep.join(upstream_docs)}"
-        )
-
-    user_message_sections.append(
-        "\nPlease return only the text suitable for the 'description' field."
-    )
-
-    return [
-        {"role": "system", "content": system_prompt.strip()},
-        {"role": "user", "content": "\n".join(user_message_sections).strip()},
-    ]
-
-
-def generate_style_aware_column_doc(
-    column_name: str,
-    existing_context: str | None = None,
-    table_name: str | None = None,
-    upstream_docs: list[str] | None = None,
-    temperature: float = 0.5,
-    style_profile: ProjectStyleProfile | None = None,
-    style_examples: list[str] | None = None,
-    current_description: str | None = None,
-) -> str:
-    """Generate documentation for a column using style-aware prompts.
-
-    Args:
-        column_name: The name of the column to describe
-        existing_context: Any relevant metadata or table definitions
-        table_name: Name of the table/model (optional)
-        upstream_docs: Optional docs or references
-        temperature: OpenAI completion temperature
-        style_profile: Project style profile for voice learning
-        style_examples: Specific style examples to follow
-        current_description: Current description to improve upon
-
-    Returns:
-        A short docstring suitable for a "description" field
-    """
-    messages = _create_style_aware_prompt_for_column(
-        column_name=column_name,
-        existing_context=existing_context,
-        table_name=table_name,
-        upstream_docs=upstream_docs,
-        style_profile=style_profile,
-        style_examples=style_examples,
-        current_description=current_description,
-    )
-
-    client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
-
-    content = response.choices[0].message.content
-    if not content:
-        raise LLMResponseError("LLM returned an empty response")
-
-    return content.strip()
-
-
-def generate_style_aware_table_doc(
-    sql_content: str,
-    table_name: str,
-    upstream_docs: list[str] | None = None,
-    temperature: float = 0.5,
-    style_profile: ProjectStyleProfile | None = None,
-    style_examples: list[str] | None = None,
-    current_description: str | None = None,
-) -> str:
-    """Generate documentation for a table using style-aware prompts.
-
-    Args:
-        sql_content: The SQL code for the table
-        table_name: Name of the table/model
-        upstream_docs: Optional docs or references
-        temperature: OpenAI completion temperature
-        style_profile: Project style profile for voice learning
-        style_examples: Specific style examples to follow
-        current_description: Current description to improve upon
-
-    Returns:
-        A short docstring suitable for a "description" field
-    """
-    messages = _create_style_aware_prompt_for_table(
-        sql_content=sql_content,
-        table_name=table_name,
-        upstream_docs=upstream_docs,
-        style_profile=style_profile,
-        style_examples=style_examples,
-        current_description=current_description,
-    )
-
-    client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
-
-    content = response.choices[0].message.content
-    if not content:
-        raise LLMResponseError("LLM returned an empty response")
-
-    return content.strip()
-
-
-def suggest_documentation_improvements(
-    target: t.Literal["column", "table"],
-    current_description: str | None,
-    column_name: str | None = None,
-    table_name: str | None = None,
-    sql_content: str | None = None,
-    existing_context: str | None = None,
-    upstream_docs: list[str] | None = None,
-    style_profile: ProjectStyleProfile | None = None,
-    style_examples: list[str] | None = None,
-    temperature: float = 0.5,
-) -> DocumentationSuggestion:
-    """Suggest an improved documentation with confidence scoring.
-
-    This function generates an AI-powered documentation suggestion and
-    provides a confidence score based on factors like:
-    - Whether there's an existing description
-    - Quality of style information available
-    - Amount of context available
-
-    Args:
-        target: Type of documentation ("column" or "table")
-        current_description: Current description to improve (or None if missing)
-        column_name: Name of the column (for column targets)
-        table_name: Name of the table
-        sql_content: SQL code (for table targets)
-        existing_context: Additional context about the target
-        upstream_docs: Documentation from upstream dependencies
-        style_profile: Project style profile for voice learning
-        style_examples: Specific style examples to follow
-        temperature: LLM temperature
-
-    Returns:
-        DocumentationSuggestion with text, confidence, and reasoning
-    """
-    if upstream_docs is None:
-        upstream_docs = []
-
-    # Calculate base confidence
-    confidence = 0.5
-
-    # Boost confidence if we have style information
-    if style_profile or style_examples:
-        confidence += 0.2
-
-    # Boost confidence if we have upstream documentation
-    if upstream_docs and any(d.strip() for d in upstream_docs):
-        confidence += 0.15
-
-    # Boost confidence if we have SQL context (for tables)
-    if target == "table" and sql_content:
-        confidence += 0.1
-
-    # Adjust confidence based on current state
-    has_current = bool(current_description and current_description.strip())
-
-    # Generate the suggestion
-    if target == "column":
-        if not column_name:
-            raise ValueError("column_name is required for column targets")
-
-        suggestion_text = generate_style_aware_column_doc(
-            column_name=column_name,
-            existing_context=existing_context,
-            table_name=table_name,
-            upstream_docs=upstream_docs,
-            temperature=temperature,
-            style_profile=style_profile,
-            style_examples=style_examples,
-            current_description=current_description,
-        )
-
-        # Higher confidence for improvements vs new docs
-        if has_current:
-            confidence += 0.05
-            reason = f"Improving existing description for column '{column_name}'"
-        else:
-            reason = f"Generating new description for undocumented column '{column_name}'"
-
-    elif target == "table":
-        if not table_name:
-            raise ValueError("table_name is required for table targets")
-        if not sql_content:
-            raise ValueError("sql_content is required for table targets")
-
-        suggestion_text = generate_style_aware_table_doc(
-            sql_content=sql_content,
-            table_name=table_name,
-            upstream_docs=upstream_docs,
-            temperature=temperature,
-            style_profile=style_profile,
-            style_examples=style_examples,
-            current_description=current_description,
-        )
-
-        if has_current:
-            confidence += 0.05
-            reason = f"Improving existing description for table '{table_name}'"
-        else:
-            reason = f"Generating new description for undocumented table '{table_name}'"
-
-    else:
-        raise ValueError(f"Invalid target: {target}. Must be 'column' or 'table'")
-
-    # Clamp confidence to [0, 1]
-    confidence = max(0.0, min(1.0, confidence))
-
-    return DocumentationSuggestion(
-        text=suggestion_text,
-        confidence=confidence,
-        reason=reason,
-        source="llm-style-aware",
-    )

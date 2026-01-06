@@ -17,18 +17,6 @@ from dbt_osmosis.core.config import (
     discover_project_dir,
 )
 
-# Discovery utilities
-from dbt_osmosis.core.discovery import (
-    DiscoveryResult,
-    DocumentationGap,
-    calculate_priority_score,
-    discover_undocumented_columns,
-    get_documentation_coverage,
-)
-from dbt_osmosis.core.discovery import (
-    discover_undocumented_models as discover_undocumented_models_impl,
-)
-
 # Inheritance functionality
 from dbt_osmosis.core.inheritance import (
     _build_column_knowledge_graph,
@@ -46,6 +34,12 @@ from dbt_osmosis.core.introspection import (
     _maybe_use_precise_dtype,
     get_columns,
     normalize_column_name,
+)
+
+# Natural language generation (from llm.py)
+from dbt_osmosis.core.llm import (
+    generate_dbt_model_from_nl,
+    generate_sql_from_nl,
 )
 
 # Node filtering and sorting
@@ -116,31 +110,9 @@ from dbt_osmosis.core.transforms import (
     sort_columns_alphabetically,
     sort_columns_as_configured,
     sort_columns_as_in_database,
-    suggest_improved_documentation,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
 )
-
-# Voice learning and AI co-pilot
-from dbt_osmosis.core.voice_learning import (
-    ProjectStyleProfile,
-    analyze_project_documentation_style,
-    extract_style_examples,
-    find_similar_documented_nodes,
-)
-
-# LLM functions (require openai extra)
-try:
-    from dbt_osmosis.core.llm import (  # type: ignore[no-redef]
-        DocumentationSuggestion,
-        generate_style_aware_column_doc,
-        generate_style_aware_table_doc,
-        suggest_documentation_improvements,
-    )
-
-    _llm_available = True
-except ImportError:
-    _llm_available = False
 
 # Note: process_node is imported in sql_operations.py where it's used
 
@@ -188,7 +160,6 @@ __all__ = [
     "sort_columns_as_configured",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
-    "suggest_improved_documentation",
     "config_to_namespace",
     "_reload_manifest",
     "_find_first",
@@ -210,25 +181,6 @@ __all__ = [
     "_COLUMN_LIST_CACHE",
     "_YAML_BUFFER_CACHE",
     "SqlCompileRunner",
-    # Voice learning and AI co-pilot
-    "ProjectStyleProfile",
-    "analyze_project_documentation_style",
-    "extract_style_examples",
-    "find_similar_documented_nodes",
-    # Discovery utilities
-    "DocumentationGap",
-    "DiscoveryResult",
-    "calculate_priority_score",
-    "discover_undocumented_columns",
-    "discover_undocumented_models_impl",
-    "get_documentation_coverage",
+    "generate_dbt_model_from_nl",
+    "generate_sql_from_nl",
 ]
-
-# Add LLM exports if available
-if _llm_available:
-    __all__.extend([
-        "DocumentationSuggestion",
-        "generate_style_aware_column_doc",
-        "generate_style_aware_table_doc",
-        "suggest_documentation_improvements",
-    ])
