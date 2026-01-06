@@ -30,6 +30,7 @@ __all__ = [
     "sort_columns_as_configured",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
+    "apply_semantic_analysis",
 ]
 
 
@@ -698,3 +699,146 @@ def synthesize_missing_documentation_with_openai(
     else:  # Use individual synthesis for few missing columns
         _synthesize_node_documentation(node, upstream_docs, context)
         _synthesize_individual_column_documentation(node, upstream_docs, context)
+
+
+@_transform_op("Apply Semantic Analysis")
+def apply_semantic_analysis(
+    context: YamlRefactorContextProtocol, node: ResultNode | None = None
+) -> None:
+    """Apply AI semantic analysis to infer business meaning and relationships for columns.
+
+    Uses LLM to analyze column names, data types, and context to:
+    - Infer semantic types (primary_key, foreign_key, metric, dimension, etc.)
+    - Detect relationships between columns (e.g., foreign keys)
+    - Generate contextual descriptions based on semantic understanding
+    - Suggest tags and metadata based on business meaning
+
+    This transform enhances documentation by providing deeper business context
+    beyond what traditional inheritance can provide.
+
+    Args:
+        context: The YAML refactor context
+        node: The node to analyze. If None, analyzes all matched nodes.
+    """
+    from dbt_osmosis.core.inheritance import _build_column_knowledge_graph
+    from dbt_osmosis.core.node_filters import _iter_candidate_nodes
+
+    if node is None:
+        logger.info(":wave: Applying semantic analysis across all matched nodes.")
+        for _ in context.pool.map(
+            partial(apply_semantic_analysis, context),
+            (
+                n
+                for _, n in _iter_candidate_nodes(
+                    context, include_external=context.settings.include_external
+                )
+            ),
+        ):
+            ...
+        return
+
+    logger.info(":robot: Analyzing semantics for => %s", node.unique_id)
+
+    # Check if LLM is configured
+    try:
+        from dbt_osmosis.core.llm import analyze_column_semantics, generate_semantic_description
+
+        # Verify LLM client can be created (will raise if not configured)
+        _ = analyze_column_semantics.__globals__["get_llm_client"]()
+    except Exception as e:
+        logger.warning(
+            ":warning: LLM not configured or accessible. Skipping semantic analysis: %s",
+            e,
+        )
+        return
+
+    # Build column knowledge graph to get upstream context
+    column_knowledge_graph = _build_column_knowledge_graph(context, node)
+
+    # Collect upstream columns for relationship inference
+    upstream_columns: list[dict[str, str]] = []
+    for name, meta in column_knowledge_graph.items():
+        if "description" in meta:
+            upstream_columns.append({"name": name, "description": meta["description"]})
+
+    # Build model context (description or SQL)
+    model_context = node.description or ""
+    if hasattr(node, "raw_sql") and node.raw_sql:
+        # Include a snippet of the SQL for context
+        model_context = f"{model_context}\n\nSQL: {node.raw_sql[:500]}..."
+
+    # Apply semantic analysis to each column
+    for column_name, column_info in node.columns.items():
+        # Skip columns that already have comprehensive documentation
+        if column_info.description and len(column_info.description) > 50:
+            logger.debug(
+                ":page_with_curl: Skipping semantic analysis for column => %s (already documented)",
+                column_name,
+            )
+            continue
+
+        try:
+            logger.info(":mag: Analyzing semantics for column => %s", column_name)
+
+            # Perform semantic analysis
+            semantic_result = analyze_column_semantics(
+                column_name=column_name,
+                data_type=column_info.data_type,
+                table_name=node.name,
+                model_context=model_context,
+                upstream_columns=upstream_columns[:20],  # Limit for context
+                temperature=0.3,
+            )
+
+            # Generate or enhance description using semantic analysis
+            new_description = generate_semantic_description(
+                column_name=column_name,
+                semantic_analysis=semantic_result,
+                table_name=node.name,
+                upstream_description=column_info.description,
+                temperature=0.5,
+            )
+
+            # Update column description
+            node.columns[column_name] = column_info.replace(description=new_description)
+
+            # Apply suggested tags if present
+            if semantic_result.get("tags"):
+                existing_tags = list(column_info.tags) if column_info.tags else []
+                new_tags = semantic_result["tags"]
+                merged_tags = list(set(existing_tags + new_tags))
+                if merged_tags != existing_tags:
+                    node.columns[column_name] = column_info.replace(tags=merged_tags)
+                    logger.debug(
+                        ":label: Added tags to column %s: %s",
+                        column_name,
+                        new_tags,
+                    )
+
+            # Apply suggested meta if present
+            if semantic_result.get("meta"):
+                existing_meta = dict(column_info.meta) if column_info.meta else {}
+                # Merge meta, prioritizing existing values
+                merged_meta = {**semantic_result["meta"], **existing_meta}
+                if merged_meta != existing_meta:
+                    node.columns[column_name] = column_info.replace(meta=merged_meta)
+                    logger.debug(
+                        ":wrench: Added meta to column %s: %s",
+                        column_name,
+                        semantic_result["meta"],
+                    )
+
+            logger.info(
+                ":sparkles: Applied semantic analysis to column => %s: %s",
+                column_name,
+                semantic_result.get("semantic_type", "unknown"),
+            )
+
+        except Exception as e:
+            logger.warning(
+                ":warning: Failed to analyze semantics for column %s: %s",
+                column_name,
+                e,
+            )
+            # Continue with other columns even if one fails
+            continue

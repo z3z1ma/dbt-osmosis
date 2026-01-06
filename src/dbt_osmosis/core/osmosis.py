@@ -98,6 +98,7 @@ from dbt_osmosis.core.sync_operations import (
 
 # Transform operations
 from dbt_osmosis.core.transforms import (
+    apply_semantic_analysis,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     remove_columns_not_in_database,
@@ -146,6 +147,7 @@ __all__ = [
     "pretty_print_plan",
     "sync_node_to_yaml",
     "apply_restructure_plan",
+    "apply_semantic_analysis",
     "inherit_upstream_column_knowledge",
     "inject_missing_columns",
     "remove_columns_not_in_database",

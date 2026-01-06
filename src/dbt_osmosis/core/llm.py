@@ -17,6 +17,8 @@ __all__ = [
     "generate_model_spec_as_json",
     "generate_column_doc",
     "generate_table_doc",
+    "analyze_column_semantics",
+    "generate_semantic_description",
 ]
 
 
@@ -463,6 +465,291 @@ def generate_table_doc(
         str: A short docstring suitable for a "description" field
     """
     messages = _create_llm_prompt_for_table(sql_content, table_name, upstream_docs)
+
+    client, model_engine = get_llm_client()
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "azure-openai":
+        response = client.ChatCompletion.create(
+            engine=model_engine, messages=messages, temperature=temperature
+        )
+    else:
+        response = client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
+
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMResponseError("LLM returned an empty response")
+
+    return content.strip()
+
+
+def _create_llm_prompt_for_semantic_analysis(
+    column_name: str,
+    data_type: str | None = None,
+    table_name: str | None = None,
+    model_context: str | None = None,
+    upstream_columns: list[dict[str, str]] | None = None,
+) -> list[dict[str, t.Any]]:
+    """Builds a system + user prompt for semantic analysis of a column.
+
+    The LLM analyzes the column name, data type, and context to infer:
+    - Business meaning (e.g., PK, FK, metric, dimension, timestamp)
+    - Data relationships (e.g., foreign key to another table)
+    - Semantic category (e.g., PII, currency, status, identifier)
+
+    Args:
+        column_name: The column name to analyze
+        data_type: The column's data type (optional)
+        table_name: The table/model name (optional)
+        model_context: The model's description or SQL context (optional)
+        upstream_columns: List of upstream columns with names and descriptions (optional)
+
+    Returns:
+        list[dict[str, t.Any]]: List of prompt messages for the LLM
+    """
+    if upstream_columns is None:
+        upstream_columns = []
+
+    example_json = dedent(
+        """\
+    {
+      "semantic_type": "foreign_key",
+      "business_meaning": "References the customer entity",
+      "inferred_relationship": "customers.customer_id",
+      "description": "Foreign key reference to the customers table",
+      "tags": ["pk", "fk", "relationship"],
+      "meta": {
+        "foreign_key": "customers.customer_id",
+        "domain": "customer"
+      }
+    }
+    """
+    )
+
+    # Build upstream columns context
+    upstream_context = ""
+    if upstream_columns:
+        upstream_context = "\n    ".join(
+            f"- {col['name']}: {col.get('description', 'no description')}"
+            for col in upstream_columns[:20]  # Limit to 20 columns
+        )
+
+    system_prompt = dedent(
+        f"""
+    You are an expert data modeler and SQL analyst. Your task is to perform semantic analysis
+    on a database column to infer its business meaning and relationships.
+
+    Return ONLY a valid JSON object with this structure:
+    {example_json}
+
+    SEMANTIC TYPES to detect:
+    - primary_key: Unique identifier for the entity (e.g., id, pk, uuid)
+    - foreign_key: Reference to another entity (e.g., customer_id, user_id)
+    - metric: Numeric measure or aggregation (e.g., total_amount, count, sum)
+    - dimension: Categorical attribute (e.g., status, type, category)
+    - timestamp: Date/time column (e.g., created_at, updated_date)
+    - pii: Personally identifiable information (e.g., email, ssn, phone)
+    - currency: Money/currency values (e.g., price, amount, cost)
+    - boolean: True/false flag (e.g., is_active, has_flag, enabled)
+    - text: Free-form text (e.g., description, notes, comments)
+    - json: Structured data (e.g., metadata, properties, attributes)
+
+    INFERRED RELATIONSHIPS:
+    - For columns ending in _id, _key, _fk: infer the referenced table
+    - For columns with common prefixes (e.g., customer_): relate to customer entity
+    - For timestamp columns: indicate if it's a created/updated/deleted time
+
+    BUSINESS MEANING:
+    - Infer what business concept this column represents
+    - Consider the column name, data type, and table context
+    - Be concise but descriptive
+
+    IMPORTANT RULES:
+    1. Return ONLY valid JSON, no markdown fences or extra text
+    2. If relationships are unclear, use null for inferred_relationship
+    3. Include relevant tags based on semantic analysis
+    4. meta should contain structured inferences (foreign_key, domain, format, etc.)
+    """
+    )
+
+    user_message = dedent(
+        f"""
+    Column to analyze:
+    - Name: {column_name}
+    - Data Type: {data_type or "unknown"}
+    - Table: {table_name or "unknown"}
+
+    Model context:
+    {model_context or "No context provided"}
+
+    Upstream columns (for relationship inference):
+    {upstream_context or "No upstream columns provided"}
+
+    Return ONLY a valid JSON object matching the structure above.
+    """
+    )
+
+    return [
+        {"role": "system", "content": system_prompt.strip()},
+        {"role": "user", "content": user_message.strip()},
+    ]
+
+
+def analyze_column_semantics(
+    column_name: str,
+    data_type: str | None = None,
+    table_name: str | None = None,
+    model_context: str | None = None,
+    upstream_columns: list[dict[str, str]] | None = None,
+    temperature: float = 0.3,
+) -> dict[str, t.Any]:
+    """Analyzes a column semantically to infer business meaning and relationships.
+
+    Uses LLM to analyze the column name, data type, and context to produce:
+    - semantic_type: The type of data (pk, fk, metric, dimension, etc.)
+    - business_meaning: Business interpretation of the column
+    - inferred_relationship: Detected foreign key or entity relationship
+    - description: Generated description based on semantic analysis
+    - tags: Suggested tags for the column
+    - meta: Structured metadata (foreign_key, domain, etc.)
+
+    Args:
+        column_name: The column name to analyze
+        data_type: The column's data type (optional)
+        table_name: The table/model name (optional)
+        model_context: The model's description or SQL context (optional)
+        upstream_columns: List of upstream columns with names and descriptions (optional)
+        temperature: LLM temperature (default 0.3 for more deterministic output)
+
+    Returns:
+        dict[str, t.Any]: JSON object with semantic analysis results
+
+    Example:
+        >>> result = analyze_column_semantics("customer_id", data_type="INTEGER", table_name="orders")
+        >>> print(result["semantic_type"])
+        'foreign_key'
+        >>> print(result["inferred_relationship"])
+        'customers.customer_id'
+    """
+    messages = _create_llm_prompt_for_semantic_analysis(
+        column_name=column_name,
+        data_type=data_type,
+        table_name=table_name,
+        model_context=model_context,
+        upstream_columns=upstream_columns,
+    )
+
+    client, model_engine = get_llm_client()
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "azure-openai":
+        response = client.ChatCompletion.create(
+            engine=model_engine, messages=messages, temperature=temperature
+        )
+    else:
+        response = client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
+
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMResponseError("LLM returned an empty response")
+
+    content = content.strip()
+    # Remove markdown fences if present
+    if content.startswith("```") and content.endswith("```"):
+        content = content[content.find("{") : content.rfind("}") + 1]
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise LLMResponseError(f"LLM returned invalid JSON: {content}") from e
+
+    return data
+
+
+def generate_semantic_description(
+    column_name: str,
+    semantic_analysis: dict[str, t.Any] | None = None,
+    table_name: str | None = None,
+    upstream_description: str | None = None,
+    temperature: float = 0.5,
+) -> str:
+    """Generates a contextual description based on semantic analysis.
+
+    Creates a natural language description that incorporates the semantic meaning
+    of the column, inferred relationships, and business context.
+
+    Args:
+        column_name: The column name to describe
+        semantic_analysis: Pre-computed semantic analysis (optional, will compute if None)
+        table_name: The table/model name (optional)
+        upstream_description: Existing upstream description to incorporate (optional)
+        temperature: LLM temperature (default 0.5)
+
+    Returns:
+        str: A natural language description for the column
+
+    Example:
+        >>> desc = generate_semantic_description("customer_id", table_name="orders")
+        >>> print(desc)
+        'Foreign key reference to the customers table. Identifies the customer associated with this order.'
+    """
+    # If no semantic analysis provided, compute it
+    if semantic_analysis is None:
+        semantic_analysis = analyze_column_semantics(
+            column_name=column_name,
+            table_name=table_name,
+            temperature=temperature,
+        )
+
+    # Build context from semantic analysis
+    context_parts = []
+    if semantic_analysis.get("business_meaning"):
+        context_parts.append(f"Business meaning: {semantic_analysis['business_meaning']}")
+    if semantic_analysis.get("inferred_relationship"):
+        context_parts.append(f"Relationship: {semantic_analysis['inferred_relationship']}")
+    if semantic_analysis.get("semantic_type"):
+        context_parts.append(f"Type: {semantic_analysis['semantic_type']}")
+
+    context_str = ". ".join(context_parts) if context_parts else "No additional context"
+
+    system_prompt = dedent(
+        """
+    You are a helpful SQL Developer and an Expert in dbt.
+    Your job is to produce a concise documentation string for a database column.
+
+    IMPORTANT RULES:
+    1. DO NOT output extra commentary or Markdown fences.
+    2. Provide only the column description text, nothing else.
+    3. Incorporate the semantic analysis and upstream description if provided.
+    4. Keep it concise (1-2 sentences).
+    5. Focus on business meaning and relationships.
+    """
+    )
+
+    user_message = dedent(
+        f"""
+    Column: {column_name}
+    Table: {table_name or "unknown"}
+
+    Semantic analysis:
+    {context_str}
+
+    Upstream description:
+    {upstream_description or "None provided"}
+
+    Generate a concise description that incorporates the semantic meaning and relationships.
+    Return ONLY the description text.
+    """
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt.strip()},
+        {"role": "user", "content": user_message.strip()},
+    ]
 
     client, model_engine = get_llm_client()
 

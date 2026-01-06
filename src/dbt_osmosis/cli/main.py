@@ -17,6 +17,7 @@ from dbt_osmosis.core.osmosis import (
     YamlRefactorContext,
     YamlRefactorSettings,
     apply_restructure_plan,
+    apply_semantic_analysis,
     compile_sql_code,
     create_dbt_project_context,
     create_missing_source_yamls,
@@ -488,6 +489,11 @@ def organize(
     help="Automatically synthesize missing documentation with OpenAI.",
 )
 @click.option(
+    "--semantic-analysis",
+    is_flag=True,
+    help="Use AI semantic analysis to infer business meaning and relationships for columns.",
+)
+@click.option(
     "--include-external",
     is_flag=True,
     help="Include models and sources from external dbt packages in the processing.",
@@ -502,6 +508,7 @@ def document(
     threads: int | None = None,
     disable_introspection: bool = False,
     synthesize: bool = False,
+    semantic_analysis: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Column level documentation inheritance for existing models
@@ -532,6 +539,8 @@ def document(
             >> inherit_upstream_column_knowledge
             >> sort_columns_as_configured
         )
+        if semantic_analysis:
+            transform >>= apply_semantic_analysis
         if synthesize:
             transform >>= synthesize_missing_documentation_with_openai
 
