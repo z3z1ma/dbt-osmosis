@@ -32,6 +32,7 @@ from dbt_osmosis.core.osmosis import (
 from dbt_osmosis.core.osmosis import (
     DbtProjectContext as DbtProject,
 )
+from dbt_osmosis.workbench.components.ai_assistant import AIAssistant
 from dbt_osmosis.workbench.components.dashboard import Dashboard
 from dbt_osmosis.workbench.components.editor import Editor
 from dbt_osmosis.workbench.components.editor import TabName as EditorTab
@@ -308,7 +309,8 @@ def main():
             renderer=Renderer(board, 6, 0, 6, 11, minW=3, minH=3),
             preview=Preview(board, 0, 11, 12, 9, minW=3, minH=3, query_action=run_query),
             profiler=Profiler(board, 0, 20, 8, 9, minW=3, minH=3, prof_action=run_profile),
-            feed=RssFeed(board, 8, 20, 4, 9, minW=3, minH=3),
+            ai_assistant=AIAssistant(board, 8, 20, 4, 9, minW=3, minH=3),
+            feed=RssFeed(board, 12, 20, 4, 9, minW=3, minH=3),
         )
         for v in vars(app).copy().values():
             if isinstance(v, Dashboard.Item):
@@ -381,6 +383,7 @@ def main():
             app.renderer()
             app.preview()
             app.profiler()
+            app.ai_assistant()
             app.feed()
 
 
