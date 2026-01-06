@@ -104,9 +104,31 @@ from dbt_osmosis.core.transforms import (
     sort_columns_alphabetically,
     sort_columns_as_configured,
     sort_columns_as_in_database,
+    suggest_improved_documentation,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
 )
+
+# Voice learning and AI co-pilot
+from dbt_osmosis.core.voice_learning import (
+    ProjectStyleProfile,
+    analyze_project_documentation_style,
+    extract_style_examples,
+    find_similar_documented_nodes,
+)
+
+# LLM functions (require openai extra)
+try:
+    from dbt_osmosis.core.llm import (
+        DocumentationSuggestion,
+        generate_style_aware_column_doc,
+        generate_style_aware_table_doc,
+        suggest_documentation_improvements,
+    )
+
+    _llm_available = True
+except ImportError:
+    _llm_available = False
 
 # Note: process_node is imported in sql_operations.py where it's used
 
@@ -154,6 +176,7 @@ __all__ = [
     "sort_columns_as_configured",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
+    "suggest_improved_documentation",
     "config_to_namespace",
     "_reload_manifest",
     "_find_first",
@@ -175,4 +198,18 @@ __all__ = [
     "_COLUMN_LIST_CACHE",
     "_YAML_BUFFER_CACHE",
     "SqlCompileRunner",
+    # Voice learning and AI co-pilot
+    "ProjectStyleProfile",
+    "analyze_project_documentation_style",
+    "extract_style_examples",
+    "find_similar_documented_nodes",
 ]
+
+# Add LLM exports if available
+if _llm_available:
+    __all__.extend([
+        "DocumentationSuggestion",
+        "generate_style_aware_column_doc",
+        "generate_style_aware_table_doc",
+        "suggest_documentation_improvements",
+    ])
