@@ -12,6 +12,7 @@ import click
 import yaml as yaml_handler
 
 from dbt_osmosis.core import logger
+from dbt_osmosis.core.exceptions import OsmosisError
 from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
     YamlRefactorContext,
@@ -106,6 +107,26 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         log_level = kwargs.pop("log_level")
         logger.set_log_level(str(log_level).upper())
         return func(*args, **kwargs)
+
+    return wrapper
+
+
+def handle_errors(func: t.Callable[P, T]) -> t.Callable[P, T]:
+    """Decorator to handle and display dbt-osmosis errors gracefully."""
+
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        try:
+            return func(*args, **kwargs)
+        except OsmosisError as e:
+            logger.error(f":x: {type(e).__name__}: {e}")
+            raise click.ClickException(str(e)) from None
+        except click.ClickException:
+            # Re-raise Click exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f":boom: Unexpected error: {e}")
+            raise click.ClickException(f"An unexpected error occurred: {e}") from None
 
     return wrapper
 
@@ -294,6 +315,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     is_flag=True,
     help="Include models and sources from external dbt packages in the processing.",
 )
+@handle_errors
 def refactor(
     target: str | None = None,
     profile: str | None = None,
@@ -364,6 +386,7 @@ def refactor(
     is_flag=True,
     help="If specified, will automatically apply the restructure plan without confirmation.",
 )
+@handle_errors
 def organize(
     target: str | None = None,
     project_dir: str | None = None,
@@ -502,6 +525,7 @@ def organize(
     is_flag=True,
     help="Include models and sources from external dbt packages in the processing.",
 )
+@handle_errors
 def document(
     target: str | None = None,
     profile: str | None = None,
@@ -648,6 +672,7 @@ def workbench(
 @dbt_opts
 @logging_opts
 @click.argument("sql")
+@handle_errors
 def run(
     sql: str = "",
     project_dir: str | None = None,
@@ -679,6 +704,7 @@ def run(
 @dbt_opts
 @logging_opts
 @click.argument("sql")
+@handle_errors
 def compile(
     sql: str = "",
     project_dir: str | None = None,
