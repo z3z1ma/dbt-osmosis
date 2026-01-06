@@ -5,7 +5,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from dbt_osmosis.core.schema import (
     FormattingValidator,
@@ -586,6 +585,7 @@ class TestIntegration:
 
             # Re-validate should pass (or have fewer errors)
             result2 = validate_yaml_file(temp_path)
+            assert len(result2) == 0, f"Auto-fix should resolve all errors, but found: {result2}"
             # At minimum, version should now be present
             data2 = _read_yaml(yaml_handler, yaml_handler_lock, temp_path)
             assert "version" in data2
