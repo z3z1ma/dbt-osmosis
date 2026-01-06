@@ -102,17 +102,50 @@ from dbt_osmosis.core.sync_operations import (
     sync_node_to_yaml,
 )
 
+# Staging operations
+from dbt_osmosis.core.staging import (
+    StagingGenerationResult,
+    generate_staging_for_all_sources,
+    generate_staging_for_source,
+    write_staging_files,
+)
+
 # Transform operations
 from dbt_osmosis.core.transforms import (
+    apply_semantic_analysis,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     remove_columns_not_in_database,
     sort_columns_alphabetically,
     sort_columns_as_configured,
     sort_columns_as_in_database,
+    suggest_improved_documentation,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
 )
+
+# Test suggestion operations
+from dbt_osmosis.core.test_suggestions import (
+    AITestSuggester,
+    ModelTestAnalysis,
+    TestPatternExtractor,
+    TestSuggestion,
+    suggest_tests_for_model,
+    suggest_tests_for_project,
+)
+
+# Voice learning and AI co-pilot
+from dbt_osmosis.core.voice_learning import (
+    ProjectStyleProfile,
+    analyze_project_documentation_style,
+    extract_style_examples,
+    find_similar_documented_nodes,
+)
+
+# LLM functions (require openai extra)
+import importlib.util
+
+_llm_available = importlib.util.find_spec("openai") is not None
 
 # Note: process_node is imported in sql_operations.py where it's used
 
@@ -160,6 +193,7 @@ __all__ = [
     "sort_columns_as_configured",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
+    "suggest_improved_documentation",
     "config_to_namespace",
     "_reload_manifest",
     "_find_first",
@@ -180,7 +214,80 @@ __all__ = [
     "_build_column_knowledge_graph",
     "_COLUMN_LIST_CACHE",
     "_YAML_BUFFER_CACHE",
+    "DbtConfiguration",
+    "DbtProjectContext",
+    "EMPTY_STRING",
+    "FuzzyCaseMatching",
+    "FuzzyPrefixMatching",
+    "MissingOsmosisConfig",
+    "PropertyAccessor",
+    "RestructureDeltaPlan",
+    "RestructureOperation",
+    "SettingsResolver",
     "SqlCompileRunner",
+    "StagingGenerationResult",
+    "TestPatternExtractor",
+    "TestSuggestion",
+    "YamlRefactorContext",
+    "YamlRefactorSettings",
+    "_build_column_knowledge_graph",
+    "_build_node_ancestor_tree",
+    "_find_first",
+    "_get_node_yaml",
+    "_get_setting_for_node",
+    "_get_yaml_path_template",
+    "_maybe_use_precise_dtype",
+    "_reload_manifest",
+    "_topological_sort",
+    "AITestSuggester",
+    "ModelTestAnalysis",
+    "apply_restructure_plan",
+    "apply_semantic_analysis",
+    "build_yaml_file_mapping",
+    "commit_yamls",
+    "compile_sql_code",
+    "config_to_namespace",
+    "create_dbt_project_context",
+    "create_missing_source_yamls",
+    "create_yaml_instance",
+    "discover_profiles_dir",
+    "discover_project_dir",
+    "draft_restructure_delta_plan",
+    "execute_sql_code",
     "generate_dbt_model_from_nl",
     "generate_sql_from_nl",
+    "generate_staging_for_all_sources",
+    "generate_staging_for_source",
+    "get_columns",
+    "get_current_yaml_path",
+    "get_plugin_manager",
+    "get_target_yaml_path",
+    "inherit_upstream_column_knowledge",
+    "inject_missing_columns",
+    "normalize_column_name",
+    "pretty_print_plan",
+    "remove_columns_not_in_database",
+    "sort_columns_alphabetically",
+    "sort_columns_as_configured",
+    "sort_columns_as_in_database",
+    "suggest_tests_for_model",
+    "suggest_tests_for_project",
+    "sync_node_to_yaml",
+    "synchronize_data_types",
+    "synthesize_missing_documentation_with_openai",
+    "write_staging_files",
+    # Voice learning and AI co-pilot
+    "ProjectStyleProfile",
+    "analyze_project_documentation_style",
+    "extract_style_examples",
+    "find_similar_documented_nodes",
 ]
+
+# Add LLM exports if available
+if _llm_available:
+    __all__.extend([
+        "DocumentationSuggestion",
+        "generate_style_aware_column_doc",
+        "generate_style_aware_table_doc",
+        "suggest_documentation_improvements",
+    ])
