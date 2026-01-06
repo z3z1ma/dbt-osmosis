@@ -184,6 +184,14 @@ class ValidationResult:
         """Get all fixable issues."""
         return [i for i in self.issues if i.fixable]
 
+    def __len__(self) -> int:
+        """Return the number of issues in the result."""
+        return len(self.issues)
+
+    def __bool__(self) -> bool:
+        """Return True if validation passed (no errors)."""
+        return self.is_valid
+
     def summary(self) -> str:
         """Return a summary of validation results."""
         errors = len(self.get_errors())
