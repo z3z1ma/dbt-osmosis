@@ -24,6 +24,8 @@ from dbt_osmosis.core.osmosis import (
     discover_project_dir,
     draft_restructure_delta_plan,
     execute_sql_code,
+    generate_dbt_model_from_nl,
+    generate_sql_from_nl,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     remove_columns_not_in_database,
@@ -539,6 +541,247 @@ def document(
 
         if check and context.mutated:
             exit(1)
+
+
+@cli.group()
+def nl():
+    """Natural language interface for dbt model generation and SQL queries"""
+
+
+@nl.command(context_settings=_CONTEXT)
+@dbt_opts
+@logging_opts
+@click.argument("query")
+@click.option(
+    "--model-name",
+    type=click.STRING,
+    help="Optional name for the generated model (auto-generated if not provided)",
+)
+@click.option(
+    "--output-path",
+    type=click.Path(),
+    help="Path to save the generated model SQL file",
+)
+@click.option(
+    "--schema-yml",
+    type=click.Path(),
+    help="Path to save the generated schema.yml file",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print the generated model without writing to disk",
+)
+def generate(
+    query: str = "",
+    model_name: str | None = None,
+    output_path: str | None = None,
+    schema_yml: str | None = None,
+    dry_run: bool = False,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """Generate a dbt model from a natural language description.
+
+    \f
+    Example:
+        dbt-osmosis nl generate "Show me customers who churned in the last 30 days"
+
+    The AI will analyze your query, understand your available models and sources,
+    and generate a complete dbt model with SQL and documentation.
+    """
+    logger.info(":water_wave: Executing dbt-osmosis natural language generation\n")
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        **kwargs,
+    )
+    project = create_dbt_project_context(settings)
+
+    # Gather available sources and models from the manifest
+    available_sources: list[dict[str, t.Any]] = []
+
+    # Add models from manifest
+    for node_id, node in project.manifest.nodes.items():
+        if hasattr(node, "resource_type") and node.resource_type == "model":
+            columns = list(node.columns.keys()) if hasattr(node, "columns") else []
+            available_sources.append({
+                "name": node.name,
+                "type": "model",
+                "description": getattr(node, "description", ""),
+                "columns": columns,
+            })
+
+    # Add sources from manifest
+    for source_id, source in project.manifest.sources.items():
+        if hasattr(source, "resource_type") and source.resource_type == "source":
+            columns = list(source.columns.keys()) if hasattr(source, "columns") else []
+            available_sources.append({
+                "name": f"{source.source_name}.{source.name}",
+                "type": "source",
+                "description": getattr(source, "description", ""),
+                "columns": columns,
+            })
+
+    logger.info(f":crystal_ball: Found {len(available_sources)} available sources/models")
+
+    # Generate the model specification
+    try:
+        model_spec = generate_dbt_model_from_nl(query, available_sources)
+    except Exception as e:
+        logger.error(f":x: Failed to generate model: {e}")
+        raise
+
+    # Override model name if provided
+    if model_name:
+        model_spec["model_name"] = model_name
+
+    click.echo(f"\n:sparkles: Generated model: {model_spec['model_name']}")
+    click.echo(f"Description: {model_spec['description']}")
+    click.echo(f"Materialized: {model_spec['materialized']}")
+
+    # Generate SQL content
+    sql_content = f"-- {model_spec['description']}\n"
+    sql_content += f"-- Materialized: {model_spec['materialized']}\n\n"
+    sql_content += model_spec["sql"]
+
+    if dry_run:
+        click.echo("\n" + "=" * 80)
+        click.echo("SQL:")
+        click.echo("=" * 80)
+        click.echo(sql_content)
+        click.echo("\n" + "=" * 80)
+        click.echo("Columns:")
+        click.echo("=" * 80)
+        for col in model_spec["columns"]:
+            click.echo(f"  - {col['name']}: {col['description']}")
+        return
+
+    # Write SQL file
+    if output_path is None:
+        models_dir = Path(project_dir) / "models"
+        output_path = str(models_dir / f"{model_spec['model_name']}.sql")
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text(sql_content)
+    click.echo(f"\n:white_check_mark: Wrote SQL to: {output_path}")
+
+    # Write schema.yml if requested
+    if schema_yml or output_path:
+        schema_path = schema_yml or str(
+            Path(output_path).parent / f"{model_spec['model_name']}.yml"
+        )
+
+        import yaml
+
+        schema_content = {
+            "version": 2,
+            "models": [
+                {
+                    "name": model_spec["model_name"],
+                    "description": model_spec["description"],
+                    "columns": [
+                        {"name": col["name"], "description": col["description"]}
+                        for col in model_spec["columns"]
+                    ],
+                }
+            ],
+        }
+
+        Path(schema_path).write_text(
+            yaml.dump(schema_content, default_flow_style=False, sort_keys=False)
+        )
+        click.echo(f":white_check_mark: Wrote schema.yml to: {schema_path}")
+
+
+@nl.command(context_settings=_CONTEXT)
+@dbt_opts
+@logging_opts
+@click.argument("query")
+@click.option(
+    "--execute",
+    is_flag=True,
+    help="Execute the generated SQL and display results",
+)
+def query(
+    query: str = "",
+    execute: bool = False,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """Generate SQL from a natural language query.
+
+    \f
+    Example:
+        dbt-osmosis nl query "Show me the top 10 customers by lifetime value"
+
+    The AI will translate your natural language query into SQL using dbt's ref() syntax.
+    """
+    logger.info(":water_wave: Executing dbt-osmosis natural language SQL generation\n")
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        **kwargs,
+    )
+    project = create_dbt_project_context(settings)
+
+    # Gather available sources and models from the manifest
+    available_sources: list[dict[str, t.Any]] = []
+
+    for node_id, node in project.manifest.nodes.items():
+        if hasattr(node, "resource_type") and node.resource_type == "model":
+            columns = list(node.columns.keys()) if hasattr(node, "columns") else []
+            available_sources.append({
+                "name": node.name,
+                "type": "model",
+                "description": getattr(node, "description", ""),
+                "columns": columns,
+            })
+
+    for source_id, source in project.manifest.sources.items():
+        if hasattr(source, "resource_type") and source.resource_type == "source":
+            columns = list(source.columns.keys()) if hasattr(source, "columns") else []
+            available_sources.append({
+                "name": f"{source.source_name}.{source.name}",
+                "type": "source",
+                "description": getattr(source, "description", ""),
+                "columns": columns,
+            })
+
+    logger.info(f":crystal_ball: Found {len(available_sources)} available sources/models")
+
+    # Generate SQL
+    try:
+        sql = generate_sql_from_nl(query, available_sources)
+    except Exception as e:
+        logger.error(f":x: Failed to generate SQL: {e}")
+        raise
+
+    click.echo("\n" + "=" * 80)
+    click.echo("Generated SQL:")
+    click.echo("=" * 80)
+    click.echo(sql)
+
+    if execute:
+        click.echo("\n" + "=" * 80)
+        click.echo("Executing SQL...")
+        click.echo("=" * 80)
+        _, table = execute_sql_code(project, sql)
+
+        getattr(table, "print_table")(
+            max_rows=50,
+            max_columns=6,
+            output=sys.stdout,
+            max_column_width=20,
+            locale=None,
+            max_precision=3,
+        )
 
 
 @cli.command(
