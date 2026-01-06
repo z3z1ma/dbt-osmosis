@@ -119,6 +119,7 @@ from dbt_osmosis.core.transforms import (
     sort_columns_alphabetically,
     sort_columns_as_configured,
     sort_columns_as_in_database,
+    suggest_improved_documentation,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
 )
@@ -132,6 +133,26 @@ from dbt_osmosis.core.test_suggestions import (
     suggest_tests_for_model,
     suggest_tests_for_project,
 )
+# Voice learning and AI co-pilot
+from dbt_osmosis.core.voice_learning import (
+    ProjectStyleProfile,
+    analyze_project_documentation_style,
+    extract_style_examples,
+    find_similar_documented_nodes,
+)
+
+# LLM functions (require openai extra)
+try:
+    from dbt_osmosis.core.llm import (
+        DocumentationSuggestion,
+        generate_style_aware_column_doc,
+        generate_style_aware_table_doc,
+        suggest_documentation_improvements,
+    )
+
+    _llm_available = True
+except ImportError:
+    _llm_available = False
 
 # Note: process_node is imported in sql_operations.py where it's used
 
@@ -149,6 +170,55 @@ def commit_yamls(context: YamlRefactorContext) -> None:
 
 # Backwards compatibility exports
 __all__ = [
+    "discover_project_dir",
+    "discover_profiles_dir",
+    "DbtConfiguration",
+    "DbtProjectContext",
+    "create_dbt_project_context",
+    "create_yaml_instance",
+    "YamlRefactorSettings",
+    "YamlRefactorContext",
+    "EMPTY_STRING",
+    "compile_sql_code",
+    "execute_sql_code",
+    "normalize_column_name",
+    "get_columns",
+    "create_missing_source_yamls",
+    "get_current_yaml_path",
+    "get_target_yaml_path",
+    "build_yaml_file_mapping",
+    "commit_yamls",
+    "draft_restructure_delta_plan",
+    "pretty_print_plan",
+    "sync_node_to_yaml",
+    "apply_restructure_plan",
+    "inherit_upstream_column_knowledge",
+    "inject_missing_columns",
+    "remove_columns_not_in_database",
+    "sort_columns_as_in_database",
+    "sort_columns_alphabetically",
+    "sort_columns_as_configured",
+    "synchronize_data_types",
+    "synthesize_missing_documentation_with_openai",
+    "suggest_improved_documentation",
+    "config_to_namespace",
+    "_reload_manifest",
+    "_find_first",
+    "SettingsResolver",
+    "PropertyAccessor",
+    "_get_setting_for_node",
+    "_maybe_use_precise_dtype",
+    "_topological_sort",
+    "MissingOsmosisConfig",
+    "_get_yaml_path_template",
+    "RestructureOperation",
+    "RestructureDeltaPlan",
+    "get_plugin_manager",
+    "FuzzyCaseMatching",
+    "FuzzyPrefixMatching",
+    "_build_node_ancestor_tree",
+    "_get_node_yaml",
+    "_build_column_knowledge_graph",
     "_COLUMN_LIST_CACHE",
     "_YAML_BUFFER_CACHE",
     "DbtConfiguration",
@@ -213,4 +283,18 @@ __all__ = [
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
     "write_staging_files",
+    # Voice learning and AI co-pilot
+    "ProjectStyleProfile",
+    "analyze_project_documentation_style",
+    "extract_style_examples",
+    "find_similar_documented_nodes",
 ]
+
+# Add LLM exports if available
+if _llm_available:
+    __all__.extend([
+        "DocumentationSuggestion",
+        "generate_style_aware_column_doc",
+        "generate_style_aware_table_doc",
+        "suggest_documentation_improvements",
+    ])

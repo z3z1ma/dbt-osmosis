@@ -31,6 +31,7 @@ __all__ = [
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
     "apply_semantic_analysis",
+    "suggest_improved_documentation",
 ]
 
 
@@ -883,3 +884,169 @@ def apply_semantic_analysis(
             )
             # Continue with other columns even if one fails
             continue
+@_transform_op("Suggest Improved Documentation")
+def suggest_improved_documentation(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
+    threshold: float = 0.7,
+    learning_mode: bool = True,
+) -> None:
+    """Suggest improved documentation using AI co-pilot with voice learning.
+
+    This transform analyzes the project's documentation style and suggests
+    improvements for model and column descriptions. It learns from existing
+    documentation to match the team's voice and terminology.
+
+    Args:
+        context: The YamlRefactorContext instance
+        node: The dbt node to suggest improvements for (None = all nodes)
+        threshold: Confidence threshold for applying suggestions (0.0-1.0)
+        learning_mode: Whether to analyze project style for voice learning
+
+    Behavior:
+        - For models with no documentation: generates new descriptions
+        - For models with poor documentation: suggests improvements
+        - Uses project style analysis to match team's voice
+        - Only applies suggestions above confidence threshold
+    """
+    from dbt_osmosis.core.introspection import _get_setting_for_node
+    from dbt_osmosis.core.node_filters import _iter_candidate_nodes
+    from dbt_osmosis.core.voice_learning import (
+        ProjectStyleProfile,
+        analyze_project_documentation_style,
+        extract_style_examples,
+    )
+
+    try:
+        import importlib.util
+
+        importlib.util.find_spec("dbt_osmosis.core.llm")
+    except ImportError:
+        raise ImportError(
+            "Please install the 'dbt-osmosis[openai]' extra to use this feature."
+        ) from None
+
+    if node is None:
+        logger.info(":wave: Suggesting improved documentation across all matched nodes.")
+        for _ in context.pool.map(
+            partial(suggest_improved_documentation, context, threshold=threshold, learning_mode=learning_mode),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
+        return
+
+    # Check if AI co-pilot is disabled for this node
+    if _get_setting_for_node("skip-ai-suggestions", node, fallback=False):
+        logger.debug(":no_entry_sign: Skipping AI suggestions (skip_ai_suggestions=True).")
+        return
+
+    logger.info(":robot: Generating AI documentation suggestions for => %s", node.unique_id)
+
+    # Analyze project style for voice learning
+    style_profile: ProjectStyleProfile | None = None
+    style_examples: list[str] | None = None
+
+    if learning_mode:
+        logger.debug(":books: Analyzing project documentation style...")
+        style_profile = analyze_project_documentation_style(
+            context,
+            max_nodes=50,
+            max_columns_per_node=10,
+        )
+        logger.debug(
+            ":mag: Found %d model examples, %d column examples",
+            len(style_profile.model_description_samples),
+            len(style_profile.column_description_samples),
+        )
+    else:
+        # Extract targeted examples from similar nodes
+        examples = extract_style_examples(context, node, max_examples=3)
+        style_examples = []
+        style_examples.extend(examples.get("model_descriptions", []))
+        style_examples.extend(examples.get("column_descriptions", []))
+
+    # Collect upstream documentation
+    upstream_docs = _collect_upstream_documents(node, context)
+
+    # Track statistics
+    suggestions_made = 0
+    suggestions_applied = 0
+
+    # Suggest model description
+    needs_model_doc = not node.description or node.description in context.placeholders
+    has_poor_model_doc = node.description and len(node.description.split()) < 5
+
+    if needs_model_doc or has_poor_model_doc:
+        from dbt_osmosis.core.llm import suggest_documentation_improvements
+
+        suggestion = suggest_documentation_improvements(
+            target="table",
+            current_description=node.description if not needs_model_doc else None,
+            table_name=node.relation_name or node.name,
+            sql_content=getattr(node, "compiled_sql", f"SELECT * FROM {node.name}"),
+            upstream_docs=upstream_docs,
+            style_profile=style_profile,
+            style_examples=style_examples,
+            temperature=0.5,
+        )
+
+        suggestions_made += 1
+
+        if suggestion.confidence >= threshold:
+            node.description = suggestion.text
+            suggestions_applied += 1
+            logger.info(
+                ":sparkles: Applied model description suggestion (confidence: %.2f): %s",
+                suggestion.confidence,
+                suggestion.reason,
+            )
+        else:
+            logger.debug(
+                ":heavy_check_mark: Model suggestion below threshold (confidence: %.2f): %s",
+                suggestion.confidence,
+                suggestion.reason,
+            )
+
+    # Suggest column descriptions
+    for column_name, column in node.columns.items():
+        needs_col_doc = not column.description or column.description in context.placeholders
+        has_poor_col_doc = column.description and len(column.description.split()) < 3
+
+        if needs_col_doc or has_poor_col_doc:
+            from dbt_osmosis.core.llm import suggest_documentation_improvements
+
+            suggestion = suggest_documentation_improvements(
+                target="column",
+                current_description=column.description if not needs_col_doc else None,
+                column_name=column_name,
+                table_name=node.relation_name or node.name,
+                existing_context=f"DataType={column.data_type or 'unknown'}",
+                upstream_docs=upstream_docs,
+                style_profile=style_profile,
+                style_examples=style_examples,
+                temperature=0.5,
+            )
+
+            suggestions_made += 1
+
+            if suggestion.confidence >= threshold:
+                column.description = suggestion.text
+                suggestions_applied += 1
+                logger.info(
+                    ":sparkles: Applied column suggestion for '%s' (confidence: %.2f)",
+                    column_name,
+                    suggestion.confidence,
+                )
+            else:
+                logger.debug(
+                    ":heavy_check_mark: Column '%s' suggestion below threshold (confidence: %.2f)",
+                    column_name,
+                    suggestion.confidence,
+                )
+
+    logger.info(
+        ":bar_chart: Generated %d suggestions, applied %d for node => %s",
+        suggestions_made,
+        suggestions_applied,
+        node.unique_id,
+    )
