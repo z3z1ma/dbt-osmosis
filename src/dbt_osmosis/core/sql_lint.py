@@ -673,8 +673,8 @@ def lint_sql_code(
     try:
         compiled_node = compile_sql_code(context, raw_sql)
         compiled_sql = compiled_node.compiled_code or raw_sql
-    except Exception:
-        # If compilation fails, lint the raw SQL
+    except Exception as e:
+        logger.debug(":warning: SQL compilation failed: %s", e)
         compiled_sql = None
 
     return linter.lint(raw_sql, compiled_sql)

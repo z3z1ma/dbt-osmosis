@@ -80,7 +80,8 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
                     ":earth_americas: Using global var 'dbt_osmosis_default_path': %s",
                     path_template,
                 )
-        except Exception:
+        except Exception as e:
+            logger.debug(":warning: Failed to read global var: %s", e)
             path_template = None
 
     if not path_template:
