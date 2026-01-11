@@ -343,9 +343,9 @@ class AIAssistant(Dashboard.Item):
                 suggestion = {
                     "target": f"Model: {model.name}",
                     "text": (
-                    f"AI-generated description for {model.name}. "
-                    f"This model contains transformed data from upstream sources."
-                ),
+                        f"AI-generated description for {model.name}. "
+                        f"This model contains transformed data from upstream sources."
+                    ),
                     "confidence": 0.85,
                     "reason": f"Improving documentation for {model.name}",
                     "source": "ai-co-pilot",

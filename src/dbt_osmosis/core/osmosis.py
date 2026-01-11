@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+# LLM functions (require openai extra)
+import importlib.util
+
 # Import SqlCompileRunner for test compatibility
 from dbt.task.sql import SqlCompileRunner
 
@@ -97,17 +100,27 @@ from dbt_osmosis.core.sql_operations import (
     execute_sql_code,
 )
 
-# Sync operations
-from dbt_osmosis.core.sync_operations import (
-    sync_node_to_yaml,
-)
-
 # Staging operations
 from dbt_osmosis.core.staging import (
     StagingGenerationResult,
     generate_staging_for_all_sources,
     generate_staging_for_source,
     write_staging_files,
+)
+
+# Sync operations
+from dbt_osmosis.core.sync_operations import (
+    sync_node_to_yaml,
+)
+
+# Test suggestion operations
+from dbt_osmosis.core.test_suggestions import (
+    AITestSuggester,
+    ModelTestAnalysis,
+    TestPatternExtractor,
+    TestSuggestion,
+    suggest_tests_for_model,
+    suggest_tests_for_project,
 )
 
 # Transform operations
@@ -124,16 +137,6 @@ from dbt_osmosis.core.transforms import (
     synthesize_missing_documentation_with_openai,
 )
 
-# Test suggestion operations
-from dbt_osmosis.core.test_suggestions import (
-    AITestSuggester,
-    ModelTestAnalysis,
-    TestPatternExtractor,
-    TestSuggestion,
-    suggest_tests_for_model,
-    suggest_tests_for_project,
-)
-
 # Voice learning and AI co-pilot
 from dbt_osmosis.core.voice_learning import (
     ProjectStyleProfile,
@@ -141,9 +144,6 @@ from dbt_osmosis.core.voice_learning import (
     extract_style_examples,
     find_similar_documented_nodes,
 )
-
-# LLM functions (require openai extra)
-import importlib.util
 
 _llm_available = importlib.util.find_spec("openai") is not None
 

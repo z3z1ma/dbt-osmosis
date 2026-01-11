@@ -488,9 +488,10 @@ def _build_column_knowledge_graph(
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
     for name, column in node.columns.items():
         # PATCH: Fix missing config attribute in dbt-core 1.11+ objects causing mashumaro serialization error
-        if not hasattr(column, 'config'):
+        if not hasattr(column, "config"):
             try:
                 from dbt.artifacts.resources.v1.components import ColumnConfig
+
                 column.config = ColumnConfig()
             except ImportError:
                 # Fallback if import fails, though it shouldn't for this dbt version

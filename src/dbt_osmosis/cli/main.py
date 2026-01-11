@@ -197,7 +197,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     )
     @click.option(
         "--scaffold-empty-configs/--no-scaffold-empty-configs",
-        default=True,
+        default=False,
         help="When disabled, avoid writing empty/placeholder fields (e.g., empty descriptions) to YAML.",
     )
     @functools.wraps(func)

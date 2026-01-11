@@ -5,7 +5,6 @@
 import tempfile
 from pathlib import Path
 
-
 from dbt_osmosis.core.schema import (
     FormattingValidator,
     ModelValidator,

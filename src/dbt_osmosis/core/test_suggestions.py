@@ -16,10 +16,10 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from textwrap import dedent
 
+from dbt_osmosis.core.exceptions import LLMResponseError
 from dbt_osmosis.core.introspection import PropertyAccessor
 from dbt_osmosis.core.llm import get_llm_client
 from dbt_osmosis.core.settings import YamlRefactorContext
-from dbt_osmosis.core.exceptions import LLMResponseError
 
 __all__ = [
     "TestPatternExtractor",
