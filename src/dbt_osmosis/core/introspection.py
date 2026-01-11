@@ -834,7 +834,8 @@ class SettingsResolver:
         Precedence (highest to lowest):
             1. node.config.extra["dbt-osmosis"] or ["dbt_osmosis"]
             2. node.config.meta["dbt-osmosis"] or ["dbt_osmosis"] (dbt 1.10+)
-            3. node.unrendered_config["dbt-osmosis"] or ["dbt_osmosis"] (dbt 1.10+)
+            3. node.meta["dbt-osmosis"] or ["dbt_osmosis"]
+            4. node.unrendered_config["dbt-osmosis"] or ["dbt_osmosis"] (dbt 1.10+)
 
         Args:
             node: The dbt node to get the path template for.
@@ -874,6 +875,18 @@ class SettingsResolver:
                 if result:
                     logger.debug(
                         ":gear: Found YAML path template in config.meta: %s",
+                        result,
+                    )
+                    return result
+
+        # Check node.meta (for YAML-level meta definitions)
+        if hasattr(node, "meta"):
+            node_meta = node.meta
+            if isinstance(node_meta, dict):
+                result = check_dict(node_meta)
+                if result:
+                    logger.debug(
+                        ":gear: Found YAML path template in node.meta: %s",
                         result,
                     )
                     return result

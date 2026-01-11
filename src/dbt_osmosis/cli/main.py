@@ -193,7 +193,12 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @click.option(
         "--disable-introspection",
         is_flag=True,
-        help="Allows running the program without a database connection, it is recommended to use the --catalog-path option if using this.",
+        help="Allows running of program without a database connection, it is recommended to use the --catalog-path option if using this.",
+    )
+    @click.option(
+        "--scaffold-empty-configs/--no-scaffold-empty-configs",
+        default=True,
+        help="When disabled, avoid writing empty/placeholder fields (e.g., empty descriptions) to YAML.",
     )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:

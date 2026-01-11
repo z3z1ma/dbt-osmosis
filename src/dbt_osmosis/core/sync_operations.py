@@ -33,7 +33,8 @@ def _sync_doc_section(
     """
     logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
     if node.description and not doc_section.get("description"):
-        doc_section["description"] = node.description
+        if context.settings.scaffold_empty_configs or node.description not in context.placeholders:
+            doc_section["description"] = node.description
 
     current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
     incoming_columns: list[dict[str, t.Any]] = []
@@ -169,6 +170,16 @@ def _sync_doc_section(
         for k in set(merged.keys()) - {"name", "description", "tags", "meta"}:
             if merged[k] in (None, [], {}):
                 merged.pop(k)
+
+        if not context.settings.scaffold_empty_configs:
+            if merged.get("description") == "":
+                merged.pop("description", None)
+            if merged.get("tags", []) == []:
+                merged.pop("tags", None)
+            if merged.get("meta", {}) == {}:
+                merged.pop("meta", None)
+            if merged.get("config", {}) == {}:
+                merged.pop("config", None)
 
         if _get_setting_for_node(
             "output-to-upper",
