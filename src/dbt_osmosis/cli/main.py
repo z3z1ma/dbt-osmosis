@@ -1,4 +1,4 @@
-# pyright: reportUnreachable=false, reportAny=false
+# pyright: reportUnreachable=false
 
 from __future__ import annotations
 
@@ -329,7 +329,7 @@ def refactor(
         target=target,
         profile=profile,
         threads=threads,
-        vars=yaml_handler.safe_load(vars) if vars else None,
+        vars=yaml_handler.safe_load(vars) if vars else {},
         disable_introspection=disable_introspection,
     )
 
@@ -394,7 +394,7 @@ def organize(
         target=target,
         profile=profile,
         threads=threads,
-        vars=yaml_handler.safe_load(vars) if vars else None,
+        vars=yaml_handler.safe_load(vars) if vars else {},
         disable_introspection=disable_introspection,
     )
 
@@ -524,7 +524,7 @@ def document(
         target=target,
         profile=profile,
         threads=threads,
-        vars=yaml_handler.safe_load(vars) if vars else None,
+        vars=yaml_handler.safe_load(vars) if vars else {},
         disable_introspection=disable_introspection,
     )
 
@@ -667,7 +667,7 @@ def generate(
 
     # Write SQL file
     if output_path is None:
-        models_dir = Path(project_dir) / "models"
+        models_dir = Path(project_dir or ".") / "models"
         output_path = str(models_dir / f"{model_spec['model_name']}.sql")
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

@@ -19,7 +19,7 @@ import ruamel.yaml
 
 if t.TYPE_CHECKING:
     from dbt.artifacts.resources.types import NodeType
-    from dbt.contracts.results import CatalogResults
+    from dbt.artifacts.schemas.catalog import CatalogResults
 
 
 class DbtAdapterProtocol(t.Protocol):
@@ -100,7 +100,7 @@ class YamlRefactorContextProtocol(t.Protocol):
     project: DbtProjectContextProtocol
     settings: t.Any  # YamlRefactorSettings
     pool: ThreadPoolExecutor
-    yaml_handler: ruamel.yaml.YAML
+    yaml_handler: ruamel.yaml.YAML | None
     yaml_handler_lock: threading.Lock
     placeholders: tuple[str, ...]
     _catalog: CatalogResults | None

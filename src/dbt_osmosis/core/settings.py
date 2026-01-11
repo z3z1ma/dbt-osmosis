@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import ruamel.yaml
-from dbt.contracts.results import CatalogResults
+from dbt.artifacts.schemas.catalog import CatalogResults
 
 from dbt_osmosis.core import logger
 
@@ -101,8 +101,9 @@ class YamlRefactorContext:
     pool: ThreadPoolExecutor = field(
         default_factory=lambda: ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)),
     )
-    yaml_handler: ruamel.yaml.YAML = field(
-        default_factory=lambda: None,
+    yaml_handler: ruamel.yaml.YAML | None = field(
+        init=False,
+        default=None,
     )  # Will be set in __post_init__
     yaml_handler_lock: threading.Lock = field(default_factory=threading.Lock)
 

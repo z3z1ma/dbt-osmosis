@@ -4,8 +4,8 @@ import typing as t
 from functools import partial
 from pathlib import Path
 
-from dbt.contracts.graph.nodes import ModelNode, ResultNode
-from dbt.node_types import NodeType
+from dbt.artifacts.resources.types import NodeType
+from dbt.contracts.graph.nodes import ModelNode, ResultNode, SourceDefinition
 
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
@@ -49,17 +49,19 @@ def _sync_doc_section(
     # Build a map of catalog column types if catalog is available
     catalog_column_types: dict[str, str] = {}
     if catalog := context.read_catalog():
-        from itertools import chain
 
         from dbt_osmosis.core.introspection import _find_first, normalize_column_name
 
+        # For source nodes, search catalog.sources; for model nodes, search catalog.nodes
+        # CatalogTable metadata doesn't have a 'source' field, so we match based on which dict we're searching
+        if hasattr(node, "source_name"):
+            catalog_entries = catalog.sources.values()
+        else:
+            catalog_entries = catalog.nodes.values()
+
         catalog_entry = _find_first(
-            chain(catalog.nodes.values(), catalog.sources.values()),
-            lambda c: (
-                c.metadata.name == node.name
-                and c.metadata.schema == node.schema
-                and (not hasattr(node, "source_name") or c.metadata.source == node.source_name)
-            ),
+            catalog_entries,
+            lambda c: c.metadata.name == node.name and c.metadata.schema == node.schema,
         )
         if catalog_entry:
             for col_name, col_meta in catalog_entry.columns.items():
@@ -295,7 +297,7 @@ def _get_or_create_source_table(doc_source: dict[str, t.Any], table_name: str) -
 
 def _sync_source_node(
     context: YamlRefactorContextProtocol,
-    node: ResultNode,
+    node: SourceDefinition,
     doc: dict[str, t.Any],
     resource_key: str,
 ) -> None:
@@ -379,14 +381,17 @@ def _sync_versioned_model(
     doc_model: dict[str, t.Any],
 ) -> None:
     """Sync a versioned model to its YAML representation."""
+    # This function is only called when node.version is not None (see line 418)
+    version: str | float = t.cast("str | float", node.version)
+
     if "versions" not in doc_model:
         doc_model["versions"] = []
 
-    doc_version = _get_or_create_version(doc_model, node.version)
+    doc_version = _get_or_create_version(doc_model, version)
 
     # Ensure latest_version is set
     if "latest_version" not in doc_model:
-        doc_model["latest_version"] = node.version
+        doc_model["latest_version"] = version
 
     # Sync data to the version object
     _sync_doc_section(context, node, doc_version)
