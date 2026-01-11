@@ -1,0 +1,14 @@
+kind: Fixed
+body: |-
+    Bump dbt-core-interface minimum version to 1.1.7
+
+    - Update dependency from 1.1.5 to 1.1.7
+    - Fix #251: Default --scaffold-empty-configs to False
+    - Fix 35+ LSP type errors including:
+      - Remove invalid pyright directive
+      - Fix CatalogResults and NodeType import paths
+      - Update yaml_handler type to allow None
+      - Fix vars default and project_dir handling
+      - Fix catalog matching logic for sources vs models
+      - Add proper type annotations for versioned models
+time: 2026-01-11T01:58:05.02696-07:00
