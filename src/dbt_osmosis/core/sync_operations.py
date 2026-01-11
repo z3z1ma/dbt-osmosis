@@ -49,7 +49,6 @@ def _sync_doc_section(
     # Build a map of catalog column types if catalog is available
     catalog_column_types: dict[str, str] = {}
     if catalog := context.read_catalog():
-
         from dbt_osmosis.core.introspection import _find_first, normalize_column_name
 
         # For source nodes, search catalog.sources; for model nodes, search catalog.nodes
