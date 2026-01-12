@@ -9,8 +9,15 @@ import typing as t
 from dataclasses import dataclass
 from textwrap import dedent
 
-import openai
-from openai import OpenAI
+try:
+    import openai
+    from openai import OpenAI
+
+    _OPENAI_AVAILABLE = True
+except ImportError:
+    openai = None  # type: ignore[assignment]
+    OpenAI = None  # type: ignore[assignment,misc]
+    _OPENAI_AVAILABLE = False
 
 from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 
@@ -74,6 +81,12 @@ def get_llm_client():
         LLMConfigurationError: If required environment variables are missing or provider is invalid.
 
     """
+    if not _OPENAI_AVAILABLE:
+        raise ImportError(
+            "OpenAI is not installed. Please install it with: "
+            "pip install 'dbt-osmosis[openai]' or pip install openai"
+        )
+
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
     if provider == "openai":
