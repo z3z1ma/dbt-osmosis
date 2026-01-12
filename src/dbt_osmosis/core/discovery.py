@@ -369,9 +369,10 @@ def discover_undocumented_columns(
             col_gap = _check_column_documentation(col_name, col, context)
             if not col_gap:
                 # Column has a gap
-                priority, reason = (
-                    calculate_priority_score(node, context.project.manifest, "missing", context) / 2
-                )  # Lower priority for individual columns
+                score, reason = calculate_priority_score(
+                    node, context.project.manifest, "missing", context
+                )
+                priority = score / 2.0  # Lower priority for individual columns
 
                 if priority >= min_priority:
                     gaps.append(

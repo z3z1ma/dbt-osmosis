@@ -33,16 +33,25 @@ __all__ = [
 class StagingGenerationResult:
     """Result of staging model generation.
 
+    Supports both AI-based generation (sql_content/yaml_content) and
+    dbt-core-interface generation (spec field).
+
     Attributes:
         source_name: Name of the source table
-        spec: The generated staging model specification
+        staging_name: Name of the staging model (AI-based)
+        spec: The generated staging model specification (dbt-core-interface)
+        sql_content: Generated SQL content (AI-based)
+        yaml_content: Generated YAML content (AI-based)
         sql_path: Path where the SQL file will be written
         yaml_path: Path where the YAML file will be written
         error: Any error that occurred during generation
     """
 
     source_name: str
+    staging_name: str | None = None
     spec: StagingModelSpec | None = None
+    sql_content: str | None = None
+    yaml_content: str | None = None
     sql_path: Path | None = None
     yaml_path: Path | None = None
     error: Exception | None = None

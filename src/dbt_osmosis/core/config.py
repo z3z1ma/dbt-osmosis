@@ -173,7 +173,7 @@ class DbtProjectContext:
     config: DbtConfiguration
     """The configuration for the dbt project"""
 
-    _project: InterfaceDbtProject = field(default=None, init=False, repr=False)
+    _project: InterfaceDbtProject | None = field(default=None, init=False, repr=False)
     """The underlying dbt-core-interface DbtProject instance"""
 
     connection_ttl: float = DEFAULT_CONNECTION_TTL
@@ -261,7 +261,7 @@ class DbtProjectContext:
                             adapter.connections.cleanup_all()
                         elif hasattr(adapter.connections, "close_all_connections"):
                             # Fallback for adapters that have close_all_connections
-                            adapter.connections.close_all_connections()
+                            adapter.connections.close_all_connections()  # pyright: ignore[reportAttributeAccessIssue]
             except Exception as e:
                 logger.warning(":warning: Error closing adapter connections: %s", e)
             finally:
@@ -297,6 +297,7 @@ class DbtProjectContext:
 
         Delegates to the underlying DbtProject's runtime_config.
         """
+        assert self._project is not None, "DbtProjectContext not initialized"
         return self._project.runtime_config
 
     @property
@@ -305,6 +306,7 @@ class DbtProjectContext:
 
         Delegates to the underlying DbtProject's manifest.
         """
+        assert self._project is not None, "DbtProjectContext not initialized"
         return self._project.manifest
 
     @manifest.setter
@@ -323,6 +325,7 @@ class DbtProjectContext:
 
         Delegates to the underlying DbtProject's sql_parser property.
         """
+        assert self._project is not None, "DbtProjectContext not initialized"
         return self._project.sql_parser
 
     @property
@@ -331,6 +334,7 @@ class DbtProjectContext:
 
         Delegates to the underlying DbtProject's macro_parser property.
         """
+        assert self._project is not None, "DbtProjectContext not initialized"
         return self._project.macro_parser
 
     @property
@@ -354,6 +358,7 @@ class DbtProjectContext:
                     ident,
                 )
                 # Force adapter refresh by clearing and reacquiring
+                assert self._project is not None, "DbtProjectContext not initialized"
                 adapter = self._project.adapter
                 # Trigger connection refresh by accessing connections
                 if hasattr(adapter, "connections"):
@@ -366,10 +371,11 @@ class DbtProjectContext:
                         pass
                 self._connection_created_at[ident] = current_time
 
+            assert self._project is not None, "DbtProjectContext not initialized"
             return self._project.adapter
 
     @property
-    def manifest_mutex(self) -> threading.Lock:
+    def manifest_mutex(self) -> threading.RLock:
         """Return the manifest mutex for thread safety.
 
         Thread-safety: Use this lock to synchronize manifest reload operations.
@@ -451,7 +457,7 @@ def _patch_adapter_factory_registration() -> None:
         # Register the adapter in FACTORY.adapters if not already registered
         adapter_type = self.runtime_config.credentials.type
         if adapter_type not in FACTORY.adapters:
-            FACTORY.adapters[adapter_type] = adapter
+            FACTORY.adapters[adapter_type] = adapter  # type: ignore
             logger.debug(
                 f":wrench: Registered adapter '{adapter_type}' in FACTORY.adapters (monkey-patch)",
             )
@@ -477,23 +483,11 @@ def _ensure_adapter_loaded(config: DbtConfiguration) -> None:
         # Apply the monkey-patch to ensure adapters are registered in FACTORY.adapters
         _patch_adapter_factory_registration()
 
-        # Try to read the profiles.yml to determine the adapter type
         from dbt.adapters.factory import FACTORY
-        from dbt.config.project import read_profile_from_disk
 
-        # Read the profile to get the adapter type
-        raw_profile = read_profile_from_disk(
-            config.profiles_dir,
-            config.project_dir,
-            config.profile,
-            config.target,
-        )
+        adapter_type = getattr(config, "adapter_type", None)  # pyright: ignore[reportAttributeAccessIssue]
 
-        # Get the adapter type from the profile's credentials
-        adapter_type = raw_profile.credentials.type
-
-        # Load the plugin if not already loaded
-        if adapter_type not in FACTORY.plugins:
+        if adapter_type and adapter_type not in FACTORY.plugins:
             logger.info(f":wrench: Loading dbt adapter plugin for '{adapter_type}'...")
             FACTORY.load_plugin(adapter_type)
             logger.info(f":white_check_mark: Successfully loaded adapter plugin '{adapter_type}'")
@@ -544,7 +538,7 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
         if adapter_type not in FACTORY.adapters:
             FACTORY.register_adapter(
                 project.runtime_config,  # pyright: ignore[reportArgumentType]
-                get_mp_context("spawn"),  # pyright: ignore[reportArgumentType]
+                get_mp_context(),  # pyright: ignore[reportArgumentType]
             )
             logger.info(f":white_check_mark: Registered adapter '{adapter_type}' in factory")
     except Exception as e:
@@ -587,6 +581,7 @@ def _reload_manifest(context: DbtProjectContext) -> None:
     """
     logger.info(":arrows_counterclockwise: Reloading the dbt project manifest!")
     with context.manifest_mutex:
+        assert context._project is not None, "DbtProjectContext not initialized"
         # Use DbtProject's parse_project to reload
         context._project.parse_project(write_manifest=False)
         logger.info(":white_check_mark: Manifest reloaded => %s", context.manifest.metadata)

@@ -9,7 +9,7 @@ from functools import partial
 from types import MappingProxyType
 
 from dbt.artifacts.resources.types import NodeType
-from dbt.contracts.graph.nodes import ColumnInfo, ResultNode
+from dbt.contracts.graph.nodes import ResultNode, ColumnInfo  # pyright: ignore[reportPrivateImportUsage]
 
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import (
@@ -805,9 +805,9 @@ def apply_semantic_analysis(
 
     # Build model context (description or SQL)
     model_context = node.description or ""
-    if hasattr(node, "raw_sql") and node.raw_sql:
-        # Include a snippet of the SQL for context
-        model_context = f"{model_context}\n\nSQL: {node.raw_sql[:500]}..."
+    if hasattr(node, "raw_sql") and node.raw_sql:  # pyright: ignore[reportUnknownMemberType]
+        # Include a snippet of SQL for context
+        model_context = f"{model_context}\n\nSQL: {node.raw_sql[:500]}..."  # pyright: ignore[reportUnknownMemberType]
 
     # Apply semantic analysis to each column
     for column_name, column_info in node.columns.items():

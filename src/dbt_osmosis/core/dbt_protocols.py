@@ -135,6 +135,11 @@ class YamlRefactorContextProtocol(t.Protocol):
         """Get YAML formatting settings from dbt config."""
         ...
 
+    @property
+    def current_node(self) -> ResultNodeProtocol | None:
+        """Get the current dbt node being processed."""
+        ...
+
     def read_catalog(self) -> CatalogResults | None:
         """Read and cache the catalog file."""
         ...

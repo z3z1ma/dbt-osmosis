@@ -14,8 +14,9 @@ from pathlib import Path
 
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.relation import BaseRelation
-from dbt.contracts.graph.nodes import ResultNode
-from dbt.contracts.results import CatalogArtifact, CatalogResults, ColumnMetadata
+from dbt.artifacts.schemas.catalog import CatalogArtifact, CatalogResults  # pyright: ignore[reportPrivateImportUsage]
+from dbt.contracts.graph.nodes import ResultNode  # pyright: ignore[reportPrivateImportUsage]
+from dbt_common.contracts.metadata import ColumnMetadata  # pyright: ignore[reportPrivateImportUsage]
 from dbt.task.docs.generate import Catalog
 
 from dbt_osmosis.core import logger
@@ -907,66 +908,6 @@ class SettingsResolver:
         return None
 
 
-# Global resolver instance for backward compatibility
-_resolver = SettingsResolver()
-
-
-def _get_setting_for_node(
-    opt: str,
-    /,
-    node: ResultNode | None = None,
-    col: str | None = None,
-    *,
-    fallback: t.Any | None = None,
-) -> t.Any:
-    """Get a configuration value for a dbt node from the node's meta and config.
-
-    DEPRECATED: Use SettingsResolver directly instead. This function is kept for
-    backward compatibility and will be removed in a future version.
-
-    models: # dbt_project
-      project:
-        staging:
-          +dbt-osmosis: path/spec.yml
-          +dbt-osmosis-options:
-            string-length: true
-            numeric-precision-and-scale: true
-            skip-add-columns: true
-          +dbt-osmosis-skip-add-tags: true
-
-    models: # schema
-      - name: foo
-        meta:
-          string-length: false
-          prefix: user_ # we strip this prefix to inherit from columns upstream, useful in staging models that prefix everything
-        columns:
-          - bar:
-            meta:
-              dbt-osmosis-skip-meta-merge: true # per-column options
-              dbt-osmosis-options:
-                output-to-lower: true
-
-    {{ config(..., dbt_osmosis_options={"prefix": "account_"}) }} -- sql
-
-    We check for
-    From node column meta
-    - <key>
-    - dbt-osmosis-<key>
-    - dbt-osmosis-options.<key>
-    From node meta
-    - <key>
-    - dbt-osmosis-<key>
-    - dbt-osmosis-options.<key>
-    From node config
-    - dbt-osmosis-<key>
-    - dbt-osmosis-options.<key>
-    - dbt_osmosis_<key> # allows use in {{ config(...) }} by being a valid python identifier
-    - dbt_osmosis_options.<key> # allows use in {{ config(...) }} by being a valid python identifier
-    """
-    # For backward compatibility, use the resolver directly
-    return _resolver.resolve(opt, node, col, fallback=fallback)
-
-
 _COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
 """Cache for column lists to avoid redundant introspection.
 
@@ -1016,11 +957,11 @@ def normalize_column_name(column: str, credentials_type: str) -> str:
 
 
 def _maybe_use_precise_dtype(
-    col: BaseColumn,
+    col: BaseColumn | ColumnMetadata,
     settings: t.Any,
     node: ResultNode | None = None,
 ) -> str:
-    """Use the precise data type if enabled in the settings."""
+    """Use precise data type if enabled in settings."""
     use_num_prec = _get_setting_for_node(
         "numeric-precision-and-scale",
         node,
@@ -1033,12 +974,17 @@ def _maybe_use_precise_dtype(
         col.name,
         fallback=settings.string_length,
     )
-    if (col.is_numeric() and use_num_prec) or (col.is_string() and use_chr_prec):
-        logger.debug(":ruler: Using precise data type => %s", col.data_type)
-        return col.data_type
-    if hasattr(col, "mode"):
-        return col.data_type
-    return col.dtype
+    # Handle BaseColumn from introspection (has is_numeric/is_string methods)
+    # vs ColumnMetadata from catalog (no such methods, type already set)
+    if isinstance(col, BaseColumn):
+        if (col.is_numeric() and use_num_prec) or (col.is_string() and use_chr_prec):
+            logger.debug(":ruler: Using precise data type => %s", col.data_type)
+            return col.data_type
+        if hasattr(col, "mode"):
+            return col.data_type
+        return col.dtype
+    # ColumnMetadata from catalog - type is already set correctly
+    return col.type
 
 
 def _get_setting_for_node(
@@ -1247,8 +1193,8 @@ def _load_catalog(settings: t.Any) -> CatalogResults | None:
 
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
 def _generate_catalog(context: t.Any) -> CatalogResults | None:
-    """Generate the dbt catalog file for the project."""
-    import dbt.utils as dbt_utils
+    """Generate dbt catalog file for the project."""
+    import dbt.utils as dbt_utils  # pyright: ignore[reportPrivateImportUsage]
 
     if context.config.disable_introspection:
         logger.warning(":warning: Introspection is disabled, cannot generate catalog.")

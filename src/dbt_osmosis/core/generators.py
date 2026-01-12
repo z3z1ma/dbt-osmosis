@@ -10,17 +10,21 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass
 from pathlib import Path
+from textwrap import dedent
 
 import dbt_osmosis.core.logger as logger
 from dbt_osmosis.core.config import DbtProjectContext
+from dbt_osmosis.core.settings import YamlRefactorSettings
+from dbt_osmosis.core.staging import (
+    StagingGenerationResult,
+    generate_staging_for_source,
+    write_staging_files,
+)
 
 __all__ = [
-    "generate_sources_from_database",
-    "generate_staging_from_source",
     "check_documentation",
-    "SourceGenerationResult",
-    "StagingGenerationResult",
     "DocumentationCheckResult",
+    "generate_sources_from_database",
 ]
 
 
@@ -39,29 +43,6 @@ class SourceGenerationResult:
     source_name: str
     table_count: int
     yaml_content: str
-    yaml_path: Path
-    error: Exception | None = None
-
-
-@dataclass
-class StagingGenerationResult:
-    """Result of staging model generation.
-
-    Attributes:
-        source_name: Name of the source table
-        staging_name: Name of the staging model
-        sql_content: Generated SQL content
-        yaml_content: Generated YAML content
-        sql_path: Path where SQL should be written
-        yaml_path: Path where YAML should be written
-        error: Any error that occurred during generation
-    """
-
-    source_name: str
-    staging_name: str
-    sql_content: str
-    yaml_content: str
-    sql_path: Path
     yaml_path: Path
     error: Exception | None = None
 
@@ -231,13 +212,6 @@ def generate_staging_from_source(
             raise ValueError(f"Source {source_name}.{table_name} not found in manifest")
 
         if use_ai:
-            # Use AI-based staging generation
-            from dbt_osmosis.core.settings import YamlRefactorSettings
-            from dbt_osmosis.core.staging import (
-                generate_staging_for_source,
-                write_staging_files,
-            )
-
             # Generate with AI
             staging_spec = generate_staging_for_source(
                 project=context,
@@ -255,36 +229,45 @@ def generate_staging_from_source(
                 raise staging_spec.error or Exception("Failed to generate staging spec")
 
             spec = staging_spec.spec
-
-            # Write files
-            if staging_path is None:
-                project_root = Path(context.config.project_dir)
-                staging_path = project_root / "models" / "staging"
-
+            staging_path = staging_path or Path(context.config.project_dir) / "models" / "staging"
             staging_path.mkdir(parents=True, exist_ok=True)
 
             sql_path = staging_path / f"{spec.staging_name}.sql"
             yaml_path = staging_path / f"{spec.staging_name}.yml"
 
-            write_staging_files(
-                staging_spec=staging_spec,
+            columns_yaml = "\n".join(
+                f"  - name: {col.new_name}\n    description: {col.description}"
+                for col in spec.columns
+            )
+
+            yaml_content = dedent(f"""\
+            version: 2
+
+            models:
+              - name: {spec.staging_name}
+                description: {spec.description}
+                columns:
+            {columns_yaml}
+            """)
+
+            result = StagingGenerationResult(
+                source_name=f"{source_name}.{table_name}",
+                staging_name=spec.staging_name,
+                spec=spec,
+                sql_content=spec.to_sql(),
+                yaml_content=yaml_content,
                 sql_path=sql_path,
                 yaml_path=yaml_path,
             )
+
+            write_staging_files(result, dry_run=False)
 
             logger.info(
                 ":white_check_mark: Generated staging model %s (AI-based)",
                 spec.staging_name,
             )
 
-            return StagingGenerationResult(
-                source_name=f"{source_name}.{table_name}",
-                staging_name=spec.staging_name,
-                sql_content=spec.sql,
-                yaml_content=spec.yaml,
-                sql_path=sql_path,
-                yaml_path=yaml_path,
-            )
+            return result
         else:
             # Use dbt-core-interface generator
             config = StagingModelConfig(
@@ -327,6 +310,7 @@ def generate_staging_from_source(
             return StagingGenerationResult(
                 source_name=f"{source_name}.{table_name}",
                 staging_name=staging_name,
+                spec=None,
                 sql_content=result_dict.get("sql", ""),
                 yaml_content=result_dict.get("yaml", ""),
                 sql_path=sql_path,

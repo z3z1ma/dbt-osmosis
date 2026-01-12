@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from dbt.contracts.graph.nodes import ColumnInfo, ResultNode
-from dbt.contracts.results import ColumnMetadata
+from dbt.contracts.graph.nodes import ColumnInfo, ResultNode  # pyright: ignore[reportPrivateImportUsage]
+from dbt_common.contracts.metadata import ColumnMetadata  # pyright: ignore[reportPrivateImportUsage]
 from rapidfuzz import fuzz, process
 
 if t.TYPE_CHECKING:
@@ -234,7 +234,7 @@ class SchemaDiff:
         """
         self._context = context
         self._fuzzy_match_threshold = fuzzy_match_threshold
-        self._detect_column_renames = detect_column_renames
+        self._detect_column_renames = detect_column_renames  # type: ignore[assignment]
 
     def compare_node(self, node: ResultNode) -> SchemaDiffResult:
         """Compare a single node's YAML schema with database schema.
@@ -304,7 +304,7 @@ class SchemaDiff:
 
         # Detect column renames via fuzzy matching
         if self._detect_column_renames and added_columns and removed_columns:
-            renames = self._detect_column_renames(
+            renames = self._detect_column_renames(  # pyright: ignore[reportArgumentType]
                 list(removed_columns),
                 list(added_columns),
                 database_columns,
@@ -340,7 +340,7 @@ class SchemaDiff:
             db_col = database_columns[col_name]
 
             if yaml_col and db_col and yaml_col.data_type != db_col.type:
-                severity = self._classify_type_change(yaml_col.data_type, db_col.type)
+                severity = self._classify_type_change(yaml_col.data_type or "unknown", db_col.type)
                 changes.append(
                     ColumnTypeChanged(
                         category=ChangeCategory.TYPE_CHANGED,
@@ -356,7 +356,7 @@ class SchemaDiff:
         return SchemaDiffResult(
             node=node,
             yaml_columns=yaml_columns,
-            database_columns=database_columns,
+            database_columns=database_columns,  # pyright: ignore[reportArgumentType]
             changes=changes,
         )
 
