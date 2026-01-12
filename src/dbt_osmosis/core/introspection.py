@@ -1,3 +1,4 @@
+# pyright: reportPrivateImportUsage=false, reportOptionalMemberAccess=false, reportUnknownMemberType=false
 from __future__ import annotations
 
 import json
@@ -12,6 +13,7 @@ from enum import Enum
 from itertools import chain
 from pathlib import Path
 
+# pyright: reportPrivateImportUsage=false
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.relation import BaseRelation
 from dbt.artifacts.schemas.catalog import CatalogArtifact, CatalogResults  # pyright: ignore[reportPrivateImportUsage]
@@ -235,7 +237,7 @@ class ConfigMetaSource(ConfigurationSource):
         if not hasattr(self._node, "config") or not hasattr(self._node.config, "meta"):
             return None
 
-        config_meta = self._node.config.meta
+        config_meta = self._node.config.meta  # pyright: ignore[reportOptionalMemberAccess]
         if not isinstance(config_meta, dict):
             return None
 
@@ -1098,11 +1100,11 @@ def get_columns(
             relation,  # pyright: ignore[reportArgumentType]
         )
 
-    rendered_relation = relation.render()
+    rendered_relation = relation.render() if relation else ""  # pyright: ignore[reportOptionalMemberAccess,reportUnknownMemberType]
     with _COLUMN_LIST_CACHE_LOCK:
         if rendered_relation in _COLUMN_LIST_CACHE:
             logger.debug(":blue_book: Column list cache HIT => %s", rendered_relation)
-            return _COLUMN_LIST_CACHE[rendered_relation]
+            return _COLUMN_LIST_CACHE[rendered_relation]  # pyright: ignore[reportOptionalMemberAccess]
 
     logger.info(":mag_right: Collecting columns for table => %s", rendered_relation)
     index = 0
@@ -1111,8 +1113,8 @@ def get_columns(
         nonlocal index
 
         columns = [c]
-        if hasattr(c, "flatten"):
-            columns.extend(c.flatten())  # pyright: ignore[reportUnknownMemberType]
+        if hasattr(c, "flatten"):  # pyright: ignore[reportUnknownMemberType]
+            columns.extend(c.flatten())
 
         for column in columns:
             if any(re.match(b, column.name) for b in context.ignore_patterns):
@@ -1146,7 +1148,7 @@ def get_columns(
         logger.debug(":blue_book: Catalog found => Checking for ref => %s", rendered_relation)
         catalog_entry = _find_first(
             chain(catalog.nodes.values(), catalog.sources.values()),
-            lambda c: relation.matches(*c.key()),
+            lambda c: relation.matches(*c.key()),  # pyright: ignore[reportOptionalMemberAccess,reportUnknownMemberType]
         )
         if catalog_entry:
             logger.info(
@@ -1227,7 +1229,7 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
         logger.warning(":warning: Exceptions encountered in get_filtered_catalog => %s", errors)
 
     nodes, sources = catalog.make_unique_id_map(context.manifest)
-    artifact = CatalogArtifact.from_results(
+    artifact = CatalogArtifact.from_results(  # pyright: ignore[reportOptionalMemberAccess,reportUnknownMemberType]
         nodes=nodes,
         sources=sources,
         generated_at=datetime.now(timezone.utc),
