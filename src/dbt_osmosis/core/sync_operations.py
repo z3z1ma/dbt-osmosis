@@ -101,6 +101,12 @@ def _sync_doc_section(
             name,
             fallback=context.settings.skip_add_data_types,
         )
+        skip_merge_meta = _get_setting_for_node(
+            "skip-merge-meta",
+            node,
+            name,
+            fallback=context.settings.skip_merge_meta,
+        )
 
         # Check if we should preserve unrendered descriptions from current YAML
         # When use_unrendered_descriptions is True and the current description contains
@@ -150,6 +156,8 @@ def _sync_doc_section(
             if k == "data_type" and skip_add_types:
                 # don't add data types if told not to
                 continue
+            if k == "meta" and skip_merge_meta:
+                continue
             if k == "constraints" and "constraints" in merged:
                 # keep constraints as is if present, mashumaro dumps too much info :shrug:
                 continue
@@ -160,6 +168,23 @@ def _sync_doc_section(
                 # Preserve unrendered jinja templates from current YAML (prefer-yaml-values)
                 continue
             merged[k] = v
+
+        if context.project.is_dbt_v1_10_or_greater:
+            meta_value = merged.get("meta")
+            config_value = merged.get("config")
+            config_meta = config_value.get("meta") if isinstance(config_value, dict) else None
+            if isinstance(meta_value, dict) and not skip_merge_meta:
+                target_config = merged.setdefault("config", {})
+                if isinstance(target_config.get("meta"), dict):
+                    target_config["meta"] = {
+                        **meta_value,
+                        **t.cast("dict[str, t.Any]", target_config["meta"]),
+                    }
+                else:
+                    target_config["meta"] = meta_value
+                merged.pop("meta", None)
+            elif isinstance(config_meta, dict):
+                merged.pop("meta", None)
 
         if merged.get("description") is None:
             merged.pop("description", None)
@@ -472,14 +497,15 @@ def _sync_single_node_to_yaml(
         logger.info(":inbox_tray: Committing YAML doc changes for => %s", node.unique_id)
         from dbt_osmosis.core.schema.writer import _write_yaml
 
-        _write_yaml(
-            context.yaml_handler,
-            context.yaml_handler_lock,
-            current_path or get_target_yaml_path(context, node),
-            doc,
-            context.settings.dry_run,
-            context.register_mutations,
-        )
+    _write_yaml(
+        context.yaml_handler,
+        context.yaml_handler_lock,
+        current_path or get_target_yaml_path(context, node),
+        doc,
+        dry_run=context.settings.dry_run,
+        mutation_tracker=context.register_mutations,
+        strip_eof_blank_lines=context.settings.strip_eof_blank_lines,
+    )
 
 
 def _deduplicated_version_nodes(context: YamlRefactorContextProtocol) -> t.Iterator[ResultNode]:
