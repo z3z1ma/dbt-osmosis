@@ -12,8 +12,7 @@ import typing as t
 import streamlit as st
 from streamlit_elements import elements, mui
 
-if t.TYPE_CHECKING:
-    from dbt_osmosis.workbench.components.dashboard import Dashboard
+from .dashboard import Dashboard
 
 __all__ = ["AIAssistant"]
 
