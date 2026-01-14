@@ -76,6 +76,7 @@ class YamlRefactorSettings:
     """Generate the catalog.json for the project if it doesn't exist and use it for introspective queries."""
     scaffold_empty_configs: bool = False
     """When True, include empty/placeholder fields (e.g., empty descriptions) in YAML. When False, skip writing them."""
+    strip_eof_blank_lines: bool = False
     include_external: bool = False
     """Include models and sources from external dbt packages in the processing."""
 

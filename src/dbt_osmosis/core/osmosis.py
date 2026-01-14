@@ -238,6 +238,7 @@ def commit_yamls(context: YamlRefactorContext) -> None:
         yaml_handler_lock=context.yaml_handler_lock,
         dry_run=context.settings.dry_run,
         mutation_tracker=context.register_mutations,
+        strip_eof_blank_lines=context.settings.strip_eof_blank_lines,
     )
 
 

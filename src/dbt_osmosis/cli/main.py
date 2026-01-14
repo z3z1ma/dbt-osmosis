@@ -204,6 +204,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         default=False,
         help="When disabled, avoid writing empty/placeholder fields (e.g., empty descriptions) to YAML.",
     )
+    @click.option(
+        "--strip-eof-blank-lines/--keep-eof-blank-lines",
+        default=False,
+        help="Remove trailing blank lines at EOF when writing YAML.",
+    )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         if kwargs.get("disable_introspection") and not kwargs.get("catalog_path"):

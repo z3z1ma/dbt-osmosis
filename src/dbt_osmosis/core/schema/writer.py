@@ -22,6 +22,24 @@ __all__ = [
 ]
 
 
+def _strip_eof_blank_lines(content: bytes) -> bytes:
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return content
+    newline = "\r\n" if "\r\n" in text else "\n"
+    endswith_newline = text.endswith("\n")
+    lines = text.splitlines()
+    while lines and lines[-1].strip() == "":
+        lines.pop()
+    if not lines:
+        return b""
+    result = newline.join(lines)
+    if endswith_newline:
+        result += newline
+    return result.encode("utf-8")
+
+
 def _write_yaml(
     yaml_handler: ruamel.yaml.YAML,
     yaml_handler_lock: threading.Lock,
@@ -29,6 +47,7 @@ def _write_yaml(
     data: dict[str, t.Any],
     dry_run: bool = False,
     mutation_tracker: t.Callable[[int], None] | None = None,
+    strip_eof_blank_lines: bool = False,
 ) -> None:
     """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache.
 
@@ -51,6 +70,8 @@ def _write_yaml(
             with io.BytesIO() as staging:
                 yaml_handler.dump(data, staging)
                 modified = staging.getvalue()
+                if strip_eof_blank_lines:
+                    modified = _strip_eof_blank_lines(modified)
                 if modified != original:
                     logger.info(":writing_hand: Writing changes to => %s", path)
 
@@ -121,6 +142,7 @@ def commit_yamls(
     yaml_handler_lock: threading.Lock,
     dry_run: bool = False,
     mutation_tracker: t.Callable[[int], None] | None = None,
+    strip_eof_blank_lines: bool = False,
 ) -> None:
     """Commit all files in the yaml buffer cache to disk. Clears the buffer cache and registers mutations.
 
@@ -141,6 +163,8 @@ def commit_yamls(
                         data = _YAML_BUFFER_CACHE[path]
                     yaml_handler.dump(data, staging)
                     modified = staging.getvalue()
+                    if strip_eof_blank_lines:
+                        modified = _strip_eof_blank_lines(modified)
                     if modified != original:
                         logger.info(":writing_hand: Writing => %s", path)
 

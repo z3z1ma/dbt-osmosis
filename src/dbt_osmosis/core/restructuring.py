@@ -330,6 +330,7 @@ def apply_restructure_plan(
             output_doc,
             context.settings.dry_run,
             context.register_mutations,
+            context.settings.strip_eof_blank_lines,
         )
 
         for path, nodes in op.superseded_paths.items():
@@ -362,6 +363,7 @@ def apply_restructure_plan(
                         existing_data,
                         context.settings.dry_run,
                         context.register_mutations,
+                        context.settings.strip_eof_blank_lines,
                     )
                     logger.info(
                         ":arrow_forward: Migrated doc from => %s to => %s",
@@ -379,5 +381,6 @@ def apply_restructure_plan(
         context.yaml_handler_lock,
         context.settings.dry_run,
         context.register_mutations,
+        context.settings.strip_eof_blank_lines,
     )
     _reload_manifest(context.project)

@@ -362,6 +362,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
                     existing_doc,
                     context.settings.dry_run,
                     context.register_mutations,
+                    context.settings.strip_eof_blank_lines,
                 )
                 # Clear cache for the updated file
                 with _YAML_BUFFER_CACHE_LOCK:
@@ -378,16 +379,21 @@ def create_missing_source_yamls(context: t.Any) -> None:
             tables = list(db_tables.values())
             source_dict = {"name": source, "database": database, "schema": schema, "tables": tables}
 
-            src_yaml_path_obj.parent.mkdir(parents=True, exist_ok=True)
-            with src_yaml_path_obj.open("w") as f:
-                logger.info(
-                    ":books: Injecting new source => %s => %s with %d tables",
-                    source_dict["name"],
-                    src_yaml_path_obj,
-                    len(tables),
-                )
-                context.yaml_handler.dump({"version": 2, "sources": [source_dict]}, f)
-                context.register_mutations(1)
+            logger.info(
+                ":books: Injecting new source => %s => %s with %d tables",
+                source_dict["name"],
+                src_yaml_path_obj,
+                len(tables),
+            )
+            _write_yaml(
+                context.yaml_handler,
+                context.yaml_handler_lock,
+                src_yaml_path_obj,
+                {"version": 2, "sources": [source_dict]},
+                context.settings.dry_run,
+                context.register_mutations,
+                context.settings.strip_eof_blank_lines,
+            )
 
             did_side_effect = True
 
