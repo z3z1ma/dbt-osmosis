@@ -1,24 +1,39 @@
 ---
 sidebar_position: 1
 ---
-# dbt-osmosis Intro
 
-Let's discover **dbt-osmosis** in less than 5 minutes.
+# dbt-osmosis intro
 
-## Getting Started
+dbt-osmosis automates dbt YAML management: file placement, column documentation inheritance, and optional LLM-assisted synthesis.
 
-Get started by **running dbt-osmosis**.
+## What you'll do
 
-### What you'll need
+- Install `dbt-osmosis` with your dbt adapter
+- Configure YAML routing in `dbt_project.yml`
+- Run a safe dry run and apply updates
 
-- [Python](https://www.python.org/downloads/) (3.10+)
-- [dbt](https://docs.getdbt.com/docs/core/installation) (1.8.0+)
-- or [uv](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
-- An existing dbt project (or you can play with it using [jaffle shop](https://github.com/dbt-labs/jaffle_shop_duckdb))
+## Prerequisites
 
-## Configure dbt-osmosis
+- Python 3.10+
+- dbt Core 1.8+ and a dbt adapter package
+- A dbt project with models (and optionally sources)
+- A clean git working tree (recommended)
 
-Add the following to your `dbt_project.yml` file. This example configuration tells dbt-osmosis that for every model in your project, there should exist a YAML file in the same directory with the same name as the model prefixed with an underscore. For example, if you have a model named `my_model` then there should exist a YAML file named `_my_model.yml` in the same directory as the model. The configuration is extremely flexible and can be used to declaratively organize your YAML files in any way you want as you will see later.
+## 1. Install
+
+```bash
+uv tool install --with="dbt-<adapter>~=1.9.0" dbt-osmosis
+```
+
+Or with pip:
+
+```bash
+pip install dbt-osmosis dbt-<adapter>
+```
+
+## 2. Configure YAML routing
+
+Add a `+dbt-osmosis` rule for models (and seeds if you use them):
 
 ```yaml title="dbt_project.yml"
 models:
@@ -29,20 +44,19 @@ seeds:
     +dbt-osmosis: "_schema.yml"
 ```
 
-## Run dbt-osmosis
-
-If using uv(x):
+## 3. Run a dry run
 
 ```bash
-uvx --with='dbt-<adapter>==1.9.0' dbt-osmosis yaml refactor
+dbt-osmosis yaml refactor --dry-run --check
 ```
 
-Or, if installed in your Python environment:
+- `--dry-run` prevents writes.
+- `--check` exits non-zero if changes would be made.
+
+## 4. Apply changes
 
 ```bash
-dbt-osmosis yaml refactor
+dbt-osmosis yaml refactor --auto-apply
 ```
 
-Run this command from the root of your dbt project. Ensure your git repository is clean before running. Replace `<adapter>` with the name of your dbt adapter (e.g. `snowflake`, `bigquery`, `redshift`, `postgres`, `athena`, `spark`, `trino`, `sqlite`, `duckdb`, `oracle`, `sqlserver`).
-
-Watch the magic unfold. ✨
+Review the diff and commit the generated YAML changes with your models.

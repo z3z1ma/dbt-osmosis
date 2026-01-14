@@ -55,9 +55,9 @@ const config = {
         items: [
           {
             type: 'docSidebar',
-            sidebarId: 'tutorialSidebar',
+            sidebarId: 'docs',
             position: 'left',
-            label: 'Tutorial',
+            label: 'Docs',
           },
           {
             href: 'https://github.com/z3z1ma/dbt-osmosis',
@@ -73,8 +73,20 @@ const config = {
             title: 'Docs',
             items: [
               {
-                label: 'Tutorial',
-                to: '/docs/intro',
+                label: 'Tutorials',
+                to: '/docs/tutorials',
+              },
+              {
+                label: 'How-to guides',
+                to: '/docs/how-to',
+              },
+              {
+                label: 'Reference',
+                to: '/docs/reference',
+              },
+              {
+                label: 'Explanation',
+                to: '/docs/explanation',
               },
             ],
           },

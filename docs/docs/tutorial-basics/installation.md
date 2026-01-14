@@ -1,20 +1,39 @@
 ---
 sidebar_position: 1
 ---
+
 # Installation
 
-## Install with uv
+Pick the installation approach that matches your workflow. All examples assume you install a dbt adapter alongside dbt-osmosis.
+
+## Install with `uv` (recommended)
 
 ```bash
 uv tool install --with="dbt-<adapter>~=1.9.0" dbt-osmosis
 ```
 
-This will install `dbt-osmosis` and its dependencies in a virtual environment, and make it available as a command-line tool via `dbt-osmosis`. You can also use `uvx` like in the intro to run it directly in a more ephemeral way.
+This creates an isolated tool environment and exposes the `dbt-osmosis` command globally.
 
-## Install with pip
+### Run with `uvx` (ephemeral)
+
+```bash
+uvx --with="dbt-<adapter>~=1.9.0" dbt-osmosis --help
+```
+
+Use `uvx` when you want a one-off run without installing the tool globally.
+
+## Install with `pip`
 
 ```bash
 pip install dbt-osmosis dbt-<adapter>
 ```
 
-(This installs `dbt-osmosis` into your current Python environment.)
+This installs into the active Python environment (virtualenv, venv, or system Python).
+
+## Verify
+
+```bash
+dbt-osmosis --help
+```
+
+Replace `<adapter>` with your dbt adapter (for example: `snowflake`, `bigquery`, `postgres`, `redshift`, `duckdb`).
