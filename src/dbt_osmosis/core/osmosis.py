@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportAny=false, reportUnknownMemberType=false
+# pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportUnknownMemberType=false
 # ruff: noqa: E402
 """dbt-osmosis core module with backwards compatibility imports."""
 

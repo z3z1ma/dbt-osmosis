@@ -1,4 +1,3 @@
-# pyright: reportAny=false
 """Logging module for dbt-osmosis. The module itself can be used as a logger as it proxies calls to the default LOGGER instance."""
 
 from __future__ import annotations

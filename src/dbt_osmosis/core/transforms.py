@@ -805,9 +805,10 @@ def apply_semantic_analysis(
 
     # Build model context (description or SQL)
     model_context = node.description or ""
-    if hasattr(node, "raw_sql") and node.raw_sql:  # pyright: ignore[reportUnknownMemberType]
+    raw_sql = getattr(node, "raw_sql", None)
+    if isinstance(raw_sql, str) and raw_sql:
         # Include a snippet of SQL for context
-        model_context = f"{model_context}\n\nSQL: {node.raw_sql[:500]}..."  # pyright: ignore[reportUnknownMemberType]
+        model_context = f"{model_context}\n\nSQL: {raw_sql[:500]}..."
 
     # Apply semantic analysis to each column
     for column_name, column_info in node.columns.items():

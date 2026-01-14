@@ -237,7 +237,7 @@ class ConfigMetaSource(ConfigurationSource):
         if not hasattr(self._node, "config") or not hasattr(self._node.config, "meta"):
             return None
 
-        config_meta = self._node.config.meta  # pyright: ignore[reportOptionalMemberAccess]
+        config_meta = getattr(self._node.config, "meta", None)
         if not isinstance(config_meta, dict):
             return None
 
@@ -872,7 +872,7 @@ class SettingsResolver:
 
         # Check config.meta (dbt 1.10+)
         if hasattr(node, "config") and hasattr(node.config, "meta"):
-            config_meta = node.config.meta
+            config_meta = getattr(node.config, "meta", None)
             if isinstance(config_meta, dict):
                 result = check_dict(config_meta)
                 if result:
@@ -1100,7 +1100,13 @@ def get_columns(
             relation,  # pyright: ignore[reportArgumentType]
         )
 
-    rendered_relation = relation.render() if relation else ""  # pyright: ignore[reportOptionalMemberAccess,reportUnknownMemberType]
+    relation_any = t.cast(t.Any, relation)
+    if relation:
+        renderer = getattr(relation_any, "render", None)
+        rendered_relation = t.cast("str", renderer()) if callable(renderer) else str(relation)
+    else:
+        rendered_relation = ""
+
     with _COLUMN_LIST_CACHE_LOCK:
         if rendered_relation in _COLUMN_LIST_CACHE:
             logger.debug(":blue_book: Column list cache HIT => %s", rendered_relation)
@@ -1113,8 +1119,10 @@ def get_columns(
         nonlocal index
 
         columns = [c]
-        if hasattr(c, "flatten"):  # pyright: ignore[reportUnknownMemberType]
-            columns.extend(c.flatten())
+        flattener = getattr(t.cast(t.Any, c), "flatten", None)
+        if callable(flattener):
+            for flattened in t.cast(t.Iterable[t.Any], flattener()):
+                columns.append(flattened)
 
         for column in columns:
             if any(re.match(b, column.name) for b in context.ignore_patterns):
@@ -1146,9 +1154,16 @@ def get_columns(
 
     if catalog := context.read_catalog():
         logger.debug(":blue_book: Catalog found => Checking for ref => %s", rendered_relation)
+        matcher = getattr(relation_any, "matches", None)
+
+        def matches_relation(entry: t.Any) -> bool:
+            if not callable(matcher):
+                return False
+            return bool(matcher(*entry.key()))
+
         catalog_entry = _find_first(
             chain(catalog.nodes.values(), catalog.sources.values()),
-            lambda c: relation.matches(*c.key()),  # pyright: ignore[reportOptionalMemberAccess,reportUnknownMemberType]
+            matches_relation,
         )
         if catalog_entry:
             logger.info(

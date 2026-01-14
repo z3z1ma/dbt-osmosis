@@ -110,6 +110,7 @@ def generate_sources_from_database(
 
     try:
         # Create source generator
+        assert context._project is not None, "DbtProjectContext not initialized"
         source_gen = SourceGenerator(project=context._project)
 
         # Configure generation options
@@ -356,6 +357,7 @@ def check_documentation(
             min_column_description_length=min_column_length,
         )
 
+        assert context._project is not None, "DbtProjectContext not initialized"
         # Run check
         report = doc_checker.check_project(
             manifest=context.manifest,

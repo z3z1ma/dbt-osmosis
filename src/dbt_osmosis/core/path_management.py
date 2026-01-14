@@ -63,23 +63,29 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
     if node.resource_type == NodeType.Source:
         def_or_path = context.source_definitions.get(node.source_name)
         if isinstance(def_or_path, dict):
-            return def_or_path.get("path")
-        return def_or_path
+            path_value = def_or_path.get("path")
+            return path_value if isinstance(path_value, str) else None
+        if isinstance(def_or_path, str):
+            return def_or_path
+        return None
 
     # Use SettingsResolver to get the path template from config sources
     resolver = SettingsResolver()
-    path_template = resolver.get_yaml_path_template(node)
+    raw_path_template = resolver.get_yaml_path_template(node)
+    path_template = raw_path_template if isinstance(raw_path_template, str) else None
 
     # If no model-specific config, check for global var
     if not path_template:
         try:
             project_vars = context.project.runtime_cfg.vars.to_dict()
             path_template = project_vars.get("dbt_osmosis_default_path")
-            if path_template:
+            if isinstance(path_template, str) and path_template:
                 logger.debug(
                     ":earth_americas: Using global var 'dbt_osmosis_default_path': %s",
                     path_template,
                 )
+            elif not isinstance(path_template, str):
+                path_template = None
         except Exception as e:
             logger.debug(":warning: Failed to read global var: %s", e)
             path_template = None
@@ -88,6 +94,8 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
         raise MissingOsmosisConfig(
             f"Config key `+dbt-osmosis:` or var `dbt_osmosis_default_path` not set for model {node.name}",
         )
+    if not isinstance(path_template, str):
+        return None
     logger.debug(":gear: Resolved YAML path template => %s", path_template)
     return path_template
 
@@ -97,14 +105,17 @@ def get_current_yaml_path(
     node: ResultNode,
 ) -> Path | None:
     """Get the current yaml path for a dbt model or source node."""
+    project_root = context.project.runtime_cfg.project_root
+    if not project_root:
+        return None
     if node.resource_type in (NodeType.Model, NodeType.Seed) and getattr(node, "patch_path", None):
-        path = Path(context.project.runtime_cfg.project_root).joinpath(
+        path = Path(project_root).joinpath(
             t.cast("str", node.patch_path).partition("://")[-1],
         )
         logger.debug(":page_facing_up: Current YAML path => %s", path)
         return path
     if node.resource_type == NodeType.Source:
-        path = Path(context.project.runtime_cfg.project_root, node.path)
+        path = Path(project_root, node.path)
         logger.debug(":page_facing_up: Current YAML path => %s", path)
         return path
     return None
@@ -112,14 +123,19 @@ def get_current_yaml_path(
 
 def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode) -> Path:
     """Get the target yaml path for a dbt model or source node."""
+    project_root = t.cast("str", context.project.runtime_cfg.project_root)
+    if not project_root:
+        raise PathResolutionError("Project root is not set in runtime config.")
+    model_paths = t.cast("list[str]", context.project.runtime_cfg.model_paths or ["models"])
+
     tpl = _get_yaml_path_template(context, node)
     if not tpl:
         logger.warning(":warning: No path template found for => %s", node.unique_id)
-        return Path(context.project.runtime_cfg.project_root, node.original_file_path)
+        return Path(project_root, t.cast("str", node.original_file_path))
 
     # Use local copies to avoid TOCTOU race conditions from mutating node objects
     # Build a safe format dict with only immutable/copy data
-    path = Path(context.project.runtime_cfg.project_root, node.original_file_path)
+    path = Path(project_root, t.cast("str", node.original_file_path))
 
     # Create a simple node object with common attributes for format strings
     # Avoid exposing fqn/tags as indexed dicts to prevent TOCTOU issues
@@ -145,9 +161,9 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
     segments: list[Path | str] = []
 
     if node.resource_type == NodeType.Source:
-        segments.append(context.project.runtime_cfg.model_paths[0])
+        segments.append(model_paths[0])
     elif rendered.startswith("/"):
-        segments.append(context.project.runtime_cfg.model_paths[0])
+        segments.append(model_paths[0])
         # SECURITY: Remove only the first leading slash, not all slashes (prevents path traversal)
         rendered = rendered.removeprefix("/")
     else:
@@ -157,13 +173,13 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
         rendered += ".yml"
     segments.append(rendered)
 
-    path = Path(context.project.runtime_cfg.project_root, *segments)
+    path = Path(project_root, *segments)
     # SECURITY: Validate path is within project root to prevent directory traversal
     resolved_path = path.resolve()
-    project_root = Path(context.project.runtime_cfg.project_root).resolve()
-    if not resolved_path.is_relative_to(project_root):
+    project_root_path = Path(project_root).resolve()
+    if not resolved_path.is_relative_to(project_root_path):
         raise PathResolutionError(
-            f"Security violation: Target YAML path '{resolved_path}' is outside project root '{project_root}'",
+            f"Security violation: Target YAML path '{resolved_path}' is outside project root '{project_root_path}'",
         )
     logger.debug(":star2: Target YAML path => %s", path)
     return path
@@ -219,6 +235,10 @@ def create_missing_source_yamls(context: t.Any) -> None:
     database: str = context.project.runtime_cfg.credentials.database
     lowercase: bool = context.settings.output_to_lower
     uppercase: bool = context.settings.output_to_upper
+    project_root = t.cast("str", context.project.runtime_cfg.project_root)
+    if not project_root:
+        raise PathResolutionError("Project root is not set in runtime config.")
+    model_paths = t.cast("list[str]", context.project.runtime_cfg.model_paths or ["models"])
 
     did_side_effect: bool = False
     for source, spec in context.source_definitions.items():
@@ -237,6 +257,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
             context.project.manifest.sources.values(),
             lambda s: s.source_name == source,
         )
+        manifest_tables: set[str] = set()
 
         if existing_source_node:
             # Source already exists - check for new tables to add
@@ -249,20 +270,22 @@ def create_missing_source_yamls(context: t.Any) -> None:
                 source,
                 len(manifest_tables),
             )
+        else:
+            manifest_tables = set()
 
         # SECURITY: Remove only the first leading separator, not all (prevents path traversal)
         cleaned_path = src_yaml_path[1:] if src_yaml_path.startswith(os.sep) else src_yaml_path
         src_yaml_path_obj = Path(
-            context.project.runtime_cfg.project_root,
-            context.project.runtime_cfg.model_paths[0],
+            project_root,
+            model_paths[0],
             cleaned_path,
         )
         # SECURITY: Validate path is within project root to prevent directory traversal
         resolved_path = src_yaml_path_obj.resolve()
-        project_root = Path(context.project.runtime_cfg.project_root).resolve()
-        if not resolved_path.is_relative_to(project_root):
+        project_root_path = Path(project_root).resolve()
+        if not resolved_path.is_relative_to(project_root_path):
             raise PathResolutionError(
-                f"Security violation: Source YAML path '{resolved_path}' is outside project root '{project_root}'",
+                f"Security violation: Source YAML path '{resolved_path}' is outside project root '{project_root_path}'",
             )
 
         def _describe(relation: t.Any) -> dict[str, t.Any]:

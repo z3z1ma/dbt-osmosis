@@ -544,17 +544,19 @@ class SQLLinter:
 
         try:
             # Parse SQL to AST
-            ast = parse(sql_to_lint, dialect=self.dialect_name, read=self.dialect)
-            if not ast:
+            parsed = parse(sql_to_lint, dialect=self.dialect_name, read=self.dialect)
+            if not parsed:
                 return result
 
             # Get the first statement if multiple
-            ast = ast[0] if isinstance(ast, list) else ast
+            ast = parsed[0] if isinstance(parsed, list) else parsed
+            if ast is None:
+                return result
 
             # Run all rules
             for rule in self.rules:
                 try:
-                    violations = rule(ast, sql_to_lint)
+                    violations = rule(t.cast(exp.Expression, ast), sql_to_lint)
                     result.violations.extend(violations)
                 except Exception as e:
                     logger.warning(f"Rule {rule.rule_id} failed: {e}")
@@ -605,7 +607,7 @@ class SQLLinter:
 
         # Lint both raw and compiled SQL
         raw_sql = model.raw_code or ""
-        compiled_sql = model.compiled_code or ""
+        compiled_sql = getattr(model, "compiled_code", None) or ""
 
         return self.lint(raw_sql, compiled_sql)
 
@@ -637,7 +639,8 @@ class SQLLinter:
                     continue
 
             # Lint the model
-            result = self.lint(node.raw_code or "", node.compiled_code or "")
+            compiled_sql = getattr(node, "compiled_code", None) or ""
+            result = self.lint(node.raw_code or "", compiled_sql)
             results[node.name] = result
 
         return results

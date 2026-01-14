@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportAny=false, reportUnknownMemberType=false
+# pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportUnknownMemberType=false
 """AI-powered test suggestion and generation for dbt models.
 
 This module provides functionality to:
@@ -42,8 +42,7 @@ class TestSuggestion:
 
     def to_yaml_dict(self) -> dict[str, t.Any]:
         """Convert to YAML-serializable dict."""
-        result: dict[str, t.Any] = {self.test_type: self.config} if self.config else self.test_type
-        return result
+        return {self.test_type: self.config or {}}
 
     def __repr__(self) -> str:
         if self.column_name:

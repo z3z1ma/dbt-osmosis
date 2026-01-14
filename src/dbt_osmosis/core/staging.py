@@ -72,29 +72,34 @@ def _get_source_table_columns(
     Returns:
         List of column definitions with name, data_type, and optional description
     """
-    from dbt_osmosis.core.introspection import get_columns
-
     # Construct the full table name for introspection
     # Sources may have different quoting patterns
-    adapter = project._project.adapter
+    adapter = project.adapter
 
     # Get columns from the database via introspection
     try:
-        # Try to get the relation for the source
-        relation_name = f"{source_name}_{table_name}"
-        columns = get_columns(
-            adapter,
-            project._project.runtime_config,
-            relation_name,
+        source_def = _get_source_table_from_manifest(project, source_name, table_name)
+        if not source_def:
+            return []
+
+        relation = adapter.Relation.create(
+            database=getattr(source_def, "database", None),
+            schema=source_def.schema,
+            identifier=source_def.name,
         )
+        columns = adapter.get_columns_in_relation(relation)
 
         # Convert to dict format expected by LLM
         column_defs = []
-        for col_name, col_meta in columns.items():
+        for col_meta in columns:
             column_defs.append({
-                "name": col_name,
-                "data_type": col_meta.type or "unknown",
-                "description": col_meta.comment or "",
+                "name": col_meta.name,
+                "data_type": getattr(col_meta, "dtype", None)
+                or getattr(col_meta, "data_type", None)
+                or "unknown",
+                "description": getattr(col_meta, "comment", None)
+                or getattr(col_meta, "description", None)
+                or "",
             })
 
         return column_defs

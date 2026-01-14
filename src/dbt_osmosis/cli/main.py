@@ -343,9 +343,12 @@ def refactor(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
     ) as context:
+        typed_context: t.Any = context
         create_missing_source_yamls(context=context)
         apply_restructure_plan(
-            context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
+            context=typed_context,
+            plan=draft_restructure_delta_plan(typed_context),
+            confirm=not auto_apply,
         )
 
         transform = (
@@ -358,7 +361,7 @@ def refactor(
         if synthesize:
             transform >>= synthesize_missing_documentation_with_openai
 
-        _ = transform(context=context)
+        _ = transform(context=typed_context)
 
         if check and context.mutated:
             exit(1)
@@ -408,9 +411,12 @@ def organize(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
     ) as context:
+        typed_context: t.Any = context
         create_missing_source_yamls(context=context)
         apply_restructure_plan(
-            context=context, plan=draft_restructure_delta_plan(context), confirm=not auto_apply
+            context=typed_context,
+            plan=draft_restructure_delta_plan(typed_context),
+            confirm=not auto_apply,
         )
 
         if check and context.mutated:
@@ -538,6 +544,7 @@ def document(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
         ),
     ) as context:
+        typed_context: t.Any = context
         transform = (
             inject_missing_columns
             >> inherit_upstream_column_knowledge
@@ -546,7 +553,7 @@ def document(
         if synthesize:
             transform >>= synthesize_missing_documentation_with_openai
 
-        _ = transform(context=context)
+        _ = transform(context=typed_context)
 
         if check and context.mutated:
             exit(1)
@@ -873,15 +880,19 @@ def staging(
 
         click.echo(f"\n:sparkles: Generated staging model: {result.staging_name}")
 
-        if result.sql_content:
+        if result.sql_content and result.sql_path:
             result.sql_path.parent.mkdir(parents=True, exist_ok=True)
             result.sql_path.write_text(result.sql_content, encoding="utf-8")
             click.echo(f":white_check_mark: Wrote SQL to: {result.sql_path}")
+        elif result.sql_content:
+            raise click.ClickException("Generated SQL content is missing a target path.")
 
-        if result.yaml_content:
+        if result.yaml_content and result.yaml_path:
             result.yaml_path.parent.mkdir(parents=True, exist_ok=True)
             result.yaml_path.write_text(result.yaml_content, encoding="utf-8")
             click.echo(f":white_check_mark: Wrote YAML to: {result.yaml_path}")
+        elif result.yaml_content:
+            raise click.ClickException("Generated YAML content is missing a target path.")
 
     except Exception as e:
         logger.error(f":x: Failed to generate staging model: {e}")

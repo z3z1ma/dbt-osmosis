@@ -77,6 +77,27 @@ include_trailing_comma = true
 line-length = 100
 preview = true
 
+[tool.pyright]
+include = ["src/dbt_osmosis/core", "src/dbt_osmosis/cli"]
+exclude = [
+  "**/_deps/**",
+  "**/.venv/**",
+  "demo_duckdb/target/**",
+  "src/dbt_osmosis/workbench/**",
+  "tests/**",
+  "src/dbt_osmosis/sql/**",
+]
+pythonVersion = "3.10"
+reportMissingTypeStubs = false
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
+reportOptionalMemberAccess = false
+reportAttributeAccessIssue = false
+reportPrivateImportUsage = false
+reportUnsupportedDunderAll = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

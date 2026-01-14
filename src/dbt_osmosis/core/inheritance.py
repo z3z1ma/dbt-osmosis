@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import typing as t
+from importlib import import_module
 from types import MappingProxyType
 
-from dbt.contracts.graph.manifest import Manifest
 from dbt.contracts.graph.nodes import ModelNode, ResultNode, SeedNode, SourceDefinition
 
 if t.TYPE_CHECKING:
@@ -28,7 +28,7 @@ __all__ = [
 
 
 def _build_node_ancestor_tree(
-    manifest: Manifest,
+    manifest: t.Any,
     node: ResultNode,
     tree: dict[str, list[str]] | None = None,
     visited: set[str] | None = None,
@@ -89,7 +89,10 @@ def _get_node_yaml(
     from dbt_osmosis.core.introspection import _find_first
     from dbt_osmosis.core.schema.reader import _read_yaml
 
-    project_dir = Path(context.project.runtime_cfg.project_root)
+    project_root = context.project.runtime_cfg.project_root
+    if not project_root:
+        return None
+    project_dir = Path(project_root)
 
     if isinstance(member, SourceDefinition):
         if not member.original_file_path:
@@ -489,13 +492,10 @@ def _build_column_knowledge_graph(
     for name, column in node.columns.items():
         # PATCH: Fix missing config attribute in dbt-core 1.11+ objects causing mashumaro serialization error
         if not hasattr(column, "config"):
-            try:
-                from dbt.artifacts.resources.v1.components import ColumnConfig
-
-                column.config = ColumnConfig()
-            except ImportError:
-                # Fallback if import fails, though it shouldn't for this dbt version
-                pass
+            module = import_module("dbt.artifacts.resources.v1.components")
+            column_config = getattr(module, "ColumnConfig", None)
+            if column_config is not None:
+                t.cast("t.Any", column).config = column_config()
 
         column_data = column.to_dict(omit_none=True)
 

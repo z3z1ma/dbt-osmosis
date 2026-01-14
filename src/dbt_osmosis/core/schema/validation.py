@@ -354,8 +354,9 @@ class ModelValidator(Validator):
                     file_path=file_path,
                 )
 
+            model_name = name if isinstance(name, str) else "<unknown>"
             # Validate columns
-            self._validate_columns(model.get("columns", []), result, file_path, name)
+            self._validate_columns(model.get("columns", []), result, file_path, model_name)
 
     def _validate_columns(
         self,
@@ -392,10 +393,11 @@ class ModelValidator(Validator):
                     column_name=name,
                 )
 
+            column_name = name if isinstance(name, str) else "<unknown>"
             # Validate tests
             tests = column.get("tests", [])
             if tests:
-                self._validate_tests(tests, result, file_path, model_name, name)
+                self._validate_tests(tests, result, file_path, model_name, column_name)
 
     def _validate_tests(
         self,
@@ -593,10 +595,11 @@ class SourceValidator(Validator):
                     file_path=file_path,
                 )
 
+            source_name = name if isinstance(name, str) else "<unknown>"
             # Validate columns
             columns = source.get("columns", [])
             if columns:
-                self._validate_columns(columns, result, file_path, name)
+                self._validate_columns(columns, result, file_path, source_name)
 
     def _validate_columns(
         self,

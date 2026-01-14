@@ -20,6 +20,7 @@ import ruamel.yaml
 if t.TYPE_CHECKING:
     from dbt.artifacts.resources.types import NodeType
     from dbt.artifacts.schemas.catalog import CatalogResults
+    from dbt_osmosis.core.config import DbtProjectContext
 
 
 class DbtAdapterProtocol(t.Protocol):
@@ -50,6 +51,8 @@ class DbtRuntimeConfigProtocol(t.Protocol):
     threads: int
     vars: t.Any  # dbt's Var container
     credentials: t.Any  # Database credentials
+    project_root: str | None = None
+    model_paths: list[str] | None = None
 
     def to_dict(self) -> dict[str, t.Any]:
         """Convert config to dictionary representation."""
@@ -79,15 +82,18 @@ class DbtProjectContextProtocol(t.Protocol):
     """
 
     config: t.Any  # DbtConfiguration
-    runtime_cfg: DbtRuntimeConfigProtocol
-    manifest: DbtManifestProtocol
-    _adapter: t.Any | None  # DbtAdapterProtocol
-    _adapter_mutex: threading.Lock
 
     @property
-    def adapter(self) -> t.Any:
-        """Get or create the adapter instance."""
-        ...
+    def runtime_cfg(self) -> t.Any: ...
+
+    @property
+    def manifest(self) -> t.Any: ...
+
+    @property
+    def adapter(self) -> t.Any: ...
+
+    @property
+    def manifest_mutex(self) -> threading.RLock: ...
 
 
 class YamlRefactorContextProtocol(t.Protocol):
@@ -97,18 +103,17 @@ class YamlRefactorContextProtocol(t.Protocol):
     Contains project context, settings, and execution resources.
     """
 
-    project: DbtProjectContextProtocol
+    @property
+    def project(self) -> "DbtProjectContext": ...
+
     settings: t.Any  # YamlRefactorSettings
     pool: ThreadPoolExecutor
-    yaml_handler: ruamel.yaml.YAML | None
+    yaml_handler: ruamel.yaml.YAML
     yaml_handler_lock: threading.Lock
     placeholders: tuple[str, ...]
     _catalog: CatalogResults | None
     _mutation_count: int
-
-    def register_mutations(self, count: int) -> None:
-        """Register mutation count for tracking changes."""
-        ...
+    current_node: ResultNodeProtocol | None
 
     @property
     def mutation_count(self) -> int:
@@ -135,14 +140,11 @@ class YamlRefactorContextProtocol(t.Protocol):
         """Get YAML formatting settings from dbt config."""
         ...
 
-    @property
-    def current_node(self) -> ResultNodeProtocol | None:
-        """Get the current dbt node being processed."""
-        ...
-
     def read_catalog(self) -> CatalogResults | None:
         """Read and cache the catalog file."""
         ...
+
+    def register_mutations(self, count: int) -> None: ...
 
 
 class ColumnInfoProtocol(t.Protocol):
@@ -156,6 +158,7 @@ class ColumnInfoProtocol(t.Protocol):
     meta: dict[str, t.Any]
     tags: list[str]
     data_type: str | None
+    config: t.Any | None
 
     def to_dict(self, omit_none: bool = False) -> dict[str, t.Any]:
         """Convert column info to dictionary representation."""

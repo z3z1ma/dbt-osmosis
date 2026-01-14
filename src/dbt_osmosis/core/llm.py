@@ -71,7 +71,7 @@ def _redact_credentials(text: str) -> str:
 
 
 # Dynamic client creation function
-def get_llm_client():
+def get_llm_client() -> tuple[t.Any, str]:
     """Creates and returns an LLM client and model engine string based on environment variables.
 
     Returns:
@@ -97,18 +97,19 @@ def get_llm_client():
         model_engine = os.getenv("OPENAI_MODEL", "gpt-4o")
 
     elif provider == "azure-openai":
-        openai.api_type = "azure-openai"
-        openai.api_base = os.getenv("AZURE_OPENAI_BASE_URL")
-        openai.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-        openai.api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        openai_any = t.cast(t.Any, openai)
+        openai_any.api_type = "azure-openai"
+        openai_any.api_base = os.getenv("AZURE_OPENAI_BASE_URL")
+        openai_any.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+        openai_any.api_key = os.getenv("AZURE_OPENAI_API_KEY")
         model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
-        if not (openai.api_base and openai.api_key and model_engine):
+        if not (openai_any.api_base and openai_any.api_key and model_engine):
             raise LLMConfigurationError(
                 "Azure environment variables (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT_NAME) not properly set for azure-openai provider",
             )
         # For Azure, the global openai object is used directly (legacy SDK structure preferred)
-        return openai, model_engine
+        return openai_any, model_engine
 
     elif provider == "lm-studio":
         client = OpenAI(
@@ -178,6 +179,27 @@ def get_llm_client():
         )
 
     return client, model_engine
+
+
+def _create_chat_completion(
+    client: t.Any,
+    model_engine: str,
+    messages: list[dict[str, t.Any]],
+    **kwargs: t.Any,
+) -> t.Any:
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    client_any = t.cast(t.Any, client)
+    if provider == "azure-openai":
+        return client_any.ChatCompletion.create(
+            engine=model_engine,
+            messages=messages,
+            **kwargs,
+        )
+    return client_any.chat.completions.create(
+        model=model_engine,
+        messages=messages,
+        **kwargs,
+    )
 
 
 def _create_llm_prompt_for_model_docs_as_json(
@@ -408,21 +430,12 @@ def generate_model_spec_as_json(
     )
 
     client, model_engine = get_llm_client()
-
-    if os.getenv("LLM_PROVIDER", "openai").lower() == "azure-openai":
-        # Legacy structure for Azure OpenAI Service
-        response = client.ChatCompletion.create(
-            engine=model_engine,
-            messages=messages,
-            temperature=temperature,
-        )
-    else:
-        # New SDK structure for OpenAI default, LM Studio, Ollama
-        response = client.chat.completions.create(
-            model=model_engine,
-            messages=messages,
-            temperature=temperature,
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if content is None:
@@ -468,20 +481,12 @@ def generate_column_doc(
     )
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine,
-            messages=messages,
-            temperature=temperature,
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine,
-            messages=messages,
-            temperature=temperature,
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:
@@ -512,20 +517,12 @@ def generate_table_doc(
     messages = _create_llm_prompt_for_table(sql_content, table_name, upstream_docs)
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine,
-            messages=messages,
-            temperature=temperature,
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine,
-            messages=messages,
-            temperature=temperature,
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:
@@ -691,16 +688,12 @@ def analyze_column_semantics(
     )
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:
@@ -796,21 +789,23 @@ def generate_semantic_description(
     )
 
     messages = [
-        {"role": "system", "content": system_prompt.strip()},
-        {"role": "user", "content": user_message.strip()},
+        {
+            "role": "system",
+            "content": system_prompt.strip(),
+        },
+        {
+            "role": "user",
+            "content": user_message.strip(),
+        },
     ]
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:
@@ -992,16 +987,12 @@ def generate_sql_from_nl(
     messages = _create_llm_prompt_for_nl_to_sql(query, available_sources, schema_context)
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:
@@ -1062,16 +1053,12 @@ def generate_dbt_model_from_nl(
     messages = _create_llm_prompt_for_nl_to_dbt_model(query, available_sources, schema_context)
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if content is None:
@@ -1347,16 +1334,12 @@ def generate_staging_model_spec(
     )
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:
@@ -1692,16 +1675,12 @@ def generate_style_aware_column_doc(
     )
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:
@@ -1743,16 +1722,12 @@ def generate_style_aware_table_doc(
     )
 
     client, model_engine = get_llm_client()
-
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    if provider == "azure-openai":
-        response = client.ChatCompletion.create(
-            engine=model_engine, messages=messages, temperature=temperature
-        )
-    else:
-        response = client.chat.completions.create(
-            model=model_engine, messages=messages, temperature=temperature
-        )
+    response = _create_chat_completion(
+        client,
+        model_engine,
+        messages,
+        temperature=temperature,
+    )
 
     content = response.choices[0].message.content
     if not content:

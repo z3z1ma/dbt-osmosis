@@ -15,6 +15,13 @@ from dbt_osmosis.core import logger
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.config import DbtProjectContext
 
+
+def _create_yaml_instance() -> ruamel.yaml.YAML:
+    from dbt_osmosis.core.schema.parser import create_yaml_instance
+
+    return create_yaml_instance()
+
+
 __all__ = [
     "EMPTY_STRING",
     "YamlRefactorContext",
@@ -101,11 +108,12 @@ class YamlRefactorContext:
     pool: ThreadPoolExecutor = field(
         default_factory=lambda: ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)),
     )
-    yaml_handler: ruamel.yaml.YAML | None = field(
+    yaml_handler: ruamel.yaml.YAML = field(
         init=False,
-        default=None,
-    )  # Will be set in __post_init__
+        default_factory=_create_yaml_instance,
+    )
     yaml_handler_lock: threading.Lock = field(default_factory=threading.Lock)
+    current_node: t.Any | None = field(default=None, repr=False)
 
     placeholders: tuple[str, ...] = (
         EMPTY_STRING,
@@ -285,10 +293,6 @@ class YamlRefactorContext:
         logger.debug(":green_book: Running post-init for YamlRefactorContext.")
         if EMPTY_STRING not in self.placeholders:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
-        # Initialize yaml_handler here
-        from dbt_osmosis.core.schema.parser import create_yaml_instance
-
-        self.yaml_handler = create_yaml_instance()
         for setting, val in self.yaml_settings.items():
             setattr(self.yaml_handler, setting, val)
         # Override max_workers with dbt's thread count if available, otherwise keep the safe default
