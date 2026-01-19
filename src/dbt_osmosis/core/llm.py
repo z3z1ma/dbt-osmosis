@@ -123,7 +123,7 @@ def _redact_credentials(text: str) -> str:
 
 
 # Dynamic client creation function
-def get_llm_client():
+def get_llm_client() -> tuple[t.Any, str]:
     """Creates and returns an LLM client and model engine string based on environment variables.
 
     Returns:
