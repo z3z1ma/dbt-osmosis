@@ -18,15 +18,18 @@ try:
 except ImportError:
     openai = None  # type: ignore[assignment]
     OpenAI = None  # type: ignore[assignment,misc]
+    AzureOpenAI = None  # type: ignore[assignment,misc]
     _OPENAI_AVAILABLE = False
 
 
 try:
     from azure.identity import DefaultAzureCredential, EnvironmentCredential
 
-    AZURE_IDENTITY_AVAILABLE = True
+    _AZURE_IDENTITY_AVAILABLE = True
 except ImportError:
-    AZURE_IDENTITY_AVAILABLE = False
+    DefaultAzureCredential = None  # type: ignore[assignment,misc]
+    EnvironmentCredential = None  # type: ignore[assignment,misc]
+    _AZURE_IDENTITY_AVAILABLE = False
 
 from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 
@@ -70,7 +73,10 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
         except Exception:
             raise
 
-    raise last_exception
+    # This should never be reached, but satisfy type checker
+    if last_exception:
+        raise last_exception
+    raise RuntimeError("Unexpected retry loop completion without exception")
 
 
 __all__ = [
@@ -139,6 +145,10 @@ def get_llm_client() -> tuple[t.Any, str]:
             "pip install 'dbt-osmosis[openai]' or pip install openai"
         )
 
+    # Type narrowing: after availability check, these cannot be None
+    assert OpenAI is not None
+    assert AzureOpenAI is not None
+
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
     if provider == "openai":
@@ -161,7 +171,7 @@ def get_llm_client() -> tuple[t.Any, str]:
             )
 
         if azure_ad_token_scope:
-            if not AZURE_IDENTITY_AVAILABLE:
+            if not _AZURE_IDENTITY_AVAILABLE:
                 raise LLMConfigurationError(
                     "azure-identity package required for Azure AD authentication. Install with: pip install azure-identity"
                 )
@@ -172,7 +182,7 @@ def get_llm_client() -> tuple[t.Any, str]:
                 azure_client_secret = os.getenv("AZURE_CLIENT_SECRET")
 
                 if azure_tenant_id and azure_client_id and azure_client_secret:
-                    credential = EnvironmentCredential()
+                    credential = EnvironmentCredential()  # type: ignore[misc]
                     scope = (
                         f"{azure_ad_token_scope}/.default"
                         if not azure_ad_token_scope.endswith("/.default")
@@ -180,7 +190,7 @@ def get_llm_client() -> tuple[t.Any, str]:
                     )
                     token = credential.get_token(scope).token
                 else:
-                    credential = DefaultAzureCredential()
+                    credential = DefaultAzureCredential()  # type: ignore[misc]
                     token = credential.get_token(azure_ad_token_scope).token
             except Exception as e:
                 raise LLMConfigurationError(
