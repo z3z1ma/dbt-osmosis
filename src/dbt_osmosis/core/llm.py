@@ -56,10 +56,8 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
             if attempt == max_retries:
                 raise
 
-            # Extract wait time from error message if available
             wait_time = delay
             if hasattr(e, "response") and e.response:
-                # Try to get retry-after header
                 retry_after = e.response.headers.get("retry-after")
                 if retry_after:
                     try:
@@ -70,7 +68,6 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
             time.sleep(wait_time)
             delay *= 2  # Exponential backoff
         except Exception:
-            # For non-rate-limit errors, raise immediately
             raise
 
     raise last_exception
@@ -164,8 +161,6 @@ def get_llm_client():
             )
 
         if azure_ad_token_scope:
-            # Note: Azure AD tokens expire. This client uses a token acquired at initialization.
-            # For long-running processes, consider implementing token refresh logic.
             if not AZURE_IDENTITY_AVAILABLE:
                 raise LLMConfigurationError(
                     "azure-identity package required for Azure AD authentication. Install with: pip install azure-identity"
@@ -193,8 +188,6 @@ def get_llm_client():
                     f"or authenticate with Azure CLI. Error: {e}"
                 )
 
-            # Using OpenAI client with Azure endpoint and AD token
-            # Note: base_url should NOT include the /chat/completions path
             client = OpenAI(
                 base_url=azure_endpoint.rstrip("/"),
                 api_key=token,
@@ -258,7 +251,6 @@ def get_llm_client():
             f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic, lm-studio, ollama.",
         )
 
-    # Define required environment variables for each provider
     required_env_vars = {
         "openai": ["OPENAI_API_KEY"],
         "azure-openai": [
@@ -272,7 +264,6 @@ def get_llm_client():
         "anthropic": ["ANTHROPIC_API_KEY"],
     }
 
-    # Check for missing environment variables
     missing_vars = [var for var in required_env_vars[provider] if not os.getenv(var)]
     if missing_vars:
         raise LLMConfigurationError(
@@ -511,7 +502,6 @@ def generate_model_spec_as_json(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers with retry logic
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine,
@@ -565,7 +555,6 @@ def generate_column_doc(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers with retry logic
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine,
@@ -604,7 +593,6 @@ def generate_table_doc(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers with retry logic
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine,
@@ -778,7 +766,6 @@ def analyze_column_semantics(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers with retry logic
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine, messages=messages, temperature=temperature
@@ -885,7 +872,6 @@ def generate_semantic_description(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers with retry logic
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine, messages=messages, temperature=temperature
@@ -1073,7 +1059,6 @@ def generate_sql_from_nl(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers with retry logic
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine, messages=messages, temperature=temperature
@@ -1140,7 +1125,6 @@ def generate_dbt_model_from_nl(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine, messages=messages, temperature=temperature
@@ -1422,7 +1406,6 @@ def generate_staging_model_spec(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine, messages=messages, temperature=temperature
@@ -1764,7 +1747,6 @@ def generate_style_aware_column_doc(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine, messages=messages, temperature=temperature
@@ -1812,7 +1794,6 @@ def generate_style_aware_table_doc(
 
     client, model_engine = get_llm_client()
 
-    # Use modern chat.completions.create() for all providers
     response = _call_with_retry(
         lambda: client.chat.completions.create(
             model=model_engine, messages=messages, temperature=temperature
