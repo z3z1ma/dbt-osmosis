@@ -163,57 +163,69 @@ def get_llm_client() -> tuple[t.Any, str]:
         api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
         api_key = os.getenv("AZURE_OPENAI_API_KEY")
         model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-        azure_ad_token_scope = os.getenv("AZURE_OPENAI_AD_TOKEN_SCOPE")
 
         if not (azure_endpoint and model_engine):
             raise LLMConfigurationError(
                 "AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai provider",
             )
 
-        if azure_ad_token_scope:
-            if not _AZURE_IDENTITY_AVAILABLE:
-                raise LLMConfigurationError(
-                    "azure-identity package required for Azure AD authentication. Install with: pip install azure-identity"
-                )
-
-            try:
-                azure_tenant_id = os.getenv("AZURE_TENANT_ID")
-                azure_client_id = os.getenv("AZURE_CLIENT_ID")
-                azure_client_secret = os.getenv("AZURE_CLIENT_SECRET")
-
-                if azure_tenant_id and azure_client_id and azure_client_secret:
-                    credential = EnvironmentCredential()  # type: ignore[misc]
-                    scope = (
-                        f"{azure_ad_token_scope}/.default"
-                        if not azure_ad_token_scope.endswith("/.default")
-                        else azure_ad_token_scope
-                    )
-                    token = credential.get_token(scope).token
-                else:
-                    credential = DefaultAzureCredential()  # type: ignore[misc]
-                    token = credential.get_token(azure_ad_token_scope).token
-            except Exception as e:
-                raise LLMConfigurationError(
-                    f"Failed to acquire Azure AD token. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET for service principal auth, "
-                    f"or authenticate with Azure CLI. Error: {e}"
-                )
-
-            client = OpenAI(
-                base_url=azure_endpoint.rstrip("/"),
-                api_key=token,
+        if not api_key:
+            raise LLMConfigurationError(
+                "AZURE_OPENAI_API_KEY must be set for azure-openai provider"
             )
-        else:
-            if not api_key:
-                raise LLMConfigurationError(
-                    "AZURE_OPENAI_API_KEY not set for azure-openai provider"
-                )
 
-            client = AzureOpenAI(
-                azure_endpoint=azure_endpoint,
-                api_key=api_key,
-                api_version=api_version,
+        client = AzureOpenAI(
+            azure_endpoint=azure_endpoint,
+            api_key=api_key,
+            api_version=api_version,
+        )
+
+    elif provider == "azure-openai-ad":
+        azure_endpoint = os.getenv("AZURE_OPENAI_BASE_URL")
+        model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        azure_ad_token_scope = os.getenv("AZURE_OPENAI_AD_TOKEN_SCOPE")
+
+        if not (azure_endpoint and model_engine):
+            raise LLMConfigurationError(
+                "AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai-ad provider",
             )
-        return client, model_engine
+
+        if not azure_ad_token_scope:
+            raise LLMConfigurationError(
+                "AZURE_OPENAI_AD_TOKEN_SCOPE must be set for azure-openai-ad provider"
+            )
+
+        if not _AZURE_IDENTITY_AVAILABLE:
+            raise LLMConfigurationError(
+                "Azure Identity library is not installed. "
+                "Please install it with: pip install 'dbt-osmosis[azure]' or pip install azure-identity"
+            )
+
+        try:
+            azure_tenant_id = os.getenv("AZURE_TENANT_ID")
+            azure_client_id = os.getenv("AZURE_CLIENT_ID")
+            azure_client_secret = os.getenv("AZURE_CLIENT_SECRET")
+
+            if azure_tenant_id and azure_client_id and azure_client_secret:
+                credential = EnvironmentCredential()  # type: ignore[misc]
+                scope = (
+                    f"{azure_ad_token_scope}/.default"
+                    if not azure_ad_token_scope.endswith("/.default")
+                    else azure_ad_token_scope
+                )
+                token = credential.get_token(scope).token
+            else:
+                credential = DefaultAzureCredential()  # type: ignore[misc]
+                token = credential.get_token(azure_ad_token_scope).token
+        except Exception as e:
+            raise LLMConfigurationError(
+                f"Failed to acquire Azure AD token: {_redact_credentials(str(e))}"
+            ) from e
+
+        client = OpenAI(
+            base_url=azure_endpoint.rstrip("/"),
+            api_key=token,
+        )
 
     elif provider == "lm-studio":
         client = OpenAI(
@@ -258,7 +270,7 @@ def get_llm_client() -> tuple[t.Any, str]:
 
     else:
         raise LLMConfigurationError(
-            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic, lm-studio, ollama.",
+            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, azure-openai-ad, google-gemini, anthropic, lm-studio, ollama.",
         )
 
     required_env_vars = {
@@ -266,6 +278,11 @@ def get_llm_client() -> tuple[t.Any, str]:
         "azure-openai": [
             "AZURE_OPENAI_BASE_URL",
             "AZURE_OPENAI_API_KEY",
+            "AZURE_OPENAI_DEPLOYMENT_NAME",
+        ],
+        "azure-openai-ad": [
+            "AZURE_OPENAI_BASE_URL",
+            "AZURE_OPENAI_AD_TOKEN_SCOPE",
             "AZURE_OPENAI_DEPLOYMENT_NAME",
         ],
         "lm-studio": ["LM_STUDIO_BASE_URL", "LM_STUDIO_API_KEY"],

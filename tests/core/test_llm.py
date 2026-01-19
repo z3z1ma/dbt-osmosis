@@ -349,29 +349,28 @@ def test_get_llm_client_azure_missing_deployment(monkeypatch: pytest.MonkeyPatch
         get_llm_client()
 
 
-def test_get_llm_client_azure_missing_api_key_without_ad(
+def test_get_llm_client_azure_missing_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that LLMConfigurationError is raised when API key is missing and no AD auth."""
+    """Test that LLMConfigurationError is raised when API key is missing."""
     monkeypatch.setenv("LLM_PROVIDER", "azure-openai")
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
     monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("AZURE_OPENAI_AD_TOKEN_SCOPE", raising=False)
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
 
     with pytest.raises(
         LLMConfigurationError,
-        match="AZURE_OPENAI_API_KEY not set for azure-openai provider",
+        match="AZURE_OPENAI_API_KEY must be set for azure-openai provider",
     ):
         get_llm_client()
 
 
-def test_get_llm_client_azure_with_service_principal(
+def test_get_llm_client_azure_ad_with_service_principal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test Azure OpenAI with service principal authentication."""
+    """Test Azure OpenAI AD with service principal authentication."""
     pytest.importorskip("azure.identity", reason="azure-identity not installed")
-    monkeypatch.setenv("LLM_PROVIDER", "azure-openai")
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
     monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "https://cognitiveservices.azure.com")
@@ -395,12 +394,12 @@ def test_get_llm_client_azure_with_service_principal(
         assert client.__class__.__name__ == "OpenAI"
 
 
-def test_get_llm_client_azure_with_default_credential(
+def test_get_llm_client_azure_ad_with_default_credential(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test Azure OpenAI with DefaultAzureCredential (e.g., Azure CLI auth)."""
+    """Test Azure OpenAI AD with DefaultAzureCredential (e.g., Azure CLI auth)."""
     pytest.importorskip("azure.identity", reason="azure-identity not installed")
-    monkeypatch.setenv("LLM_PROVIDER", "azure-openai")
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
     monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "https://cognitiveservices.azure.com")
@@ -427,16 +426,16 @@ def test_get_llm_client_azure_ad_without_azure_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that LLMConfigurationError is raised when azure-identity is not installed."""
-    monkeypatch.setenv("LLM_PROVIDER", "azure-openai")
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
     monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "https://cognitiveservices.azure.com")
 
-    # Mock AZURE_IDENTITY_AVAILABLE to False
-    with mock.patch("dbt_osmosis.core.llm.AZURE_IDENTITY_AVAILABLE", False):
+    # Mock _AZURE_IDENTITY_AVAILABLE to False
+    with mock.patch("dbt_osmosis.core.llm._AZURE_IDENTITY_AVAILABLE", False):
         with pytest.raises(
             LLMConfigurationError,
-            match="azure-identity package required for Azure AD authentication",
+            match="Azure Identity library is not installed",
         ):
             get_llm_client()
 
@@ -444,7 +443,7 @@ def test_get_llm_client_azure_ad_without_azure_identity(
 def test_get_llm_client_azure_ad_token_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test error handling when Azure AD token acquisition fails."""
     pytest.importorskip("azure.identity", reason="azure-identity not installed")
-    monkeypatch.setenv("LLM_PROVIDER", "azure-openai")
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
     monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "https://cognitiveservices.azure.com")
@@ -471,7 +470,7 @@ def test_get_llm_client_azure_ad_scope_with_default_suffix(
     except Exception:
         pytest.skip("azure-identity not installed")
 
-    monkeypatch.setenv("LLM_PROVIDER", "azure-openai")
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
     # Scope without /.default suffix
@@ -498,6 +497,38 @@ def test_get_llm_client_azure_ad_scope_with_default_suffix(
 
     # Verify /.default was appended
     assert captured_scope == "https://cognitiveservices.azure.com/.default"
+
+
+def test_get_llm_client_azure_ad_missing_token_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that LLMConfigurationError is raised when AD token scope is missing."""
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
+    monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
+    monkeypatch.delenv("AZURE_OPENAI_AD_TOKEN_SCOPE", raising=False)
+
+    with pytest.raises(
+        LLMConfigurationError,
+        match="AZURE_OPENAI_AD_TOKEN_SCOPE must be set for azure-openai-ad provider",
+    ):
+        get_llm_client()
+
+
+def test_get_llm_client_azure_ad_missing_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that LLMConfigurationError is raised when Azure AD endpoint is missing."""
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
+    monkeypatch.delenv("AZURE_OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "https://cognitiveservices.azure.com")
+
+    with pytest.raises(
+        LLMConfigurationError,
+        match="AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai-ad provider",
+    ):
+        get_llm_client()
 
 
 def test_call_with_retry_success_on_first_attempt() -> None:

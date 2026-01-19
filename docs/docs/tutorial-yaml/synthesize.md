@@ -12,6 +12,7 @@ Set `LLM_PROVIDER` to one of:
 
 - `openai`
 - `azure-openai`
+- `azure-openai-ad`
 - `google-gemini`
 - `anthropic`
 - `lm-studio`
@@ -22,7 +23,8 @@ Set `LLM_PROVIDER` to one of:
 | Provider | Required variables | Optional variables |
 | --- | --- | --- |
 | `openai` | `OPENAI_API_KEY` | `OPENAI_MODEL` (default `gpt-4o`) |
-| `azure-openai` | `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_DEPLOYMENT_NAME`, and either `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_AD_TOKEN_SCOPE` | `AZURE_OPENAI_API_VERSION` (default `2025-01-01-preview`) |
+| `azure-openai` | `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME` | `AZURE_OPENAI_API_VERSION` (default `2025-01-01-preview`) |
+| `azure-openai-ad` | `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_AD_TOKEN_SCOPE`, `AZURE_OPENAI_DEPLOYMENT_NAME` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (for service principal auth) |
 | `google-gemini` | `GOOGLE_GEMINI_API_KEY` | `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_GEMINI_MODEL` |
 | `anthropic` | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` |
 | `lm-studio` | `LM_STUDIO_BASE_URL`, `LM_STUDIO_API_KEY` | `LM_STUDIO_MODEL` |
@@ -75,7 +77,7 @@ pip install "dbt-osmosis[openai]" azure-identity
 # Authenticate with Azure CLI
 az login
 
-export LLM_PROVIDER=azure-openai
+export LLM_PROVIDER=azure-openai-ad
 export AZURE_OPENAI_BASE_URL="https://your-resource.openai.azure.com"
 export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
 export AZURE_OPENAI_AD_TOKEN_SCOPE="https://cognitiveservices.azure.com"
