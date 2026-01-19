@@ -13,6 +13,7 @@ from textwrap import dedent
 try:
     import openai
     from openai import AzureOpenAI, OpenAI
+
     _OPENAI_AVAILABLE = True
 except ImportError:
     openai = None  # type: ignore[assignment]
@@ -22,6 +23,7 @@ except ImportError:
 
 try:
     from azure.identity import DefaultAzureCredential, EnvironmentCredential
+
     AZURE_IDENTITY_AVAILABLE = True
 except ImportError:
     AZURE_IDENTITY_AVAILABLE = False
@@ -31,21 +33,21 @@ from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 
 def _call_with_retry(func, max_retries=5, initial_delay=1.0):
     """Call a function with exponential backoff retry logic for rate limits.
-    
+
     Args:
         func: Function to call
         max_retries: Maximum number of retry attempts
         initial_delay: Initial delay in seconds before first retry
-        
+
     Returns:
         The result of the function call
-        
+
     Raises:
         The last exception if all retries are exhausted
     """
     delay = initial_delay
     last_exception = None
-    
+
     for attempt in range(max_retries + 1):
         try:
             return func()
@@ -53,24 +55,24 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
             last_exception = e
             if attempt == max_retries:
                 raise
-            
+
             # Extract wait time from error message if available
             wait_time = delay
-            if hasattr(e, 'response') and e.response:
+            if hasattr(e, "response") and e.response:
                 # Try to get retry-after header
-                retry_after = e.response.headers.get('retry-after')
+                retry_after = e.response.headers.get("retry-after")
                 if retry_after:
                     try:
                         wait_time = float(retry_after)
                     except ValueError:
                         pass
-            
+
             time.sleep(wait_time)
             delay *= 2  # Exponential backoff
         except Exception:
             # For non-rate-limit errors, raise immediately
             raise
-    
+
     raise last_exception
 
 
@@ -140,7 +142,6 @@ def get_llm_client():
             "pip install 'dbt-osmosis[openai]' or pip install openai"
         )
 
-
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
     if provider == "openai":
@@ -161,7 +162,7 @@ def get_llm_client():
             raise LLMConfigurationError(
                 "AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai provider",
             )
-        
+
         if azure_ad_token_scope:
             # Note: Azure AD tokens expire. This client uses a token acquired at initialization.
             # For long-running processes, consider implementing token refresh logic.
@@ -169,15 +170,19 @@ def get_llm_client():
                 raise LLMConfigurationError(
                     "azure-identity package required for Azure AD authentication. Install with: pip install azure-identity"
                 )
-            
+
             try:
                 azure_tenant_id = os.getenv("AZURE_TENANT_ID")
                 azure_client_id = os.getenv("AZURE_CLIENT_ID")
                 azure_client_secret = os.getenv("AZURE_CLIENT_SECRET")
-                
+
                 if azure_tenant_id and azure_client_id and azure_client_secret:
                     credential = EnvironmentCredential()
-                    scope = f"{azure_ad_token_scope}/.default" if not azure_ad_token_scope.endswith("/.default") else azure_ad_token_scope
+                    scope = (
+                        f"{azure_ad_token_scope}/.default"
+                        if not azure_ad_token_scope.endswith("/.default")
+                        else azure_ad_token_scope
+                    )
                     token = credential.get_token(scope).token
                 else:
                     credential = DefaultAzureCredential()
@@ -187,7 +192,7 @@ def get_llm_client():
                     f"Failed to acquire Azure AD token. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET for service principal auth, "
                     f"or authenticate with Azure CLI. Error: {e}"
                 )
-            
+
             # Using OpenAI client with Azure endpoint and AD token
             # Note: base_url should NOT include the /chat/completions path
             client = OpenAI(
@@ -196,8 +201,10 @@ def get_llm_client():
             )
         else:
             if not api_key:
-                raise LLMConfigurationError("AZURE_OPENAI_API_KEY not set for azure-openai provider")
-            
+                raise LLMConfigurationError(
+                    "AZURE_OPENAI_API_KEY not set for azure-openai provider"
+                )
+
             client = AzureOpenAI(
                 azure_endpoint=azure_endpoint,
                 api_key=api_key,
