@@ -40,6 +40,19 @@ from dbt_osmosis.core.introspection import (
     normalize_column_name,
 )
 
+# Schema diff functionality
+from dbt_osmosis.core.diff import (
+    ChangeCategory,
+    ChangeSeverity,
+    ColumnAdded,
+    ColumnRemoved,
+    ColumnRenamed,
+    ColumnTypeChanged,
+    SchemaChange,
+    SchemaDiff,
+    SchemaDiffResult,
+)
+
 # Natural language generation (from llm.py) - conditional on openai availability
 _llm_available = importlib.util.find_spec("openai") is not None
 
@@ -362,6 +375,16 @@ __all__ = [
     "analyze_project_documentation_style",
     "extract_style_examples",
     "find_similar_documented_nodes",
+    # Schema diff functionality
+    "ChangeCategory",
+    "ChangeSeverity",
+    "ColumnAdded",
+    "ColumnRemoved",
+    "ColumnRenamed",
+    "ColumnTypeChanged",
+    "SchemaChange",
+    "SchemaDiff",
+    "SchemaDiffResult",
 ]
 
 # Add LLM exports if available
