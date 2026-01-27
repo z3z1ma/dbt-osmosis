@@ -33,6 +33,7 @@ from dbt_osmosis.core.osmosis import (
     generate_sql_from_nl,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
+    lint_sql_code,
     remove_columns_not_in_database,
     sort_columns_as_configured,
     synchronize_data_types,
@@ -1928,6 +1929,319 @@ def _output_as_table(results: dict[str, t.Any], output_path: str | None = None) 
         click.echo(f":white_check_mark: Wrote suggestions to: {output_path}")
     else:
         click.echo(output_text)
+
+
+@cli.group()
+def lint():
+    """Lint SQL code for style and anti-patterns"""
+
+
+@lint.command(context_settings=_CONTEXT, name="file")
+@dbt_opts
+@logging_opts
+@click.argument("sql")
+@click.option(
+    "--rules",
+    multiple=True,
+    type=click.STRING,
+    help="Specific rules to enable (default: all)",
+)
+@click.option(
+    "--disable-rules",
+    multiple=True,
+    type=click.STRING,
+    help="Specific rules to disable",
+)
+@click.option(
+    "--dialect",
+    type=click.STRING,
+    help="SQL dialect (e.g., postgres, duckdb, snowflake)",
+)
+def lint_file(
+    sql: str = "",
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
+    rules: tuple[str, ...] = (),
+    disable_rules: tuple[str, ...] = (),
+    dialect: str | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """Lint a SQL string or file for style and anti-patterns.
+
+    \f
+    Example:
+        dbt-osmosis lint file "SELECT * FROM users"
+        dbt-osmosis lint file "$(cat models/my_model.sql)" --rules keyword-case line-length
+
+    This command analyzes SQL code for style issues, anti-patterns, and potential bugs.
+    """
+    logger.info(":water_wave: Executing dbt-osmosis SQL linting\n")
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        **kwargs,
+    )
+    project = create_dbt_project_context(settings)
+
+    # Use provided dialect or get from adapter
+    sql_dialect = dialect or project.adapter.type()
+
+    # Prepare rules list
+    enabled_rules = list(rules) if rules else None
+
+    # Lint the SQL
+    result = lint_sql_code(
+        context=project,
+        raw_sql=sql,
+        dialect=sql_dialect,
+        rules=enabled_rules,
+    )
+
+    # Display results
+    click.echo(f"\n:sparkles: Lint Results: {result.summary()}\n")
+
+    if result.violations:
+        # Group by level
+        errors = result.errors
+        warnings = result.warnings
+        other = [v for v in result.violations if v.level not in ("error", "warning")]
+
+        if errors:
+            click.echo(":no_entry: Errors:")
+            for violation in errors:
+                click.echo(f"  {violation}")
+            click.echo()
+
+        if warnings:
+            click.echo(":warning: Warnings:")
+            for violation in warnings:
+                click.echo(f"  {violation}")
+            click.echo()
+
+        if other:
+            click.echo(":information_source: Other:")
+            for violation in other:
+                click.echo(f"  {violation}")
+            click.echo()
+
+        # Exit with error code if there are errors or warnings
+        if errors or warnings:
+            exit(1)
+    else:
+        click.echo(":white_check_mark: No issues found!")
+
+
+@lint.command(context_settings=_CONTEXT, name="model")
+@dbt_opts
+@logging_opts
+@click.argument("model_name")
+@click.option(
+    "--rules",
+    multiple=True,
+    type=click.STRING,
+    help="Specific rules to enable (default: all)",
+)
+@click.option(
+    "--disable-rules",
+    multiple=True,
+    type=click.STRING,
+    help="Specific rules to disable",
+)
+@click.option(
+    "--dialect",
+    type=click.STRING,
+    help="SQL dialect (e.g., postgres, duckdb, snowflake)",
+)
+def lint_model_command(
+    model_name: str = "",
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
+    rules: tuple[str, ...] = (),
+    disable_rules: tuple[str, ...] = (),
+    dialect: str | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """Lint a dbt model's SQL code.
+
+    \f
+    Example:
+        dbt-osmosis lint model my_model
+        dbt-osmosis lint model my_model --rules keyword-case select-star
+
+    This command analyzes a dbt model's SQL for style issues, anti-patterns, and potential bugs.
+    """
+    logger.info(":water_wave: Executing dbt-osmosis SQL linting\n")
+    from dbt_osmosis.core.osmosis import SQLLinter
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        **kwargs,
+    )
+    project = create_dbt_project_context(settings)
+
+    # Use provided dialect or get from adapter
+    sql_dialect = dialect or project.adapter.type()
+
+    # Create linter
+    enabled_rules = list(rules) if rules else None
+    disabled_rules = list(disable_rules) if disable_rules else None
+    linter = SQLLinter(
+        dialect=sql_dialect,
+        enabled_rules=enabled_rules,
+        disabled_rules=disabled_rules,
+    )
+
+    # Lint the model
+    result = linter.lint_model(project, model_name)
+
+    # Display results
+    click.echo(f"\n:sparkles: Lint Results for {model_name}: {result.summary()}\n")
+
+    if result.violations:
+        # Group by level
+        errors = result.errors
+        warnings = result.warnings
+        other = [v for v in result.violations if v.level not in ("error", "warning")]
+
+        if errors:
+            click.echo(":no_entry: Errors:")
+            for violation in errors:
+                click.echo(f"  {violation}")
+            click.echo()
+
+        if warnings:
+            click.echo(":warning: Warnings:")
+            for violation in warnings:
+                click.echo(f"  {violation}")
+            click.echo()
+
+        if other:
+            click.echo(":information_source: Other:")
+            for violation in other:
+                click.echo(f"  {violation}")
+            click.echo()
+
+        # Exit with error code if there are errors or warnings
+        if errors or warnings:
+            exit(1)
+    else:
+        click.echo(":white_check_mark: No issues found!")
+
+
+@lint.command(context_settings=_CONTEXT, name="project")
+@dbt_opts
+@logging_opts
+@click.option(
+    "-f",
+    "--fqn",
+    multiple=True,
+    type=click.STRING,
+    help="Filter models by FQN pattern",
+)
+@click.option(
+    "--rules",
+    multiple=True,
+    type=click.STRING,
+    help="Specific rules to enable (default: all)",
+)
+@click.option(
+    "--disable-rules",
+    multiple=True,
+    type=click.STRING,
+    help="Specific rules to disable",
+)
+@click.option(
+    "--dialect",
+    type=click.STRING,
+    help="SQL dialect (e.g., postgres, duckdb, snowflake)",
+)
+def lint_project_command(
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    target: str | None = None,
+    fqn: tuple[str, ...] = (),
+    rules: tuple[str, ...] = (),
+    disable_rules: tuple[str, ...] = (),
+    dialect: str | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """Lint all models in a dbt project.
+
+    \f
+    Example:
+        dbt-osmosis lint project
+        dbt-osmosis lint project --fqn my_project.staging
+        dbt-osmosis lint project --rules keyword-case select-star
+
+    This command analyzes all dbt models' SQL for style issues, anti-patterns, and potential bugs.
+    """
+    logger.info(":water_wave: Executing dbt-osmosis SQL linting\n")
+    from dbt_osmosis.core.osmosis import SQLLinter
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        **kwargs,
+    )
+    project = create_dbt_project_context(settings)
+
+    # Use provided dialect or get from adapter
+    sql_dialect = dialect or project.adapter.type()
+
+    # Create linter
+    enabled_rules = list(rules) if rules else None
+    disabled_rules = list(disable_rules) if disable_rules else None
+    linter = SQLLinter(
+        dialect=sql_dialect,
+        enabled_rules=enabled_rules,
+        disabled_rules=disabled_rules,
+    )
+
+    # Lint the project
+    fqn_filter = list(fqn) if fqn else None
+    results = linter.lint_project(project, fqn_filter=fqn_filter)
+
+    # Display results
+    total_errors = sum(len(r.errors) for r in results.values())
+    total_warnings = sum(len(r.warnings) for r in results.values())
+    total_other = sum(len(r.violations) - len(r.errors) - len(r.warnings) for r in results.values())
+
+    click.echo(f"\n:sparkles: Lint Results for {len(results)} models\n")
+    click.echo(
+        f"  Total: {total_errors} error(s), {total_warnings} warning(s), {total_other} info\n"
+    )
+
+    # Show models with issues
+    models_with_issues = {name: r for name, r in results.items() if r.violations}
+
+    if models_with_issues:
+        for model_name, result in models_with_issues.items():
+            click.echo(f"\n:page_facing_up: {model_name} ({result.summary()})")
+
+            if result.errors:
+                for violation in result.errors:
+                    click.echo(f"  :no_entry: {violation}")
+
+            if result.warnings:
+                for violation in result.warnings:
+                    click.echo(f"  :warning: {violation}")
+
+            other = [v for v in result.violations if v.level not in ("error", "warning")]
+            if other:
+                for violation in other:
+                    click.echo(f"  :information_source: {violation}")
+
+        # Exit with error code if there are errors or warnings
+        if total_errors or total_warnings:
+            exit(1)
+    else:
+        click.echo(":white_check_mark: No issues found across all models!")
 
 
 if __name__ == "__main__":

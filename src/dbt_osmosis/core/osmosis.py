@@ -131,6 +131,21 @@ from dbt_osmosis.core.sql_operations import (
     execute_sql_code,
 )
 
+# SQL linting
+from dbt_osmosis.core.sql_lint import (
+    KeywordCapitalizationRule,
+    LintLevel,
+    LintResult,
+    LintRule,
+    LintViolation,
+    LineLengthRule,
+    QuotedIdentifierRule,
+    SQLLinter,
+    SelectStarRule,
+    TableAliasRule,
+    lint_sql_code,
+)
+
 # Staging operations - conditional on openai availability
 if _llm_available:
     from dbt_osmosis.core.staging import (
@@ -385,6 +400,18 @@ __all__ = [
     "SchemaChange",
     "SchemaDiff",
     "SchemaDiffResult",
+    # SQL linting
+    "LintLevel",
+    "LintViolation",
+    "LintResult",
+    "LintRule",
+    "SQLLinter",
+    "lint_sql_code",
+    "KeywordCapitalizationRule",
+    "LineLengthRule",
+    "SelectStarRule",
+    "TableAliasRule",
+    "QuotedIdentifierRule",
 ]
 
 # Add LLM exports if available
