@@ -151,3 +151,5 @@ test.db
 .tickets/.audit/
 .tickets/.cache/
 .tickets/.locks/
+.memos/index.sqlite3*
+.memos/personal/
