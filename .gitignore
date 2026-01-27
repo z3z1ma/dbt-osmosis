@@ -153,3 +153,8 @@ test.db
 .tickets/.locks/
 .memos/index.sqlite3*
 .memos/personal/
+
+# Murmur agent configurations
+.claude/agents/
+.opencode/agents/
+.murmur/
