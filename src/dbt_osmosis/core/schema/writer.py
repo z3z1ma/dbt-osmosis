@@ -14,12 +14,50 @@ from pathlib import Path
 import ruamel.yaml
 
 from dbt_osmosis.core import logger
-from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE, _YAML_BUFFER_CACHE_LOCK
+from dbt_osmosis.core.schema.reader import (
+    _YAML_BUFFER_CACHE,
+    _YAML_BUFFER_CACHE_LOCK,
+    _YAML_ORIGINAL_CACHE,
+)
 
 __all__ = [
+    "_merge_preserved_sections",
     "_write_yaml",
     "commit_yamls",
 ]
+
+
+# Keys that are filtered out by OsmosisYAML but should be preserved when writing
+_PRESERVED_KEYS = {"semantic_models", "macros"}
+
+
+def _merge_preserved_sections(
+    filtered_data: dict[str, t.Any], original_data: dict[str, t.Any]
+) -> dict[str, t.Any]:
+    """Merge preserved sections (semantic_models, macros, etc.) from original YAML.
+
+    When dbt-osmosis processes a YAML file, it filters out sections like semantic_models
+    and macros that it shouldn't modify. This function restores those sections from the
+    original file so they're not lost when writing back to disk.
+
+    Args:
+        filtered_data: The processed YAML data (may have models, sources, etc.)
+        original_data: The original unfiltered YAML data (may have semantic_models, macros, etc.)
+
+    Returns:
+        A merged dictionary containing both processed and preserved sections.
+
+    """
+    # Start with the filtered data (processed content)
+    merged = dict(filtered_data)
+
+    # Add back any preserved sections from the original data
+    for key in _PRESERVED_KEYS:
+        if key in original_data and key not in merged:
+            merged[key] = original_data[key]
+            logger.debug(f":recycle: Restoring preserved section '{key}' from original YAML")
+
+    return merged
 
 
 def _strip_eof_blank_lines(content: bytes) -> bytes:
@@ -64,6 +102,12 @@ def _write_yaml(
     logger.debug(":page_with_curl: Attempting to write YAML to => %s", path)
     if not dry_run:
         with yaml_handler_lock:
+            # Merge preserved sections from original YAML (semantic_models, macros, etc.)
+            with _YAML_BUFFER_CACHE_LOCK:
+                if path in _YAML_ORIGINAL_CACHE:
+                    original_content = _YAML_ORIGINAL_CACHE[path]
+                    data = _merge_preserved_sections(data, original_content)
+
             path.parent.mkdir(parents=True, exist_ok=True)
             original = path.read_bytes() if path.is_file() else b""
             # Use context manager to ensure BytesIO is properly closed
@@ -99,6 +143,8 @@ def _write_yaml(
                         with _YAML_BUFFER_CACHE_LOCK:
                             if path in _YAML_BUFFER_CACHE:
                                 del _YAML_BUFFER_CACHE[path]
+                            if path in _YAML_ORIGINAL_CACHE:
+                                del _YAML_ORIGINAL_CACHE[path]
 
                         if mutation_tracker:
                             mutation_tracker(1)
@@ -119,6 +165,8 @@ def _write_yaml(
                     with _YAML_BUFFER_CACHE_LOCK:
                         if path in _YAML_BUFFER_CACHE:
                             del _YAML_BUFFER_CACHE[path]
+                        if path in _YAML_ORIGINAL_CACHE:
+                            del _YAML_ORIGINAL_CACHE[path]
 
 
 def _replace_atomically(temp_path: Path, target_path: Path) -> None:
@@ -161,6 +209,10 @@ def commit_yamls(
                 with io.BytesIO() as staging:
                     with _YAML_BUFFER_CACHE_LOCK:
                         data = _YAML_BUFFER_CACHE[path]
+                        # Merge preserved sections from original YAML (semantic_models, macros, etc.)
+                        if path in _YAML_ORIGINAL_CACHE:
+                            original_content = _YAML_ORIGINAL_CACHE[path]
+                            data = _merge_preserved_sections(data, original_content)
                     yaml_handler.dump(data, staging)
                     modified = staging.getvalue()
                     if strip_eof_blank_lines:
@@ -190,7 +242,10 @@ def commit_yamls(
 
                             # Clear cache entry only after successful write
                             with _YAML_BUFFER_CACHE_LOCK:
-                                del _YAML_BUFFER_CACHE[path]
+                                if path in _YAML_BUFFER_CACHE:
+                                    del _YAML_BUFFER_CACHE[path]
+                                if path in _YAML_ORIGINAL_CACHE:
+                                    del _YAML_ORIGINAL_CACHE[path]
 
                             if mutation_tracker:
                                 mutation_tracker(1)
@@ -209,4 +264,7 @@ def commit_yamls(
                         logger.debug(":white_check_mark: Skipping => %s (no changes)", path)
                         # Clear cache entry even when no changes (to keep cache consistent)
                         with _YAML_BUFFER_CACHE_LOCK:
-                            del _YAML_BUFFER_CACHE[path]
+                            if path in _YAML_BUFFER_CACHE:
+                                del _YAML_BUFFER_CACHE[path]
+                            if path in _YAML_ORIGINAL_CACHE:
+                                del _YAML_ORIGINAL_CACHE[path]

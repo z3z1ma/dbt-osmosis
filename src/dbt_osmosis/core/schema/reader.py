@@ -19,6 +19,7 @@ from dbt_osmosis.core import logger
 
 __all__ = [
     "_YAML_BUFFER_CACHE",
+    "_YAML_ORIGINAL_CACHE",
     "_read_yaml",
 ]
 
@@ -121,11 +122,22 @@ Thread-safety: Protected by _YAML_BUFFER_CACHE_LOCK. All reads and writes
 must be guarded by this lock. Uses LRU eviction policy with max size of 256 entries.
 """
 
+_YAML_ORIGINAL_CACHE: LRUCache = LRUCache(maxsize=256)
+"""Cache for original unfiltered YAML content to preserve filtered sections.
+
+This cache stores the complete original YAML content (including semantic_models, macros, etc.)
+before filtering. When writing YAML back to disk, we merge the original filtered sections
+with the processed content to ensure nothing is lost.
+
+Thread-safety: Protected by _YAML_BUFFER_CACHE_LOCK. All reads and writes
+must be guarded by this lock. Uses LRU eviction policy with max size of 256 entries.
+"""
+
 _YAML_BUFFER_CACHE_LOCK = threading.Lock()
-"""Lock to protect _YAML_BUFFER_CACHE from concurrent access.
+"""Lock to protect _YAML_BUFFER_CACHE and _YAML_ORIGINAL_CACHE from concurrent access.
 
 Critical sections: _read_yaml() and _write_yaml() perform cache operations
-under this lock. All access to _YAML_BUFFER_CACHE must be synchronized.
+under this lock. All access to both caches must be synchronized.
 """
 
 
@@ -151,11 +163,24 @@ def _read_yaml(
                 return _YAML_BUFFER_CACHE.setdefault(path, {})
             logger.debug(":open_file_folder: Reading YAML doc => %s", path)
             try:
-                # Add null check - yaml_handler.load() can return None for empty files
-                content = yaml_handler.load(path)
+                # Read the file using the filtered YAML handler (OsmosisYAML)
+                # This filters out semantic_models, macros, etc.
+                filtered_content = yaml_handler.load(path)
+
+                # Also read the original unfiltered content to preserve filtered sections
+                # We use a standard YAML parser without filtering
+                unfiltered_handler = ruamel.yaml.YAML()
+                unfiltered_handler.preserve_quotes = True
+                original_content = unfiltered_handler.load(path)
+
+                # Store both filtered content (for processing) and original (for preservation)
                 _YAML_BUFFER_CACHE[path] = t.cast(
                     "dict[str, t.Any]",
-                    content if content is not None else {},
+                    filtered_content if filtered_content is not None else {},
+                )
+                _YAML_ORIGINAL_CACHE[path] = t.cast(
+                    "dict[str, t.Any]",
+                    original_content if original_content is not None else {},
                 )
             except YAMLError as e:
                 logger.error(
