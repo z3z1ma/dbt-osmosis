@@ -36,6 +36,8 @@ from dbt_osmosis.core.osmosis import (
     sort_columns_as_configured,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
+    suggest_tests_for_model,
+    suggest_tests_for_project,
 )
 
 T = t.TypeVar("T")
@@ -120,6 +122,11 @@ def logging_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
 @cli.group()
 def sql():
     """Execute and compile dbt SQL statements"""
+
+
+@cli.group()
+def test():
+    """Suggest and generate dbt tests"""
 
 
 def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
@@ -1371,6 +1378,250 @@ def compile(
     node = compile_sql_code(project, sql)
 
     print(node.compiled_code)
+
+
+@test.command(context_settings=_CONTEXT)
+@dbt_opts
+@logging_opts
+@click.argument("models", nargs=-1)
+@click.option(
+    "-f",
+    "--fqn",
+    multiple=True,
+    type=click.STRING,
+    help="Specify models based on dbt's FQN to analyze.",
+)
+@click.option(
+    "--use-ai",
+    is_flag=True,
+    default=True,
+    help="Use AI for test suggestions (requires OpenAI). Falls back to pattern-based if False.",
+)
+@click.option(
+    "--pattern-only",
+    is_flag=True,
+    help="Use pattern-based suggestions only (no AI).",
+)
+@click.option(
+    "--temperature",
+    type=click.FLOAT,
+    default=0.3,
+    help="LLM temperature for AI suggestions (0.0-1.0). Default is 0.3.",
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(),
+    help="Write suggestions to file instead of stdout.",
+)
+@click.option(
+    "--format",
+    type=click.Choice(["json", "yaml", "table"]),
+    default="table",
+    help="Output format. Default is table.",
+)
+def suggest(
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
+    threads: int | None = None,
+    disable_introspection: bool = False,
+    fqn: tuple[str, ...] = (),
+    use_ai: bool = True,
+    pattern_only: bool = False,
+    temperature: float = 0.3,
+    output: str | None = None,
+    format: str = "table",
+    models: tuple[str, ...] = (),
+) -> None:
+    """Suggest dbt tests for models based on patterns and AI analysis.
+
+    \f
+    This command analyzes your dbt project and suggests appropriate tests for each model.
+    It can use AI-powered analysis (requires OpenAI) or pattern-based analysis.
+
+    Examples:
+        dbt-osmosis test suggest
+        dbt-osmosis test suggest --fqn my_project.my_model --use-ai
+        dbt-osmosis test suggest --pattern-only --format json
+        dbt-osmosis test suggest --output suggestions.json
+    """
+    logger.info(":water_wave: Executing dbt-osmosis test suggestions\n")
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        profile=profile,
+        threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else {},
+        disable_introspection=disable_introspection,
+    )
+
+    project = create_dbt_project_context(settings)
+
+    # Determine if we should use AI
+    use_ai_for_suggestions = use_ai and not pattern_only
+
+    # Check if specific models are requested via FQN or models args
+    if fqn or models:
+        # Suggest tests for specific models
+        from dbt.artifacts.resources.types import NodeType
+
+        selected_nodes = []
+        for node in project.manifest.nodes.values():
+            if getattr(node, "resource_type", None) != NodeType.Model:
+                continue
+
+            node_fqn = ".".join(getattr(node, "fqn", []))
+            node_name = getattr(node, "name", "")
+
+            # Check if node matches any FQN or model name
+            if any(f in node_fqn for f in fqn) or any(m == node_name for m in models):
+                selected_nodes.append(node)
+
+        if not selected_nodes:
+            click.echo("No models found matching the specified criteria.")
+            return
+
+        results: dict[str, t.Any] = {}
+        for node in selected_nodes:
+            model_name = getattr(node, "name", "unknown")
+            try:
+                analysis = suggest_tests_for_model(
+                    context=YamlRefactorContext(
+                        project=project,
+                        settings=YamlRefactorSettings(),
+                    ),
+                    node=node,
+                    use_ai=use_ai_for_suggestions,
+                    temperature=temperature,
+                )
+                results[model_name] = analysis
+            except Exception as e:
+                logger.error(f":x: Failed to suggest tests for {model_name}: {e}")
+    else:
+        # Suggest tests for all models
+        try:
+            context = YamlRefactorContext(
+                project=project,
+                settings=YamlRefactorSettings(),
+            )
+            results = suggest_tests_for_project(
+                context=context,
+                use_ai=use_ai_for_suggestions,
+                temperature=temperature,
+            )
+        except Exception as e:
+            logger.error(f":x: Failed to suggest tests: {e}")
+            raise
+
+    # Format and output results
+    if format == "json":
+        _output_as_json(results, output)
+    elif format == "yaml":
+        _output_as_yaml(results, output)
+    else:
+        _output_as_table(results, output)
+
+
+def _output_as_json(results: dict[str, t.Any], output_path: str | None = None) -> None:
+    """Output results as JSON."""
+    import json
+
+    output_data = {}
+    for model_name, analysis in results.items():
+        summary = analysis.get_test_summary()
+        output_data[model_name] = {
+            "summary": summary,
+            "suggested_tests": {
+                col: [
+                    {
+                        "test_type": t.test_type,
+                        "reason": t.reason,
+                        "config": t.config,
+                        "confidence": t.confidence,
+                    }
+                    for t in tests
+                ]
+                for col, tests in analysis.suggested_tests.items()
+            },
+        }
+
+    json_str = json.dumps(output_data, indent=2)
+
+    if output_path:
+        Path(output_path).write_text(json_str, encoding="utf-8")
+        click.echo(f":white_check_mark: Wrote suggestions to: {output_path}")
+    else:
+        click.echo(json_str)
+
+
+def _output_as_yaml(results: dict[str, t.Any], output_path: str | None = None) -> None:
+    """Output results as YAML."""
+    import yaml
+
+    output_data = {}
+    for model_name, analysis in results.items():
+        summary = analysis.get_test_summary()
+        output_data[model_name] = {
+            "summary": summary,
+            "suggested_tests": {
+                col: [
+                    {
+                        "test_type": t.test_type,
+                        "reason": t.reason,
+                        "config": t.config,
+                        "confidence": t.confidence,
+                    }
+                    for t in tests
+                ]
+                for col, tests in analysis.suggested_tests.items()
+            },
+        }
+
+    yaml_str = yaml.dump(output_data, default_flow_style=False, sort_keys=False)
+
+    if output_path:
+        Path(output_path).write_text(yaml_str, encoding="utf-8")
+        click.echo(f":white_check_mark: Wrote suggestions to: {output_path}")
+    else:
+        click.echo(yaml_str)
+
+
+def _output_as_table(results: dict[str, t.Any], output_path: str | None = None) -> None:
+    """Output results as a formatted table."""
+    lines = []
+
+    for model_name, analysis in results.items():
+        summary = analysis.get_test_summary()
+        lines.append(f"\n:file_folder: Model: {model_name}")
+        lines.append(f"  Columns: {summary['total_columns']}")
+        lines.append(f"  Columns with tests: {summary['columns_with_tests']}")
+        lines.append(f"  Existing tests: {summary['total_existing_tests']}")
+        lines.append(f"  Suggested tests: {summary['total_suggested_tests']}")
+
+        if analysis.suggested_tests:
+            lines.append("\n  :bulb: Suggested tests:")
+            for col_name, suggestions in analysis.suggested_tests.items():
+                lines.append(f"    - {col_name}:")
+                for suggestion in suggestions:
+                    conf_pct = int(suggestion.confidence * 100)
+                    lines.append(f"      • {suggestion.test_type} (confidence: {conf_pct}%)")
+                    if suggestion.reason:
+                        lines.append(f"        Reason: {suggestion.reason}")
+                    if suggestion.config:
+                        lines.append(f"        Config: {suggestion.config}")
+
+    output_text = "\n".join(lines)
+
+    if output_path:
+        Path(output_path).write_text(output_text, encoding="utf-8")
+        click.echo(f":white_check_mark: Wrote suggestions to: {output_path}")
+    else:
+        click.echo(output_text)
 
 
 if __name__ == "__main__":
