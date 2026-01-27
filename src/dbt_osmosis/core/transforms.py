@@ -440,6 +440,7 @@ def sort_columns_alphabetically(
     node: ResultNode | None = None,
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section alphabetically. Changes are implicitly buffered until commit_yamls is called."""
+    from dbt_osmosis.core.introspection import _get_setting_for_node
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
     if node is None:
@@ -451,7 +452,31 @@ def sort_columns_alphabetically(
             ...
         return
     logger.info(":abcd: Sorting columns alphabetically => %s", node.unique_id)
-    node.columns = {k: v for k, v in sorted(node.columns.items(), key=lambda i: i[0])}
+
+    # Determine the case conversion setting for sorting
+    # We need to sort based on the FINAL case of the column names, not the original case
+    output_to_lower = _get_setting_for_node(
+        "output-to-lower",
+        node,
+        fallback=context.settings.output_to_lower,
+    )
+    output_to_upper = _get_setting_for_node(
+        "output-to-upper",
+        node,
+        fallback=context.settings.output_to_upper,
+    )
+
+    def sort_key(item: tuple[str, t.Any]) -> str:
+        """Generate a sort key based on the final case of the column name."""
+        column_name = item[0]
+        if output_to_upper:
+            return column_name.upper()
+        elif output_to_lower:
+            return column_name.lower()
+        else:
+            return column_name
+
+    node.columns = {k: v for k, v in sorted(node.columns.items(), key=sort_key)}
 
 
 @_transform_op("Sort Columns")

@@ -65,3 +65,108 @@ def test_sort_columns_as_configured(yaml_context: YamlRefactorContext, fresh_cac
 def test_synchronize_data_types(yaml_context: YamlRefactorContext, fresh_caches):
     """Synchronizes data types with the DB."""
     synchronize_data_types(yaml_context)
+
+
+def test_sort_columns_alphabetically_with_output_to_lower(
+    yaml_context: YamlRefactorContext, fresh_caches
+):
+    """Test that alphabetical sorting respects output-to-lower setting.
+
+    When output-to-lower is enabled, columns should be sorted based on their
+    lowercase form, not their original case. This ensures that after case
+    conversion, the columns remain in alphabetical order.
+
+    For example, with columns ["ZEBRA", "apple", "Banana"]:
+    - Without fix: Sorted as ["ZEBRA", "Banana", "apple"] (ASCII order)
+    - After lower: ["zebra", "banana", "apple"] (WRONG - not alphabetical)
+    - With fix: Sorted as ["apple", "Banana", "ZEBRA"] (lowercase order)
+    - After lower: ["apple", "banana", "zebra"] (CORRECT - alphabetical)
+    """
+    # Create a mock node with mixed-case column names that would sort
+    # incorrectly in ASCII order
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.columns = {
+        "ZEBRA": mock.MagicMock(name="ZEBRA"),
+        "apple": mock.MagicMock(name="apple"),
+        "Banana": mock.MagicMock(name="Banana"),
+    }
+
+    # Create a context with output_to_lower enabled
+    context_with_lower = mock.MagicMock()
+    context_with_lower.settings.output_to_lower = True
+    context_with_lower.settings.output_to_upper = False
+
+    # Sort with output_to_lower enabled
+    sort_columns_alphabetically(context_with_lower, mock_node)
+
+    # Verify columns are sorted by lowercase name
+    column_names = list(mock_node.columns.keys())
+    assert column_names == ["apple", "Banana", "ZEBRA"], (
+        f"Columns should be sorted by lowercase name, got {column_names}"
+    )
+
+
+def test_sort_columns_alphabetically_with_output_to_upper(
+    yaml_context: YamlRefactorContext, fresh_caches
+):
+    """Test that alphabetical sorting respects output-to-upper setting.
+
+    When output-to-upper is enabled, columns should be sorted based on their
+    uppercase form, not their original case.
+    """
+    # Create a mock node with mixed-case column names
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.columns = {
+        "zebra": mock.MagicMock(name="zebra"),
+        "APPLE": mock.MagicMock(name="APPLE"),
+        "Banana": mock.MagicMock(name="Banana"),
+    }
+
+    # Create a context with output_to_upper enabled
+    context_with_upper = mock.MagicMock()
+    context_with_upper.settings.output_to_lower = False
+    context_with_upper.settings.output_to_upper = True
+
+    # Sort with output_to_upper enabled
+    sort_columns_alphabetically(context_with_upper, mock_node)
+
+    # Verify columns are sorted by uppercase name
+    column_names = list(mock_node.columns.keys())
+    assert column_names == ["APPLE", "Banana", "zebra"], (
+        f"Columns should be sorted by uppercase name, got {column_names}"
+    )
+
+
+def test_sort_columns_alphabetically_without_case_conversion(
+    yaml_context: YamlRefactorContext, fresh_caches
+):
+    """Test that alphabetical sorting works correctly when no case conversion is enabled.
+
+    When neither output-to-lower nor output-to-upper is set, columns should be
+    sorted using their original case (standard lexicographic order).
+    """
+    # Create a mock node with mixed-case column names
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.columns = {
+        "ZEBRA": mock.MagicMock(name="ZEBRA"),
+        "apple": mock.MagicMock(name="apple"),
+        "Banana": mock.MagicMock(name="Banana"),
+    }
+
+    # Create a context without case conversion
+    context_no_conversion = mock.MagicMock()
+    context_no_conversion.settings.output_to_lower = False
+    context_no_conversion.settings.output_to_upper = False
+
+    # Sort without case conversion
+    sort_columns_alphabetically(context_no_conversion, mock_node)
+
+    # Verify columns are sorted by original name (ASCII order)
+    column_names = list(mock_node.columns.keys())
+    # In ASCII: uppercase letters come before lowercase
+    assert column_names == ["Banana", "ZEBRA", "apple"], (
+        f"Columns should be sorted by original name (ASCII order), got {column_names}"
+    )
