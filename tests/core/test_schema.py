@@ -81,3 +81,50 @@ macros:
         assert "macros" not in data
     finally:
         temp_path.unlink()
+
+
+def test_yaml_string_representer_none_prefix_colon():
+    """Test that string representer handles None prefix_colon correctly.
+
+    Regression test for bug where f-string converted None to "None" string,
+    causing incorrect threshold calculation (83 instead of 87).
+
+    The bug caused descriptions between 83-87 characters to not use folded
+    style when they should have.
+    """
+    import io
+
+    yaml = create_yaml_instance()
+
+    # Verify prefix_colon is None (default in ruamel.yaml)
+    assert yaml.prefix_colon is None
+
+    # Test that the threshold is calculated correctly
+    # Should be: width - len("description: ") = 100 - 13 = 87
+    # NOT: width - len("descriptionNone: ") = 100 - 17 = 83
+    threshold = yaml.width - len(f"description{yaml.prefix_colon or ''}: ")
+    assert threshold == 87, f"Threshold should be 87, got {threshold}"
+
+    # Test actual YAML output
+    test_cases = [
+        # (length, should_use_folded_style)
+        (80, False),  # Under threshold
+        (87, False),  # At threshold
+        (88, True),  # Over threshold
+        (100, True),  # Well over threshold
+    ]
+
+    for length, should_fold in test_cases:
+        data = {"version": 2, "models": [{"name": "test_model", "description": "x" * length}]}
+
+        output = io.StringIO()
+        yaml.dump(data, output)
+        result = output.getvalue()
+
+        # Check if folded style is used
+        has_folded = ">" in result.split("description:")[1].split("\n")[0]
+
+        assert has_folded == should_fold, (
+            f"Description of {length} chars should {'use' if should_fold else 'not use'} "
+            f"folded style, but got: {repr(result.split('description:')[1].split(chr(10))[0])}"
+        )
