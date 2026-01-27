@@ -20,6 +20,7 @@ from dbt_osmosis.core.osmosis import (
     DbtConfiguration,
     YamlRefactorContext,
     YamlRefactorSettings,
+    SchemaDiff,
     apply_restructure_plan,
     compile_sql_code,
     create_dbt_project_context,
@@ -1360,7 +1361,7 @@ def compile(
     target: str | None = None,
     **kwargs: t.Any,
 ) -> None:
-    """Executes a dbt SQL statement writing results to stdout"""
+    """Compiles a dbt SQL statement and writes the result to stdout"""
     settings = DbtConfiguration(
         project_dir=t.cast(str, project_dir),
         profiles_dir=t.cast(str, profiles_dir),
@@ -1371,6 +1372,311 @@ def compile(
     node = compile_sql_code(project, sql)
 
     print(node.compiled_code)
+
+
+@cli.group()
+def diff():
+    """Detect and report schema changes between YAML definitions and database"""
+
+
+@diff.command(context_settings=_CONTEXT)
+@dbt_opts
+@yaml_opts
+@logging_opts
+@click.option(
+    "--output-format",
+    type=click.Choice(["text", "json", "markdown"], case_sensitive=False),
+    default="text",
+    help="Output format for the diff results.",
+)
+@click.option(
+    "--severity",
+    type=click.Choice(["safe", "moderate", "breaking", "all"], case_sensitive=False),
+    default="all",
+    help="Filter changes by severity level.",
+)
+@click.option(
+    "--fuzzy-match-threshold",
+    type=click.FLOAT,
+    default=85.0,
+    help="Threshold for detecting column renames (0-100).",
+)
+@click.option(
+    "--detect-column-renames/--no-detect-column-renames",
+    default=True,
+    help="Enable or disable fuzzy matching for column rename detection.",
+)
+@click.option(
+    "--include-external",
+    is_flag=True,
+    help="Include models and sources from external dbt packages in the diff.",
+)
+def schema(
+    target: str | None = None,
+    profile: str | None = None,
+    project_dir: str | None = None,
+    profiles_dir: str | None = None,
+    vars: str | None = None,
+    threads: int | None = None,
+    disable_introspection: bool = False,
+    fqn: tuple[str, ...] = (),
+    output_format: str = "text",
+    severity: str = "all",
+    fuzzy_match_threshold: float = 85.0,
+    detect_column_renames: bool = True,
+    include_external: bool = False,
+    models: tuple[str, ...] = (),
+    **kwargs: t.Any,
+) -> None:
+    """Detect schema changes between YAML definitions and the database.
+
+    \f
+    This command compares your YAML schema definitions with the actual database
+    schema and reports:
+    - Columns added to the database but not in YAML
+    - Columns in YAML but missing from the database
+    - Column renames (detected via fuzzy matching)
+    - Column data type changes
+
+    Example:
+        dbt-osmosis diff schema
+        dbt-osmosis diff schema --severity breaking
+        dbt-osmosis diff schema -f my_project.my_model --output-format json
+    """
+    logger.info(":mag: Executing dbt-osmosis schema diff\n")
+
+    settings = DbtConfiguration(
+        project_dir=t.cast(str, project_dir),
+        profiles_dir=t.cast(str, profiles_dir),
+        target=target,
+        profile=profile,
+        threads=threads,
+        vars=yaml_handler.safe_load(vars) if vars else {},
+        disable_introspection=disable_introspection,
+    )
+
+    with YamlRefactorContext(
+        project=create_dbt_project_context(settings),
+        settings=YamlRefactorSettings(
+            **{
+                k: v
+                for k, v in kwargs.items()
+                if v is not None and k not in {"check", "dry_run", "models"}
+            },
+            create_catalog_if_not_exists=False,
+            include_external=include_external,
+        ),
+    ) as context:
+        typed_context: t.Any = context
+
+        # Initialize the schema diff engine
+        differ = SchemaDiff(
+            typed_context,
+            fuzzy_match_threshold=fuzzy_match_threshold,
+            detect_column_renames=detect_column_renames,
+        )
+
+        # Filter nodes if FQN filter is provided
+        if fqn:
+            from dbt_osmosis.core.node_filters import _iter_candidate_nodes
+
+            nodes = [
+                node
+                for _, node in _iter_candidate_nodes(typed_context)
+                if any(
+                    ".".join(str(part) for part in node.fqn[: len(fqn_part.split("."))]) == fqn_part
+                    for fqn_part in fqn
+                )
+            ]
+            results = differ.compare_all(nodes=nodes)
+        else:
+            results = differ.compare_all()
+
+        # Output the results
+        if output_format == "json":
+            _output_diff_json(results, severity)
+        elif output_format == "markdown":
+            _output_diff_markdown(results, severity)
+        else:
+            _output_diff_text(results, severity)
+
+
+def _output_diff_text(results: dict[str, t.Any], severity_filter: str) -> None:
+    """Output diff results in human-readable text format."""
+    if not results:
+        click.echo(":white_check_mark: No schema changes detected")
+        return
+
+    total_changes = sum(len(r.changes) for r in results.values())
+    click.echo(f":warning: Detected {total_changes} schema changes across {len(results)} node(s)\n")
+
+    # Group changes by node
+    for node_id, result in results.items():
+        # Filter by severity if needed
+        changes = result.changes
+        if severity_filter != "all":
+            from dbt_osmosis.core.diff import ChangeSeverity
+
+            severity_map = {
+                "safe": ChangeSeverity.SAFE,
+                "moderate": ChangeSeverity.MODERATE,
+                "breaking": ChangeSeverity.BREAKING,
+            }
+            changes = [c for c in changes if c.severity == severity_map[severity_filter]]
+
+        if not changes:
+            continue
+
+        # Node header
+        node = result.node
+        click.echo(f":page_facing_up: {node.name} ({node.resource_type})")
+        click.echo(f"   Unique ID: {node.unique_id}")
+        click.echo(f"   Path: {node.original_file_path}")
+
+        # Summary
+        summary = result.summary
+        if summary:
+            click.echo(f"   Summary: {', '.join(f'{k}: {v}' for k, v in summary.items())}")
+
+        # Changes list
+        for change in changes:
+            click.echo(f"\n   {change}")
+
+        # Add extra info for renames
+        from dbt_osmosis.core.diff import ColumnRenamed
+
+        for change in changes:
+            if isinstance(change, ColumnRenamed):
+                click.echo(f"      Similarity: {change.similarity_score:.1f}%")
+
+        click.echo("\n" + "-" * 80 + "\n")
+
+    # Overall summary
+    breaking_count = sum(
+        1 for r in results.values() for c in r.changes if c.severity.value == "breaking"
+    )
+    moderate_count = sum(
+        1 for r in results.values() for c in r.changes if c.severity.value == "moderate"
+    )
+    safe_count = sum(1 for r in results.values() for c in r.changes if c.severity.value == "safe")
+
+    click.echo("Overall Summary:")
+    click.echo(f"  Breaking changes: {breaking_count}")
+    click.echo(f"  Moderate changes: {moderate_count}")
+    click.echo(f"  Safe changes: {safe_count}")
+
+    if breaking_count > 0:
+        click.echo("\n:rotating_light: Breaking changes detected. Review required before applying.")
+
+
+def _output_diff_json(results: dict[str, t.Any], severity_filter: str) -> None:
+    """Output diff results in JSON format."""
+    import json
+    from datetime import datetime
+
+    output = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "total_nodes": len(results),
+        "total_changes": sum(len(r.changes) for r in results.values()),
+        "nodes": [],
+    }
+
+    for node_id, result in results.items():
+        # Filter by severity if needed
+        changes = result.changes
+        if severity_filter != "all":
+            from dbt_osmosis.core.diff import ChangeSeverity
+
+            severity_map = {
+                "safe": ChangeSeverity.SAFE,
+                "moderate": ChangeSeverity.MODERATE,
+                "breaking": ChangeSeverity.BREAKING,
+            }
+            changes = [c for c in changes if c.severity == severity_map[severity_filter]]
+
+        if not changes:
+            continue
+
+        node_data = {
+            "unique_id": node_id,
+            "name": result.node.name,
+            "resource_type": str(result.node.resource_type),
+            "path": result.node.original_file_path,
+            "summary": result.summary,
+            "changes": [
+                {
+                    "category": c.category.value,
+                    "severity": c.severity.value,
+                    "description": c.description,
+                }
+                for c in changes
+            ],
+        }
+        output["nodes"].append(node_data)
+
+    click.echo(json.dumps(output, indent=2))
+
+
+def _output_diff_markdown(results: dict[str, t.Any], severity_filter: str) -> None:
+    """Output diff results in Markdown format."""
+    if not results:
+        click.echo("## Schema Diff Results\n\n:white_check_mark: No schema changes detected")
+        return
+
+    total_changes = sum(len(r.changes) for r in results.values())
+    click.echo(
+        f"# Schema Diff Results\n\n**Detected {total_changes} changes across {len(results)} node(s)**\n"
+    )
+
+    for node_id, result in results.items():
+        # Filter by severity if needed
+        changes = result.changes
+        if severity_filter != "all":
+            from dbt_osmosis.core.diff import ChangeSeverity
+
+            severity_map = {
+                "safe": ChangeSeverity.SAFE,
+                "moderate": ChangeSeverity.MODERATE,
+                "breaking": ChangeSeverity.BREAKING,
+            }
+            changes = [c for c in changes if c.severity == severity_map[severity_filter]]
+
+        if not changes:
+            continue
+
+        node = result.node
+        click.echo(f"## {node.name}\n\n")
+        click.echo(f"- **Unique ID**: `{node.unique_id}`\n")
+        click.echo(f"- **Type**: {node.resource_type}\n")
+        click.echo(f"- **Path**: `{node.original_file_path}`\n")
+
+        # Summary
+        if result.summary:
+            summary_items = ", ".join(f"{k}: {v}" for k, v in result.summary.items())
+            click.echo(f"- **Summary**: {summary_items}\n")
+
+        click.echo("### Changes\n\n")
+
+        # Changes list
+        for change in changes:
+            severity_emoji = {
+                "safe": ":white_check_mark:",
+                "moderate": ":warning:",
+                "breaking": ":rotating_light:",
+            }.get(change.severity.value, "")
+
+            click.echo(
+                f"#### {severity_emoji} {change.category.value.replace('_', ' ').title()}\n\n"
+            )
+            click.echo(f"{change.description}\n\n")
+
+            # Add extra info for renames
+            from dbt_osmosis.core.diff import ColumnRenamed
+
+            if isinstance(change, ColumnRenamed):
+                click.echo(f"- **Similarity**: {change.similarity_score:.1f}%\n\n")
+
+        click.echo("---\n\n")
 
 
 if __name__ == "__main__":
