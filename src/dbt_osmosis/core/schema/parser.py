@@ -107,7 +107,7 @@ def create_yaml_instance(
         if re.match(r"^(y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF)$", data):
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
         newlines = len(data.splitlines())
-        if newlines == 1 and len(data) > width - len(f"description{y.prefix_colon}: "):
+        if newlines == 1 and len(data) > width - len(f"description{y.prefix_colon or ''}: "):
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=">")
         if newlines > 1:
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
