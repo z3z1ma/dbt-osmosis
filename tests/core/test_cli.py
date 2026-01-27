@@ -19,6 +19,7 @@ def test_cli_group(runner: CliRunner) -> None:
     assert "dbt-osmosis" in result.output
     assert "yaml" in result.output
     assert "sql" in result.output
+    assert "test" in result.output
     assert "workbench" in result.output
 
 
@@ -74,6 +75,24 @@ def test_sql_run_help(runner: CliRunner) -> None:
     result = runner.invoke(cli, ["sql", "run", "--help"])
     assert result.exit_code == 0
     assert "SQL" in result.output
+
+
+def test_test_group(runner: CliRunner) -> None:
+    """Test that the test command group is accessible."""
+    result = runner.invoke(cli, ["test", "--help"])
+    assert result.exit_code == 0
+    assert "Suggest and generate dbt tests" in result.output
+    assert "suggest" in result.output
+
+
+def test_test_suggest_help(runner: CliRunner) -> None:
+    """Test that the test suggest command shows help."""
+    result = runner.invoke(cli, ["test", "suggest", "--help"])
+    assert result.exit_code == 0
+    assert "--project-dir" in result.output
+    assert "--use-ai" in result.output
+    assert "--pattern-only" in result.output
+    assert "--format" in result.output
 
 
 def test_sql_compile_help(runner: CliRunner) -> None:
