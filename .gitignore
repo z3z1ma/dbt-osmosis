@@ -146,3 +146,8 @@ test.db
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# z3z1ma tk CLI
+.tickets/.audit/
+.tickets/.cache/
+.tickets/.locks/
