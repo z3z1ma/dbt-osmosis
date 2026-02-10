@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import os
+import re
+import shutil
 import threading
 import time
 import typing as t
@@ -46,6 +49,58 @@ except (ImportError, AttributeError):
         _dbt_version = getattr(_dbt_version_module, "__version__", "1.8.0")
     except (ImportError, AttributeError):
         _dbt_version = "1.8.0"
+
+# Regex to extract version number from manifest schema URL
+# Matches "https://schemas.getdbt.com/dbt/manifest/v12.json" or bare "v20"
+_SCHEMA_VERSION_RE = re.compile(r"v(\d+)")
+
+
+def _detect_fusion_manifest(project_dir: str) -> bool:
+    """Check if the target directory contains a manifest produced by dbt Fusion.
+
+    dbt Fusion is a standalone Rust-based engine that produces manifests with a
+    schema version higher than dbt-core's (currently v20 vs v12). When teams run
+    both dbt-core and Fusion side by side, this detection ensures dbt-osmosis
+    outputs Fusion-compatible YAML even if the installed dbt-core is older.
+
+    The check reads the existing manifest.json before osmosis re-parses the
+    project, since parsing via dbt-core would overwrite it with a v12 manifest.
+
+    Args:
+        project_dir: Path to the dbt project root.
+
+    Returns:
+        True if a Fusion manifest (schema version > 12) is detected.
+    """
+    manifest_path = Path(project_dir) / "target" / "manifest.json"
+    if not manifest_path.exists():
+        # No existing manifest — also check for Fusion binary on PATH
+        if shutil.which("dbt-fusion") or shutil.which("dbtf"):
+            logger.info(":rocket: dbt Fusion binary found on PATH")
+            return True
+        return False
+
+    try:
+        with open(manifest_path) as f:
+            data = json.load(f)
+        schema_version = data.get("metadata", {}).get("dbt_schema_version", "")
+        match = _SCHEMA_VERSION_RE.search(schema_version)
+        if match:
+            version_num = int(match.group(1))
+            # dbt-core currently produces v12 manifests; higher versions indicate
+            # a different engine such as dbt Fusion (which produces v20+).
+            if version_num > 12:
+                logger.info(
+                    ":rocket: Fusion manifest detected (schema v%d) at %s",
+                    version_num,
+                    manifest_path,
+                )
+                return True
+    except Exception as e:
+        logger.debug(":information_source: Could not check manifest for Fusion: %s", e)
+
+    return False
+
 
 __all__ = [
     "DEFAULT_CONNECTION_TTL",
@@ -218,6 +273,15 @@ class DbtProjectContext:
     level config is silently ignored by dbt-core, causing data loss.
     """
 
+    is_fusion_manifest: bool = field(init=False, repr=False)
+    """Whether a dbt Fusion manifest was detected in the target directory.
+
+    dbt Fusion is a standalone Rust-based engine that produces manifests with
+    schema version > 12 (e.g., v20). When True, fusion_compat should be enabled
+    regardless of the installed dbt-core version, since the project is being
+    actively built with Fusion.
+    """
+
     is_dbt_v1_10_or_greater: bool = field(init=False, repr=False)
     """Whether the dbt version is 1.10.0 or higher.
 
@@ -280,6 +344,8 @@ class DbtProjectContext:
         cls,
         config: DbtConfiguration,
         project: InterfaceDbtProject,
+        *,
+        is_fusion_manifest: bool = False,
     ) -> DbtProjectContext:
         """Create a DbtProjectContext from an existing DbtProject instance.
 
@@ -288,6 +354,7 @@ class DbtProjectContext:
         Args:
             config: The dbt project configuration
             project: The already-created DbtProject instance
+            is_fusion_manifest: Whether a Fusion manifest was detected before parsing
 
         Returns:
             A DbtProjectContext wrapping the DbtProject
@@ -298,6 +365,7 @@ class DbtProjectContext:
         instance.dbt_version = _dbt_version
         instance.is_dbt_v1_9_6_or_greater = parse_version(_dbt_version) >= parse_version("1.9.6")
         instance.is_dbt_v1_10_or_greater = parse_version(_dbt_version) >= parse_version("1.10.0")
+        instance.is_fusion_manifest = is_fusion_manifest
         return instance
 
     @property
@@ -522,6 +590,11 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     """
     logger.info(":wave: Creating DBT project context using config => %s", config)
 
+    # Check for a Fusion-generated manifest BEFORE parsing, since dbt-core's
+    # parser will overwrite it with a v12 manifest. This allows teams running
+    # both dbt Fusion and dbt-core to get fusion_compat=True automatically.
+    is_fusion = _detect_fusion_manifest(config.project_dir)
+
     # Ensure the adapter plugin is loaded before creating the DbtProject
     # This is necessary because RuntimeConfig.from_args() needs the adapter
     # to be registered in the factory, and load_plugin needs to be called
@@ -575,7 +648,9 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
     logger.info(":sparkles: DbtProjectContext successfully created!")
 
     # Create the context wrapper with the existing project
-    return DbtProjectContext.from_project(config=config, project=project)
+    return DbtProjectContext.from_project(
+        config=config, project=project, is_fusion_manifest=is_fusion
+    )
 
 
 def _reload_manifest(context: DbtProjectContext) -> None:

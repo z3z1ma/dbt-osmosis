@@ -240,14 +240,21 @@ class YamlRefactorContext:
 
         Resolution order:
         1. Explicit setting from YamlRefactorSettings.fusion_compat (True/False)
-        2. Auto-detect from dbt version: True if dbt >= 1.9.6
+        2. Fusion manifest detected in target directory (schema version > v12)
+        3. Auto-detect from dbt version: True if dbt >= 1.9.6
 
         The 1.9.6 threshold is used because column-level config support was
         introduced in that version. Below 1.9.6, nesting meta/tags under config
         on columns causes silent data loss.
+
+        Fusion manifest detection (step 2) handles teams running both dbt Fusion
+        and dbt-core side by side: even if the installed dbt-core is older than
+        1.9.6, a Fusion manifest signals that Fusion-compatible output is needed.
         """
         if self.settings.fusion_compat is not None:
             return self.settings.fusion_compat
+        if getattr(self.project, "is_fusion_manifest", False):
+            return True
         return getattr(self.project, "is_dbt_v1_9_6_or_greater", False)
 
     @property

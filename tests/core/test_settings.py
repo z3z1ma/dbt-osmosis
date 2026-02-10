@@ -553,6 +553,7 @@ class TestFusionCompat:
     def test_fusion_compat_auto_detect_old_dbt(self, mock_project_context):
         """When fusion_compat=None and dbt < 1.9.6, auto-detect returns False."""
         mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = False
         settings = YamlRefactorSettings(fusion_compat=None)
         context = YamlRefactorContext(project=mock_project_context, settings=settings)
         assert context.fusion_compat is False
@@ -561,6 +562,31 @@ class TestFusionCompat:
         """When the project doesn't have the attribute, fall back to False."""
         # Remove the attribute entirely via spec
         del mock_project_context.is_dbt_v1_9_6_or_greater
+        del mock_project_context.is_fusion_manifest
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_fusion_manifest_detected(self, mock_project_context):
+        """When a Fusion manifest is detected, fusion_compat returns True even with old dbt."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = True
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is True
+
+    def test_fusion_compat_explicit_overrides_fusion_manifest(self, mock_project_context):
+        """Explicit fusion_compat=False overrides Fusion manifest detection."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = True
+        settings = YamlRefactorSettings(fusion_compat=False)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_no_fusion_manifest_old_dbt(self, mock_project_context):
+        """No Fusion manifest + old dbt version = fusion_compat False."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = False
         settings = YamlRefactorSettings(fusion_compat=None)
         context = YamlRefactorContext(project=mock_project_context, settings=settings)
         assert context.fusion_compat is False
