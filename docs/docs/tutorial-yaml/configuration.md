@@ -81,14 +81,6 @@ dbt-osmosis yaml refactor --fusion-compat
 dbt-osmosis yaml refactor --no-fusion-compat
 ```
 
-You can also set it via project vars:
-
-```yaml title="dbt_project.yml"
-vars:
-  dbt-osmosis:
-    fusion-compat: true
-```
-
 ### Hybrid workflow for Fusion projects
 
 If your team is testing dbt Fusion alongside dbt-core:
