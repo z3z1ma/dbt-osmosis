@@ -238,8 +238,8 @@ def test_yaml_string_representer_none_prefix_colon():
         )
 
 
-def test_yaml_parser_allows_anchors_and_data_tests():
-    """Test that the parser's allowed_keys include 'anchors' and 'data_tests' for Fusion compat."""
+def test_yaml_parser_allows_data_tests_and_filters_anchors():
+    """Test that the parser allows data_tests but filters anchors (preserved by the writer)."""
     yaml_content = """version: 2
 
 models:
@@ -262,10 +262,11 @@ data_tests:
         yaml_handler = create_yaml_instance()
         data = yaml_handler.load(temp_path)
 
-        # anchors and data_tests should be preserved by the parser
+        # data_tests passes through the parser's allowed_keys
         assert "models" in data
-        assert "anchors" in data
         assert "data_tests" in data
+        # anchors is filtered out by the parser but restored by the writer via _PRESERVED_KEYS
+        assert "anchors" not in data
     finally:
         temp_path.unlink()
 

@@ -68,7 +68,7 @@ def _generate_minimal_model_yaml(
         # In fusion_compat mode, preserve 'config' (meta/tags nested inside it).
         # In classic mode, strip 'config' (meta/tags stay at top level).
         if fusion_compat:
-            col_dict = {k: v for k, v in col_dict.items() if k not in ("doc_blocks",)}
+            col_dict = {k: v for k, v in col_dict.items() if k != "doc_blocks"}
         else:
             col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
         col_dict["name"] = col_name
@@ -92,7 +92,7 @@ def _generate_minimal_source_yaml(
         # In fusion_compat mode, preserve 'config' (meta/tags nested inside it).
         # In classic mode, strip 'config' (meta/tags stay at top level).
         if fusion_compat:
-            col_dict = {k: v for k, v in col_dict.items() if k not in ("doc_blocks",)}
+            col_dict = {k: v for k, v in col_dict.items() if k != "doc_blocks"}
         else:
             col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
         col_dict["name"] = col_name

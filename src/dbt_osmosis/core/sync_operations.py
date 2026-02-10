@@ -84,7 +84,7 @@ def _sync_doc_section(
         # In fusion_compat mode, preserve 'config' (meta/tags will be nested inside it).
         # In classic mode, strip 'config' (meta/tags stay at top level).
         if context.fusion_compat:
-            cdict = {k: v for k, v in cdict.items() if k not in ("doc_blocks",)}
+            cdict = {k: v for k, v in cdict.items() if k != "doc_blocks"}
         else:
             cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
         cdict["name"] = name

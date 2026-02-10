@@ -53,6 +53,51 @@ vars:
       - ".*__key__.namespace"
 ```
 
+## Fusion compatibility
+
+:::caution dbt-osmosis requires dbt-core
+
+dbt-osmosis **does not run on dbt Fusion**. It depends on dbt-core for manifest parsing, database introspection, and SQL compilation. If your team uses dbt Fusion, you will need a **hybrid setup** with two virtual environments: one running dbt-core (for osmosis) and one running dbt Fusion (for your normal development workflow). Both engines can share the same project directory.
+
+:::
+
+dbt-osmosis can produce **Fusion-compatible YAML** where `meta` and `tags` are nested inside `config` blocks instead of at the top level. This output format is required for dbt >= 1.9.6 and is the only format recognized by dbt Fusion.
+
+### Auto-detection
+
+By default (`--fusion-compat` not specified), dbt-osmosis auto-detects whether to produce Fusion-compatible output:
+
+1. **Fusion manifest** — if `target/manifest.json` has a schema version > v12 (Fusion produces v20), fusion-compat is enabled. This check reads the manifest before osmosis re-parses the project, since parsing via dbt-core overwrites it with a v12 manifest.
+2. **Fusion binary on PATH** — if no manifest exists but `dbt-fusion` or `dbtf` is found on `PATH`, fusion-compat is enabled.
+3. **dbt-core version** — if dbt-core >= 1.9.6 is installed, fusion-compat is enabled (these versions natively support the `config` block format).
+
+### Explicit override
+
+```bash
+# Force Fusion-compatible output
+dbt-osmosis yaml refactor --fusion-compat
+
+# Force legacy output (even on dbt >= 1.9.6)
+dbt-osmosis yaml refactor --no-fusion-compat
+```
+
+You can also set it via project vars:
+
+```yaml title="dbt_project.yml"
+vars:
+  dbt-osmosis:
+    fusion-compat: true
+```
+
+### Hybrid workflow for Fusion projects
+
+If your team is testing dbt Fusion alongside dbt-core:
+
+1. Maintain **two virtual environments** — one with `dbt-core` + `dbt-osmosis`, another with `dbt-fusion`.
+2. Run dbt Fusion for compilation and execution in your normal workflow.
+3. Run dbt-osmosis from the dbt-core environment to manage YAML schema files. Osmosis will detect the Fusion manifest and automatically produce compatible output.
+4. Both environments can share the same `dbt_project.yml` and model files.
+
 ## Behavior settings
 
 Use CLI flags for global defaults and override them in config when needed.
@@ -82,7 +127,8 @@ dbt-osmosis yaml refactor \
   --force-inherit-descriptions \
   --output-to-lower \
   --add-progenitor-to-meta \
-  --strip-eof-blank-lines
+  --strip-eof-blank-lines \
+  --fusion-compat
 ```
 
 ### Folder-level overrides

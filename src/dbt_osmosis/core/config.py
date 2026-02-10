@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import json
 import os
 import re
 import shutil
@@ -51,8 +50,8 @@ except (ImportError, AttributeError):
         _dbt_version = "1.8.0"
 
 # Regex to extract version number from manifest schema URL
-# Matches "https://schemas.getdbt.com/dbt/manifest/v12.json" or bare "v20"
-_SCHEMA_VERSION_RE = re.compile(r"v(\d+)")
+# Matches "/v12.json" at the end of "https://schemas.getdbt.com/dbt/manifest/v12.json"
+_SCHEMA_VERSION_RE = re.compile(r"/v(\d+)(?:\.json)?$")
 
 
 def _detect_fusion_manifest(project_dir: str) -> bool:
@@ -76,14 +75,17 @@ def _detect_fusion_manifest(project_dir: str) -> bool:
     if not manifest_path.exists():
         # No existing manifest — also check for Fusion binary on PATH
         if shutil.which("dbt-fusion") or shutil.which("dbtf"):
-            logger.info(":rocket: dbt Fusion binary found on PATH")
+            logger.debug(":rocket: dbt Fusion binary found on PATH")
             return True
         return False
 
     try:
         with open(manifest_path) as f:
-            data = json.load(f)
-        schema_version = data.get("metadata", {}).get("dbt_schema_version", "")
+            # Read only the first 4KB — metadata is always near the top of the manifest,
+            # and full manifests can be 100MB+ for large projects.
+            header = f.read(4096)
+        schema_match = re.search(r'"dbt_schema_version"\s*:\s*"([^"]+)"', header)
+        schema_version = schema_match.group(1) if schema_match else ""
         match = _SCHEMA_VERSION_RE.search(schema_version)
         if match:
             version_num = int(match.group(1))
