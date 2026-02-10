@@ -394,8 +394,8 @@ class ModelValidator(Validator):
                 )
 
             column_name = name if isinstance(name, str) else "<unknown>"
-            # Validate tests
-            tests = column.get("tests", [])
+            # Validate tests (support both legacy 'tests' and Fusion 'data_tests')
+            tests = column.get("tests", column.get("data_tests", []))
             if tests:
                 self._validate_tests(tests, result, file_path, model_name, column_name)
 

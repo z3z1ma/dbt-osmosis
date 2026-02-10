@@ -218,6 +218,11 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         default=False,
         help="Remove trailing blank lines at EOF when writing YAML.",
     )
+    @click.option(
+        "--fusion-compat/--no-fusion-compat",
+        default=None,
+        help="Output Fusion-compatible YAML with meta/tags nested inside config blocks. Auto-detects from dbt >= 1.9.6 if not specified.",
+    )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         if kwargs.get("disable_introspection") and not kwargs.get("catalog_path"):

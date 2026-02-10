@@ -236,3 +236,58 @@ def test_yaml_string_representer_none_prefix_colon():
             f"Description of {length} chars should {'use' if should_fold else 'not use'} "
             f"folded style, but got: {repr(result.split('description:')[1].split(chr(10))[0])}"
         )
+
+
+def test_yaml_parser_allows_anchors_and_data_tests():
+    """Test that the parser's allowed_keys include 'anchors' and 'data_tests' for Fusion compat."""
+    yaml_content = """version: 2
+
+models:
+  - name: test_model
+
+anchors:
+  - &common_tests
+    - not_null
+    - unique
+
+data_tests:
+  - name: test_data_test
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        yaml_handler = create_yaml_instance()
+        data = yaml_handler.load(temp_path)
+
+        # anchors and data_tests should be preserved by the parser
+        assert "models" in data
+        assert "anchors" in data
+        assert "data_tests" in data
+    finally:
+        temp_path.unlink()
+
+
+def test_merge_preserved_sections_includes_anchors():
+    """Test that _merge_preserved_sections preserves anchors alongside semantic_models/macros."""
+    filtered = {
+        "version": 2,
+        "models": [{"name": "test_model"}],
+    }
+
+    original = {
+        "version": 2,
+        "models": [{"name": "test_model"}],
+        "semantic_models": [{"name": "test_sm"}],
+        "macros": [{"name": "test_macro"}],
+        "anchors": [{"name": "common_tests"}],
+    }
+
+    merged = _merge_preserved_sections(filtered, original)
+
+    assert "semantic_models" in merged
+    assert "macros" in merged
+    assert "anchors" in merged
+    assert merged["anchors"] == original["anchors"]

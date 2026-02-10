@@ -17,7 +17,7 @@ def _filter_yaml_content(data: dict) -> dict:
 
     This prevents the tool from processing or being aware of semantic_models, macros, etc.
     """
-    allowed_keys = {"version", "models", "sources", "seeds", "unit_tests"}
+    allowed_keys = {"version", "models", "sources", "seeds", "unit_tests", "anchors", "data_tests"}
 
     # Create a new dictionary containing only the allowed keys from the parsed file
     filtered_data = {key: value for key, value in data.items() if key in allowed_keys}

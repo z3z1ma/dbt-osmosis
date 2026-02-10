@@ -41,6 +41,7 @@ class TestYamlRefactorSettings:
         assert settings.output_to_lower is False
         assert settings.catalog_path is None
         assert settings.create_catalog_if_not_exists is False
+        assert settings.fusion_compat is None  # tri-state: None = auto-detect
 
     def test_custom_settings(self):
         """Test YamlRefactorSettings with custom values."""
@@ -498,3 +499,68 @@ class TestYamlRefactorContextIntegration:
         context.register_mutations(1)
         assert context.mutation_count == 1
         assert context.mutated
+
+
+class TestFusionCompat:
+    """Test suite for fusion_compat settings and auto-detection."""
+
+    @pytest.fixture(scope="function")
+    def mock_project_context(self):
+        mock_runtime_cfg = Mock()
+        mock_runtime_cfg.threads = 4
+        mock_runtime_cfg.vars = Mock()
+        mock_runtime_cfg.vars.to_dict.return_value = {}
+        project_context = Mock()
+        project_context.runtime_cfg = mock_runtime_cfg
+        return project_context
+
+    def test_fusion_compat_default_is_none(self):
+        """Test that fusion_compat defaults to None (auto-detect)."""
+        settings = YamlRefactorSettings()
+        assert settings.fusion_compat is None
+
+    def test_fusion_compat_explicit_true(self):
+        """Test that fusion_compat can be explicitly set to True."""
+        settings = YamlRefactorSettings(fusion_compat=True)
+        assert settings.fusion_compat is True
+
+    def test_fusion_compat_explicit_false(self):
+        """Test that fusion_compat can be explicitly set to False."""
+        settings = YamlRefactorSettings(fusion_compat=False)
+        assert settings.fusion_compat is False
+
+    def test_fusion_compat_property_explicit_true(self, mock_project_context):
+        """When fusion_compat=True, property returns True regardless of dbt version."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        settings = YamlRefactorSettings(fusion_compat=True)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is True
+
+    def test_fusion_compat_property_explicit_false(self, mock_project_context):
+        """When fusion_compat=False, property returns False regardless of dbt version."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = True
+        settings = YamlRefactorSettings(fusion_compat=False)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_auto_detect_new_dbt(self, mock_project_context):
+        """When fusion_compat=None and dbt >= 1.9.6, auto-detect returns True."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = True
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is True
+
+    def test_fusion_compat_auto_detect_old_dbt(self, mock_project_context):
+        """When fusion_compat=None and dbt < 1.9.6, auto-detect returns False."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_auto_detect_missing_attr(self, mock_project_context):
+        """When the project doesn't have the attribute, fall back to False."""
+        # Remove the attribute entirely via spec
+        del mock_project_context.is_dbt_v1_9_6_or_greater
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False

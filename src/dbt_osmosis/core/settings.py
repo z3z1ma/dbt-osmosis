@@ -79,6 +79,10 @@ class YamlRefactorSettings:
     strip_eof_blank_lines: bool = False
     include_external: bool = False
     """Include models and sources from external dbt packages in the processing."""
+    fusion_compat: bool | None = None
+    """When True, output Fusion-compatible YAML with meta/tags nested inside config blocks.
+    When False, output classic format with meta/tags at top level.
+    When None (default), auto-detect from installed dbt version: True if dbt >= 1.9.6."""
 
 
 @dataclass
@@ -229,6 +233,22 @@ class YamlRefactorContext:
     def database_type(self) -> str:
         """Shortcut to context.project.runtime_cfg.credentials.type for brevity."""
         return self.project.runtime_cfg.credentials.type
+
+    @property
+    def fusion_compat(self) -> bool:
+        """Whether to output Fusion-compatible YAML (meta/tags inside config block).
+
+        Resolution order:
+        1. Explicit setting from YamlRefactorSettings.fusion_compat (True/False)
+        2. Auto-detect from dbt version: True if dbt >= 1.9.6
+
+        The 1.9.6 threshold is used because column-level config support was
+        introduced in that version. Below 1.9.6, nesting meta/tags under config
+        on columns causes silent data loss.
+        """
+        if self.settings.fusion_compat is not None:
+            return self.settings.fusion_compat
+        return getattr(self.project, "is_dbt_v1_9_6_or_greater", False)
 
     @property
     def source_definitions(self) -> dict[str, t.Any]:

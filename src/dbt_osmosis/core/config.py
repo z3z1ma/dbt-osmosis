@@ -210,6 +210,14 @@ class DbtProjectContext:
     dbt_version: str = field(init=False, repr=True)
     """The dbt-core version being used (e.g., "1.10.0")."""
 
+    is_dbt_v1_9_6_or_greater: bool = field(init=False, repr=False)
+    """Whether the dbt version is 1.9.6 or higher.
+
+    This is used for Fusion-compatible YAML output where meta/tags can be
+    nested inside the config block at the column level. Below 1.9.6, column-
+    level config is silently ignored by dbt-core, causing data loss.
+    """
+
     is_dbt_v1_10_or_greater: bool = field(init=False, repr=False)
     """Whether the dbt version is 1.10.0 or higher.
 
@@ -288,6 +296,7 @@ class DbtProjectContext:
         instance = cls(config=config)
         instance._project = project
         instance.dbt_version = _dbt_version
+        instance.is_dbt_v1_9_6_or_greater = parse_version(_dbt_version) >= parse_version("1.9.6")
         instance.is_dbt_v1_10_or_greater = parse_version(_dbt_version) >= parse_version("1.10.0")
         return instance
 

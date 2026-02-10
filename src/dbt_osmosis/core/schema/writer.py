@@ -28,7 +28,7 @@ __all__ = [
 
 
 # Keys that are filtered out by OsmosisYAML but should be preserved when writing
-_PRESERVED_KEYS = {"semantic_models", "macros"}
+_PRESERVED_KEYS = {"semantic_models", "macros", "anchors"}
 
 
 def _merge_preserved_sections(
