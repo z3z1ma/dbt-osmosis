@@ -165,6 +165,43 @@ class TestRunExternalFormatter:
 
         assert result is False
 
+    def test_timeout_is_nonfatal(self):
+        """Formatter timeout does not raise an exception."""
+        import subprocess
+
+        files = [Path("models/a.yml")]
+
+        with mock.patch("dbt_osmosis.core.formatting.subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["prettier"], timeout=120)
+
+            result = run_external_formatter(
+                "prettier --write", files, cwd=Path("/project"), timeout=120
+            )
+
+            assert result is False
+
+    def test_timeout_passed_to_subprocess(self):
+        """Timeout parameter is forwarded to subprocess.run."""
+        files = [Path("models/a.yml")]
+
+        with mock.patch("dbt_osmosis.core.formatting.subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(returncode=0, stdout=b"", stderr=b"")
+
+            run_external_formatter("prettier --write", files, cwd=Path("/project"), timeout=60)
+
+            assert mock_run.call_args[1]["timeout"] == 60
+
+    def test_timeout_zero_disables(self):
+        """Setting timeout=0 passes None to subprocess (no timeout)."""
+        files = [Path("models/a.yml")]
+
+        with mock.patch("dbt_osmosis.core.formatting.subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(returncode=0, stdout=b"", stderr=b"")
+
+            run_external_formatter("prettier --write", files, cwd=Path("/project"), timeout=0)
+
+            assert mock_run.call_args[1]["timeout"] is None
+
     def test_paths_converted_to_strings(self):
         """Path objects are properly converted to string arguments."""
         files = [Path("/absolute/path/models/a.yml")]

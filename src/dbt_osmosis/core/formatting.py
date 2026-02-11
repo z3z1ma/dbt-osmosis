@@ -36,6 +36,7 @@ def run_external_formatter(
     formatter_cmd: str,
     files: t.Iterable[Path],
     cwd: Path,
+    timeout: int = 120,
 ) -> bool:
     """Run an external formatter command on the given YAML files.
 
@@ -53,6 +54,8 @@ def run_external_formatter(
             Parsed with shlex.split for safe handling of quoted arguments.
         files: An iterable of Path objects for YAML files to format.
         cwd: The working directory for the subprocess.
+        timeout: Maximum seconds to wait for the formatter process.
+            Defaults to 120 seconds. Set to 0 to disable.
 
     Returns:
         True if the formatter ran successfully (exit code 0), False otherwise.
@@ -87,7 +90,15 @@ def run_external_formatter(
             cwd=str(cwd),
             check=False,
             capture_output=True,
+            timeout=timeout or None,
         )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            ":warning: Formatter command timed out after %d seconds. "
+            "YAML files were already written by osmosis and are valid.",
+            timeout,
+        )
+        return False
     except FileNotFoundError:
         logger.warning(
             ":warning: Formatter command not found: %r. "

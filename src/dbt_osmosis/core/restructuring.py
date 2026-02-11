@@ -404,6 +404,6 @@ def apply_restructure_plan(
         context.settings.dry_run,
         context.register_mutations,
         context.settings.strip_eof_blank_lines,
-        written_file_tracker=getattr(context, "register_written_file", None),
+        written_file_tracker=_written_file_tracker,
     )
     _reload_manifest(context.project)

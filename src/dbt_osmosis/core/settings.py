@@ -231,8 +231,12 @@ class YamlRefactorContext:
                 formatter = data.get("formatter")
                 if isinstance(formatter, str) and formatter.strip():
                     return formatter.strip()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    ":warning: Failed to read formatter from %s: %s",
+                    supp_file,
+                    e,
+                )
         return None
 
     # Convenience properties for commonly accessed nested attributes
