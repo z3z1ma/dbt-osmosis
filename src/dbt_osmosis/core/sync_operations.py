@@ -548,6 +548,7 @@ def _sync_single_node_to_yaml(
             dry_run=context.settings.dry_run,
             mutation_tracker=context.register_mutations,
             strip_eof_blank_lines=context.settings.strip_eof_blank_lines,
+            written_file_tracker=getattr(context, "register_written_file", None),
         )
 
 

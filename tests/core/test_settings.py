@@ -590,3 +590,151 @@ class TestFusionCompat:
         settings = YamlRefactorSettings(fusion_compat=None)
         context = YamlRefactorContext(project=mock_project_context, settings=settings)
         assert context.fusion_compat is False
+
+
+class TestFormatterSettings:
+    """Test suite for formatter field on YamlRefactorSettings."""
+
+    def test_formatter_default_is_none(self):
+        """Formatter defaults to None."""
+        settings = YamlRefactorSettings()
+        assert settings.formatter is None
+
+    def test_formatter_can_be_set(self):
+        """Formatter can be set to a command string."""
+        settings = YamlRefactorSettings(formatter="prettier --write")
+        assert settings.formatter == "prettier --write"
+
+    def test_formatter_yamlfmt(self):
+        """Formatter can be set to yamlfmt."""
+        settings = YamlRefactorSettings(formatter="yamlfmt")
+        assert settings.formatter == "yamlfmt"
+
+
+class TestWrittenFilesTracking:
+    """Test suite for written file tracking on YamlRefactorContext."""
+
+    @pytest.fixture(scope="function")
+    def mock_project_context(self):
+        mock_runtime_cfg = Mock()
+        mock_runtime_cfg.threads = 4
+        mock_runtime_cfg.vars = Mock()
+        mock_runtime_cfg.vars.to_dict.return_value = {}
+        mock_runtime_cfg.project_root = "/tmp/test_project"
+        project_context = Mock()
+        project_context.runtime_cfg = mock_runtime_cfg
+        return project_context
+
+    def test_written_files_initially_empty(self, mock_project_context):
+        """Written files set is empty on initialization."""
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.written_files == frozenset()
+        assert len(context.written_files) == 0
+
+    def test_register_written_file(self, mock_project_context):
+        """Files can be registered as written."""
+        context = YamlRefactorContext(project=mock_project_context)
+
+        path1 = Path("models/a.yml")
+        path2 = Path("models/b.yml")
+
+        context.register_written_file(path1)
+        assert path1 in context.written_files
+        assert len(context.written_files) == 1
+
+        context.register_written_file(path2)
+        assert path1 in context.written_files
+        assert path2 in context.written_files
+        assert len(context.written_files) == 2
+
+    def test_register_same_file_twice(self, mock_project_context):
+        """Registering the same file twice doesn't duplicate it."""
+        context = YamlRefactorContext(project=mock_project_context)
+
+        path = Path("models/a.yml")
+        context.register_written_file(path)
+        context.register_written_file(path)
+
+        assert len(context.written_files) == 1
+
+    def test_written_files_returns_frozenset(self, mock_project_context):
+        """The written_files property returns a frozenset (immutable)."""
+        context = YamlRefactorContext(project=mock_project_context)
+        context.register_written_file(Path("models/a.yml"))
+
+        result = context.written_files
+        assert isinstance(result, frozenset)
+
+
+class TestResolvedFormatter:
+    """Test suite for resolved_formatter property on YamlRefactorContext."""
+
+    @pytest.fixture(scope="function")
+    def mock_project_context(self):
+        mock_runtime_cfg = Mock()
+        mock_runtime_cfg.threads = 4
+        mock_runtime_cfg.vars = Mock()
+        mock_runtime_cfg.vars.to_dict.return_value = {}
+        mock_runtime_cfg.project_root = "/tmp/test_project"
+        project_context = Mock()
+        project_context.runtime_cfg = mock_runtime_cfg
+        return project_context
+
+    def test_resolved_formatter_from_cli_setting(self, mock_project_context):
+        """CLI formatter setting takes highest priority."""
+        settings = YamlRefactorSettings(formatter="prettier --write")
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.resolved_formatter == "prettier --write"
+
+    def test_resolved_formatter_none_when_not_configured(self, mock_project_context):
+        """Returns None when no formatter is configured anywhere."""
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None
+
+    def test_resolved_formatter_from_supplementary_file(self, mock_project_context, tmp_path):
+        """Reads formatter from dbt-osmosis.yml when CLI flag is not set."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text("formatter: yamlfmt\n")
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter == "yamlfmt"
+
+    def test_cli_overrides_supplementary_file(self, mock_project_context, tmp_path):
+        """CLI flag takes precedence over dbt-osmosis.yml."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text("formatter: yamlfmt\n")
+
+        settings = YamlRefactorSettings(formatter="prettier --write")
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.resolved_formatter == "prettier --write"
+
+    def test_supplementary_file_empty_formatter(self, mock_project_context, tmp_path):
+        """Empty formatter string in dbt-osmosis.yml is treated as None."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text("formatter: ''\n")
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None
+
+    def test_supplementary_file_invalid_yaml(self, mock_project_context, tmp_path):
+        """Invalid YAML in dbt-osmosis.yml is handled gracefully."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text(": invalid: yaml: {{{\n")
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None
+
+    def test_supplementary_file_missing(self, mock_project_context, tmp_path):
+        """Missing dbt-osmosis.yml returns None."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None

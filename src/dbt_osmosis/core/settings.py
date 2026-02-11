@@ -79,6 +79,8 @@ class YamlRefactorSettings:
     strip_eof_blank_lines: bool = False
     include_external: bool = False
     """Include models and sources from external dbt packages in the processing."""
+    formatter: str | None = None
+    """External command to format written YAML files (e.g. 'prettier --write'). File paths appended as args."""
     fusion_compat: bool | None = None
     """When True, output Fusion-compatible YAML with meta/tags nested inside config blocks.
     When False, output classic format with meta/tags at top level.
@@ -129,6 +131,8 @@ class YamlRefactorContext:
     )
 
     _mutation_count: int = field(default=0, init=False)
+    _written_files: set[Path] = field(default_factory=set, init=False, repr=False)
+    """Tracks which YAML files were actually written to disk (for external formatter integration)."""
     _catalog: CatalogResults | None = field(default=None, init=False)
     _closed: bool = field(default=False, init=False, repr=False)
     """Track whether the context has been closed to prevent double-cleanup."""
@@ -200,6 +204,36 @@ class YamlRefactorContext:
         has_mutated = self._mutation_count > 0
         logger.debug(":white_check_mark: Has the context mutated anything? => %s", has_mutated)
         return has_mutated
+
+    def register_written_file(self, path: Path) -> None:
+        """Register a file path that was successfully written to disk."""
+        self._written_files.add(path)
+
+    @property
+    def written_files(self) -> frozenset[Path]:
+        """Read-only view of all files written to disk during this session."""
+        return frozenset(self._written_files)
+
+    @property
+    def resolved_formatter(self) -> str | None:
+        """Resolve the formatter command: CLI setting > dbt-osmosis.yml > None."""
+        # 1. CLI flag (highest priority)
+        if self.settings.formatter:
+            return self.settings.formatter
+        # 2. dbt-osmosis.yml supplementary file
+        supp_file = self.project_root / "dbt-osmosis.yml"
+        if supp_file.is_file():
+            try:
+                import yaml
+
+                with supp_file.open("r") as f:
+                    data = yaml.safe_load(f) or {}
+                formatter = data.get("formatter")
+                if isinstance(formatter, str) and formatter.strip():
+                    return formatter.strip()
+            except Exception:
+                pass
+        return None
 
     # Convenience properties for commonly accessed nested attributes
     # These reduce repetition and improve readability throughout the codebase

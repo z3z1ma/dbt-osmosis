@@ -138,6 +138,14 @@ def test_version_option(runner: CliRunner) -> None:
     assert result.exit_code == 0
 
 
+def test_formatter_flag_in_yaml_commands(runner: CliRunner) -> None:
+    """Test that --formatter flag appears in help for all yaml subcommands."""
+    for cmd in ["refactor", "organize", "document"]:
+        result = runner.invoke(cli, ["yaml", cmd, "--help"])
+        assert result.exit_code == 0
+        assert "--formatter" in result.output, f"--formatter flag missing from yaml {cmd} command"
+
+
 def test_invalid_command(runner: CliRunner) -> None:
     """Test that invalid commands produce a helpful error."""
     result = runner.invoke(cli, ["invalid-command"])

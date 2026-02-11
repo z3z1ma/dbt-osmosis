@@ -342,6 +342,7 @@ def apply_restructure_plan(
             else:
                 output_doc[key] = val
 
+        _written_file_tracker = getattr(context, "register_written_file", None)
         _write_yaml(
             context.yaml_handler,
             context.yaml_handler_lock,
@@ -350,6 +351,7 @@ def apply_restructure_plan(
             context.settings.dry_run,
             context.register_mutations,
             context.settings.strip_eof_blank_lines,
+            written_file_tracker=_written_file_tracker,
         )
 
         for path, nodes in op.superseded_paths.items():
@@ -383,6 +385,7 @@ def apply_restructure_plan(
                         context.settings.dry_run,
                         context.register_mutations,
                         context.settings.strip_eof_blank_lines,
+                        written_file_tracker=_written_file_tracker,
                     )
                     logger.info(
                         ":arrow_forward: Migrated doc from => %s to => %s",
@@ -401,5 +404,6 @@ def apply_restructure_plan(
         context.settings.dry_run,
         context.register_mutations,
         context.settings.strip_eof_blank_lines,
+        written_file_tracker=getattr(context, "register_written_file", None),
     )
     _reload_manifest(context.project)
