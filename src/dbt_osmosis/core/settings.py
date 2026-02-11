@@ -206,8 +206,12 @@ class YamlRefactorContext:
         return has_mutated
 
     def register_written_file(self, path: Path) -> None:
-        """Register a file path that was successfully written to disk."""
-        self._written_files.add(path)
+        """Register a file path that was successfully written to disk.
+
+        Paths are resolved to absolute to ensure the external formatter
+        can find them regardless of its working directory.
+        """
+        self._written_files.add(path.resolve())
 
     @property
     def written_files(self) -> frozenset[Path]:

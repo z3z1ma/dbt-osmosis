@@ -632,19 +632,19 @@ class TestWrittenFilesTracking:
         assert len(context.written_files) == 0
 
     def test_register_written_file(self, mock_project_context):
-        """Files can be registered as written."""
+        """Files can be registered as written (stored as absolute paths)."""
         context = YamlRefactorContext(project=mock_project_context)
 
         path1 = Path("models/a.yml")
         path2 = Path("models/b.yml")
 
         context.register_written_file(path1)
-        assert path1 in context.written_files
+        assert path1.resolve() in context.written_files
         assert len(context.written_files) == 1
 
         context.register_written_file(path2)
-        assert path1 in context.written_files
-        assert path2 in context.written_files
+        assert path1.resolve() in context.written_files
+        assert path2.resolve() in context.written_files
         assert len(context.written_files) == 2
 
     def test_register_same_file_twice(self, mock_project_context):
