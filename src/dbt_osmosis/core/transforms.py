@@ -335,6 +335,13 @@ def inject_missing_columns(
         for c in node.columns.values()
     }
     incoming_columns = get_columns(context, node)
+    output_to_upper = _get_setting_for_node(
+        "output-to-upper", node, fallback=context.settings.output_to_upper
+    )
+    output_to_lower = _get_setting_for_node(
+        "output-to-lower", node, fallback=context.settings.output_to_lower
+    )
+
     for incoming_name, incoming_meta in incoming_columns.items():
         if incoming_name not in current_columns:
             logger.info(
@@ -342,7 +349,13 @@ def inject_missing_columns(
                 incoming_name,
                 node.unique_id,
             )
-            gen_col = {"name": incoming_name, "description": incoming_meta.comment or ""}
+            final_name = incoming_name
+            if output_to_upper:
+                final_name = incoming_name.upper()
+            elif output_to_lower:
+                final_name = incoming_name.lower()
+
+            gen_col = {"name": final_name, "description": incoming_meta.comment or ""}
             if (dtype := incoming_meta.type) and not _get_setting_for_node(
                 "skip-add-data-types",
                 node,
@@ -354,9 +367,9 @@ def inject_missing_columns(
                     gen_col["data_type"] = dtype.lower()
                 else:
                     gen_col["data_type"] = dtype
-            node.columns[incoming_name] = ColumnInfo.from_dict(gen_col)
-            if hasattr(node.columns[incoming_name], "config"):
-                delattr(node.columns[incoming_name], "config")
+            node.columns[final_name] = ColumnInfo.from_dict(gen_col)
+            if hasattr(node.columns[final_name], "config"):
+                delattr(node.columns[final_name], "config")
 
 
 @_transform_op("Remove Extra Columns")
