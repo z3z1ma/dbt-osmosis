@@ -11,16 +11,12 @@ since fusion rejects unknown + prefixed config keys.
 from __future__ import annotations
 
 import typing as t
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from dbt.artifacts.resources.types import NodeType
 
-from dbt_osmosis.core.path_management import (
-    MissingOsmosisConfig,
-    _resolve_vars_routing,
-)
+from dbt_osmosis.core.path_management import _resolve_vars_routing
 
 
 def _make_node(

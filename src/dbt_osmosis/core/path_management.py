@@ -82,7 +82,7 @@ def _resolve_vars_routing(
     """
     try:
         project_vars = context.project.runtime_cfg.vars.to_dict()
-    except Exception:
+    except (AttributeError, TypeError, RuntimeError):
         return None
 
     osmosis_vars = project_vars.get("dbt-osmosis", project_vars.get("dbt_osmosis", {}))
