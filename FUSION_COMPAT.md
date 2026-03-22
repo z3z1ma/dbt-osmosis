@@ -117,12 +117,15 @@ tests:
 
 ---
 
-## Performance
+## Performance (tested 2026-03-22, oem-dbt-bigquery, 16 models + 34 tests + 5 seeds)
 
 | Operation | dbt-core 1.11.7 | dbt-fusion 2.0.0-preview.154 |
 | --------- | ---------------- | ---------------------------- |
-| Parse     | ~2.0s            | 637ms (3.1x faster)          |
-| Build     | ~30s             | Not tested (parse must pass)  |
+| Parse     | ~2.0s            | 854ms (2.3x faster)          |
+| Build     | ~30s             | 62s (includes catalog gen)    |
+| Build (no catalog) | ~30s    | ~50s (estimated)              |
+
+Note: fusion build includes `--write-catalog` overhead. The 55/55 pass rate is identical to core.
 
 ---
 
@@ -160,36 +163,70 @@ vars:
 
 The `vars:` section is standard dbt -- both core and fusion accept it. Routing matches against the node's FQN folder path, with most-specific match winning (e.g., `staging.oem_raw` beats `staging`). Existing `+dbt-osmosis` config keys still take priority for backward compatibility.
 
-### Other options (not yet needed)
+### Fusion artifact compatibility (tested 2026-03-22)
 
-1. **Fusion allows unknown `+` prefixed keys** (fusion-side): Contribute a fix to fusion. May be on their roadmap.
+| Artifact | Fusion produces? | Format | Compatible with osmosis? |
+| -------- | ---------------- | ------ | ----------------------- |
+| manifest.json | Yes | v12 (same as core) | Yes -- osmosis can read it |
+| catalog.json | Yes (`--write-catalog`) | v1 (same as core) | No -- empty due to TABLE_STORAGE permission bug |
+| run_results.json | Yes | v6 (same as core) | N/A |
+| semantic_manifest.json | Yes | Standard | N/A |
 
-2. **osmosis reads fusion artifacts instead of core** (medium effort): If fusion produces a compatible `manifest.json`, osmosis could read that instead of calling dbt-core.
+**Key finding**: Fusion's `--write-catalog` queries `INFORMATION_SCHEMA.TABLE_STORAGE` which requires additional BigQuery permissions. Core's `dbt docs generate` uses a different query path that works with standard `dataEditor` + `jobUser` roles. This is likely a fusion bug or missing macro override for BigQuery.
 
-3. **Rust port of osmosis** (high effort, high payoff): Rewrite in Rust, using fusion's parser. Most aligned with where dbt is heading.
+**Workaround**: Use `dbt docs generate` (core) to produce the catalog, then use fusion for everything else.
 
-### Recommendation for OEM project (immediate)
+### dbt-core dependency analysis
 
-For the OEM project specifically:
-- **Remove osmosis from pre-commit and CI** until the `+dbt-osmosis` key issue is resolved
-- Keep osmosis installed locally for manual YAML management if needed
-- All new models validate with `dbtf parse` as the source of truth
-- Track fusion compat issues in this file
-- First fix to try: option 1 (move routing config to `.dbt-osmosis.yml` or `meta:`)
+Osmosis depends on dbt-core at 4 levels:
 
-### Questions to answer
+| Level | What | Can replace with fusion? |
+| ----- | ---- | ----------------------- |
+| Engine | Parse project, load manifest | Yes -- read fusion's manifest.json instead |
+| Catalog | Query warehouse for column metadata | Not yet -- fusion catalog empty (permission bug) |
+| SQL compilation | SqlCompileRunner, process_node | No -- fusion has no Python API |
+| Data types | ResultNode, NodeType, ColumnInfo | No -- used in every function signature |
 
-- Does fusion produce a `manifest.json`? If so, is the schema compatible with what osmosis reads?
-- Does `dbt-osmosis yaml refactor --fusion-compat` actually produce fusion-valid output? (Test with `dbtf parse` after running it)
-- Can osmosis work with fusion's catalog instead of calling `dbt docs generate` on core?
+**Bottom line**: Osmosis cannot run without dbt-core today. The hybrid approach (both engines installed) is the practical path.
+
+### Other options (future)
+
+1. **Read fusion manifest instead of re-parsing** (medium effort): Since fusion produces v12 manifests, osmosis could skip its own `dbt parse` and read from disk. Still needs core for catalog.
+
+2. **Fusion fixes TABLE_STORAGE bug** (fusion-side): Once fusion's catalog works on BigQuery, osmosis could use it instead of `dbt docs generate`.
+
+3. **Manifest-only mode** (medium effort): Osmosis reads manifest + catalog from disk without invoking core's parser. Core only needed for SQL compilation.
+
+4. **Rust port** (high effort): Rewrite as fusion plugin. Maximum performance, zero Python dependency.
+
+### Recommendation for OEM project
+
+- **Use `dbtf build` as primary engine** -- all 55 nodes pass
+- **Use `dbt docs generate` (core) for catalog** -- needed until fusion catalog bug is fixed
+- **Use vars-based routing** -- `+dbt-osmosis` keys replaced with `vars.dbt-osmosis.models`
+- **Validate with `dbtf parse`** as source of truth for YAML correctness
+- osmosis can be used for YAML management in the hybrid setup
+
+### Questions answered
+
+- **Does fusion produce manifest.json?** Yes, v12 schema, fully compatible with core and osmosis.
+- **Does fusion produce catalog.json?** Yes with `--write-catalog`, but empty on BigQuery due to TABLE_STORAGE permission query. Needs bug report or permission fix.
+- **Can osmosis work without core?** No. Needs core for catalog generation and SQL compilation. Manifest can be read from fusion.
+
+### Remaining questions
+
+- Does `dbt-osmosis yaml refactor --fusion-compat` produce fusion-valid output? (Test with `dbtf parse` after running it)
+- dbt MCP server -- does it work with fusion artifacts?
+- ModuLens -- can it read fusion-generated manifest/catalog?
 
 ---
 
-## Test Plan
+## Test Plan Results (2026-03-22)
 
-Once parse errors are fixed:
-1. `dbtf build` -- does it compile and run against BigQuery?
-2. `dbtf test` -- do all 55 tests pass?
-3. `dbt-osmosis yaml refactor --fusion-compat` then `dbtf parse` -- does osmosis output pass fusion?
-4. dbt MCP server -- does it work with fusion artifacts?
-5. ModuLens -- can it read fusion-generated manifest/catalog?
+| Test | Result |
+| ---- | ------ |
+| `dbtf parse` | PASS -- 0 errors after fixing freshness, test args, and +dbt-osmosis keys |
+| `dbtf build` | PASS -- 55/55 (16 models, 34 tests, 5 seeds) |
+| `dbtf build --write-catalog` | PARTIAL -- catalog.json generated but empty (BQ permission bug) |
+| `dbt docs generate` (core) | PASS -- 30.9K catalog with full column metadata |
+| osmosis vars routing | PASS -- 18 tests (feat/fusion-vars-routing branch) |
