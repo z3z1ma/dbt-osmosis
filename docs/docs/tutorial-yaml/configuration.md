@@ -35,6 +35,26 @@ vars:
   dbt_osmosis_default_path: "_{model}.yml"
 ```
 
+### Fusion-Compatible Routing via `vars`
+
+If you use **dbt-fusion**, the `+dbt-osmosis` config keys in `dbt_project.yml` will cause parse errors because fusion's strict parser rejects unknown `+` prefixed keys. As an alternative, you can specify per-folder routing under `vars.dbt-osmosis.models`:
+
+```yaml title="dbt_project.yml"
+vars:
+  dbt-osmosis:
+    models:
+      staging: "_stg_{parent}__models.yml"
+      intermediate: "_int_{parent}__models.yml"
+      marts: "_marts_{parent}__models.yml"
+    seeds: "_seeds__models.yml"
+```
+
+This is functionally equivalent to `+dbt-osmosis` config keys but uses `vars:`, which both dbt-core and dbt-fusion accept. Routing matches against the node's FQN folder path -- a model in `models/staging/oem_raw/` matches the `staging` key. For nested folders, use dot notation (`staging.oem_raw`) -- the most specific match wins.
+
+Seeds can be a single string (applies to all seeds) or a dict with per-folder keys like models.
+
+**Precedence**: `+dbt-osmosis` config keys (if present) take priority over vars routing. This means existing dbt-core projects keep working unchanged -- vars routing is only used when the config key is absent.
+
 ### Sources
 
 Configure managed sources under `vars.dbt-osmosis.sources`:

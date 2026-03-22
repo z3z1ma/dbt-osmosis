@@ -19,6 +19,7 @@ __all__ = [
     "SchemaFileLocation",
     "SchemaFileMigration",
     "_get_yaml_path_template",
+    "_resolve_vars_routing",
     "build_yaml_file_mapping",
     "create_missing_source_yamls",
     "get_current_yaml_path",
@@ -52,11 +53,82 @@ class SchemaFileMigration:
     supersede: dict[Path, list[ResultNode]] = field(default_factory=dict)
 
 
+def _resolve_vars_routing(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+) -> str | None:
+    """Resolve YAML path template from vars.dbt-osmosis.models (or .seeds).
+
+    This is the fusion-compatible alternative to +dbt-osmosis config keys in
+    dbt_project.yml. Since dbt-fusion rejects unknown + prefixed keys but accepts
+    vars, users can move their routing config here:
+
+        vars:
+          dbt-osmosis:
+            models:
+              staging: "_stg_{parent}__models.yml"
+              intermediate: "_int_{parent}__models.yml"
+              marts: "_marts_{parent}__models.yml"
+            seeds: "_seeds__models.yml"
+
+    Matching uses the node's FQN (fully qualified name). For a model with
+    fqn = ["project", "staging", "oem_raw", "stg_oem_raw__mme"], we check
+    the routing dict for the most specific match first:
+      1. "staging.oem_raw" (deepest folder path)
+      2. "staging" (parent folder)
+
+    For seeds, the value can be a string (applies to all seeds) or a dict
+    with per-folder routing like models.
+    """
+    try:
+        project_vars = context.project.runtime_cfg.vars.to_dict()
+    except Exception:
+        return None
+
+    osmosis_vars = project_vars.get("dbt-osmosis", project_vars.get("dbt_osmosis", {}))
+    if not isinstance(osmosis_vars, dict):
+        return None
+
+    # Determine which routing section to use
+    if node.resource_type == NodeType.Seed:
+        routing = osmosis_vars.get("seeds")
+        if isinstance(routing, str):
+            return routing
+        if not isinstance(routing, dict):
+            return None
+    else:
+        routing = osmosis_vars.get("models")
+        if not isinstance(routing, dict):
+            return None
+
+    # FQN is ["project_name", "folder1", "folder2", ..., "model_name"]
+    # We match against folder parts only (index 1 to -1), most specific first
+    fqn_folders = node.fqn[1:-1] if len(node.fqn) > 2 else []
+
+    # Try most-specific first: "staging.oem_raw", then "staging"
+    for depth in range(len(fqn_folders), 0, -1):
+        key = ".".join(fqn_folders[:depth])
+        if key in routing:
+            value = routing[key]
+            if isinstance(value, str):
+                logger.debug(
+                    ":rocket: Resolved YAML path from vars routing [%s]: %s",
+                    key,
+                    value,
+                )
+                return value
+
+    return None
+
+
 def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNode) -> str | None:
     """Get the yaml path template for a dbt model or source node.
 
-    First checks for a model-specific `+dbt-osmosis` config via SettingsResolver,
-    then falls back to the global `dbt_osmosis_default_path` var from dbt_project.yml.
+    Resolution order:
+    1. Source definitions (vars.dbt-osmosis.sources) for source nodes
+    2. SettingsResolver: node.config.extra, config.meta, node.meta, unrendered_config
+    3. vars.dbt-osmosis.models / .seeds per-folder routing (fusion-compatible)
+    4. vars.dbt_osmosis_default_path global fallback
     """
     from dbt_osmosis.core.introspection import SettingsResolver
 
@@ -74,7 +146,11 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
     raw_path_template = resolver.get_yaml_path_template(node)
     path_template = raw_path_template if isinstance(raw_path_template, str) else None
 
-    # If no model-specific config, check for global var
+    # If no model-specific config, try vars-based per-folder routing (fusion-compatible)
+    if not path_template:
+        path_template = _resolve_vars_routing(context, node)
+
+    # If still no match, check for global var fallback
     if not path_template:
         try:
             project_vars = context.project.runtime_cfg.vars.to_dict()
@@ -92,7 +168,8 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
 
     if not path_template:
         raise MissingOsmosisConfig(
-            f"Config key `+dbt-osmosis:` or var `dbt_osmosis_default_path` not set for model {node.name}",
+            f"Config key `+dbt-osmosis:`, var `dbt_osmosis_default_path`,"
+            f" or vars.dbt-osmosis.models not set for model {node.name}",
         )
     if not isinstance(path_template, str):
         return None
