@@ -29,6 +29,7 @@ YAML commands manage schema files and column-level documentation inheritance.
 - `--vars` (YAML string)
 - `--scaffold-empty-configs/--no-scaffold-empty-configs`
 - `--strip-eof-blank-lines/--keep-eof-blank-lines`
+- `--fusion-compat/--no-fusion-compat`
 
 ### `dbt-osmosis yaml refactor`
 
@@ -52,6 +53,10 @@ Common behavior flags:
 - `--output-to-lower`
 - `--output-to-upper`
 - `--include-external`
+
+Fusion compatibility:
+
+- `--fusion-compat/--no-fusion-compat` (output Fusion-compatible YAML; auto-detects from dbt >= 1.9.6 or a Fusion manifest if not specified)
 
 Experimental:
 

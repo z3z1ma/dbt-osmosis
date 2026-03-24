@@ -236,3 +236,145 @@ def test_yaml_string_representer_none_prefix_colon():
             f"Description of {length} chars should {'use' if should_fold else 'not use'} "
             f"folded style, but got: {repr(result.split('description:')[1].split(chr(10))[0])}"
         )
+
+
+def test_yaml_parser_allows_data_tests_and_filters_anchors():
+    """Test that the parser allows data_tests but filters anchors (preserved by the writer)."""
+    yaml_content = """version: 2
+
+models:
+  - name: test_model
+
+anchors:
+  - &common_tests
+    - not_null
+    - unique
+
+data_tests:
+  - name: test_data_test
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        yaml_handler = create_yaml_instance()
+        data = yaml_handler.load(temp_path)
+
+        # data_tests passes through the parser's allowed_keys
+        assert "models" in data
+        assert "data_tests" in data
+        # anchors is filtered out by the parser but restored by the writer via _PRESERVED_KEYS
+        assert "anchors" not in data
+    finally:
+        temp_path.unlink()
+
+
+def test_merge_preserved_sections_includes_anchors():
+    """Test that _merge_preserved_sections preserves anchors alongside semantic_models/macros."""
+    filtered = {
+        "version": 2,
+        "models": [{"name": "test_model"}],
+    }
+
+    original = {
+        "version": 2,
+        "models": [{"name": "test_model"}],
+        "semantic_models": [{"name": "test_sm"}],
+        "macros": [{"name": "test_macro"}],
+        "anchors": [{"name": "common_tests"}],
+    }
+
+    merged = _merge_preserved_sections(filtered, original)
+
+    assert "semantic_models" in merged
+    assert "macros" in merged
+    assert "anchors" in merged
+    assert merged["anchors"] == original["anchors"]
+
+
+def _clear_cache(cache, key):
+    """Helper to safely clear a key from an LRUCache or dict."""
+    if key in cache:
+        del cache[key]
+
+
+def test_write_yaml_calls_written_file_tracker():
+    """Test that _write_yaml calls written_file_tracker on successful write with changes."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+    tracked_paths: list[Path] = []
+
+    def tracker(path: Path) -> None:
+        tracked_paths.append(path)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write("version: 2\n")
+        temp_path = Path(f.name)
+
+    try:
+        # Clear caches to avoid stale state
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        # Write different content to trigger a change
+        new_data = {"version": 2, "models": [{"name": "test_model"}]}
+        _write_yaml(
+            yaml_handler,
+            lock,
+            temp_path,
+            new_data,
+            dry_run=False,
+            written_file_tracker=tracker,
+        )
+
+        assert len(tracked_paths) == 1
+        assert tracked_paths[0] == temp_path
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def test_write_yaml_no_tracker_when_no_changes():
+    """Test that written_file_tracker is NOT called when content is unchanged."""
+    import io
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+    tracked_paths: list[Path] = []
+
+    def tracker(path: Path) -> None:
+        tracked_paths.append(path)
+
+    data = {"version": 2, "models": [{"name": "test_model"}]}
+
+    # Serialize the data to get the exact bytes
+    with io.BytesIO() as buf:
+        yaml_handler.dump(data, buf)
+        content_bytes = buf.getvalue()
+
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".yml", delete=False) as f:
+        f.write(content_bytes)
+        temp_path = Path(f.name)
+
+    try:
+        # Clear caches
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        # Write the same content — no change expected
+        _write_yaml(
+            yaml_handler,
+            lock,
+            temp_path,
+            data,
+            dry_run=False,
+            written_file_tracker=tracker,
+        )
+
+        assert len(tracked_paths) == 0
+    finally:
+        temp_path.unlink(missing_ok=True)

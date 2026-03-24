@@ -5,21 +5,79 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import typing as t
 from dataclasses import dataclass
 from textwrap import dedent
 
 try:
     import openai
-    from openai import OpenAI
+    from openai import AzureOpenAI, OpenAI
 
     _OPENAI_AVAILABLE = True
 except ImportError:
     openai = None  # type: ignore[assignment]
     OpenAI = None  # type: ignore[assignment,misc]
+    AzureOpenAI = None  # type: ignore[assignment,misc]
     _OPENAI_AVAILABLE = False
 
+
+try:
+    from azure.identity import DefaultAzureCredential, EnvironmentCredential
+
+    _AZURE_IDENTITY_AVAILABLE = True
+except ImportError:
+    DefaultAzureCredential = None  # type: ignore[assignment,misc]
+    EnvironmentCredential = None  # type: ignore[assignment,misc]
+    _AZURE_IDENTITY_AVAILABLE = False
+
 from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
+
+
+def _call_with_retry(func, max_retries=5, initial_delay=1.0):
+    """Call a function with exponential backoff retry logic for rate limits.
+
+    Args:
+        func: Function to call
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds before first retry
+
+    Returns:
+        The result of the function call
+
+    Raises:
+        The last exception if all retries are exhausted
+    """
+    delay = initial_delay
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except openai.RateLimitError as e:
+            last_exception = e
+            if attempt == max_retries:
+                raise
+
+            wait_time = delay
+            if hasattr(e, "response") and e.response:
+                retry_after = e.response.headers.get("retry-after")
+                if retry_after:
+                    try:
+                        wait_time = float(retry_after)
+                    except ValueError:
+                        pass
+
+            time.sleep(wait_time)
+            delay *= 2  # Exponential backoff
+        except Exception:
+            raise
+
+    # This should never be reached, but satisfy type checker
+    if last_exception:
+        raise last_exception
+    raise RuntimeError("Unexpected retry loop completion without exception")
+
 
 __all__ = [
     "analyze_column_semantics",
@@ -87,6 +145,10 @@ def get_llm_client() -> tuple[t.Any, str]:
             "pip install 'dbt-osmosis[openai]' or pip install openai"
         )
 
+    # Type narrowing: after availability check, these cannot be None
+    assert OpenAI is not None
+    assert AzureOpenAI is not None
+
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
     if provider == "openai":
@@ -97,19 +159,73 @@ def get_llm_client() -> tuple[t.Any, str]:
         model_engine = os.getenv("OPENAI_MODEL", "gpt-4o")
 
     elif provider == "azure-openai":
-        openai_any = t.cast(t.Any, openai)
-        openai_any.api_type = "azure-openai"
-        openai_any.api_base = os.getenv("AZURE_OPENAI_BASE_URL")
-        openai_any.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-        openai_any.api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        azure_endpoint = os.getenv("AZURE_OPENAI_BASE_URL")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
         model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
-        if not (openai_any.api_base and openai_any.api_key and model_engine):
+        if not (azure_endpoint and model_engine):
             raise LLMConfigurationError(
-                "Azure environment variables (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT_NAME) not properly set for azure-openai provider",
+                "AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai provider",
             )
-        # For Azure, the global openai object is used directly (legacy SDK structure preferred)
-        return openai_any, model_engine
+
+        if not api_key:
+            raise LLMConfigurationError(
+                "AZURE_OPENAI_API_KEY must be set for azure-openai provider"
+            )
+
+        client = AzureOpenAI(
+            azure_endpoint=azure_endpoint,
+            api_key=api_key,
+            api_version=api_version,
+        )
+
+    elif provider == "azure-openai-ad":
+        azure_endpoint = os.getenv("AZURE_OPENAI_BASE_URL")
+        model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        azure_ad_token_scope = os.getenv("AZURE_OPENAI_AD_TOKEN_SCOPE")
+
+        if not (azure_endpoint and model_engine):
+            raise LLMConfigurationError(
+                "AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai-ad provider",
+            )
+
+        if not azure_ad_token_scope:
+            raise LLMConfigurationError(
+                "AZURE_OPENAI_AD_TOKEN_SCOPE must be set for azure-openai-ad provider"
+            )
+
+        if not _AZURE_IDENTITY_AVAILABLE:
+            raise LLMConfigurationError(
+                "Azure Identity library is not installed. "
+                "Please install it with: pip install 'dbt-osmosis[azure]' or pip install azure-identity"
+            )
+
+        try:
+            azure_tenant_id = os.getenv("AZURE_TENANT_ID")
+            azure_client_id = os.getenv("AZURE_CLIENT_ID")
+            azure_client_secret = os.getenv("AZURE_CLIENT_SECRET")
+
+            if azure_tenant_id and azure_client_id and azure_client_secret:
+                credential = EnvironmentCredential()  # type: ignore[misc]
+                scope = (
+                    f"{azure_ad_token_scope}/.default"
+                    if not azure_ad_token_scope.endswith("/.default")
+                    else azure_ad_token_scope
+                )
+                token = credential.get_token(scope).token
+            else:
+                credential = DefaultAzureCredential()  # type: ignore[misc]
+                token = credential.get_token(azure_ad_token_scope).token
+        except Exception as e:
+            raise LLMConfigurationError(
+                f"Failed to acquire Azure AD token: {_redact_credentials(str(e))}"
+            ) from e
+
+        client = OpenAI(
+            base_url=azure_endpoint.rstrip("/"),
+            api_key=token,
+        )
 
     elif provider == "lm-studio":
         client = OpenAI(
@@ -154,15 +270,19 @@ def get_llm_client() -> tuple[t.Any, str]:
 
     else:
         raise LLMConfigurationError(
-            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, google-gemini, anthropic, lm-studio, ollama.",
+            f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, azure-openai-ad, google-gemini, anthropic, lm-studio, ollama.",
         )
 
-    # Define required environment variables for each provider
     required_env_vars = {
         "openai": ["OPENAI_API_KEY"],
         "azure-openai": [
             "AZURE_OPENAI_BASE_URL",
             "AZURE_OPENAI_API_KEY",
+            "AZURE_OPENAI_DEPLOYMENT_NAME",
+        ],
+        "azure-openai-ad": [
+            "AZURE_OPENAI_BASE_URL",
+            "AZURE_OPENAI_AD_TOKEN_SCOPE",
             "AZURE_OPENAI_DEPLOYMENT_NAME",
         ],
         "lm-studio": ["LM_STUDIO_BASE_URL", "LM_STUDIO_API_KEY"],
@@ -171,7 +291,6 @@ def get_llm_client() -> tuple[t.Any, str]:
         "anthropic": ["ANTHROPIC_API_KEY"],
     }
 
-    # Check for missing environment variables
     missing_vars = [var for var in required_env_vars[provider] if not os.getenv(var)]
     if missing_vars:
         raise LLMConfigurationError(
@@ -179,27 +298,6 @@ def get_llm_client() -> tuple[t.Any, str]:
         )
 
     return client, model_engine
-
-
-def _create_chat_completion(
-    client: t.Any,
-    model_engine: str,
-    messages: list[dict[str, t.Any]],
-    **kwargs: t.Any,
-) -> t.Any:
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
-    client_any = t.cast(t.Any, client)
-    if provider == "azure-openai":
-        return client_any.ChatCompletion.create(
-            engine=model_engine,
-            messages=messages,
-            **kwargs,
-        )
-    return client_any.chat.completions.create(
-        model=model_engine,
-        messages=messages,
-        **kwargs,
-    )
 
 
 def _create_llm_prompt_for_model_docs_as_json(
@@ -430,11 +528,13 @@ def generate_model_spec_as_json(
     )
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine,
+            messages=messages,
+            temperature=temperature,
+        )
     )
 
     content = response.choices[0].message.content
@@ -481,11 +581,13 @@ def generate_column_doc(
     )
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine,
+            messages=messages,
+            temperature=temperature,
+        )
     )
 
     content = response.choices[0].message.content
@@ -517,11 +619,13 @@ def generate_table_doc(
     messages = _create_llm_prompt_for_table(sql_content, table_name, upstream_docs)
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine,
+            messages=messages,
+            temperature=temperature,
+        )
     )
 
     content = response.choices[0].message.content
@@ -688,11 +792,11 @@ def analyze_column_semantics(
     )
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
     )
 
     content = response.choices[0].message.content
@@ -789,22 +893,16 @@ def generate_semantic_description(
     )
 
     messages = [
-        {
-            "role": "system",
-            "content": system_prompt.strip(),
-        },
-        {
-            "role": "user",
-            "content": user_message.strip(),
-        },
+        {"role": "system", "content": system_prompt.strip()},
+        {"role": "user", "content": user_message.strip()},
     ]
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
     )
 
     content = response.choices[0].message.content
@@ -987,11 +1085,11 @@ def generate_sql_from_nl(
     messages = _create_llm_prompt_for_nl_to_sql(query, available_sources, schema_context)
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
     )
 
     content = response.choices[0].message.content
@@ -1053,11 +1151,11 @@ def generate_dbt_model_from_nl(
     messages = _create_llm_prompt_for_nl_to_dbt_model(query, available_sources, schema_context)
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
     )
 
     content = response.choices[0].message.content
@@ -1334,11 +1432,11 @@ def generate_staging_model_spec(
     )
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
     )
 
     content = response.choices[0].message.content
@@ -1675,11 +1773,11 @@ def generate_style_aware_column_doc(
     )
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
     )
 
     content = response.choices[0].message.content
@@ -1722,11 +1820,11 @@ def generate_style_aware_table_doc(
     )
 
     client, model_engine = get_llm_client()
-    response = _create_chat_completion(
-        client,
-        model_engine,
-        messages,
-        temperature=temperature,
+
+    response = _call_with_retry(
+        lambda: client.chat.completions.create(
+            model=model_engine, messages=messages, temperature=temperature
+        )
     )
 
     content = response.choices[0].message.content

@@ -13,6 +13,7 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
 from dbt_osmosis.core import logger
+from dbt_osmosis.core.inheritance import _column_to_dict
 
 __all__ = [
     "PLAN_OUTPUT_TRUNCATION_LENGTH",
@@ -52,7 +53,11 @@ class RestructureDeltaPlan:
     operations: list[RestructureOperation] = field(default_factory=list)
 
 
-def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]:
+def _generate_minimal_model_yaml(
+    node: ModelNode | SeedNode,
+    *,
+    fusion_compat: bool = False,
+) -> dict[str, t.Any]:
     """Generate a minimal model yaml for a dbt model node.
 
     Includes columns from the manifest to ensure data_type is preserved.
@@ -61,14 +66,22 @@ def _generate_minimal_model_yaml(node: ModelNode | SeedNode) -> dict[str, t.Any]
     columns = []
     for col_name, col_info in node.columns.items():
         col_dict = col_info.to_dict(omit_none=True)
-        # Filter out 'config' and 'doc_blocks' fields added in dbt-core >= 1.9.6
-        col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
+        # In fusion_compat mode, preserve 'config' (meta/tags nested inside it).
+        # In classic mode, strip 'config' (meta/tags stay at top level).
+        if fusion_compat:
+            col_dict = {k: v for k, v in col_dict.items() if k != "doc_blocks"}
+        else:
+            col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
         col_dict["name"] = col_name
         columns.append(col_dict)
     return {"name": node.name, "columns": columns}
 
 
-def _generate_minimal_source_yaml(node: SourceDefinition) -> dict[str, t.Any]:
+def _generate_minimal_source_yaml(
+    node: SourceDefinition,
+    *,
+    fusion_compat: bool = False,
+) -> dict[str, t.Any]:
     """Generate a minimal source yaml for a dbt source node.
 
     Includes columns from the manifest to ensure data_type is preserved.
@@ -77,8 +90,12 @@ def _generate_minimal_source_yaml(node: SourceDefinition) -> dict[str, t.Any]:
     columns = []
     for col_name, col_info in node.columns.items():
         col_dict = col_info.to_dict(omit_none=True)
-        # Filter out 'config' and 'doc_blocks' fields added in dbt-core >= 1.9.6
-        col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
+        # In fusion_compat mode, preserve 'config' (meta/tags nested inside it).
+        # In classic mode, strip 'config' (meta/tags stay at top level).
+        if fusion_compat:
+            col_dict = {k: v for k, v in col_dict.items() if k != "doc_blocks"}
+        else:
+            col_dict = {k: v for k, v in col_dict.items() if k not in ("config", "doc_blocks")}
         col_dict["name"] = col_name
         columns.append(col_dict)
     return {"name": node.source_name, "tables": [{"name": node.name, "columns": columns}]}
@@ -103,7 +120,7 @@ def _create_operations_for_node(
     if loc.current is None:
         logger.info(":sparkles: No current YAML file, building minimal doc => %s", uid)
         if isinstance(node, (ModelNode, SeedNode)):
-            minimal = _generate_minimal_model_yaml(node)
+            minimal = _generate_minimal_model_yaml(node, fusion_compat=context.fusion_compat)
             ops.append(
                 RestructureOperation(
                     file_path=loc.target,
@@ -111,7 +128,10 @@ def _create_operations_for_node(
                 ),
             )
         else:
-            minimal = _generate_minimal_source_yaml(t.cast("SourceDefinition", node))
+            minimal = _generate_minimal_source_yaml(
+                t.cast("SourceDefinition", node),
+                fusion_compat=context.fusion_compat,
+            )
             ops.append(
                 RestructureOperation(
                     file_path=loc.target,
@@ -323,6 +343,7 @@ def apply_restructure_plan(
             else:
                 output_doc[key] = val
 
+        _written_file_tracker = getattr(context, "register_written_file", None)
         _write_yaml(
             context.yaml_handler,
             context.yaml_handler_lock,
@@ -331,6 +352,7 @@ def apply_restructure_plan(
             context.settings.dry_run,
             context.register_mutations,
             context.settings.strip_eof_blank_lines,
+            written_file_tracker=_written_file_tracker,
         )
 
         for path, nodes in op.superseded_paths.items():
@@ -364,6 +386,7 @@ def apply_restructure_plan(
                         context.settings.dry_run,
                         context.register_mutations,
                         context.settings.strip_eof_blank_lines,
+                        written_file_tracker=_written_file_tracker,
                     )
                     logger.info(
                         ":arrow_forward: Migrated doc from => %s to => %s",
@@ -382,5 +405,6 @@ def apply_restructure_plan(
         context.settings.dry_run,
         context.register_mutations,
         context.settings.strip_eof_blank_lines,
+        written_file_tracker=_written_file_tracker,
     )
     _reload_manifest(context.project)

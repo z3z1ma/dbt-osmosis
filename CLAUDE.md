@@ -89,6 +89,9 @@ uv run dbt-osmosis yaml organize --project-dir <path> --profiles-dir <path>
 # Document models only (inherit upstream docs)
 uv run dbt-osmosis yaml document --project-dir <path> --profiles-dir <path>
 
+# Run with external YAML formatter (prettier, yamlfmt, yq, etc.)
+uv run dbt-osmosis yaml refactor --formatter "prettier --write" --project-dir <path> --profiles-dir <path>
+
 # Start workbench (requires workbench extra)
 uv run dbt-osmosis workbench --project-dir <path> --profiles-dir <path>
 
@@ -519,6 +522,43 @@ chain = resolver.get_precedence_chain(
 - Built-in plugins: `FuzzyCaseMatching`, `FuzzyPrefixMatching`
 - Hooks defined in `plugins.py` via `dbt_osmosis_hookspec`
 
+### External Formatter Integration
+dbt-osmosis supports running an external YAML formatter on all files it writes, reducing the need for a separate formatting step in CI:
+
+**CLI usage:**
+```bash
+# With prettier
+dbt-osmosis yaml refactor --formatter "prettier --write" --project-dir . --profiles-dir .
+
+# With yamlfmt
+dbt-osmosis yaml refactor --formatter "yamlfmt" --project-dir . --profiles-dir .
+
+# With yq (in-place normalization)
+dbt-osmosis yaml refactor --formatter "yq -i '.'" --project-dir . --profiles-dir .
+```
+
+**Project-level config** (`dbt-osmosis.yml` in project root):
+```yaml
+formatter: prettier --write
+```
+
+**Configuration precedence** (highest to lowest):
+1. CLI flag `--formatter "cmd"`
+2. `formatter` key in `dbt-osmosis.yml`
+3. None (default)
+
+**How it works:**
+1. Osmosis writes YAML files as usual (restructure + transforms)
+2. Each successful write registers the file path in `YamlRefactorContext._written_files`
+3. After all operations complete, osmosis invokes the formatter once with all written file paths
+4. Formatter failure is **non-fatal**: osmosis logs a warning but exits 0
+
+**Key implementation files:**
+- `src/dbt_osmosis/core/formatting.py` — `run_external_formatter()` function
+- `src/dbt_osmosis/core/settings.py` — `formatter` field on `YamlRefactorSettings`, `_written_files` tracking and `resolved_formatter` property on `YamlRefactorContext`
+- `src/dbt_osmosis/core/schema/writer.py` — `written_file_tracker` callback parameter
+- `src/dbt_osmosis/cli/main.py` — `--formatter` option and `_run_formatter_if_configured()` hook
+
 ### Pre-commit Integration
 Users can add dbt-osmosis as a pre-commit hook:
 ```yaml
@@ -548,6 +588,7 @@ repos:
 - **YAML Path Logic**: src/dbt_osmosis/core/path_management.py:45 (`get_target_yaml_path()`)
 - **Column Inheritance**: src/dbt_osmosis/core/inheritance.py:22 (`_build_column_knowledge_graph()`)
 - **Database Introspection**: src/dbt_osmosis/core/introspection.py:33 (`get_columns()`)
+- **External Formatter**: src/dbt_osmosis/core/formatting.py (`run_external_formatter()`)
 - **Configuration Resolution**: src/dbt_osmosis/core/introspection.py:533 (`SettingsResolver`)
 - **Property Access**: src/dbt_osmosis/core/introspection.py:1153 (`PropertyAccessor`)
 - **Public API Exports**: src/dbt_osmosis/core/osmosis.py (re-exports all public APIs)
