@@ -16,6 +16,7 @@ from pathlib import Path
 # pyright: reportPrivateImportUsage=false
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.relation import BaseRelation
+from dbt.adapters.exceptions.compilation import ApproximateMatchError
 from dbt.artifacts.schemas.catalog import CatalogArtifact, CatalogResults  # pyright: ignore[reportPrivateImportUsage]
 from dbt.contracts.graph.nodes import ResultNode  # pyright: ignore[reportPrivateImportUsage]
 from dbt_common.contracts.metadata import ColumnMetadata  # pyright: ignore[reportPrivateImportUsage]
@@ -1154,27 +1155,21 @@ def get_columns(
 
     if catalog := context.read_catalog():
         logger.debug(":blue_book: Catalog found => Checking for ref => %s", rendered_relation)
-        
-        def matches_relation_case_insensitive(c: t.Any) -> bool:
-            #For Snowflake, use case-insensitive matching
-            if context.project.runtime_cfg.credentials.type == "snowflake": 
-                try:
-                    catalog_key = tuple(
-                        k.upper() if isinstance(k, str) else k for k in c.key()
-                    )
-                    relation_key = tuple(
-                        k.upper() if isinstance(k, str) else k 
-                        for k in (relation.database, relation.schema, relation.name)
-                    )
-                    return catalog_key == relation_key
-                except Exception:
-                    pass
-            # Default to case-ensitive matching:
-            return relation.matches(*c.key())
-        
+        matcher = getattr(relation_any, "matches", None)
+
+        def matches_relation(entry: t.Any) -> bool:
+            if not callable(matcher):
+                return False
+            try:
+                return bool(matcher(*entry.key()))
+            except ApproximateMatchError:
+                # For Snowflake and other case-insensitive databases, an approximate
+                # match (case difference) IS the same relation, so treat as match
+                return True
+
         catalog_entry = _find_first(
             chain(catalog.nodes.values(), catalog.sources.values()),
-            matches_relation_case_insensitive,
+            matcher,
         )
         if catalog_entry:
             logger.info(

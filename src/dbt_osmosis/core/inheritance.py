@@ -18,6 +18,7 @@ __all__ = [
     "_build_node_ancestor_tree",
     "_clean_graph_edge",
     "_collect_column_variants",
+    "_column_to_dict",
     "_find_matching_column",
     "_get_inherited_metadata_from_progenitor",
     "_get_node_yaml",
@@ -25,6 +26,32 @@ __all__ = [
     "_get_unrendered",
     "_merge_graph_node_data",
 ]
+
+
+def _column_to_dict(column: t.Any, **kwargs: t.Any) -> dict[str, t.Any]:
+    """Convert a ColumnInfo to dict, handling missing config attribute in dbt-core 1.10+.
+
+    In dbt-core 1.10+, ColumnInfo objects may not have a 'config' attribute set,
+    which causes mashumaro serialization to fail. This helper ensures the attribute
+    exists before calling to_dict().
+
+    Args:
+        column: A ColumnInfo object from dbt.artifacts.resources
+        **kwargs: Additional arguments to pass to to_dict() (e.g., omit_none=True)
+
+    Returns:
+        Dictionary representation of the column
+
+    """
+    if not hasattr(column, "config"):
+        try:
+            module = import_module("dbt.artifacts.resources.v1.components")
+            column_config = getattr(module, "ColumnConfig", None)
+            if column_config is not None:
+                t.cast("t.Any", column).config = column_config()
+        except (ImportError, AttributeError):
+            pass  # Older dbt version, attribute should already exist
+    return column.to_dict(**kwargs)
 
 
 def _build_node_ancestor_tree(
@@ -173,7 +200,7 @@ def _build_graph_edge(
     node_column_variants: dict[str, list[str]],
 ) -> dict[str, t.Any]:
     """Build a graph edge from incoming column with inheritance applied."""
-    graph_edge = incoming.to_dict(omit_none=True)
+    graph_edge = _column_to_dict(incoming, omit_none=True)
 
     from dbt_osmosis.core.introspection import _get_setting_for_node
 
@@ -533,14 +560,7 @@ def _build_column_knowledge_graph(
     # This ensures local metadata is preserved and merged with inherited metadata
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
     for name, column in node.columns.items():
-        # PATCH: Fix missing config attribute in dbt-core 1.11+ objects causing mashumaro serialization error
-        if not hasattr(column, "config"):
-            module = import_module("dbt.artifacts.resources.v1.components")
-            column_config = getattr(module, "ColumnConfig", None)
-            if column_config is not None:
-                t.cast("t.Any", column).config = column_config()
-
-        column_data = column.to_dict(omit_none=True)
+        column_data = _column_to_dict(column, omit_none=True)
 
         # Clear out osmosis_progenitor if it points to the target node itself
         # (this can happen from previous runs or dbt docs generate)
@@ -609,7 +629,7 @@ def _build_column_knowledge_graph(
                         ):
                             # Get the current column data to build the edge
                             incoming = node.columns[name]
-                            graph_edge = incoming.to_dict(omit_none=True)
+                            graph_edge = _column_to_dict(incoming, omit_none=True)
                             # Set osmosis_progenitor to the target node itself
                             graph_edge.setdefault("meta", {})["osmosis_progenitor"] = node.unique_id
 
