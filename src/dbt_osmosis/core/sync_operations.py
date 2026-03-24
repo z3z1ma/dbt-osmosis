@@ -255,7 +255,10 @@ def _sync_doc_section(
 
         incoming_columns.append(merged)
 
-    doc_section["columns"] = incoming_columns
+    if incoming_columns:
+        doc_section["columns"] = incoming_columns
+    else:
+        doc_section.pop("columns", None)
 
 
 def _get_resource_type_key(node: ResultNode) -> str:

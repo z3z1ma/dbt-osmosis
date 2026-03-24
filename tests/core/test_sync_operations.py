@@ -7,7 +7,7 @@ import pytest
 from dbt_osmosis.core.inheritance import _get_node_yaml
 from dbt_osmosis.core.schema.writer import commit_yamls
 from dbt_osmosis.core.settings import YamlRefactorContext
-from dbt_osmosis.core.sync_operations import sync_node_to_yaml
+from dbt_osmosis.core.sync_operations import _sync_doc_section, sync_node_to_yaml
 
 
 @pytest.fixture(scope="function")
@@ -355,6 +355,57 @@ def test_add_inheritance_for_specified_keys_still_works(
         )
 
 
+def _make_empty_node_context():
+    """Build minimal mocks for _sync_doc_section with a node that has no columns."""
+    context = mock.MagicMock()
+    context.settings.scaffold_empty_configs = False
+    context.settings.skip_add_data_types = False
+    context.settings.skip_merge_meta = False
+    context.settings.use_unrendered_descriptions = False
+    context.settings.prefer_yaml_values = False
+    context.settings.output_to_upper = False
+    context.settings.output_to_lower = False
+    context.placeholders = set()
+    context.project.runtime_cfg.credentials.type = "duckdb"
+    context.project.is_dbt_v1_10_or_greater = False
+    context.read_catalog.return_value = None
+
+    node = mock.MagicMock()
+    node.unique_id = "source.test.my_source.my_table"
+    node.description = ""
+    node.columns = {}
+
+    return context, node
+
+
+def test_sync_doc_section_no_columns_key_not_added():
+    """When a node has no columns, _sync_doc_section must not add columns: [] to the doc_section."""
+    context, node = 
+    ()
+    doc_section: dict = {"name": "my_table"}
+
+    _sync_doc_section(context, node, doc_section)
+
+    assert "columns" not in doc_section, (
+        "Expected 'columns' key to be absent when node has no columns"
+    )
+
+
+def test_sync_doc_section_existing_empty_columns_removed():
+    """When doc_section already has columns: [] and the node has no columns,
+    _sync_doc_section must remove the empty list rather than leaving it in place.
+
+    This covers the case where osmosis previously wrote columns: [] and the user
+    has skip-add-source-columns enabled.
+    """
+    context, node = _make_empty_node_context()
+    doc_section: dict = {"name": "my_table", "columns": []}
+
+    _sync_doc_section(context, node, doc_section)
+
+    assert "columns" not in doc_section, (
+        "Expected pre-existing 'columns: []' to be removed when node has no columns"
+    )
 def test_fusion_compat_pushes_meta_into_config(
     yaml_context: YamlRefactorContext,
     fresh_caches,
