@@ -154,6 +154,9 @@ def _write_yaml(
                             if path in _YAML_ORIGINAL_CACHE:
                                 del _YAML_ORIGINAL_CACHE[path]
 
+                        if written_file_tracker:
+                            written_file_tracker(path)
+                    
                     except Exception as e:
                         # Clean up temp file on any error
                         if temp_path.exists():
@@ -168,8 +171,6 @@ def _write_yaml(
                 # Track mutation regardless of dry_run (enables --check with --dry-run)
                 if mutation_tracker:
                     mutation_tracker(1)
-                if written_file_tracker:
-                    written_file_tracker(path)
             else:
                 logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
                 # Clear cache entry even when no changes (to keep cache consistent)
@@ -266,6 +267,9 @@ def commit_yamls(
                                 if path in _YAML_ORIGINAL_CACHE:
                                     del _YAML_ORIGINAL_CACHE[path]
 
+                        if written_file_tracker:
+                            written_file_tracker(path)
+                        
                         except Exception as e:
                             # Clean up temp file on any error
                             if temp_path.exists():
@@ -280,8 +284,7 @@ def commit_yamls(
                     # Track mutation regardless of dry_run (enables --check with --dry-run)
                     if mutation_tracker:
                         mutation_tracker(1)
-                    if written_file_tracker:
-                        written_file_tracker(path)
+
                 else:
                     logger.debug(":white_check_mark: Skipping => %s (no changes)", path)
                     # Clear cache entry even when no changes (to keep cache consistent)
