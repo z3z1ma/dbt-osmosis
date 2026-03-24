@@ -213,7 +213,8 @@ def test_inherit_upstream_column_knowledge_with_various_settings(
     local_column.tags = ["baz"]
     local_column.meta = {"c": 3}
 
-    # Apply settings
+    # Apply settings; disable fusion_compat to test classic YAML output format
+    yaml_context.settings.fusion_compat = False
     for key, value in settings.items():
         setattr(yaml_context.settings, key, value)
 

@@ -218,6 +218,18 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         default=False,
         help="Remove trailing blank lines at EOF when writing YAML.",
     )
+    @click.option(
+        "--fusion-compat/--no-fusion-compat",
+        default=None,
+        help="Output Fusion-compatible YAML with meta/tags nested inside config blocks. Auto-detects from dbt >= 1.9.6 if not specified.",
+    )
+    @click.option(
+        "--formatter",
+        type=click.STRING,
+        default=None,
+        help='External command to format written YAML files (e.g. "prettier --write", "yamlfmt"). '
+        "File paths are appended as arguments. Skipped during --dry-run.",
+    )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         if kwargs.get("disable_introspection") and not kwargs.get("catalog_path"):
@@ -227,6 +239,15 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def _run_formatter_if_configured(context: YamlRefactorContext) -> None:
+    """Run the external formatter on written files if configured and applicable."""
+    formatter = context.resolved_formatter
+    if formatter and not context.settings.dry_run and context.written_files:
+        from dbt_osmosis.core.formatting import run_external_formatter
+
+        run_external_formatter(formatter, context.written_files, context.project_root)
 
 
 @yaml.command(context_settings=_CONTEXT)
@@ -377,6 +398,8 @@ def refactor(
 
         _ = transform(context=typed_context)
 
+        _run_formatter_if_configured(context)
+
         if check and context.mutated:
             exit(1)
 
@@ -432,6 +455,8 @@ def organize(
             plan=draft_restructure_delta_plan(typed_context),
             confirm=not auto_apply,
         )
+
+        _run_formatter_if_configured(context)
 
         if check and context.mutated:
             exit(1)
@@ -568,6 +593,8 @@ def document(
             transform >>= synthesize_missing_documentation_with_openai
 
         _ = transform(context=typed_context)
+
+        _run_formatter_if_configured(context)
 
         if check and context.mutated:
             exit(1)

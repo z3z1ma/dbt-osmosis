@@ -117,7 +117,7 @@ class TestGenerateSourcesFromDatabase:
         mock_to_yaml.return_value = "version: 2\nsources: []"
 
         result = generate_sources_from_database(
-            context=yaml_context,
+            context=yaml_context.project,
             source_name="raw",
             schema_name="public",
         )
@@ -135,7 +135,7 @@ class TestGenerateSourcesFromDatabase:
         mock_generator.generate_sources.return_value = []
 
         result = generate_sources_from_database(
-            context=yaml_context,
+            context=yaml_context.project,
             source_name="raw",
         )
 
@@ -150,7 +150,7 @@ class TestGenerateSourcesFromDatabase:
         mock_generator.generate_sources.return_value = []
 
         generate_sources_from_database(
-            context=yaml_context,
+            context=yaml_context.project,
             source_name="raw",
             exclude_schemas=["scratch", "tmp"],
             exclude_tables=["_temp", "_test"],
@@ -168,7 +168,7 @@ class TestGenerateSourcesFromDatabase:
 
         custom_path = Path("/custom/path/sources.yml")
         result = generate_sources_from_database(
-            context=yaml_context,
+            context=yaml_context.project,
             source_name="raw",
             output_path=custom_path,
         )
@@ -182,7 +182,7 @@ class TestGenerateSourcesFromDatabase:
 
         with pytest.raises(Exception, match="Database connection failed"):
             generate_sources_from_database(
-                context=yaml_context,
+                context=yaml_context.project,
                 source_name="raw",
             )
 
@@ -218,7 +218,7 @@ class TestGenerateStagingFromSource:
                 # Mock write_staging_files
                 with mock.patch("dbt_osmosis.core.generators.write_staging_files"):
                     result = generate_staging_from_source(
-                        context=yaml_context,
+                        context=yaml_context.project,
                         source_name="raw",
                         table_name="users",
                         use_ai=True,
@@ -245,11 +245,11 @@ class TestGenerateStagingFromSource:
             }
 
             with mock.patch(
-                "dbt_osmosis.core.generators.generate_staging_model_from_source",
+                "dbt_core_interface.staging_generator.generate_staging_model_from_source",
                 return_value=result_dict,
             ):
                 result = generate_staging_from_source(
-                    context=yaml_context,
+                    context=yaml_context.project,
                     source_name="raw",
                     table_name="orders",
                     use_ai=False,
@@ -263,12 +263,12 @@ class TestGenerateStagingFromSource:
         with mock.patch("dbt_osmosis.core.generators._get_source_definition", return_value=None):
             with pytest.raises(ValueError, match="Source raw.users not found"):
                 generate_staging_from_source(
-                    context=yaml_context,
+                    context=yaml_context.project,
                     source_name="raw",
                     table_name="users",
                 )
 
-    def test_generate_staging_with_custom_path(self, yaml_context):
+    def test_generate_staging_with_custom_path(self, yaml_context, tmp_path):
         """Test staging generation with custom output path."""
         mock_source = mock.MagicMock()
         mock_source.source_name = "raw"
@@ -284,12 +284,12 @@ class TestGenerateStagingFromSource:
             }
 
             with mock.patch(
-                "dbt_osmosis.core.generators.generate_staging_model_from_source",
+                "dbt_core_interface.staging_generator.generate_staging_model_from_source",
                 return_value=result_dict,
             ):
-                custom_path = Path("/custom/staging")
+                custom_path = tmp_path / "custom" / "staging"
                 result = generate_staging_from_source(
-                    context=yaml_context,
+                    context=yaml_context.project,
                     source_name="raw",
                     table_name="users",
                     use_ai=False,
@@ -316,7 +316,7 @@ class TestGenerateStagingFromSource:
             ):
                 with pytest.raises(Exception, match="AI generation failed"):
                     generate_staging_from_source(
-                        context=yaml_context,
+                        context=yaml_context.project,
                         source_name="raw",
                         table_name="users",
                         use_ai=True,
@@ -326,7 +326,7 @@ class TestGenerateStagingFromSource:
 class TestCheckDocumentation:
     """Tests for the check_documentation function."""
 
-    @mock.patch("dbt_osmosis.core.generators.DocumentationChecker")
+    @mock.patch("dbt_core_interface.doc_checker.DocumentationChecker")
     def test_check_documentation_basic(self, mock_checker_class, yaml_context):
         """Test basic documentation check."""
         # Mock the checker
@@ -346,7 +346,7 @@ class TestCheckDocumentation:
         mock_checker.check_project.return_value = mock_report
 
         result = check_documentation(
-            context=yaml_context,
+            context=yaml_context.project,
         )
 
         assert isinstance(result, DocumentationCheckResult)
@@ -354,7 +354,7 @@ class TestCheckDocumentation:
         assert result.documented_columns == 75
         assert result.undocumented_columns == 25
 
-    @mock.patch("dbt_osmosis.core.generators.DocumentationChecker")
+    @mock.patch("dbt_core_interface.doc_checker.DocumentationChecker")
     def test_check_documentation_with_filter(self, mock_checker_class, yaml_context):
         """Test documentation check with model filter."""
         mock_checker = mock.MagicMock()
@@ -372,13 +372,13 @@ class TestCheckDocumentation:
         mock_checker.check_project.return_value = mock_report
 
         result = check_documentation(
-            context=yaml_context,
+            context=yaml_context.project,
             model_filter="users",
         )
 
         assert result.total_models == 1
 
-    @mock.patch("dbt_osmosis.core.generators.DocumentationChecker")
+    @mock.patch("dbt_core_interface.doc_checker.DocumentationChecker")
     def test_check_documentation_custom_thresholds(self, mock_checker_class, yaml_context):
         """Test documentation check with custom thresholds."""
         mock_checker = mock.MagicMock()
@@ -396,7 +396,7 @@ class TestCheckDocumentation:
         mock_checker.check_project.return_value = mock_report
 
         check_documentation(
-            context=yaml_context,
+            context=yaml_context.project,
             min_model_length=20,
             min_column_length=10,
         )
@@ -407,7 +407,7 @@ class TestCheckDocumentation:
         assert call_kwargs["min_model_description_length"] == 20
         assert call_kwargs["min_column_description_length"] == 10
 
-    @mock.patch("dbt_osmosis.core.generators.DocumentationChecker")
+    @mock.patch("dbt_core_interface.doc_checker.DocumentationChecker")
     def test_check_documentation_with_gaps(self, mock_checker_class, yaml_context):
         """Test documentation check with gaps identified."""
         mock_checker = mock.MagicMock()
@@ -434,12 +434,12 @@ class TestCheckDocumentation:
         mock_checker.check_project.return_value = mock_report
 
         result = check_documentation(
-            context=yaml_context,
+            context=yaml_context.project,
         )
 
         assert len(result.gaps) == 2
 
-    @mock.patch("dbt_osmosis.core.generators.DocumentationChecker")
+    @mock.patch("dbt_core_interface.doc_checker.DocumentationChecker")
     def test_check_documentation_zero_coverage(self, mock_checker_class, yaml_context):
         """Test documentation check with zero coverage."""
         mock_checker = mock.MagicMock()
@@ -457,7 +457,7 @@ class TestCheckDocumentation:
         mock_checker.check_project.return_value = mock_report
 
         result = check_documentation(
-            context=yaml_context,
+            context=yaml_context.project,
         )
 
         assert result.documented_columns == 0
@@ -474,19 +474,19 @@ class TestGetSourceDefinition:
         mock_source.source_name = "raw"
         mock_source.name = "users"
 
-        yaml_context.manifest.sources = {
+        yaml_context.project.manifest.sources = {
             "source.raw.users": mock_source,
         }
 
-        result = _get_source_definition(yaml_context, "raw", "users")
+        result = _get_source_definition(yaml_context.project, "raw", "users")
 
         assert result == mock_source
 
     def test_get_source_not_found(self, yaml_context):
         """Test getting a source that doesn't exist."""
-        yaml_context.manifest.sources = {}
+        yaml_context.project.manifest.sources = {}
 
-        result = _get_source_definition(yaml_context, "raw", "nonexistent")
+        result = _get_source_definition(yaml_context.project, "raw", "nonexistent")
 
         assert result is None
 
@@ -496,11 +496,11 @@ class TestGetSourceDefinition:
         mock_source.source_name = "prod"
         mock_source.name = "users"
 
-        yaml_context.manifest.sources = {
+        yaml_context.project.manifest.sources = {
             "source.prod.users": mock_source,
         }
 
-        result = _get_source_definition(yaml_context, "raw", "users")
+        result = _get_source_definition(yaml_context.project, "raw", "users")
 
         assert result is None
 
@@ -514,12 +514,12 @@ class TestGetSourceDefinition:
         mock_source2.source_name = "raw"
         mock_source2.name = "orders"
 
-        yaml_context.manifest.sources = {
+        yaml_context.project.manifest.sources = {
             "source.raw.users": mock_source1,
             "source.raw.orders": mock_source2,
         }
 
-        result = _get_source_definition(yaml_context, "raw", "orders")
+        result = _get_source_definition(yaml_context.project, "raw", "orders")
 
         assert result == mock_source2
 
@@ -527,16 +527,16 @@ class TestGetSourceDefinition:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    @mock.patch("dbt_osmosis.core.generators.SourceGenerator")
+    @mock.patch("dbt_core_interface.source_generator.SourceGenerator")
     def test_generate_sources_empty_yaml(self, mock_generator_class, yaml_context):
         """Test handling of empty YAML output."""
         mock_generator = mock.MagicMock()
         mock_generator_class.return_value = mock_generator
         mock_generator.generate_sources.return_value = []
 
-        with mock.patch("dbt_osmosis.core.generators.to_yaml", return_value=""):
+        with mock.patch("dbt_core_interface.source_generator.to_yaml", return_value=""):
             result = generate_sources_from_database(
-                context=yaml_context,
+                context=yaml_context.project,
                 source_name="raw",
             )
 
@@ -558,11 +558,11 @@ class TestEdgeCases:
             }
 
             with mock.patch(
-                "dbt_osmosis.core.generators.generate_staging_model_from_source",
+                "dbt_core_interface.staging_generator.generate_staging_model_from_source",
                 return_value=result_dict,
             ):
                 result = generate_staging_from_source(
-                    context=yaml_context,
+                    context=yaml_context.project,
                     source_name="raw",
                     table_name="empty_table",
                     use_ai=False,
@@ -570,17 +570,17 @@ class TestEdgeCases:
 
                 assert result.staging_name == "stg_empty_table"
 
-    @mock.patch("dbt_osmosis.core.generators.DocumentationChecker")
+    @mock.patch("dbt_core_interface.doc_checker.DocumentationChecker")
     def test_check_documentation_exception(self, mock_checker_class, yaml_context):
         """Test that exceptions are propagated."""
         mock_checker_class.side_effect = Exception("Checker failed")
 
         with pytest.raises(Exception, match="Checker failed"):
             check_documentation(
-                context=yaml_context,
+                context=yaml_context.project,
             )
 
-    @mock.patch("dbt_osmosis.core.generators.SourceGenerator")
+    @mock.patch("dbt_core_interface.source_generator.SourceGenerator")
     def test_generate_sources_invalid_yaml(self, mock_generator_class, yaml_context):
         """Test handling of invalid YAML generation."""
         mock_generator = mock.MagicMock()
@@ -592,18 +592,19 @@ class TestEdgeCases:
 
         # Mock to_yaml to raise an exception
         with mock.patch(
-            "dbt_osmosis.core.generators.to_yaml", side_effect=Exception("YAML generation failed")
+            "dbt_core_interface.source_generator.to_yaml",
+            side_effect=Exception("YAML generation failed"),
         ):
             with pytest.raises(Exception, match="YAML generation failed"):
                 generate_sources_from_database(
-                    context=yaml_context,
+                    context=yaml_context.project,
                     source_name="raw",
                 )
 
     def test_get_source_empty_manifest(self, yaml_context):
         """Test getting source from empty manifest."""
-        yaml_context.manifest.sources = {}
+        yaml_context.project.manifest.sources = {}
 
-        result = _get_source_definition(yaml_context, "raw", "users")
+        result = _get_source_definition(yaml_context.project, "raw", "users")
 
         assert result is None

@@ -18,8 +18,9 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 
 dependencies = [
   "click>7,<9",
@@ -36,7 +37,7 @@ dependencies = [
 workbench = [
   "streamlit>=1.20.0,<1.42.0",
   "streamlit-ace~=0.1.1",
-  "ydata-profiling~=4.13.0",
+  "ydata-profiling>=4.17.0",
   "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
   "dbt-duckdb>=1.8.0",
@@ -63,7 +64,7 @@ override-dependencies = ["protobuf>=5.0,<6.0"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312", "py313"]
 preview = true
 
 [tool.isort]
