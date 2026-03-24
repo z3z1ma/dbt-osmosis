@@ -69,6 +69,18 @@ tasks:
           uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
           uv run pytest
         silent: true
+      - for:
+          matrix:
+            python_version: ["3.10", "3.11", "3.12", "3.13"]
+            dbt_version: ["1.10.0"]
+        cmd: |
+          echo -e "\033[32mtask: [test] uv run pytest (python=={{.ITEM.python_version}} and dbt~={{.ITEM.dbt_version}})\033[0m"
+          export UV_PYTHON={{.ITEM.python_version}}
+          uv -q sync --extra dev
+          uv -q pip install --reinstall dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_version}}
+          uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          uv run pytest
+        silent: true
 
   mutation-test:
     desc: Run mutation testing with mutmut (ensures tests catch bugs)
