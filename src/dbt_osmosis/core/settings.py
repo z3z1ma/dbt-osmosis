@@ -365,20 +365,13 @@ class YamlRefactorContext:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
         for setting, val in self.yaml_settings.items():
             setattr(self.yaml_handler, setting, val)
-        # Override max_workers with dbt's thread count if available, otherwise keep the safe default
+        # Override max_workers with dbt's thread count when available.
         if hasattr(self.project.runtime_cfg, "threads") and self.project.runtime_cfg.threads:
-            dbt_threads = self.project.runtime_cfg.threads
-            if dbt_threads < self.pool._max_workers:
-                self.pool._max_workers = dbt_threads
-                logger.info(
-                    ":notebook: Osmosis ThreadPoolExecutor max_workers capped to dbt threads => %s",
-                    self.pool._max_workers,
-                )
-            else:
-                logger.info(
-                    ":notebook: Osmosis ThreadPoolExecutor max_workers using dbt threads => %s",
-                    self.pool._max_workers,
-                )
+            self.pool._max_workers = self.project.runtime_cfg.threads
+            logger.info(
+                ":notebook: Osmosis ThreadPoolExecutor max_workers using dbt threads => %s",
+                self.pool._max_workers,
+            )
         else:
             logger.info(
                 ":notebook: Osmosis ThreadPoolExecutor max_workers using default => %s",

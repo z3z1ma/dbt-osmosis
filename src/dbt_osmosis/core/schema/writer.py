@@ -267,9 +267,9 @@ def commit_yamls(
                                 if path in _YAML_ORIGINAL_CACHE:
                                     del _YAML_ORIGINAL_CACHE[path]
 
-                        if written_file_tracker:
-                            written_file_tracker(path)
-                        
+                            if written_file_tracker:
+                                written_file_tracker(path)
+
                         except Exception as e:
                             # Clean up temp file on any error
                             if temp_path.exists():
