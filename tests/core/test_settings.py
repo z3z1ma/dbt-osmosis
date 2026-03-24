@@ -41,6 +41,7 @@ class TestYamlRefactorSettings:
         assert settings.output_to_lower is False
         assert settings.catalog_path is None
         assert settings.create_catalog_if_not_exists is False
+        assert settings.fusion_compat is None  # tri-state: None = auto-detect
 
     def test_custom_settings(self):
         """Test YamlRefactorSettings with custom values."""
@@ -498,3 +499,242 @@ class TestYamlRefactorContextIntegration:
         context.register_mutations(1)
         assert context.mutation_count == 1
         assert context.mutated
+
+
+class TestFusionCompat:
+    """Test suite for fusion_compat settings and auto-detection."""
+
+    @pytest.fixture(scope="function")
+    def mock_project_context(self):
+        mock_runtime_cfg = Mock()
+        mock_runtime_cfg.threads = 4
+        mock_runtime_cfg.vars = Mock()
+        mock_runtime_cfg.vars.to_dict.return_value = {}
+        project_context = Mock()
+        project_context.runtime_cfg = mock_runtime_cfg
+        return project_context
+
+    def test_fusion_compat_default_is_none(self):
+        """Test that fusion_compat defaults to None (auto-detect)."""
+        settings = YamlRefactorSettings()
+        assert settings.fusion_compat is None
+
+    def test_fusion_compat_explicit_true(self):
+        """Test that fusion_compat can be explicitly set to True."""
+        settings = YamlRefactorSettings(fusion_compat=True)
+        assert settings.fusion_compat is True
+
+    def test_fusion_compat_explicit_false(self):
+        """Test that fusion_compat can be explicitly set to False."""
+        settings = YamlRefactorSettings(fusion_compat=False)
+        assert settings.fusion_compat is False
+
+    def test_fusion_compat_property_explicit_true(self, mock_project_context):
+        """When fusion_compat=True, property returns True regardless of dbt version."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        settings = YamlRefactorSettings(fusion_compat=True)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is True
+
+    def test_fusion_compat_property_explicit_false(self, mock_project_context):
+        """When fusion_compat=False, property returns False regardless of dbt version."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = True
+        settings = YamlRefactorSettings(fusion_compat=False)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_auto_detect_new_dbt(self, mock_project_context):
+        """When fusion_compat=None and dbt >= 1.9.6, auto-detect returns True."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = True
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is True
+
+    def test_fusion_compat_auto_detect_old_dbt(self, mock_project_context):
+        """When fusion_compat=None and dbt < 1.9.6, auto-detect returns False."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = False
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_auto_detect_missing_attr(self, mock_project_context):
+        """When the project doesn't have the attribute, fall back to False."""
+        # Remove the attribute entirely via spec
+        del mock_project_context.is_dbt_v1_9_6_or_greater
+        del mock_project_context.is_fusion_manifest
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_fusion_manifest_detected(self, mock_project_context):
+        """When a Fusion manifest is detected, fusion_compat returns True even with old dbt."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = True
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is True
+
+    def test_fusion_compat_explicit_overrides_fusion_manifest(self, mock_project_context):
+        """Explicit fusion_compat=False overrides Fusion manifest detection."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = True
+        settings = YamlRefactorSettings(fusion_compat=False)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+    def test_fusion_compat_no_fusion_manifest_old_dbt(self, mock_project_context):
+        """No Fusion manifest + old dbt version = fusion_compat False."""
+        mock_project_context.is_dbt_v1_9_6_or_greater = False
+        mock_project_context.is_fusion_manifest = False
+        settings = YamlRefactorSettings(fusion_compat=None)
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.fusion_compat is False
+
+
+class TestFormatterSettings:
+    """Test suite for formatter field on YamlRefactorSettings."""
+
+    def test_formatter_default_is_none(self):
+        """Formatter defaults to None."""
+        settings = YamlRefactorSettings()
+        assert settings.formatter is None
+
+    def test_formatter_can_be_set(self):
+        """Formatter can be set to a command string."""
+        settings = YamlRefactorSettings(formatter="prettier --write")
+        assert settings.formatter == "prettier --write"
+
+    def test_formatter_yamlfmt(self):
+        """Formatter can be set to yamlfmt."""
+        settings = YamlRefactorSettings(formatter="yamlfmt")
+        assert settings.formatter == "yamlfmt"
+
+
+class TestWrittenFilesTracking:
+    """Test suite for written file tracking on YamlRefactorContext."""
+
+    @pytest.fixture(scope="function")
+    def mock_project_context(self):
+        mock_runtime_cfg = Mock()
+        mock_runtime_cfg.threads = 4
+        mock_runtime_cfg.vars = Mock()
+        mock_runtime_cfg.vars.to_dict.return_value = {}
+        mock_runtime_cfg.project_root = "/tmp/test_project"
+        project_context = Mock()
+        project_context.runtime_cfg = mock_runtime_cfg
+        return project_context
+
+    def test_written_files_initially_empty(self, mock_project_context):
+        """Written files set is empty on initialization."""
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.written_files == frozenset()
+        assert len(context.written_files) == 0
+
+    def test_register_written_file(self, mock_project_context):
+        """Files can be registered as written (stored as absolute paths)."""
+        context = YamlRefactorContext(project=mock_project_context)
+
+        path1 = Path("models/a.yml")
+        path2 = Path("models/b.yml")
+
+        context.register_written_file(path1)
+        assert path1.resolve() in context.written_files
+        assert len(context.written_files) == 1
+
+        context.register_written_file(path2)
+        assert path1.resolve() in context.written_files
+        assert path2.resolve() in context.written_files
+        assert len(context.written_files) == 2
+
+    def test_register_same_file_twice(self, mock_project_context):
+        """Registering the same file twice doesn't duplicate it."""
+        context = YamlRefactorContext(project=mock_project_context)
+
+        path = Path("models/a.yml")
+        context.register_written_file(path)
+        context.register_written_file(path)
+
+        assert len(context.written_files) == 1
+
+    def test_written_files_returns_frozenset(self, mock_project_context):
+        """The written_files property returns a frozenset (immutable)."""
+        context = YamlRefactorContext(project=mock_project_context)
+        context.register_written_file(Path("models/a.yml"))
+
+        result = context.written_files
+        assert isinstance(result, frozenset)
+
+
+class TestResolvedFormatter:
+    """Test suite for resolved_formatter property on YamlRefactorContext."""
+
+    @pytest.fixture(scope="function")
+    def mock_project_context(self):
+        mock_runtime_cfg = Mock()
+        mock_runtime_cfg.threads = 4
+        mock_runtime_cfg.vars = Mock()
+        mock_runtime_cfg.vars.to_dict.return_value = {}
+        mock_runtime_cfg.project_root = "/tmp/test_project"
+        project_context = Mock()
+        project_context.runtime_cfg = mock_runtime_cfg
+        return project_context
+
+    def test_resolved_formatter_from_cli_setting(self, mock_project_context):
+        """CLI formatter setting takes highest priority."""
+        settings = YamlRefactorSettings(formatter="prettier --write")
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.resolved_formatter == "prettier --write"
+
+    def test_resolved_formatter_none_when_not_configured(self, mock_project_context):
+        """Returns None when no formatter is configured anywhere."""
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None
+
+    def test_resolved_formatter_from_supplementary_file(self, mock_project_context, tmp_path):
+        """Reads formatter from dbt-osmosis.yml when CLI flag is not set."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text("formatter: yamlfmt\n")
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter == "yamlfmt"
+
+    def test_cli_overrides_supplementary_file(self, mock_project_context, tmp_path):
+        """CLI flag takes precedence over dbt-osmosis.yml."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text("formatter: yamlfmt\n")
+
+        settings = YamlRefactorSettings(formatter="prettier --write")
+        context = YamlRefactorContext(project=mock_project_context, settings=settings)
+        assert context.resolved_formatter == "prettier --write"
+
+    def test_supplementary_file_empty_formatter(self, mock_project_context, tmp_path):
+        """Empty formatter string in dbt-osmosis.yml is treated as None."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text("formatter: ''\n")
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None
+
+    def test_supplementary_file_invalid_yaml(self, mock_project_context, tmp_path):
+        """Invalid YAML in dbt-osmosis.yml is handled gracefully."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        supp_file = tmp_path / "dbt-osmosis.yml"
+        supp_file.write_text(": invalid: yaml: {{{\n")
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None
+
+    def test_supplementary_file_missing(self, mock_project_context, tmp_path):
+        """Missing dbt-osmosis.yml returns None."""
+        mock_project_context.runtime_cfg.project_root = str(tmp_path)
+
+        context = YamlRefactorContext(project=mock_project_context)
+        assert context.resolved_formatter is None

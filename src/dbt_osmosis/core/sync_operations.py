@@ -80,9 +80,13 @@ def _sync_doc_section(
             )
             continue
         cdict = meta.to_dict(omit_none=True)
-        # Filter out 'config' and 'doc_blocks' fields added in dbt-core >= 1.9.6
-        # These contain redundant meta/tags that duplicate top-level fields
-        cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
+        # Filter out fields added in dbt-core >= 1.9.6.
+        # In fusion_compat mode, preserve 'config' (meta/tags will be nested inside it).
+        # In classic mode, strip 'config' (meta/tags stay at top level).
+        if context.fusion_compat:
+            cdict = {k: v for k, v in cdict.items() if k != "doc_blocks"}
+        else:
+            cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
         cdict["name"] = name
         from dbt_osmosis.core.introspection import _get_setting_for_node, normalize_column_name
 
@@ -169,7 +173,29 @@ def _sync_doc_section(
                 continue
             merged[k] = v
 
-        if context.project.is_dbt_v1_10_or_greater:
+        if context.fusion_compat:
+            # Fusion mode: push top-level meta/tags INTO config block
+            config_value = merged.get("config")
+            if not isinstance(config_value, dict):
+                config_value = {}
+            meta_value = merged.pop("meta", None)
+            tags_value = merged.pop("tags", None)
+            if isinstance(meta_value, dict) and meta_value:
+                existing_config_meta = config_value.get("meta", {})
+                config_value["meta"] = {**existing_config_meta, **meta_value}
+            if isinstance(tags_value, list) and tags_value:
+                existing_config_tags = config_value.get("tags", [])
+                seen = set(existing_config_tags)
+                merged_tags = list(existing_config_tags)
+                for tag in tags_value:
+                    if tag not in seen:
+                        merged_tags.append(tag)
+                        seen.add(tag)
+                config_value["tags"] = merged_tags
+            if config_value:
+                merged["config"] = config_value
+        elif context.project.is_dbt_v1_10_or_greater:
+            # Classic mode for dbt >= 1.10: pull config.meta UP to top-level meta
             meta_value = merged.get("meta")
             config_value = merged.get("config")
             config_meta = config_value.get("meta") if isinstance(config_value, dict) else None
@@ -192,6 +218,16 @@ def _sync_doc_section(
                     merged["config"] = config_dict
                 else:
                     merged.pop("config", None)
+
+        # Clean up empty nested config entries (e.g., config: {meta: {}, tags: []})
+        if isinstance(merged.get("config"), dict):
+            config = merged["config"]
+            if config.get("meta", {}) == {}:
+                config.pop("meta", None)
+            if config.get("tags", []) == []:
+                config.pop("tags", None)
+            if not config:
+                merged.pop("config", None)
 
         if merged.get("description") is None:
             merged.pop("description", None)
@@ -512,6 +548,7 @@ def _sync_single_node_to_yaml(
             dry_run=context.settings.dry_run,
             mutation_tracker=context.register_mutations,
             strip_eof_blank_lines=context.settings.strip_eof_blank_lines,
+            written_file_tracker=getattr(context, "register_written_file", None),
         )
 
 
