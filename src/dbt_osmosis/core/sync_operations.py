@@ -198,27 +198,14 @@ def _sync_doc_section(
         elif context.project.is_dbt_v1_10_or_greater:
             # Classic mode for dbt >= 1.10: pull config.meta UP to top-level meta
             meta_value = merged.get("meta")
-            config_value = merged.get("config")
-            config_meta = config_value.get("meta") if isinstance(config_value, dict) else None
-            if isinstance(meta_value, dict) and isinstance(config_meta, dict):
-                merged["meta"] = {
-                    **t.cast("dict[str, t.Any]", config_meta),
-                    **t.cast("dict[str, t.Any]", meta_value),
-                }
-                config_dict = dict(t.cast("dict[str, t.Any]", config_value))
-                config_dict.pop("meta", None)
-                if config_dict:
-                    merged["config"] = config_dict
-                else:
-                    merged.pop("config", None)
-            elif isinstance(config_meta, dict) and not skip_merge_meta:
-                merged["meta"] = t.cast("dict[str, t.Any]", config_meta)
-                config_dict = dict(t.cast("dict[str, t.Any]", config_value))
-                config_dict.pop("meta", None)
-                if config_dict:
-                    merged["config"] = config_dict
-                else:
-                    merged.pop("config", None)
+            if isinstance(meta_value, dict) and meta_value:
+                # dbt 1.9+ recommends column-level meta under config.meta, not as a top-level property
+                # Top-level meta for columns is deprecated in dbt 1.9+
+                # See: https://docs.getdbt.com/reference/deprecations
+                if not isinstance(merged.get("config"), dict):
+                    merged["config"] = {}
+                merged["config"]["meta"] = meta_value
+                merged.pop("meta", None)
 
         # Clean up empty nested config entries (e.g., config: {meta: {}, tags: []})
         if isinstance(merged.get("config"), dict):
