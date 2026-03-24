@@ -156,7 +156,7 @@ def _write_yaml(
 
                         if written_file_tracker:
                             written_file_tracker(path)
-                    
+
                     except Exception as e:
                         # Clean up temp file on any error
                         if temp_path.exists():
