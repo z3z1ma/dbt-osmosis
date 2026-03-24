@@ -13,7 +13,6 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
 from dbt_osmosis.core import logger
-from dbt_osmosis.core.inheritance import _column_to_dict
 
 __all__ = [
     "PLAN_OUTPUT_TRUNCATION_LENGTH",

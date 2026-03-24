@@ -1169,7 +1169,7 @@ def get_columns(
 
         catalog_entry = _find_first(
             chain(catalog.nodes.values(), catalog.sources.values()),
-            matcher,
+            matches_relation,
         )
         if catalog_entry:
             logger.info(

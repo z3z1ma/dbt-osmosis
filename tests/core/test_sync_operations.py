@@ -380,8 +380,7 @@ def _make_empty_node_context():
 
 def test_sync_doc_section_no_columns_key_not_added():
     """When a node has no columns, _sync_doc_section must not add columns: [] to the doc_section."""
-    context, node = 
-    ()
+    context, node = _make_empty_node_context()
     doc_section: dict = {"name": "my_table"}
 
     _sync_doc_section(context, node, doc_section)
@@ -406,6 +405,8 @@ def test_sync_doc_section_existing_empty_columns_removed():
     assert "columns" not in doc_section, (
         "Expected pre-existing 'columns: []' to be removed when node has no columns"
     )
+
+
 def test_fusion_compat_pushes_meta_into_config(
     yaml_context: YamlRefactorContext,
     fresh_caches,

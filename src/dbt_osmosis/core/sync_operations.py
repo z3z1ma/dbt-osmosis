@@ -11,7 +11,6 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
 from dbt_osmosis.core import logger
-from dbt_osmosis.core.inheritance import _column_to_dict
 
 __all__ = [
     "_sync_doc_section",
@@ -195,17 +194,33 @@ def _sync_doc_section(
                 config_value["tags"] = merged_tags
             if config_value:
                 merged["config"] = config_value
-        elif context.project.is_dbt_v1_10_or_greater:
-            # Classic mode for dbt >= 1.10: pull config.meta UP to top-level meta
-            meta_value = merged.get("meta")
-            if isinstance(meta_value, dict) and meta_value:
-                # dbt 1.9+ recommends column-level meta under config.meta, not as a top-level property
-                # Top-level meta for columns is deprecated in dbt 1.9+
-                # See: https://docs.getdbt.com/reference/deprecations
-                if not isinstance(merged.get("config"), dict):
-                    merged["config"] = {}
-                merged["config"]["meta"] = meta_value
-                merged.pop("meta", None)
+        else:
+            # Classic mode: keep meta/tags at top level and strip config wrappers.
+            config_value = merged.get("config")
+            if isinstance(config_value, dict):
+                config_meta = config_value.get("meta")
+                if isinstance(config_meta, dict) and config_meta:
+                    existing_meta = merged.get("meta")
+                    if isinstance(existing_meta, dict):
+                        merged["meta"] = {**config_meta, **existing_meta}
+                    else:
+                        merged["meta"] = config_meta
+
+                config_tags = config_value.get("tags")
+                if isinstance(config_tags, list) and config_tags:
+                    existing_tags = merged.get("tags")
+                    if isinstance(existing_tags, list):
+                        seen = set(existing_tags)
+                        merged_tags = list(existing_tags)
+                        for tag in config_tags:
+                            if tag not in seen:
+                                merged_tags.append(tag)
+                                seen.add(tag)
+                        merged["tags"] = merged_tags
+                    else:
+                        merged["tags"] = config_tags
+
+                merged.pop("config", None)
 
         # Clean up empty nested config entries (e.g., config: {meta: {}, tags: []})
         if isinstance(merged.get("config"), dict):
