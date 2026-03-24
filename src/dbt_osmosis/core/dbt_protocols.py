@@ -140,6 +140,11 @@ class YamlRefactorContextProtocol(t.Protocol):
         """Get YAML formatting settings from dbt config."""
         ...
 
+    @property
+    def fusion_compat(self) -> bool:
+        """Whether to output Fusion-compatible YAML (meta/tags inside config block)."""
+        ...
+
     def read_catalog(self) -> CatalogResults | None:
         """Read and cache the catalog file."""
         ...

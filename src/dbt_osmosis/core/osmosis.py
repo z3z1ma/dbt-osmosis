@@ -107,6 +107,9 @@ from dbt_osmosis.core.restructuring import (
     pretty_print_plan,
 )
 
+# External formatter integration
+from dbt_osmosis.core.formatting import run_external_formatter as run_external_formatter  # noqa: F401
+
 # Schema parsing and writing
 from dbt_osmosis.core.schema.parser import (
     create_yaml_instance,

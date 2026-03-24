@@ -18,6 +18,7 @@ __all__ = [
     "_build_node_ancestor_tree",
     "_clean_graph_edge",
     "_collect_column_variants",
+    "_column_to_dict",
     "_find_matching_column",
     "_get_inherited_metadata_from_progenitor",
     "_get_node_yaml",
@@ -25,6 +26,32 @@ __all__ = [
     "_get_unrendered",
     "_merge_graph_node_data",
 ]
+
+
+def _column_to_dict(column: t.Any, **kwargs: t.Any) -> dict[str, t.Any]:
+    """Convert a ColumnInfo to dict, handling missing config attribute in dbt-core 1.10+.
+
+    In dbt-core 1.10+, ColumnInfo objects may not have a 'config' attribute set,
+    which causes mashumaro serialization to fail. This helper ensures the attribute
+    exists before calling to_dict().
+
+    Args:
+        column: A ColumnInfo object from dbt.artifacts.resources
+        **kwargs: Additional arguments to pass to to_dict() (e.g., omit_none=True)
+
+    Returns:
+        Dictionary representation of the column
+
+    """
+    if not hasattr(column, "config"):
+        try:
+            module = import_module("dbt.artifacts.resources.v1.components")
+            column_config = getattr(module, "ColumnConfig", None)
+            if column_config is not None:
+                t.cast("t.Any", column).config = column_config()
+        except (ImportError, AttributeError):
+            pass  # Older dbt version, attribute should already exist
+    return column.to_dict(**kwargs)
 
 
 def _build_node_ancestor_tree(
@@ -173,7 +200,7 @@ def _build_graph_edge(
     node_column_variants: dict[str, list[str]],
 ) -> dict[str, t.Any]:
     """Build a graph edge from incoming column with inheritance applied."""
-    graph_edge = incoming.to_dict(omit_none=True)
+    graph_edge = _column_to_dict(incoming, omit_none=True)
 
     from dbt_osmosis.core.introspection import _get_setting_for_node
 
@@ -257,6 +284,16 @@ def _clean_graph_edge(
     if graph_edge.get("meta") == {}:
         del graph_edge["meta"]
 
+    # Clean up empty nested config entries (handles data from fusion_compat mode)
+    if isinstance(graph_edge.get("config"), dict):
+        config = graph_edge["config"]
+        if config.get("meta", {}) == {}:
+            config.pop("meta", None)
+        if config.get("tags", []) == []:
+            config.pop("tags", None)
+        if not config:
+            graph_edge.pop("config", None)
+
     # Remove None values
     for k in list(graph_edge.keys()):
         if graph_edge[k] is None:
@@ -277,12 +314,12 @@ def _merge_graph_node_data(
     graph_edge: dict[str, t.Any],
 ) -> None:
     """Merge graph edge data into existing graph node, handling tags and meta merging."""
-    # Merge tags
+    # Merge top-level tags
     current_tags = graph_node.get("tags", [])
     if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
         graph_edge["tags"] = list(merged_tags)
 
-    # Merge meta, but preserve osmosis_progenitor from the first (farthest) generation
+    # Merge top-level meta, but preserve osmosis_progenitor from the first (farthest) generation
     # The osmosis_progenitor should always point to the original source, not intermediate sources
     current_meta = graph_node.get("meta", {})
     edge_meta = graph_edge.pop("meta", {})
@@ -294,6 +331,33 @@ def _merge_graph_node_data(
         # Restore the original progenitor if it existed
         if progenitor:
             graph_edge["meta"]["osmosis_progenitor"] = progenitor
+
+    # Merge config-level meta and tags (handles data from fusion_compat mode)
+    current_config = graph_node.get("config")
+    edge_config = graph_edge.pop("config", None)
+    if isinstance(current_config, dict) or isinstance(edge_config, dict):
+        current_config = current_config if isinstance(current_config, dict) else {}
+        edge_config = edge_config if isinstance(edge_config, dict) else {}
+        # Merge config.meta
+        current_config_meta = current_config.get("meta", {})
+        edge_config_meta = edge_config.pop("meta", {})
+        config_progenitor = current_config_meta.get("osmosis_progenitor")
+        merged_config_meta = {**current_config_meta, **edge_config_meta}
+        if config_progenitor:
+            merged_config_meta["osmosis_progenitor"] = config_progenitor
+        if merged_config_meta:
+            edge_config["meta"] = merged_config_meta
+        # Merge config.tags
+        current_config_tags = current_config.get("tags", [])
+        edge_config_tags = edge_config.pop("tags", [])
+        if merged_config_tags := (set(edge_config_tags) | set(current_config_tags)):
+            edge_config["tags"] = list(merged_config_tags)
+        # Merge remaining config keys
+        for k, v in current_config.items():
+            if k not in edge_config:
+                edge_config[k] = v
+        if edge_config:
+            graph_edge["config"] = edge_config
 
     # Update graph node with merged data
     graph_node.update(graph_edge)
@@ -323,10 +387,13 @@ def _get_progenitor_override(
     from dbt_osmosis.core.introspection import _find_first
 
     # Check for column-level override first (highest priority)
+    # Check both top-level and config-nested meta (handles fusion_compat mode)
     if node_yaml:
         columns = t.cast("list[dict[str, t.Any]]", node_yaml.get("columns", []))
         column_meta = _find_first(columns, lambda c: c.get("name") == column_name, {})
-        column_default_progenitor = column_meta.get("meta", {}).get("column_default_progenitor")
+        column_default_progenitor = column_meta.get("meta", {}).get(
+            "column_default_progenitor"
+        ) or column_meta.get("config", {}).get("meta", {}).get("column_default_progenitor")
         if column_default_progenitor:
             return column_default_progenitor
 
@@ -410,7 +477,10 @@ def _apply_progenitor_overrides(
     from dbt_osmosis.core.introspection import _find_first
 
     for column_name, graph_node in column_knowledge_graph.items():
-        current_progenitor = graph_node.get("meta", {}).get("osmosis_progenitor")
+        # Check both top-level and config-nested meta for progenitor
+        current_progenitor = graph_node.get("meta", {}).get("osmosis_progenitor") or graph_node.get(
+            "config", {}
+        ).get("meta", {}).get("osmosis_progenitor")
         if not current_progenitor:
             continue
 
@@ -490,14 +560,7 @@ def _build_column_knowledge_graph(
     # This ensures local metadata is preserved and merged with inherited metadata
     column_knowledge_graph: dict[str, dict[str, t.Any]] = {}
     for name, column in node.columns.items():
-        # PATCH: Fix missing config attribute in dbt-core 1.11+ objects causing mashumaro serialization error
-        if not hasattr(column, "config"):
-            module = import_module("dbt.artifacts.resources.v1.components")
-            column_config = getattr(module, "ColumnConfig", None)
-            if column_config is not None:
-                t.cast("t.Any", column).config = column_config()
-
-        column_data = column.to_dict(omit_none=True)
+        column_data = _column_to_dict(column, omit_none=True)
 
         # Clear out osmosis_progenitor if it points to the target node itself
         # (this can happen from previous runs or dbt docs generate)
@@ -506,6 +569,16 @@ def _build_column_knowledge_graph(
             # Remove meta dict if it's now empty
             if not column_data["meta"]:
                 column_data.pop("meta", None)
+
+        # Also clear from config.meta path (handles data from fusion_compat mode)
+        if isinstance(column_data.get("config"), dict):
+            config_meta = column_data["config"].get("meta", {})
+            if config_meta.get("osmosis_progenitor") == node.unique_id:
+                config_meta.pop("osmosis_progenitor", None)
+                if not config_meta:
+                    column_data["config"].pop("meta", None)
+                if not column_data["config"]:
+                    column_data.pop("config", None)
 
         # Filter out empty strings and empty lists to match previous behavior
         # (omit_none=True only removes None values, not empty strings/lists)
@@ -556,7 +629,7 @@ def _build_column_knowledge_graph(
                         ):
                             # Get the current column data to build the edge
                             incoming = node.columns[name]
-                            graph_edge = incoming.to_dict(omit_none=True)
+                            graph_edge = _column_to_dict(incoming, omit_none=True)
                             # Set osmosis_progenitor to the target node itself
                             graph_edge.setdefault("meta", {})["osmosis_progenitor"] = node.unique_id
 

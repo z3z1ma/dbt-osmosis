@@ -191,8 +191,9 @@ def test_prefer_yaml_values_preserves_env_var_jinja(
     buffer = io.StringIO()
     yaml_context.yaml_handler.dump(original_yaml, buffer)
     with mock.patch("builtins.open", mock.mock_open(read_data=buffer.getvalue())):
-        # Enable prefer_yaml_values
+        # Enable prefer_yaml_values; disable fusion_compat to test classic format
         yaml_context.settings.prefer_yaml_values = True
+        yaml_context.settings.fusion_compat = False
 
         with (
             mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
@@ -259,8 +260,9 @@ def test_prefer_yaml_values_preserves_all_jinja_patterns(
     buffer = io.StringIO()
     yaml_context.yaml_handler.dump(original_yaml, buffer)
     with mock.patch("builtins.open", mock.mock_open(read_data=buffer.getvalue())):
-        # Enable prefer_yaml_values
+        # Enable prefer_yaml_values; disable fusion_compat to test classic format
         yaml_context.settings.prefer_yaml_values = True
+        yaml_context.settings.fusion_compat = False
 
         with (
             mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
@@ -378,7 +380,8 @@ def _make_empty_node_context():
 
 def test_sync_doc_section_no_columns_key_not_added():
     """When a node has no columns, _sync_doc_section must not add columns: [] to the doc_section."""
-    context, node = _make_empty_node_context()
+    context, node = 
+    ()
     doc_section: dict = {"name": "my_table"}
 
     _sync_doc_section(context, node, doc_section)
@@ -403,3 +406,75 @@ def test_sync_doc_section_existing_empty_columns_removed():
     assert "columns" not in doc_section, (
         "Expected pre-existing 'columns: []' to be removed when node has no columns"
     )
+def test_fusion_compat_pushes_meta_into_config(
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+):
+    """Test that when fusion_compat=True, top-level meta/tags are pushed into config block."""
+    node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.orders"]
+
+    # Set column metadata at top level
+    col = node.columns["customer_id"]
+    col.meta = {"owner": "analytics"}
+    col.tags = ["pii", "important"]
+
+    yaml_context.settings.fusion_compat = True
+
+    # fresh_caches provides a clean buffer cache for the entire test scope
+    sync_node_to_yaml(yaml_context, node, commit=False)
+    yaml_slice = _get_node_yaml(yaml_context, node)
+    assert yaml_slice is not None
+
+    # Find customer_id column
+    yaml_col = None
+    for c in yaml_slice.get("columns", []):
+        if c.get("name") == "customer_id":
+            yaml_col = c
+            break
+
+    assert yaml_col is not None
+    # In fusion mode, meta and tags should be inside config block
+    assert "config" in yaml_col, "Expected config block in fusion_compat output"
+    config = yaml_col["config"]
+    assert "meta" in config, "Expected meta inside config block"
+    assert config["meta"]["owner"] == "analytics"
+    assert "tags" in config, "Expected tags inside config block"
+    assert set(config["tags"]) == {"pii", "important"}
+    # Top-level meta/tags should NOT be present
+    assert "meta" not in yaml_col, "Top-level meta should not exist in fusion_compat mode"
+    assert "tags" not in yaml_col, "Top-level tags should not exist in fusion_compat mode"
+
+
+def test_classic_mode_strips_config(
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+):
+    """Test that when fusion_compat=False, config block is stripped and meta/tags stay top-level."""
+    node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.orders"]
+
+    # Set column metadata at top level
+    col = node.columns["customer_id"]
+    col.meta = {"owner": "analytics"}
+    col.tags = ["pii"]
+
+    yaml_context.settings.fusion_compat = False
+
+    # fresh_caches provides a clean buffer cache for the entire test scope
+    sync_node_to_yaml(yaml_context, node, commit=False)
+    yaml_slice = _get_node_yaml(yaml_context, node)
+    assert yaml_slice is not None
+
+    yaml_col = None
+    for c in yaml_slice.get("columns", []):
+        if c.get("name") == "customer_id":
+            yaml_col = c
+            break
+
+    assert yaml_col is not None
+    # In classic mode, meta and tags should be at top level
+    assert "meta" in yaml_col
+    assert yaml_col["meta"]["owner"] == "analytics"
+    assert "tags" in yaml_col
+    assert "pii" in yaml_col["tags"]
+    # config block should NOT be present (stripped)
+    assert "config" not in yaml_col, "Config block should be stripped in classic mode"

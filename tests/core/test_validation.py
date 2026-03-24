@@ -629,3 +629,54 @@ models:
 
         finally:
             temp_path.unlink()
+
+
+class TestDataTestsFusionCompat:
+    """Test that validation accepts both 'tests' and 'data_tests' (Fusion compat)."""
+
+    def test_validates_data_tests_key(self) -> None:
+        """Test that validation works with 'data_tests' (Fusion convention)."""
+        yaml_content = """version: 2
+
+models:
+  - name: test_model
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write(yaml_content)
+            temp_path = Path(f.name)
+
+        try:
+            result = validate_yaml_file(temp_path)
+            # Should not produce errors for data_tests
+            errors = [i for i in result.issues if i.severity == ValidationSeverity.ERROR]
+            assert not errors, f"Unexpected errors for data_tests: {errors}"
+        finally:
+            temp_path.unlink()
+
+    def test_validates_tests_key(self) -> None:
+        """Test that validation still works with legacy 'tests' key."""
+        yaml_content = """version: 2
+
+models:
+  - name: test_model
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write(yaml_content)
+            temp_path = Path(f.name)
+
+        try:
+            result = validate_yaml_file(temp_path)
+            errors = [i for i in result.issues if i.severity == ValidationSeverity.ERROR]
+            assert not errors, f"Unexpected errors for tests: {errors}"
+        finally:
+            temp_path.unlink()

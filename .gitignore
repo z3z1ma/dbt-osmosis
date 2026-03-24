@@ -155,6 +155,12 @@ test.db
 .memos/personal/
 
 # Murmur agent configurations
-.claude/agents/
 .opencode/agents/
 .murmur/
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/
+CLAUDE.md
