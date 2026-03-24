@@ -17,4 +17,9 @@ uv run dbt-osmosis yaml document "${common_options[@]}"
 uv run dbt-osmosis yaml refactor --auto-apply "${common_options[@]}"
 uv run dbt-osmosis yaml --help >/dev/null
 
+# Restore YAML fixtures that may have been overwritten by the commands above.
+# git checkout restores tracked files; git clean removes untracked files created by organize.
+git checkout -- models/ seeds/
+git clean -fd models/ seeds/
+
 echo "All dbt-osmosis yaml integration tests passed!"

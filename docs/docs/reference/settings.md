@@ -6,6 +6,14 @@ sidebar_position: 2
 
 These settings map to `YamlRefactorSettings` and can be set via CLI flags or config keys.
 
+## Fusion compatibility
+
+> **Note:** dbt-osmosis requires dbt-core and does not run on dbt Fusion directly. See the [configuration guide](../tutorial-yaml/configuration#fusion-compatibility) for hybrid workflow instructions.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `fusion-compat` | `null` (auto) | Output Fusion-compatible YAML (`meta`/`tags` nested inside `config` blocks). When `null`, auto-detects: enabled if dbt >= 1.9.6 or a Fusion manifest (schema version > v12) is found in `target/`. |
+
 ## Core behavior
 
 | Setting | Default | Description |

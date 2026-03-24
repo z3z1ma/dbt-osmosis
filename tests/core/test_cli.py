@@ -51,6 +51,17 @@ def test_yaml_refactor_help(runner: CliRunner) -> None:
     assert "--dry-run" in result.output
     assert "--check" in result.output
     assert "--synthesize" in result.output
+    assert "--fusion-compat" in result.output
+
+
+def test_fusion_compat_flag_in_yaml_commands(runner: CliRunner) -> None:
+    """Test that --fusion-compat and --no-fusion-compat flags appear in yaml commands."""
+    for cmd in ["refactor", "organize", "document"]:
+        result = runner.invoke(cli, ["yaml", cmd, "--help"])
+        assert result.exit_code == 0
+        assert "--fusion-compat" in result.output, (
+            f"--fusion-compat flag missing from yaml {cmd} command"
+        )
 
 
 def test_yaml_organize_help(runner: CliRunner) -> None:
@@ -125,6 +136,14 @@ def test_version_option(runner: CliRunner) -> None:
     """Test that --version works."""
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
+
+
+def test_formatter_flag_in_yaml_commands(runner: CliRunner) -> None:
+    """Test that --formatter flag appears in help for all yaml subcommands."""
+    for cmd in ["refactor", "organize", "document"]:
+        result = runner.invoke(cli, ["yaml", cmd, "--help"])
+        assert result.exit_code == 0
+        assert "--formatter" in result.output, f"--formatter flag missing from yaml {cmd} command"
 
 
 def test_invalid_command(runner: CliRunner) -> None:

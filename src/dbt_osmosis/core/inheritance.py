@@ -284,6 +284,16 @@ def _clean_graph_edge(
     if graph_edge.get("meta") == {}:
         del graph_edge["meta"]
 
+    # Clean up empty nested config entries (handles data from fusion_compat mode)
+    if isinstance(graph_edge.get("config"), dict):
+        config = graph_edge["config"]
+        if config.get("meta", {}) == {}:
+            config.pop("meta", None)
+        if config.get("tags", []) == []:
+            config.pop("tags", None)
+        if not config:
+            graph_edge.pop("config", None)
+
     # Remove None values
     for k in list(graph_edge.keys()):
         if graph_edge[k] is None:
@@ -304,12 +314,12 @@ def _merge_graph_node_data(
     graph_edge: dict[str, t.Any],
 ) -> None:
     """Merge graph edge data into existing graph node, handling tags and meta merging."""
-    # Merge tags
+    # Merge top-level tags
     current_tags = graph_node.get("tags", [])
     if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
         graph_edge["tags"] = list(merged_tags)
 
-    # Merge meta, but preserve osmosis_progenitor from the first (farthest) generation
+    # Merge top-level meta, but preserve osmosis_progenitor from the first (farthest) generation
     # The osmosis_progenitor should always point to the original source, not intermediate sources
     current_meta = graph_node.get("meta", {})
     edge_meta = graph_edge.pop("meta", {})
@@ -321,6 +331,33 @@ def _merge_graph_node_data(
         # Restore the original progenitor if it existed
         if progenitor:
             graph_edge["meta"]["osmosis_progenitor"] = progenitor
+
+    # Merge config-level meta and tags (handles data from fusion_compat mode)
+    current_config = graph_node.get("config")
+    edge_config = graph_edge.pop("config", None)
+    if isinstance(current_config, dict) or isinstance(edge_config, dict):
+        current_config = current_config if isinstance(current_config, dict) else {}
+        edge_config = edge_config if isinstance(edge_config, dict) else {}
+        # Merge config.meta
+        current_config_meta = current_config.get("meta", {})
+        edge_config_meta = edge_config.pop("meta", {})
+        config_progenitor = current_config_meta.get("osmosis_progenitor")
+        merged_config_meta = {**current_config_meta, **edge_config_meta}
+        if config_progenitor:
+            merged_config_meta["osmosis_progenitor"] = config_progenitor
+        if merged_config_meta:
+            edge_config["meta"] = merged_config_meta
+        # Merge config.tags
+        current_config_tags = current_config.get("tags", [])
+        edge_config_tags = edge_config.pop("tags", [])
+        if merged_config_tags := (set(edge_config_tags) | set(current_config_tags)):
+            edge_config["tags"] = list(merged_config_tags)
+        # Merge remaining config keys
+        for k, v in current_config.items():
+            if k not in edge_config:
+                edge_config[k] = v
+        if edge_config:
+            graph_edge["config"] = edge_config
 
     # Update graph node with merged data
     graph_node.update(graph_edge)
@@ -350,10 +387,13 @@ def _get_progenitor_override(
     from dbt_osmosis.core.introspection import _find_first
 
     # Check for column-level override first (highest priority)
+    # Check both top-level and config-nested meta (handles fusion_compat mode)
     if node_yaml:
         columns = t.cast("list[dict[str, t.Any]]", node_yaml.get("columns", []))
         column_meta = _find_first(columns, lambda c: c.get("name") == column_name, {})
-        column_default_progenitor = column_meta.get("meta", {}).get("column_default_progenitor")
+        column_default_progenitor = column_meta.get("meta", {}).get(
+            "column_default_progenitor"
+        ) or column_meta.get("config", {}).get("meta", {}).get("column_default_progenitor")
         if column_default_progenitor:
             return column_default_progenitor
 
@@ -437,7 +477,10 @@ def _apply_progenitor_overrides(
     from dbt_osmosis.core.introspection import _find_first
 
     for column_name, graph_node in column_knowledge_graph.items():
-        current_progenitor = graph_node.get("meta", {}).get("osmosis_progenitor")
+        # Check both top-level and config-nested meta for progenitor
+        current_progenitor = graph_node.get("meta", {}).get("osmosis_progenitor") or graph_node.get(
+            "config", {}
+        ).get("meta", {}).get("osmosis_progenitor")
         if not current_progenitor:
             continue
 
@@ -526,6 +569,16 @@ def _build_column_knowledge_graph(
             # Remove meta dict if it's now empty
             if not column_data["meta"]:
                 column_data.pop("meta", None)
+
+        # Also clear from config.meta path (handles data from fusion_compat mode)
+        if isinstance(column_data.get("config"), dict):
+            config_meta = column_data["config"].get("meta", {})
+            if config_meta.get("osmosis_progenitor") == node.unique_id:
+                config_meta.pop("osmosis_progenitor", None)
+                if not config_meta:
+                    column_data["config"].pop("meta", None)
+                if not column_data["config"]:
+                    column_data.pop("config", None)
 
         # Filter out empty strings and empty lists to match previous behavior
         # (omit_none=True only removes None values, not empty strings/lists)

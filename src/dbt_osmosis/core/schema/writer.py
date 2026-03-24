@@ -28,7 +28,7 @@ __all__ = [
 
 
 # Keys that are filtered out by OsmosisYAML but should be preserved when writing
-_PRESERVED_KEYS = {"semantic_models", "macros"}
+_PRESERVED_KEYS = {"semantic_models", "macros", "anchors"}
 
 
 def _merge_preserved_sections(
@@ -86,6 +86,7 @@ def _write_yaml(
     dry_run: bool = False,
     mutation_tracker: t.Callable[[int], None] | None = None,
     strip_eof_blank_lines: bool = False,
+    written_file_tracker: t.Callable[[Path], None] | None = None,
 ) -> None:
     """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache.
 
@@ -148,6 +149,8 @@ def _write_yaml(
 
                         if mutation_tracker:
                             mutation_tracker(1)
+                        if written_file_tracker:
+                            written_file_tracker(path)
 
                     except Exception as e:
                         # Clean up temp file on any error
@@ -191,6 +194,7 @@ def commit_yamls(
     dry_run: bool = False,
     mutation_tracker: t.Callable[[int], None] | None = None,
     strip_eof_blank_lines: bool = False,
+    written_file_tracker: t.Callable[[Path], None] | None = None,
 ) -> None:
     """Commit all files in the yaml buffer cache to disk. Clears the buffer cache and registers mutations.
 
@@ -249,6 +253,8 @@ def commit_yamls(
 
                             if mutation_tracker:
                                 mutation_tracker(1)
+                            if written_file_tracker:
+                                written_file_tracker(path)
 
                         except Exception as e:
                             # Clean up temp file on any error

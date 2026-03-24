@@ -170,3 +170,306 @@ def test_sort_columns_alphabetically_without_case_conversion(
     assert column_names == ["Banana", "ZEBRA", "apple"], (
         f"Columns should be sorted by original name (ASCII order), got {column_names}"
     )
+
+
+def test_inject_missing_columns_idempotent_with_output_to_upper_on_postgres(fresh_caches):
+    """Test that inject_missing_columns is idempotent on non-Snowflake DBs with output-to-upper.
+
+    Scenario (PostgreSQL + output-to-upper):
+    1st run: DB returns 'zebra' → injected as 'ZEBRA'
+    2nd run: current_columns has 'ZEBRA', incoming has 'zebra'
+    → Should NOT re-add the column (idempotent)
+    """
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.resource_type = "model"
+    # Simulate state after first run: columns stored with uppercase keys
+    mock_node.columns = OrderedDict({
+        "ZEBRA": ColumnInfo.from_dict({"name": "ZEBRA", "description": "existing"}),
+    })
+
+    context = mock.MagicMock()
+    context.settings.skip_add_columns = False
+    context.settings.skip_add_source_columns = False
+    context.settings.skip_add_data_types = True
+    context.settings.output_to_lower = False
+    context.settings.output_to_upper = True
+    context.project.runtime_cfg.credentials.type = "postgres"
+
+    mock_col = mock.MagicMock()
+    mock_col.type = None
+    mock_col.comment = ""
+
+    # DB returns lowercase (PostgreSQL behavior)
+    incoming = OrderedDict([("zebra", mock_col)])
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=incoming,
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection._get_setting_for_node",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        inject_missing_columns(context, mock_node)
+
+    # Should still have exactly one column with original description preserved
+    assert list(mock_node.columns.keys()) == ["ZEBRA"]
+    assert mock_node.columns["ZEBRA"].description == "existing"
+
+
+def test_remove_columns_not_in_database_with_output_to_upper_on_postgres(fresh_caches):
+    """Test that remove_columns_not_in_database doesn't incorrectly remove columns
+    when output-to-upper is active on a non-Snowflake DB.
+
+    Scenario (PostgreSQL + output-to-upper):
+    node.columns has 'ZEBRA' (uppercased), DB returns 'zebra' (lowercase).
+    normalize_column_name('ZEBRA', 'postgres') = 'ZEBRA' ≠ 'zebra'
+    → Without fix: 'ZEBRA' flagged as extra and removed incorrectly.
+    → With fix: case-insensitive comparison prevents incorrect removal.
+    """
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.columns = OrderedDict({
+        "ZEBRA": ColumnInfo.from_dict({"name": "ZEBRA", "description": "a column"}),
+        "APPLE": ColumnInfo.from_dict({"name": "APPLE", "description": "another column"}),
+    })
+
+    context = mock.MagicMock()
+    context.settings.output_to_lower = False
+    context.settings.output_to_upper = True
+    context.project.runtime_cfg.credentials.type = "postgres"
+
+    mock_col_z = mock.MagicMock()
+    mock_col_z.type = "VARCHAR"
+    mock_col_z.comment = ""
+    mock_col_a = mock.MagicMock()
+    mock_col_a.type = "INTEGER"
+    mock_col_a.comment = ""
+
+    # DB returns lowercase (PostgreSQL behavior)
+    incoming = OrderedDict([("zebra", mock_col_z), ("apple", mock_col_a)])
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=incoming,
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection._get_setting_for_node",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        remove_columns_not_in_database(context, mock_node)
+
+    # Both columns should be preserved (not removed)
+    assert set(mock_node.columns.keys()) == {"ZEBRA", "APPLE"}
+
+
+def test_remove_columns_not_in_database_removes_truly_extra_columns(fresh_caches):
+    """Test that truly extra columns are still removed even with case conversion."""
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.columns = OrderedDict({
+        "ZEBRA": ColumnInfo.from_dict({"name": "ZEBRA", "description": ""}),
+        "STALE": ColumnInfo.from_dict({"name": "STALE", "description": "removed from DB"}),
+    })
+
+    context = mock.MagicMock()
+    context.settings.output_to_lower = False
+    context.settings.output_to_upper = True
+    context.project.runtime_cfg.credentials.type = "postgres"
+
+    mock_col = mock.MagicMock()
+    mock_col.type = "VARCHAR"
+    mock_col.comment = ""
+
+    # DB only has 'zebra', not 'stale'
+    incoming = OrderedDict([("zebra", mock_col)])
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=incoming,
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection._get_setting_for_node",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        remove_columns_not_in_database(context, mock_node)
+
+    # STALE should be removed, ZEBRA should remain
+    assert list(mock_node.columns.keys()) == ["ZEBRA"]
+
+
+def test_synchronize_data_types_with_output_to_upper_on_postgres(fresh_caches):
+    """Test that synchronize_data_types matches columns correctly when output-to-upper
+    is active on a non-Snowflake DB.
+
+    Scenario (PostgreSQL + output-to-upper):
+    node.columns has 'ZEBRA', DB returns column 'zebra' with type 'varchar'.
+    normalize_column_name('ZEBRA', 'postgres') = 'ZEBRA', but incoming key is 'zebra'.
+    → Without fix: lookup fails, data type not synced.
+    → With fix: case-insensitive fallback finds the match.
+    """
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    col = ColumnInfo.from_dict({"name": "ZEBRA", "description": "", "data_type": ""})
+    mock_node.columns = OrderedDict({"ZEBRA": col})
+
+    context = mock.MagicMock()
+    context.settings.skip_add_data_types = False
+    context.settings.output_to_lower = False
+    context.settings.output_to_upper = True
+    context.project.runtime_cfg.credentials.type = "postgres"
+
+    mock_col = mock.MagicMock()
+    mock_col.type = "varchar"
+    mock_col.comment = ""
+
+    incoming = OrderedDict([("zebra", mock_col)])
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=incoming,
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection._get_setting_for_node",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        synchronize_data_types(context, mock_node)
+
+    # Data type should be synced and uppercased (output-to-upper)
+    assert mock_node.columns["ZEBRA"].data_type == "VARCHAR"
+
+
+def test_inject_missing_columns_applies_output_to_lower(fresh_caches):
+    """Test that inject_missing_columns converts new column keys to lowercase
+    when output-to-lower is enabled.
+
+    This fixes the issue where Snowflake returns uppercase column names,
+    which are injected as uppercase keys. Subsequent alphabetical sorting
+    uses lowercase comparison, but the keys remain uppercase, causing
+    incorrect sort order on the first run.
+    """
+    from collections import OrderedDict
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.resource_type = "model"
+    mock_node.columns = OrderedDict()
+
+    context = mock.MagicMock()
+    context.settings.skip_add_columns = False
+    context.settings.skip_add_source_columns = False
+    context.settings.skip_add_data_types = False
+    context.settings.output_to_lower = True
+    context.settings.output_to_upper = False
+    context.project.runtime_cfg.credentials.type = "snowflake"
+
+    # Simulate database returning uppercase column names (Snowflake behavior)
+    mock_col_a = mock.MagicMock()
+    mock_col_a.type = "VARCHAR"
+    mock_col_a.comment = ""
+    mock_col_b = mock.MagicMock()
+    mock_col_b.type = "INTEGER"
+    mock_col_b.comment = ""
+    mock_col_c = mock.MagicMock()
+    mock_col_c.type = "BOOLEAN"
+    mock_col_c.comment = ""
+
+    incoming = OrderedDict([("ZEBRA", mock_col_a), ("APPLE", mock_col_b), ("BANANA", mock_col_c)])
+
+    # Patch at dbt_osmosis.core.introspection (source module) because
+    # inject_missing_columns uses local imports (from ... import get_columns),
+    # which re-resolve the module attribute on each call.
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=incoming,
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection._get_setting_for_node",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        inject_missing_columns(context, mock_node)
+
+    # Keys should be lowercase
+    column_keys = list(mock_node.columns.keys())
+    assert all(k == k.lower() for k in column_keys), (
+        f"All column keys should be lowercase, got {column_keys}"
+    )
+    assert set(column_keys) == {"zebra", "apple", "banana"}
+
+
+def test_inject_missing_columns_with_lower_then_sort_alphabetically(fresh_caches):
+    """End-to-end test: inject with output-to-lower followed by alphabetical sort
+    should produce correctly ordered lowercase keys on the first run.
+    """
+    from collections import OrderedDict
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.resource_type = "model"
+    mock_node.columns = OrderedDict()
+
+    context = mock.MagicMock()
+    context.settings.skip_add_columns = False
+    context.settings.skip_add_source_columns = False
+    context.settings.skip_add_data_types = True
+    context.settings.output_to_lower = True
+    context.settings.output_to_upper = False
+    context.project.runtime_cfg.credentials.type = "snowflake"
+
+    mock_col = mock.MagicMock()
+    mock_col.type = None
+    mock_col.comment = ""
+
+    incoming = OrderedDict([
+        ("ZEBRA", mock_col),
+        ("APPLE", mock_col),
+        ("BANANA", mock_col),
+    ])
+
+    # Patch at source module; see comment in test_inject_missing_columns_applies_output_to_lower
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=incoming,
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection._get_setting_for_node",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        inject_missing_columns(context, mock_node)
+
+    # Now sort alphabetically
+    sort_columns_alphabetically(context, mock_node)
+
+    column_keys = list(mock_node.columns.keys())
+    assert column_keys == ["apple", "banana", "zebra"], (
+        f"Columns should be alphabetically sorted lowercase on first run, got {column_keys}"
+    )

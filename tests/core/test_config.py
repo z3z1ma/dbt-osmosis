@@ -1,5 +1,6 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
+import json
 import os
 import threading
 import time
@@ -8,6 +9,7 @@ from unittest import mock
 
 from dbt_osmosis.core.config import (
     DbtConfiguration,
+    _detect_fusion_manifest,
     _reload_manifest,
     config_to_namespace,
     discover_profiles_dir,
@@ -75,3 +77,87 @@ def test_adapter_ttl_expiration(yaml_context: YamlRefactorContext):
         assert new_adapter == old_adapter
         mock_release.assert_called_once()
         mock_clear.assert_called_once()
+
+
+class TestDetectFusionManifest:
+    """Tests for _detect_fusion_manifest() Fusion detection logic."""
+
+    def test_no_manifest_no_binary(self, tmp_path):
+        """No manifest and no Fusion binary → returns False."""
+        with mock.patch("shutil.which", return_value=None):
+            assert _detect_fusion_manifest(str(tmp_path)) is False
+
+    def test_no_manifest_but_dbtf_binary(self, tmp_path):
+        """No manifest but dbtf binary on PATH → returns True."""
+        with mock.patch(
+            "shutil.which", side_effect=lambda cmd: "/usr/bin/dbtf" if cmd == "dbtf" else None
+        ):
+            assert _detect_fusion_manifest(str(tmp_path)) is True
+
+    def test_no_manifest_but_dbt_fusion_binary(self, tmp_path):
+        """No manifest but dbt-fusion binary on PATH → returns True."""
+        with mock.patch(
+            "shutil.which",
+            side_effect=lambda cmd: "/usr/bin/dbt-fusion" if cmd == "dbt-fusion" else None,
+        ):
+            assert _detect_fusion_manifest(str(tmp_path)) is True
+
+    def test_dbt_core_manifest_v12(self, tmp_path):
+        """dbt-core manifest (v12) → returns False."""
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {
+            "metadata": {
+                "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+                "dbt_version": "1.11.2",
+            },
+        }
+        (target / "manifest.json").write_text(json.dumps(manifest))
+        assert _detect_fusion_manifest(str(tmp_path)) is False
+
+    def test_fusion_manifest_v20(self, tmp_path):
+        """Fusion manifest (v20) → returns True."""
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {
+            "metadata": {
+                "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v20.json",
+                "dbt_version": "2025.1.0",
+            },
+        }
+        (target / "manifest.json").write_text(json.dumps(manifest))
+        assert _detect_fusion_manifest(str(tmp_path)) is True
+
+    def test_future_manifest_v13(self, tmp_path):
+        """Any manifest version > 12 triggers Fusion detection."""
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {
+            "metadata": {
+                "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v13.json",
+            },
+        }
+        (target / "manifest.json").write_text(json.dumps(manifest))
+        assert _detect_fusion_manifest(str(tmp_path)) is True
+
+    def test_malformed_manifest(self, tmp_path):
+        """Malformed manifest.json → returns False gracefully."""
+        target = tmp_path / "target"
+        target.mkdir()
+        (target / "manifest.json").write_text("not valid json{{{")
+        assert _detect_fusion_manifest(str(tmp_path)) is False
+
+    def test_manifest_missing_metadata(self, tmp_path):
+        """Manifest with no metadata section → returns False."""
+        target = tmp_path / "target"
+        target.mkdir()
+        (target / "manifest.json").write_text(json.dumps({"nodes": {}}))
+        assert _detect_fusion_manifest(str(tmp_path)) is False
+
+    def test_manifest_empty_schema_version(self, tmp_path):
+        """Manifest with empty dbt_schema_version → returns False."""
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {"metadata": {"dbt_schema_version": ""}}
+        (target / "manifest.json").write_text(json.dumps(manifest))
+        assert _detect_fusion_manifest(str(tmp_path)) is False
