@@ -382,11 +382,10 @@ return fallback
 # Type alias for readability
 PrecedenceChain = list[Callable[[str, ResultNode, str | None], Any | None]]
 
+
 # Build chain dynamically
 def build_precedence_chain(
-    node: ResultNode,
-    column: str | None,
-    context: ResolutionContext
+    node: ResultNode, column: str | None, context: ResolutionContext
 ) -> PrecedenceChain:
     chain = []
 
@@ -401,9 +400,9 @@ def build_precedence_chain(
     ])
 
     # dbt 1.10+ sources
-    if hasattr(node, 'config') and hasattr(node.config, 'meta'):
+    if hasattr(node, "config") and hasattr(node.config, "meta"):
         chain.append(ConfigMetaSource(node))
-    if hasattr(node, 'unrendered_config'):
+    if hasattr(node, "unrendered_config"):
         chain.append(UnrenderedConfigSource(node))
 
     # Project level
@@ -419,6 +418,7 @@ def build_precedence_chain(
 @dataclass
 class PropertyCacheEntry:
     """Cached property access result."""
+
     source: PropertySource
     value: Any
     timestamp: float
@@ -432,12 +432,15 @@ class PropertyCacheEntry:
 ```python
 class PropertySource(Enum):
     """Source for model property values."""
+
     MANIFEST = "manifest"  # Parsed manifest.json
-    YAML = "yaml"          # Raw YAML files
+    YAML = "yaml"  # Raw YAML files
     DATABASE = "database"  # Warehouse introspection
+
 
 class ConfigSourceName(Enum):
     """Names for logging purposes."""
+
     COLUMN_META = "column_meta"
     NODE_META = "node_meta"
     CONFIG_EXTRA = "config_extra"
@@ -446,6 +449,7 @@ class ConfigSourceName(Enum):
     PROJECT_VARS = "project_vars"
     SUPPLEMENTARY_FILE = "supplementary_file"
     FALLBACK = "fallback"
+
 
 # Supported prefixes
 CONFIG_PREFIXES = ["dbt-osmosis-", "dbt_osmosis_"]

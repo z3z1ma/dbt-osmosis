@@ -176,9 +176,9 @@ def resolve(
     ])
 
     # dbt 1.10+ sources (check existence)
-    if hasattr(node, 'config') and hasattr(node.config, 'meta'):
+    if hasattr(node, "config") and hasattr(node.config, "meta"):
         sources.append(ConfigMetaSource(node))
-    if hasattr(node, 'unrendered_config'):
+    if hasattr(node, "unrendered_config"):
         sources.append(UnrenderedConfigSource(node))
 
     # Project level
@@ -191,10 +191,7 @@ def resolve(
     for source in sources:
         if value := source.get(setting_name):
             logger.debug(
-                ":mag: Resolved '%s' from %s for node '%s'",
-                setting_name,
-                source.name,
-                node.name
+                ":mag: Resolved '%s' from %s for node '%s'", setting_name, source.name, node.name
             )
             return value
 
@@ -235,32 +232,21 @@ class PropertyAccessor:
 import pytest
 from dbt_osmosis.core.introspection import ConfigResolver
 
+
 class TestConfigResolver:
     def test_column_meta_takes_precedence(self):
         """Column-level config should override node-level."""
         node = MockNode(
             meta={"output-to-lower": False},
-            columns={
-                "user_id": MockColumn(
-                    meta={"output-to-lower": True}
-                )
-            }
+            columns={"user_id": MockColumn(meta={"output-to-lower": True})},
         )
         resolver = ConfigResolver(context)
 
         # Column-level should win
-        assert resolver.resolve(
-            "output-to-lower",
-            node,
-            column_name="user_id"
-        ) is True
+        assert resolver.resolve("output-to-lower", node, column_name="user_id") is True
 
         # Node-level for other columns
-        assert resolver.resolve(
-            "output-to-lower",
-            node,
-            column_name="email"
-        ) is False
+        assert resolver.resolve("output-to-lower", node, column_name="email") is False
 ```
 
 ### Integration Test Example
@@ -296,7 +282,7 @@ use-unrendered-descriptions: true
 value = node.config.meta.get("key")
 
 # ✅ Correct
-if hasattr(node, 'config') and hasattr(node.config, 'meta'):
+if hasattr(node, "config") and hasattr(node.config, "meta"):
     value = node.config.meta.get("key")
 ```
 

@@ -182,7 +182,9 @@ sources:
 ```python
 logger.debug(
     ":mag: Resolved setting '%s' from source '%s' for node '%s'",
-    setting_name, source_name, node.name
+    setting_name,
+    source_name,
+    node.name,
 )
 ```
 
@@ -307,7 +309,7 @@ logger.debug(
 
 **Resolved**: Use `hasattr()` checks for version-specific fields:
 ```python
-if hasattr(node, 'unrendered_config'):
+if hasattr(node, "unrendered_config"):
     sources.append(node.unrendered_config)
 ```
 
