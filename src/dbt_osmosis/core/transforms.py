@@ -382,7 +382,11 @@ def remove_columns_not_in_database(
     node: ResultNode | None = None,
 ) -> None:
     """Remove columns from a dbt node and it's corresponding yaml section that are not present in the database. Changes are implicitly buffered until commit_yamls is called."""
-    from dbt_osmosis.core.introspection import _get_setting_for_node, get_columns, normalize_column_name
+    from dbt_osmosis.core.introspection import (
+        _get_setting_for_node,
+        get_columns,
+        normalize_column_name,
+    )
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
     if node is None:
