@@ -133,27 +133,13 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
         logger.warning(":warning: No path template found for => %s", node.unique_id)
         return Path(project_root, t.cast("str", node.original_file_path))
 
-    # Use local copies to avoid TOCTOU race conditions from mutating node objects
-    # Build a safe format dict with only immutable/copy data
     path = Path(project_root, t.cast("str", node.original_file_path))
-
-    # Create a simple node object with common attributes for format strings
-    # Avoid exposing fqn/tags as indexed dicts to prevent TOCTOU issues
-    node_attrs = {
-        "name": node.name,
-        "schema": node.schema,
-        "database": node.database,
-        "package": node.package_name,
-    }
-    # Add source_name only for Source nodes (non-source nodes don't have this attribute)
-    if node.resource_type == NodeType.Source:
-        node_attrs["source_name"] = node.source_name
 
     format_dict = {
         "model": node.name,
         "parent": path.parent.name,
         "schema": node.schema,
-        "node": type("obj", (object,), node_attrs)(),
+        "node": node,
     }
 
     rendered = tpl.format(**format_dict)
