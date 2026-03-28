@@ -1,0 +1,60 @@
+{
+  "entries": [
+    {
+      "baseVersion": null,
+      "canonicalRef": "constitution:constraints",
+      "contentHash": "231cd42610e1ee4d15f1d5127d856820122807be648192021393ea4cbefd2006",
+      "editability": {
+        "editableSections": [
+          "Architectural and Business Constraints"
+        ],
+        "mode": "sections"
+      },
+      "relativePath": "constraints.md",
+      "revisionToken": "79eebff81c2ee096f7a7e6bc348e6b6020aa95719e3214de21d61074abf33a5c"
+    },
+    {
+      "baseVersion": null,
+      "canonicalRef": "constitution:principles",
+      "contentHash": "4796e4999790e900e359a9e65d78ac983252511b8042cf84aa7cf1a037a748e9",
+      "editability": {
+        "editableSections": [
+          "Guiding Principles"
+        ],
+        "mode": "sections"
+      },
+      "relativePath": "principles.md",
+      "revisionToken": "bd902969310da7c7ad6d932a2d0594a2a11543513c2a6275cc04dc782b7f7f03"
+    },
+    {
+      "baseVersion": null,
+      "canonicalRef": "constitution:roadmap",
+      "contentHash": "331119b967d01e3d44d0586bdf61d67b3fdaf1f8c4f9a920991862a720ee4d6c",
+      "editability": {
+        "editableSections": [
+          "Current Focus",
+          "Strategic Direction"
+        ],
+        "mode": "sections"
+      },
+      "relativePath": "roadmap.md",
+      "revisionToken": "e3cea7dfc3155673cf609d0b11db242ba02f9ce90a2e4cc93bd26a5b481557c7"
+    },
+    {
+      "baseVersion": null,
+      "canonicalRef": "constitution:vision",
+      "contentHash": "8e25830ce6148f3d5297b2d4a7f4c2cac7d8602eb733575e48955e66ccf31104",
+      "editability": {
+        "editableSections": [
+          "Vision Narrative",
+          "Vision Summary"
+        ],
+        "mode": "sections"
+      },
+      "relativePath": "vision.md",
+      "revisionToken": "fb4ec08ca909b0a9195a42b17d608fa7356c4392889fb3f5ccdc2bdc3cc59032"
+    }
+  ],
+  "family": "constitution",
+  "schemaVersion": 1
+}

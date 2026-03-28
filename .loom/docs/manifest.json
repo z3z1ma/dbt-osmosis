@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "baseVersion": null,
+      "canonicalRef": "doc:repository-guidelines",
+      "contentHash": "b7ccf60bd7066a2df2276a5f3d8ac0f9126fbe68afd442822209e1e6d7844c97",
+      "editability": {
+        "mode": "full"
+      },
+      "relativePath": "guides/repository-guidelines.md",
+      "revisionToken": "989b501c369b104602253c662448e7270b0f0ef72423345455473cf7e52a287d"
+    }
+  ],
+  "family": "docs",
+  "schemaVersion": 1
+}

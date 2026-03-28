@@ -1,3 +1,37 @@
+---
+id: repository-guidelines
+title: "Repository Guidelines"
+status: active
+type: guide
+section: guides
+topic-id: repository-guidelines
+topic-role: companion
+publication-status: governed-without-owner
+publication-summary: "Governed doc for repository-guidelines without an active owner overview."
+recommended-action: publish-topic-owner
+current-owner: null
+active-owners: []
+audience:
+  - ai
+  - human
+source: workspace:dbt-osmosis
+verified-at: 2026-03-28
+verification-source: "Parallel explore-agent scans over core source, tests, config/build, and docs/demo surfaces plus direct review of AGENTS.md, README.md, pyproject.toml, Taskfile.yml, docs/package.json, docs/docusaurus.config.js, pre-commit configs, and command help checks for `uv run dbt-osmosis --help` and `npm --prefix docs run build -- --help`."
+successor: null
+successor-title: null
+predecessors: []
+retirement-reason: null
+topics:
+  - architecture
+  - developer-workflow
+  - repository-structure
+  - testing
+  - tooling
+outputs:
+  - https-github-com-vdfaller-dbt-osmosis-git:AGENTS.md
+upstream-path: AGENTS.md
+---
+
 # Repository Guidelines
 
 ## Project Overview

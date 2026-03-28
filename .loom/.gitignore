@@ -1,0 +1,10 @@
+# BEGIN pi-loom workspace projections
+# High-churn local ticket projections stay untracked by default.
+tickets/
+
+# Reconcile scratch and conflict leftovers are never shared truth.
+.reconcile/
+**/*.conflict.md
+**/*.orig
+**/*.rej
+# END pi-loom workspace projections
