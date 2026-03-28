@@ -48,7 +48,8 @@ uvx ruff check --fix --select I  # Fix imports only
 
 ### Testing
 ```bash
-# Run full test matrix (Python 3.10-3.12 × dbt 1.8-1.9)
+# Run the local Taskfile test matrix
+# (Python 3.10-3.12 × dbt 1.8-1.9, plus Python 3.10-3.13 × dbt 1.10.0)
 task test
 
 # Run tests for current environment
@@ -106,10 +107,13 @@ uv run dbt-osmosis sql run "SELECT 1"
 uv run dbt-osmosis nl query "Show me the top 10 customers by lifetime value"
 
 # Generate a complete dbt model from natural language
-uv run dbt-osmosis nl generate "Show me customers who churned in the last 30 days"
+uv run dbt-osmosis generate model "Show me customers who churned in the last 30 days"
 
 # Generate model with custom name and dry-run preview
-uv run dbt-osmosis nl generate "Monthly revenue by region" --model-name monthly_revenue --dry-run
+uv run dbt-osmosis generate model "Monthly revenue by region" --model-name monthly_revenue --dry-run
+
+# Validate LLM connectivity and provider configuration
+uv run dbt-osmosis test-llm
 ```
 
 ### Demo Project
@@ -123,7 +127,7 @@ dbt test --profiles-dir . --target test
 ## Code Architecture
 
 ### Entry Points
-- **CLI**: `src/dbt_osmosis/cli/main.py` - Click-based CLI with subcommands for `yaml`, `sql`, `nl` (natural language), and `workbench`
+- **CLI**: `src/dbt_osmosis/cli/main.py` - Click-based CLI with `yaml`, `sql`, `workbench`, `generate`, `nl`, `diff`, `lint`, `test`, and `test-llm` command families
 - **Core API**: `src/dbt_osmosis/core/osmosis.py` - Re-exports all public APIs for backwards compatibility
 
 ### Core Module Structure (`src/dbt_osmosis/core/`)
@@ -491,7 +495,7 @@ chain = resolver.get_precedence_chain(
 ### Testing Approach
 - Tests live in `tests/core/` mirroring `src/dbt_osmosis/core/`
 - Uses pytest with demo_duckdb project as test fixture
-- Test matrix covers Python 3.10-3.12 and dbt-core 1.8-1.9
+- Local Taskfile matrix covers Python 3.10-3.12 with dbt-core 1.8-1.9 plus Python 3.10-3.13 with dbt-core 1.10.0; CI covers additional dbt versions
 - Run `dbt parse` before tests to generate manifest.json
 
 ## Important Implementation Details
@@ -627,7 +631,7 @@ repos:
 - If push fails, resolve and retry until it succeeds
 
 ## Active Technologies
-- Python 3.10-3.12 (as specified in pyproject.toml) (001-unified-config-resolution)
+- Python 3.10-3.13 (as specified in pyproject.toml) (001-unified-config-resolution)
 
 ## Recent Changes
-- 001-unified-config-resolution: Added Python 3.10-3.12 (as specified in pyproject.toml)
+- 001-unified-config-resolution: Added Python 3.10-3.13 support in pyproject and local/CI validation matrices

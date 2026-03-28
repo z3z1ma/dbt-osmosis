@@ -17,6 +17,8 @@ We now have a spiffy [dbt-osmosis documentation site](https://z3z1ma.github.io/d
 
 Please check it out for a more in-depth introduction to dbt-osmosis. 👇
 
+The docs site is the canonical reference for the current CLI, configuration model, migration notes, and newer command families such as `generate`, `nl`, and `test-llm`.
+
 [![dbt-osmosis](/screenshots/docs_site.png)](https://z3z1ma.github.io/dbt-osmosis/)
 
 ## Migrating from 0.x.x to 1.x.x?
@@ -56,7 +58,7 @@ You can use dbt-osmosis as a pre-commit hook. This will run the `dbt-osmosis yam
 ```yaml title=".pre-commit-config.yaml"
 repos:
   - repo: https://github.com/z3z1ma/dbt-osmosis
-    rev: v1.1.5 # verify the latest version
+    rev: v1.3.0 # verify the latest version
     hooks:
       - id: dbt-osmosis
         files: ^models/

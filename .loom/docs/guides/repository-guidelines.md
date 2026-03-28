@@ -6,11 +6,12 @@ type: guide
 section: guides
 topic-id: repository-guidelines
 topic-role: companion
-publication-status: governed-without-owner
-publication-summary: "Governed doc for repository-guidelines without an active owner overview."
-recommended-action: publish-topic-owner
-current-owner: null
-active-owners: []
+publication-status: current-companion
+publication-summary: "Current companion doc beneath active topic owner repository-guidelines-overview."
+recommended-action: update-current-companion
+current-owner: repository-guidelines-overview
+active-owners:
+  - repository-guidelines-overview
 audience:
   - ai
   - human
