@@ -317,11 +317,15 @@ def apply_restructure_plan(
 
     from dbt_osmosis.core.config import _reload_manifest
     from dbt_osmosis.core.schema.reader import (
-        _YAML_BUFFER_CACHE,
         _YAML_BUFFER_CACHE_LOCK,
+        _discard_yaml_caches,
         _read_yaml,
     )
     from dbt_osmosis.core.schema.writer import _write_yaml
+
+    starting_disk_mutations = getattr(context, "disk_mutation_count", 0)
+    written_file_tracker = getattr(context, "register_written_file", None)
+    register_disk_mutation = getattr(context, "register_disk_mutation", None)
 
     for op in plan.operations:
         logger.debug(":arrow_right: Applying restructure operation => %s", op)
@@ -342,7 +346,6 @@ def apply_restructure_plan(
             else:
                 output_doc[key] = val
 
-        _written_file_tracker = getattr(context, "register_written_file", None)
         _write_yaml(
             context.yaml_handler,
             context.yaml_handler_lock,
@@ -351,7 +354,7 @@ def apply_restructure_plan(
             context.settings.dry_run,
             context.register_mutations,
             context.settings.strip_eof_blank_lines,
-            written_file_tracker=_written_file_tracker,
+            written_file_tracker=written_file_tracker,
         )
 
         for path, nodes in op.superseded_paths.items():
@@ -372,8 +375,9 @@ def apply_restructure_plan(
                         if path.parent.exists() and not any(path.parent.iterdir()):
                             path.parent.rmdir()
                         with _YAML_BUFFER_CACHE_LOCK:
-                            if path in _YAML_BUFFER_CACHE:
-                                del _YAML_BUFFER_CACHE[path]
+                            _discard_yaml_caches(path)
+                        if callable(register_disk_mutation):
+                            register_disk_mutation()
                     context.register_mutations(1)
                     logger.info(":heavy_minus_sign: Superseded entire file => %s", path)
                 else:
@@ -385,7 +389,7 @@ def apply_restructure_plan(
                         context.settings.dry_run,
                         context.register_mutations,
                         context.settings.strip_eof_blank_lines,
-                        written_file_tracker=_written_file_tracker,
+                        written_file_tracker=written_file_tracker,
                     )
                     logger.info(
                         ":arrow_forward: Migrated doc from => %s to => %s",
@@ -393,9 +397,7 @@ def apply_restructure_plan(
                         op.file_path,
                     )
 
-    logger.info(
-        ":arrows_counterclockwise: Committing all restructure changes and reloading manifest.",
-    )
+    logger.info(":arrows_counterclockwise: Committing any buffered restructure changes.")
     from dbt_osmosis.core.schema.writer import commit_yamls
 
     commit_yamls(
@@ -404,6 +406,8 @@ def apply_restructure_plan(
         context.settings.dry_run,
         context.register_mutations,
         context.settings.strip_eof_blank_lines,
-        written_file_tracker=_written_file_tracker,
+        written_file_tracker=written_file_tracker,
     )
-    _reload_manifest(context.project)
+    if getattr(context, "disk_mutation_count", starting_disk_mutations) > starting_disk_mutations:
+        logger.info(":arrows_counterclockwise: Reloading the dbt project manifest.")
+        _reload_manifest(context.project)

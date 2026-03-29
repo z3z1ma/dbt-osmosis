@@ -14,7 +14,7 @@ from dbt_osmosis.core.restructuring import (
     draft_restructure_delta_plan,
     pretty_print_plan,
 )
-from dbt_osmosis.core.settings import YamlRefactorContext
+from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 
 
 @pytest.fixture(scope="function")
@@ -24,11 +24,133 @@ def fresh_caches():
         yield
 
 
+def _build_source_bootstrap_context(tmp_path: Path, *, dry_run: bool) -> YamlRefactorContext:
+    runtime_cfg = mock.Mock()
+    runtime_cfg.credentials = mock.Mock(database="analytics")
+    runtime_cfg.model_paths = ["models"]
+    runtime_cfg.project_root = str(tmp_path)
+    runtime_cfg.vars = mock.Mock()
+    runtime_cfg.vars.to_dict.return_value = {
+        "dbt-osmosis": {"sources": {"raw": {"schema": "raw", "path": "sources/raw.yml"}}},
+    }
+
+    project = mock.Mock()
+    project.runtime_cfg = runtime_cfg
+    project.manifest = mock.Mock(sources={})
+    project.adapter = mock.Mock()
+    project.config = mock.Mock(disable_introspection=False)
+
+    return YamlRefactorContext(
+        project=project,
+        settings=YamlRefactorSettings(dry_run=dry_run),
+    )
+
+
 def test_create_missing_source_yamls(yaml_context: YamlRefactorContext, fresh_caches):
     """Creates missing source YAML files if any are declared in dbt-osmosis sources
     but do not exist in the manifest. Typically, might be none in your project.
     """
     create_missing_source_yamls(yaml_context)
+
+
+def test_create_missing_source_yamls_tracks_written_files(tmp_path: Path):
+    """Creating a missing source registers the real disk write and reloads the manifest once."""
+    context = _build_source_bootstrap_context(tmp_path, dry_run=False)
+    relation = mock.Mock(identifier="orders")
+    relation_meta = mock.Mock(comment="Order id", type="integer")
+    target_file = tmp_path / "models" / "sources" / "raw.yml"
+
+    context.project.adapter.list_relations.return_value = [relation]
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value={"id": relation_meta},
+        ),
+        mock.patch("dbt_osmosis.core.config._reload_manifest") as reload_manifest,
+    ):
+        create_missing_source_yamls(context)
+
+    assert target_file.resolve() in context.written_files
+    assert context.disk_mutation_count == 1
+    reload_manifest.assert_called_once_with(context.project)
+
+
+def test_create_missing_source_yamls_dry_run_skips_reload(tmp_path: Path):
+    """Dry-run source bootstrap reports logical mutations without pretending the manifest changed on disk."""
+    context = _build_source_bootstrap_context(tmp_path, dry_run=True)
+    relation = mock.Mock(identifier="orders")
+    relation_meta = mock.Mock(comment="Order id", type="integer")
+    target_file = tmp_path / "models" / "sources" / "raw.yml"
+
+    context.project.adapter.list_relations.return_value = [relation]
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value={"id": relation_meta},
+        ),
+        mock.patch("dbt_osmosis.core.config._reload_manifest") as reload_manifest,
+    ):
+        create_missing_source_yamls(context)
+
+    assert not target_file.exists()
+    assert context.written_files == frozenset()
+    assert context.disk_mutation_count == 0
+    reload_manifest.assert_not_called()
+
+
+def test_create_missing_source_yamls_does_not_leak_database_override_between_sources(
+    tmp_path: Path,
+    fresh_caches,
+):
+    """Each source bootstrap should resolve its database independently from the runtime default."""
+    import yaml
+
+    context = _build_source_bootstrap_context(tmp_path, dry_run=False)
+    context.project.runtime_cfg.vars.to_dict.return_value = {
+        "dbt-osmosis": {
+            "sources": {
+                "raw": {
+                    "database": "warehouse",
+                    "schema": "raw",
+                    "path": "sources/raw.yml",
+                },
+                "staging": {
+                    "schema": "staging",
+                    "path": "sources/staging.yml",
+                },
+            },
+        },
+    }
+    relation_meta = mock.Mock(comment="Order id", type="integer")
+
+    def list_relations(*, database: str, schema: str):
+        return [mock.Mock(identifier=f"{database}_{schema}_orders")]
+
+    context.project.adapter.list_relations.side_effect = list_relations
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value={"id": relation_meta},
+        ),
+        mock.patch("dbt_osmosis.core.config._reload_manifest") as reload_manifest,
+    ):
+        create_missing_source_yamls(context)
+
+    assert context.project.adapter.list_relations.call_args_list == [
+        mock.call(database="warehouse", schema="raw"),
+        mock.call(database="analytics", schema="staging"),
+    ]
+    assert context.disk_mutation_count == 2
+
+    raw_doc = yaml.safe_load((tmp_path / "models" / "sources" / "raw.yml").read_text())
+    staging_doc = yaml.safe_load((tmp_path / "models" / "sources" / "staging.yml").read_text())
+
+    assert raw_doc["sources"][0]["database"] == "warehouse"
+    assert staging_doc["sources"][0]["database"] == "analytics"
+    reload_manifest.assert_called_once_with(context.project)
 
 
 def test_draft_restructure_delta_plan(yaml_context: YamlRefactorContext, fresh_caches):
@@ -45,6 +167,70 @@ def test_apply_restructure_plan(yaml_context: YamlRefactorContext, fresh_caches)
     """
     plan = draft_restructure_delta_plan(yaml_context)
     apply_restructure_plan(yaml_context, plan, confirm=False)
+
+
+def test_apply_restructure_plan_dry_run_skips_reload(
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+    tmp_path: Path,
+):
+    """Dry-run restructure should not claim an on-disk change by reloading the manifest."""
+    plan = RestructureDeltaPlan(
+        operations=[
+            RestructureOperation(
+                file_path=tmp_path / "models" / "dry_run.yml",
+                content={"version": 2, "models": [{"name": "dry_run_model"}]},
+            ),
+        ],
+    )
+
+    with (
+        mock.patch.object(yaml_context.settings, "dry_run", True),
+        mock.patch("dbt_osmosis.core.config._reload_manifest") as reload_manifest,
+    ):
+        apply_restructure_plan(yaml_context, plan, confirm=False)
+
+    assert yaml_context.disk_mutation_count == 0
+    reload_manifest.assert_not_called()
+
+
+def test_apply_restructure_plan_counts_deleted_files_as_disk_mutations(
+    yaml_context: YamlRefactorContext,
+    tmp_path: Path,
+):
+    """Restructure tracks both the new file write and the superseded file deletion truthfully."""
+    from unittest import mock as mock_patch
+
+    import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    old_file = tmp_path / "models" / "old.yml"
+    old_file.parent.mkdir(parents=True, exist_ok=True)
+    with old_file.open("w") as f:
+        yaml.dump({"version": 2, "models": [{"name": "my_model"}]}, f)
+
+    mock_node = mock_patch.Mock(spec=ModelNode)
+    mock_node.name = "my_model"
+    mock_node.resource_type = NodeType.Model
+
+    new_file = tmp_path / "models" / "staging" / "my_model.yml"
+    plan = RestructureDeltaPlan(
+        operations=[
+            RestructureOperation(
+                file_path=new_file,
+                content={"version": 2, "models": [{"name": "my_model"}]},
+                superseded_paths={old_file: [mock_node]},
+            ),
+        ],
+    )
+
+    with mock_patch.patch.object(yaml_context.settings, "dry_run", False):
+        apply_restructure_plan(yaml_context, plan, confirm=False)
+
+    assert new_file.resolve() in yaml_context.written_files
+    assert old_file.resolve() not in yaml_context.written_files
+    assert yaml_context.disk_mutation_count == 2
 
 
 def test_pretty_print_plan(caplog):
@@ -102,7 +288,7 @@ def test_apply_restructure_plan_confirm_yes(
     capsys,
 ):
     """Same as above, but we input 'y' so it actually proceeds with the plan.
-    (No real writing occurs due to dry_run=True).
+    Dry-run should preview the commit step without pretending the manifest changed on disk.
     """
     plan = RestructureDeltaPlan(
         operations=[
@@ -116,8 +302,8 @@ def test_apply_restructure_plan_confirm_yes(
     with mock.patch("builtins.input", side_effect=["y"]):
         apply_restructure_plan(yaml_context, plan, confirm=True)
         captured = capsys.readouterr()
-        assert "Committing all restructure changes" in captured.err
-        assert "Reloading the dbt project manifest" in captured.err
+        assert "Committing any buffered restructure changes" in captured.err
+        assert "Reloading the dbt project manifest" not in captured.err
 
 
 # ============================================================================

@@ -133,6 +133,8 @@ class YamlRefactorContext:
     _mutation_count: int = field(default=0, init=False)
     _written_files: set[Path] = field(default_factory=set, init=False, repr=False)
     """Tracks which YAML files were actually written to disk (for external formatter integration)."""
+    _disk_mutation_count: int = field(default=0, init=False, repr=False)
+    """Counts actual on-disk mutations so callers can distinguish dry-run from real writes."""
     _catalog: CatalogResults | None = field(default=None, init=False)
     _closed: bool = field(default=False, init=False, repr=False)
     """Track whether the context has been closed to prevent double-cleanup."""
@@ -193,6 +195,10 @@ class YamlRefactorContext:
         )
         self._mutation_count += count
 
+    def register_disk_mutation(self, count: int = 1) -> None:
+        """Record actual on-disk changes so callers can react truthfully after dry-run flows."""
+        self._disk_mutation_count += count
+
     @property
     def mutation_count(self) -> int:
         """Read only property to access the mutation count."""
@@ -205,6 +211,11 @@ class YamlRefactorContext:
         logger.debug(":white_check_mark: Has the context mutated anything? => %s", has_mutated)
         return has_mutated
 
+    @property
+    def disk_mutation_count(self) -> int:
+        """Read-only count of actual on-disk mutations in this session."""
+        return self._disk_mutation_count
+
     def register_written_file(self, path: Path) -> None:
         """Register a file path that was successfully written to disk.
 
@@ -212,6 +223,7 @@ class YamlRefactorContext:
         can find them regardless of its working directory.
         """
         self._written_files.add(path.resolve())
+        self.register_disk_mutation()
 
     @property
     def written_files(self) -> frozenset[Path]:
