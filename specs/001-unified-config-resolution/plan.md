@@ -28,7 +28,7 @@ This system consolidates 32+ scattered configuration access patterns, provides f
 - In-memory manifest (dbt's parsed manifest.json)
 - Thread-safe caches (existing _COLUMN_LIST_CACHE, _YAML_BUFFER_CACHE)
 
-**Testing**: pytest with demo_duckdb project fixture, test matrix covering Python 3.10-3.12 × dbt-core 1.8-1.10
+**Testing**: pytest with demo_duckdb project fixture, test matrix covering Python 3.10-3.13 × dbt-core 1.8-1.10
 
 **Target Platform**: Cross-platform (Linux, macOS, Windows) - dbt-osmosis is a CLI tool
 
@@ -81,7 +81,7 @@ This system consolidates 32+ scattered configuration access patterns, provides f
 | Use dbt public APIs | ✅ PASS | Uses dbt.contracts.graph.nodes, dbt.cli.main.dbtRunner |
 | Internal APIs documented | ✅ PASS | Will document version compatibility for `unrendered_config` field |
 | Support dbt-core >=1.8,<1.11 | ✅ PASS | FR-015, FR-016, FR-017 cover version compatibility |
-| Test against all versions | ✅ PASS | Existing test matrix covers Python 3.10-3.12 × dbt 1.8-1.10 |
+| Test against all versions | ✅ PASS | Existing test matrix covers Python 3.10-3.13 × dbt 1.8-1.10 |
 | Prefer dbt native parsing | ✅ PASS | Uses dbt's manifest loading |
 
 ### IV. Test-Driven Development (NON-NEGOTIABLE)
@@ -91,7 +91,7 @@ This system consolidates 32+ scattered configuration access patterns, provides f
 | Tests written first | ✅ PASS | Plan includes test creation before implementation |
 | Core transformations have unit tests | ✅ PASS | Will create tests/core/test_config_resolution.py |
 | Integration tests use demo_duckdb | ✅ PASS | Will add integration tests for configuration sources |
-| Test matrix covers versions | ✅ PASS | Existing CI matrix covers Python 3.10-3.12 × dbt 1.8-1.10 |
+| Test matrix covers versions | ✅ PASS | Existing CI matrix covers Python 3.10-3.13 × dbt 1.8-1.10 |
 | Coverage remains above 70% | ✅ PASS | New code will be tested to maintain coverage |
 
 ### V. Observability and Debuggability
