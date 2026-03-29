@@ -9,6 +9,7 @@ import time
 import typing as t
 from dataclasses import dataclass
 from textwrap import dedent
+from urllib.parse import urlparse
 
 try:
     import openai
@@ -149,6 +150,28 @@ def _redact_credentials(text: str) -> str:
     return redacted
 
 
+def _normalize_azure_ad_token_scope(scope: str) -> str:
+    """Normalize Azure AD resource scopes to the token form Azure expects.
+
+    Azure OpenAI examples commonly show the Cognitive Services resource URI and
+    the Azure SDK examples commonly request that same resource as
+    `.../.default`. Accept both forms so CLI users can follow either convention
+    without needing to know which credential path we take internally.
+
+    Keep explicitly scoped values (for example `api://app-id/access_as_user`)
+    unchanged instead of blindly appending `/.default`.
+    """
+    normalized = scope.strip()
+    if normalized.endswith("/.default"):
+        return normalized
+
+    parsed_scope = urlparse(normalized)
+    if parsed_scope.scheme and parsed_scope.path in {"", "/"}:
+        return f"{normalized.rstrip('/')}/.default"
+
+    return normalized
+
+
 # Dynamic client creation function
 def get_llm_client() -> tuple[t.Any, str]:
     """Creates and returns an LLM client and model engine string based on environment variables.
@@ -216,6 +239,8 @@ def get_llm_client() -> tuple[t.Any, str]:
                 "AZURE_OPENAI_AD_TOKEN_SCOPE must be set for azure-openai-ad provider"
             )
 
+        normalized_scope = _normalize_azure_ad_token_scope(azure_ad_token_scope)
+
         if not _AZURE_IDENTITY_AVAILABLE:
             raise LLMConfigurationError(
                 "Azure Identity library is not installed. "
@@ -229,15 +254,10 @@ def get_llm_client() -> tuple[t.Any, str]:
 
             if azure_tenant_id and azure_client_id and azure_client_secret:
                 credential = EnvironmentCredential()  # type: ignore[misc]
-                scope = (
-                    f"{azure_ad_token_scope}/.default"
-                    if not azure_ad_token_scope.endswith("/.default")
-                    else azure_ad_token_scope
-                )
-                token = credential.get_token(scope).token
+                token = credential.get_token(normalized_scope).token
             else:
                 credential = DefaultAzureCredential()  # type: ignore[misc]
-                token = credential.get_token(azure_ad_token_scope).token
+                token = credential.get_token(normalized_scope).token
         except Exception as e:
             raise LLMConfigurationError(
                 f"Failed to acquire Azure AD token: {_redact_credentials(str(e))}"

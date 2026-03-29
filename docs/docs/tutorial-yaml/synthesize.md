@@ -24,7 +24,7 @@ Set `LLM_PROVIDER` to one of:
 | --- | --- | --- |
 | `openai` | `OPENAI_API_KEY` | `OPENAI_MODEL` (default `gpt-4o`) |
 | `azure-openai` | `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME` | `AZURE_OPENAI_API_VERSION` (default `2025-01-01-preview`) |
-| `azure-openai-ad` | `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_AD_TOKEN_SCOPE`, `AZURE_OPENAI_DEPLOYMENT_NAME` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (for service principal auth) |
+| `azure-openai-ad` | `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_AD_TOKEN_SCOPE`, `AZURE_OPENAI_DEPLOYMENT_NAME` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (for service principal auth). `AZURE_OPENAI_AD_TOKEN_SCOPE` may be either the full `/.default` scope or the bare resource URI that dbt-osmosis normalizes for you. |
 | `google-gemini` | `GOOGLE_GEMINI_API_KEY` | `GOOGLE_GEMINI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta/openai`), `GOOGLE_GEMINI_MODEL` (default `gemini-2.0-flash`) |
 | `anthropic` | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com/v1`), `ANTHROPIC_MODEL` (default `claude-3-5-haiku-latest`) |
 | `lm-studio` | none | `LM_STUDIO_BASE_URL` (default `http://localhost:1234/v1`), `LM_STUDIO_API_KEY` (default `lm-studio`), `LM_STUDIO_MODEL` (default `local-model`) |
@@ -80,13 +80,15 @@ az login
 export LLM_PROVIDER=azure-openai-ad
 export AZURE_OPENAI_BASE_URL="https://your-resource.openai.azure.com"
 export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
-export AZURE_OPENAI_AD_TOKEN_SCOPE="https://cognitiveservices.azure.com"
+export AZURE_OPENAI_AD_TOKEN_SCOPE="https://cognitiveservices.azure.com/.default"
 ```
 
 **For custom gateways/proxies**, use the custom API scope provided by your gateway admin:
 ```bash
-export AZURE_OPENAI_AD_TOKEN_SCOPE="api://your-gateway-app-id"
+export AZURE_OPENAI_AD_TOKEN_SCOPE="api://your-gateway-app-id/.default"
 ```
+
+dbt-osmosis also accepts the bare resource URI form (for example `https://cognitiveservices.azure.com` or `api://your-gateway-app-id`) and normalizes it to `/.default` before requesting a token. If your gateway admin gives you a more specific delegated scope such as `api://your-gateway-app-id/access_as_user`, keep that exact value.
 
 For service principal authentication, also set:
 ```bash
