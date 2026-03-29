@@ -95,10 +95,12 @@ tasks:
         SMOKE_ENV=$(mktemp -d)/dbt-osmosis-smoke
         uv venv "$SMOKE_ENV"
         uv pip install --python "$SMOKE_ENV/bin/python" "dbt-core~=1.11.0" basedpyright pytest pytest-cov hypothesis .
-        "$SMOKE_ENV/bin/basedpyright" --level error
-        "$SMOKE_ENV/bin/dbt-osmosis" --help
-        "$SMOKE_ENV/bin/python" -c "import dbt_osmosis; import dbt_osmosis.cli.main"
-        "$SMOKE_ENV/bin/pytest" tests/core/test_cli.py tests/core/test_legacy.py tests/core/test_logger.py -q
+        export VIRTUAL_ENV="$SMOKE_ENV"
+        export PATH="$SMOKE_ENV/bin:$PATH"
+        basedpyright --level error
+        dbt-osmosis --help
+        python -c "import dbt_osmosis; import dbt_osmosis.cli.main"
+        pytest tests/core/test_cli.py tests/core/test_legacy.py tests/core/test_logger.py -q
 
   mutation-test:
     desc: Run mutation testing with mutmut (ensures tests catch bugs)
