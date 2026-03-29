@@ -4,8 +4,13 @@ import tempfile
 from pathlib import Path
 
 from dbt_osmosis.core.schema.parser import create_yaml_instance
-from dbt_osmosis.core.schema.reader import _read_yaml, _YAML_BUFFER_CACHE, _YAML_ORIGINAL_CACHE
-from dbt_osmosis.core.schema.writer import _write_yaml, _merge_preserved_sections
+from dbt_osmosis.core.schema.reader import (
+    _mark_yaml_caches_dirty,
+    _read_yaml,
+    _YAML_BUFFER_CACHE,
+    _YAML_ORIGINAL_CACHE,
+)
+from dbt_osmosis.core.schema.writer import _write_yaml, _merge_preserved_sections, commit_yamls
 
 
 def test_create_yaml_instance_settings():
@@ -298,6 +303,45 @@ def _clear_cache(cache, key):
     """Helper to safely clear a key from an LRUCache or dict."""
     if key in cache:
         del cache[key]
+
+
+def test_commit_yamls_keeps_dirty_buffer_entries_until_write():
+    """Dirty YAML buffers should survive cache churn until commit writes them."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+
+    _YAML_BUFFER_CACHE.clear()
+    _YAML_ORIGINAL_CACHE.clear()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dirty_path = Path(tmpdir) / "dirty.yml"
+            dirty_path.write_text(
+                "version: 2\nmodels:\n  - name: dirty_model\n    description: original\n",
+            )
+
+            dirty_doc = _read_yaml(yaml_handler, lock, dirty_path)
+            dirty_doc["models"][0]["description"] = "updated"
+            _mark_yaml_caches_dirty(dirty_path)
+
+            # Force the clean-entry LRU to churn past capacity.
+            for index in range(_YAML_BUFFER_CACHE.maxsize):
+                clean_path = Path(tmpdir) / f"clean_{index}.yml"
+                clean_path.write_text(f"version: 2\nmodels:\n  - name: model_{index}\n")
+                _read_yaml(yaml_handler, lock, clean_path)
+
+            assert dirty_path in _YAML_BUFFER_CACHE
+
+            commit_yamls(yaml_handler, lock, dry_run=False)
+
+            assert dirty_path not in _YAML_BUFFER_CACHE
+            reloaded = _read_yaml(yaml_handler, lock, dirty_path)
+            assert reloaded["models"][0]["description"] == "updated"
+    finally:
+        _YAML_BUFFER_CACHE.clear()
+        _YAML_ORIGINAL_CACHE.clear()
 
 
 def test_write_yaml_calls_written_file_tracker():

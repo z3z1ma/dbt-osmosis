@@ -4,7 +4,7 @@ Thread-safety:
     - _YAML_BUFFER_CACHE is protected by _YAML_BUFFER_CACHE_LOCK
     - All cache reads and writes must be synchronized using this lock
     - _read_yaml() acquires both yaml_handler_lock and _YAML_BUFFER_CACHE_LOCK
-    - The cache now uses LRU eviction policy with a size limit of 256 entries
+    - Clean cache entries use LRU eviction, but dirty entries stay pinned until commit
 """
 
 import threading
@@ -27,8 +27,9 @@ __all__ = [
 class LRUCache:
     """Thread-safe LRU cache implementation with dictionary-like interface.
 
-    This cache automatically evicts the least recently used items when it reaches
-    its maximum size limit. All operations are thread-safe.
+    This cache automatically evicts the least recently used clean items when it
+    reaches its maximum size limit. Dirty entries can be pinned so buffered YAML
+    mutations are not silently discarded before they are committed.
 
     Args:
         maxsize: Maximum number of items to store before eviction
@@ -39,6 +40,15 @@ class LRUCache:
         self.maxsize = maxsize
         self._cache: OrderedDict[Path, t.Any] = OrderedDict()
         self._lock = threading.Lock()
+        self._dirty_keys: set[Path] = set()
+
+    def _evict_one_clean_locked(self) -> bool:
+        for candidate in list(self._cache.keys()):
+            if candidate in self._dirty_keys:
+                continue
+            del self._cache[candidate]
+            return True
+        return False
 
     def __getitem__(self, key: Path) -> t.Any:
         with self._lock:
@@ -54,9 +64,11 @@ class LRUCache:
             if key in self._cache:
                 # Move to end if already exists
                 self._cache.pop(key)
-            elif len(self._cache) >= self.maxsize:
-                # Remove oldest item if at capacity
-                self._cache.popitem(last=False)
+            elif len(self._cache) >= self.maxsize and not self._evict_one_clean_locked():
+                logger.debug(
+                    ":pin: Retaining dirty YAML buffers beyond cache max size => %s",
+                    self.maxsize,
+                )
             self._cache[key] = value
 
     def __contains__(self, key: Path) -> bool:
@@ -65,20 +77,36 @@ class LRUCache:
 
     def __delitem__(self, key: Path) -> None:
         with self._lock:
+            self._dirty_keys.discard(key)
             del self._cache[key]
 
     def setdefault(self, key: Path, default: t.Any) -> t.Any:
         with self._lock:
             if key not in self._cache:
-                if len(self._cache) >= self.maxsize:
-                    self._cache.popitem(last=False)
+                if len(self._cache) >= self.maxsize and not self._evict_one_clean_locked():
+                    logger.debug(
+                        ":pin: Retaining dirty YAML buffers beyond cache max size => %s",
+                        self.maxsize,
+                    )
                 self._cache[key] = default
             return self._cache[key]
+
+    def mark_dirty(self, key: Path) -> None:
+        """Pin a cache entry so it cannot be evicted before commit."""
+        with self._lock:
+            if key in self._cache:
+                self._dirty_keys.add(key)
+
+    def mark_clean(self, key: Path) -> None:
+        """Allow a cache entry to be evicted again."""
+        with self._lock:
+            self._dirty_keys.discard(key)
 
     def clear(self) -> None:
         """Clear all items from the cache."""
         with self._lock:
             self._cache.clear()
+            self._dirty_keys.clear()
 
     def keys(self) -> t.Any:
         """Return a view of the cache's keys.
@@ -113,13 +141,14 @@ class LRUCache:
             return len(self._cache)
 
 
-# Use LRU cache with 256 entries to prevent unbounded growth
-# The maxsize should be large enough for typical projects but small enough to limit memory
+# Use LRU cache with 256 clean entries to prevent unbounded growth.
+# Dirty entries may temporarily exceed the limit so buffered edits are not lost.
 _YAML_BUFFER_CACHE: LRUCache = LRUCache(maxsize=256)
 """Cache for yaml file buffers to avoid redundant disk reads/writes and simplify edits.
 
 Thread-safety: Protected by _YAML_BUFFER_CACHE_LOCK. All reads and writes
-must be guarded by this lock. Uses LRU eviction policy with max size of 256 entries.
+must be guarded by this lock. Clean entries use LRU eviction with max size 256,
+while dirty entries stay pinned until they are written or discarded.
 """
 
 _YAML_ORIGINAL_CACHE: LRUCache = LRUCache(maxsize=256)
@@ -130,7 +159,8 @@ before filtering. When writing YAML back to disk, we merge the original filtered
 with the processed content to ensure nothing is lost.
 
 Thread-safety: Protected by _YAML_BUFFER_CACHE_LOCK. All reads and writes
-must be guarded by this lock. Uses LRU eviction policy with max size of 256 entries.
+must be guarded by this lock. Clean entries use LRU eviction with max size 256,
+while dirty entries stay pinned until they are written or discarded.
 """
 
 _YAML_BUFFER_CACHE_LOCK = threading.Lock()
@@ -139,6 +169,21 @@ _YAML_BUFFER_CACHE_LOCK = threading.Lock()
 Critical sections: _read_yaml() and _write_yaml() perform cache operations
 under this lock. All access to both caches must be synchronized.
 """
+
+
+def _mark_yaml_caches_dirty(path: Path) -> None:
+    """Pin buffered YAML state so later cache churn cannot discard pending edits."""
+    for cache in (_YAML_BUFFER_CACHE, _YAML_ORIGINAL_CACHE):
+        marker = getattr(cache, "mark_dirty", None)
+        if callable(marker):
+            marker(path)
+
+
+def _discard_yaml_caches(path: Path) -> None:
+    """Remove a YAML path from both caches after a truthful disk outcome."""
+    for cache in (_YAML_BUFFER_CACHE, _YAML_ORIGINAL_CACHE):
+        if path in cache:
+            del cache[path]
 
 
 def _read_yaml(
