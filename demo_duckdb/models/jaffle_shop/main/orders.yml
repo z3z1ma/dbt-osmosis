@@ -28,8 +28,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('customers')
-              field: customer_id
+              arguments:
+                to: ref('customers')
+                field: customer_id
         data_type: INTEGER
         # This column inherits from node-level (no override)
         # So it will use dbt-osmosis-output-to-lower: false
@@ -39,7 +40,8 @@ models:
       - name: status
         tests:
           - accepted_values:
-              values: [placed, shipped, completed, return_pending, returned]
+              arguments:
+                values: [placed, shipped, completed, return_pending, returned]
 
         description: '{{ doc("orders_status") }}'
         data_type: VARCHAR

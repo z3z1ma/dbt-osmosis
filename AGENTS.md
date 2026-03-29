@@ -174,7 +174,7 @@ Important nuance: `task` is not a pure verification command; it formats, lints, 
 - `demo_duckdb/` is the canonical integration fixture.
 - Many tests require `demo_duckdb/target/manifest.json`; generate it with `dbt parse` if missing.
 - `tests/conftest.py` builds temp DuckDB projects via `dbt seed`, `dbt run`, and `dbt docs generate`.
-- PostgreSQL coverage is optional and gated by `POSTGRES_URL`.
+- The earlier PostgreSQL fixture branch was removed because it was unexercised; test fixture support is DuckDB-only today.
 - Some LLM-related paths are also optional and may skip when extras such as `openai` or `azure.identity` are unavailable.
 
 ### QA cautions
