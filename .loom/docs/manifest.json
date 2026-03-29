@@ -2,6 +2,16 @@
   "entries": [
     {
       "baseVersion": null,
+      "canonicalRef": "doc:core-public-api-surface",
+      "contentHash": "c374e0b9747c28aba87058448015bb09673528c4a74ffb4d8bbec5a4baec78ea",
+      "editability": {
+        "mode": "full"
+      },
+      "relativePath": "concepts/core-public-api-surface.md",
+      "revisionToken": "ceda677735d6be69f907cf35a797e27532f61710f02857bb4af666d488735021"
+    },
+    {
+      "baseVersion": null,
       "canonicalRef": "doc:repository-guidelines",
       "contentHash": "470c70fc24d946dad9c5c198b75dfbf0fd15ac270ebdf710ad5756752cb0dcb8",
       "editability": {
@@ -9,6 +19,16 @@
       },
       "relativePath": "guides/repository-guidelines.md",
       "revisionToken": "c4cbb9724e6ea56961c77a8ca0b8b6c1507c087728e43be10fb12cbe8106c1a1"
+    },
+    {
+      "baseVersion": null,
+      "canonicalRef": "doc:supported-dbt-installation-window",
+      "contentHash": "2447f77eb49075a81300192a2ac9b855813fb3845fe36121aa1914fc90f1b175",
+      "editability": {
+        "mode": "full"
+      },
+      "relativePath": "guides/supported-dbt-installation-window.md",
+      "revisionToken": "44af887e65c2bd76e5e925bc88d3f1fa8e9a258c905bf25b99d5d5602c6d581c"
     },
     {
       "baseVersion": null,

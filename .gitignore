@@ -164,3 +164,7 @@ test.db
 # Claude Code
 .claude/
 CLAUDE.md
+
+# Loom
+/.ralph-worktrees
+/catalog.*
