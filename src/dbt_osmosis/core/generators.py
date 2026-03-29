@@ -12,13 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 
+from dbt.contracts.graph.nodes import SourceDefinition
+
 import dbt_osmosis.core.logger as logger
 from dbt_osmosis.core.config import DbtProjectContext
 from dbt_osmosis.core.settings import YamlRefactorSettings
 from dbt_osmosis.core.staging import (
     StagingGenerationResult,
     generate_staging_for_source,
-    write_staging_files,
 )
 
 __all__ = [
@@ -68,6 +69,19 @@ class DocumentationCheckResult:
     documented_columns: int
     undocumented_columns: int
     gaps: list[t.Any]  # DocumentationGap from dbt-core-interface
+
+
+def _resolve_staging_output_paths(
+    context: DbtProjectContext,
+    staging_name: str,
+    staging_path: Path | None,
+) -> tuple[Path, Path]:
+    """Resolve output paths for generated staging artifacts without writing them."""
+    if staging_path is None:
+        project_root = Path(context.config.project_dir)
+        staging_path = project_root / "models" / "staging"
+
+    return staging_path / f"{staging_name}.sql", staging_path / f"{staging_name}.yml"
 
 
 def generate_sources_from_database(
@@ -230,11 +244,9 @@ def generate_staging_from_source(
                 raise staging_spec.error or Exception("Failed to generate staging spec")
 
             spec = staging_spec.spec
-            staging_path = staging_path or Path(context.config.project_dir) / "models" / "staging"
-            staging_path.mkdir(parents=True, exist_ok=True)
-
-            sql_path = staging_path / f"{spec.staging_name}.sql"
-            yaml_path = staging_path / f"{spec.staging_name}.yml"
+            sql_path, yaml_path = _resolve_staging_output_paths(
+                context, spec.staging_name, staging_path
+            )
 
             columns_yaml = "\n".join(
                 f"  - name: {col.new_name}\n    description: {col.description}"
@@ -261,10 +273,8 @@ def generate_staging_from_source(
                 yaml_path=yaml_path,
             )
 
-            write_staging_files(result, dry_run=False)
-
             logger.info(
-                ":white_check_mark: Generated staging model %s (AI-based)",
+                ":white_check_mark: Generated staging model %s (AI-based, no files written yet)",
                 spec.staging_name,
             )
 
@@ -286,25 +296,18 @@ def generate_staging_from_source(
                 config=config,
             )
 
-            # Determine output paths
-            if staging_path is None:
-                project_root = Path(context.config.project_dir)
-                staging_path = project_root / "models" / "staging"
-
-            staging_path.mkdir(parents=True, exist_ok=True)
-
-            staging_name = result_dict.get("staging_name", f"stg_{table_name}")
-            sql_path = staging_path / f"{staging_name}.sql"
-            yaml_path = staging_path / f"{staging_name}.yml"
-
-            # Write files
-            sql_path.write_text(result_dict.get("sql", ""), encoding="utf-8")
-
-            if "yaml" in result_dict:
-                yaml_path.write_text(result_dict["yaml"], encoding="utf-8")
+            staging_name_value = result_dict.get("staging_name")
+            staging_name = (
+                staging_name_value
+                if isinstance(staging_name_value, str) and staging_name_value
+                else f"stg_{table_name}"
+            )
+            sql_content = result_dict.get("sql")
+            yaml_content = result_dict.get("yaml")
+            sql_path, yaml_path = _resolve_staging_output_paths(context, staging_name, staging_path)
 
             logger.info(
-                ":white_check_mark: Generated staging model %s (interface-based)",
+                ":white_check_mark: Generated staging model %s (interface-based, no files written yet)",
                 staging_name,
             )
 
@@ -312,8 +315,8 @@ def generate_staging_from_source(
                 source_name=f"{source_name}.{table_name}",
                 staging_name=staging_name,
                 spec=None,
-                sql_content=result_dict.get("sql", ""),
-                yaml_content=result_dict.get("yaml", ""),
+                sql_content=sql_content if isinstance(sql_content, str) else "",
+                yaml_content=yaml_content if isinstance(yaml_content, str) else "",
                 sql_path=sql_path,
                 yaml_path=yaml_path,
             )
@@ -400,7 +403,7 @@ def _get_source_definition(
     context: DbtProjectContext,
     source_name: str,
     table_name: str,
-) -> t.Any | None:
+) -> SourceDefinition | None:
     """Get a source definition from the manifest.
 
     Args:
