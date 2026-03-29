@@ -10,6 +10,7 @@ This module contains tests for the test_suggestions module, which provides:
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections import Counter
 from unittest import mock
@@ -169,6 +170,15 @@ class TestTestPatternExtractor:
         assert "common_tests" in extractor.learned_patterns
         assert isinstance(extractor.test_frequency, dict)
 
+    def test_extract_patterns_from_real_manifest_tests(self, mock_context):
+        """Test that extractor learns from generic test nodes attached in the manifest."""
+        extractor = TestPatternExtractor(mock_context)
+
+        extractor.extract_patterns()
+
+        assert {"unique", "not_null"} <= set(extractor.learned_patterns["id_column_tests"])
+        assert "accepted_values" in extractor.learned_patterns["status_column_tests"]
+
     def test_get_column_pattern_id(self):
         """Test column pattern detection for ID columns."""
         extractor = TestPatternExtractor(mock_context)
@@ -259,6 +269,17 @@ class TestTestPatternExtractor:
         assert any(s.test_type == "not_null" for s in suggestions)
         assert all(s.column_name == "user_id" for s in suggestions)
 
+    def test_get_suggestions_for_column_unknown_pattern_does_not_inherit_id_rules(self):
+        """Test that unmatched columns do not silently inherit ID column defaults."""
+        extractor = TestPatternExtractor(mock_context)
+        extractor.learned_patterns = {
+            "id_column_tests": ["unique", "not_null"],
+        }
+
+        suggestions = extractor.get_suggestions_for_column("plain_name")
+
+        assert suggestions == []
+
     def test_get_suggestions_for_column_no_pattern(self):
         """Test getting suggestions when no pattern matches."""
         extractor = TestPatternExtractor(mock_context)
@@ -299,6 +320,23 @@ class TestAITestSuggester:
         assert analysis.model_name == sample_node.name
         assert isinstance(analysis.existing_tests, dict)
         assert isinstance(analysis.suggested_tests, dict)
+
+    def test_suggest_tests_for_node_reads_manifest_generic_tests(self, mock_context):
+        """Test that real manifest generic tests become existing column tests."""
+        node = mock_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
+        extractor = TestPatternExtractor(mock_context)
+        extractor.extract_patterns()
+
+        analysis = AITestSuggester(mock_context, extractor).suggest_tests_for_node(
+            node, use_ai=False
+        )
+
+        assert "customer_id" in analysis.columns
+        assert "" not in analysis.columns
+        assert {test.test_type for test in analysis.existing_tests["customer_id"]} == {
+            "not_null",
+            "unique",
+        }
 
     def test_pattern_suggest_tests(self, mock_context, sample_node):
         """Test pattern-based test suggestions."""
@@ -447,6 +485,53 @@ class TestConvenienceFunctions:
         for model_name, analysis in results.items():
             assert isinstance(model_name, str)
             assert isinstance(analysis, ModelTestAnalysis)
+
+    def test_suggest_tests_for_model_uses_manifest_patterns(self, mock_context):
+        """Test that pattern-only suggestions work for real manifest nodes with no tests."""
+        node = mock_context.project.manifest.nodes["model.jaffle_shop_duckdb.orders_prefix"]
+
+        analysis = suggest_tests_for_model(mock_context, node, use_ai=False)
+
+        assert {test.test_type for test in analysis.suggested_tests["o_order_id"]} >= {
+            "not_null",
+            "unique",
+        }
+        assert "accepted_values" in {
+            test.test_type for test in analysis.suggested_tests["o_status"]
+        }
+
+
+class TestOsmosisFacade:
+    """Tests for the public core.osmosis facade."""
+
+    def test_osmosis_exports_test_suggestions_without_openai(self):
+        """Test that pattern-based test suggestions stay available without openai installed."""
+        import dbt_osmosis.core.osmosis as osmosis_module
+        import dbt_osmosis.core.test_suggestions as test_suggestions_module
+
+        original_find_spec = importlib.util.find_spec
+
+        def fake_find_spec(name, package=None):
+            if name == "openai":
+                return None
+            return original_find_spec(name, package)
+
+        try:
+            with mock.patch("importlib.util.find_spec", side_effect=fake_find_spec):
+                reloaded = importlib.reload(osmosis_module)
+
+                assert reloaded.TestPatternExtractor is test_suggestions_module.TestPatternExtractor
+                assert reloaded.TestSuggestion is test_suggestions_module.TestSuggestion
+                assert (
+                    reloaded.suggest_tests_for_model
+                    is test_suggestions_module.suggest_tests_for_model
+                )
+                assert (
+                    reloaded.suggest_tests_for_project
+                    is test_suggestions_module.suggest_tests_for_project
+                )
+        finally:
+            importlib.reload(osmosis_module)
 
 
 class TestEdgeCases:

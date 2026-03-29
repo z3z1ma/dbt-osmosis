@@ -34,6 +34,8 @@ __all__ = [
 class TestSuggestion:
     """A single test suggestion for a column or model."""
 
+    __test__ = False
+
     test_type: str  # e.g., "unique", "not_null", "relationships", "accepted_values"
     column_name: str | None = None  # None for model-level tests
     reason: str = ""
@@ -70,6 +72,80 @@ class ModelTestAnalysis:
         }
 
 
+def _iter_node_columns(node: t.Any) -> t.Iterator[tuple[str, t.Any]]:
+    """Yield node columns regardless of whether dbt exposes a dict or list shape."""
+
+    columns = getattr(node, "columns", {})
+    if isinstance(columns, dict):
+        yield from columns.items()
+        return
+
+    for column in columns or []:
+        yield getattr(column, "name", ""), column
+
+
+def _get_manifest_test_name(test_metadata: t.Any) -> str:
+    """Return a stable dbt test name, including namespace when present."""
+
+    name = getattr(test_metadata, "name", "")
+    namespace = getattr(test_metadata, "namespace", None)
+    return f"{namespace}.{name}" if namespace else name
+
+
+def _get_manifest_test_config(test_node: t.Any) -> dict[str, t.Any]:
+    """Strip manifest-only plumbing fields from a generic test definition."""
+
+    test_metadata = getattr(test_node, "test_metadata", None)
+    kwargs = dict(getattr(test_metadata, "kwargs", {}) or {})
+    kwargs.pop("column_name", None)
+    kwargs.pop("model", None)
+    return kwargs
+
+
+def _get_existing_tests_for_node(
+    manifest: t.Any,
+    node: t.Any,
+) -> dict[str, list[TestSuggestion]]:
+    """Collect generic tests attached to a model from real dbt manifest test nodes."""
+
+    from dbt.artifacts.resources.types import NodeType
+
+    unique_id = getattr(node, "unique_id", None)
+    if unique_id is None or not hasattr(manifest, "nodes"):
+        return {}
+
+    attached_tests: defaultdict[str, list[TestSuggestion]] = defaultdict(list)
+    for manifest_node in manifest.nodes.values():
+        if getattr(manifest_node, "resource_type", None) != NodeType.Test:
+            continue
+
+        attached_node = getattr(manifest_node, "attached_node", None)
+        if attached_node is not None:
+            if attached_node != unique_id:
+                continue
+        else:
+            depends_on = getattr(getattr(manifest_node, "depends_on", None), "nodes", []) or []
+            if unique_id not in depends_on:
+                continue
+
+        column_name = getattr(manifest_node, "column_name", None)
+        test_metadata = getattr(manifest_node, "test_metadata", None)
+        test_name = _get_manifest_test_name(test_metadata)
+        if not column_name or not test_name:
+            continue
+
+        attached_tests[column_name].append(
+            TestSuggestion(
+                test_type=test_name,
+                column_name=column_name,
+                config=_get_manifest_test_config(manifest_node),
+                confidence=1.0,
+            )
+        )
+
+    return dict(attached_tests)
+
+
 class TestPatternExtractor:
     """Extracts and learns test patterns from a dbt project.
 
@@ -78,6 +154,8 @@ class TestPatternExtractor:
     - Column naming patterns that trigger specific tests
     - Test configuration patterns
     """
+
+    __test__ = False
 
     def __init__(self, context: YamlRefactorContext) -> None:
         """Initialize the extractor with a dbt project context.
@@ -115,9 +193,9 @@ class TestPatternExtractor:
         if not hasattr(node, "columns"):
             return
 
-        for column in node.columns:
-            col_name = getattr(column, "name", "")
-            tests = getattr(column, "tests", [])
+        existing_tests = _get_existing_tests_for_node(self.context.project.manifest, node)
+        for col_name, column in _iter_node_columns(node):
+            tests = existing_tests.get(col_name, [])
 
             if not tests:
                 continue
@@ -129,7 +207,8 @@ class TestPatternExtractor:
             data_type = getattr(column, "data_type", None)
 
             for test in tests:
-                self._analyze_test(test, col_name, base_pattern, data_type)
+                test_payload = test.to_yaml_dict() if test.config else test.test_type
+                self._analyze_test(test_payload, col_name, base_pattern, data_type)
 
     def _get_column_pattern(self, column_name: str) -> str:
         """Extract a naming pattern from a column name.
@@ -226,17 +305,17 @@ class TestPatternExtractor:
         pattern = self._get_column_pattern(column_name)
 
         # Get pattern-based suggestions
-        pattern_tests = self.learned_patterns.get("id_column_tests", [])
+        pattern_tests: list[str] = []
         if pattern == "*_id":
-            pattern_tests = self.learned_patterns.get("id_column_tests", [])
+            pattern_tests = list(self.learned_patterns.get("id_column_tests", []))
         elif pattern == "*_date":
-            pattern_tests = self.learned_patterns.get("date_column_tests", [])
+            pattern_tests = list(self.learned_patterns.get("date_column_tests", []))
         elif pattern == "*_amount":
-            pattern_tests = self.learned_patterns.get("amount_column_tests", [])
+            pattern_tests = list(self.learned_patterns.get("amount_column_tests", []))
         elif pattern == "status":
-            pattern_tests = self.learned_patterns.get("status_column_tests", [])
+            pattern_tests = list(self.learned_patterns.get("status_column_tests", []))
         elif pattern.startswith("is_"):
-            pattern_tests = self.learned_patterns.get("is_column_tests", [])
+            pattern_tests = list(self.learned_patterns.get("is_column_tests", []))
 
         # Get data type based suggestions
         if data_type:
@@ -301,22 +380,8 @@ class AITestSuggester:
             ModelTestAnalysis with existing and suggested tests
         """
         model_name = getattr(node, "name", "unknown")
-        columns = [getattr(c, "name", "") for c in getattr(node, "columns", [])]
-
-        # Extract existing tests
-        existing_tests: dict[str, list[TestSuggestion]] = {}
-        for column in getattr(node, "columns", []):
-            col_name = getattr(column, "name", "")
-            tests = getattr(column, "tests", [])
-            if tests:
-                existing_tests[col_name] = [
-                    TestSuggestion(
-                        test_type=t if isinstance(t, str) else list(t.keys())[0],
-                        column_name=col_name,
-                        confidence=1.0,
-                    )
-                    for t in tests
-                ]
+        columns = [column_name for column_name, _ in _iter_node_columns(node)]
+        existing_tests = _get_existing_tests_for_node(self.context.project.manifest, node)
 
         analysis = ModelTestAnalysis(
             model_name=model_name,
@@ -341,14 +406,14 @@ class AITestSuggester:
         if not self.pattern_extractor:
             return suggestions
 
-        for column in getattr(node, "columns", []):
-            col_name = getattr(column, "name", "")
+        existing_tests = _get_existing_tests_for_node(self.context.project.manifest, node)
+        for col_name, column in _iter_node_columns(node):
             data_type = getattr(column, "data_type", None)
 
             col_suggestions = self.pattern_extractor.get_suggestions_for_column(col_name, data_type)
 
             # Filter out already existing tests
-            existing = {t.test_type for t in getattr(column, "tests", [])}
+            existing = {test.test_type for test in existing_tests.get(col_name, [])}
             for suggestion in col_suggestions:
                 if suggestion.test_type not in existing:
                     suggestions[col_name].append(suggestion)
@@ -393,20 +458,21 @@ class AITestSuggester:
         model_name = getattr(node, "name", "unknown")
         raw_sql = getattr(node, "raw_sql", getattr(node, "compiled_sql", ""))
         description = self.accessor.get_description(node) or "No description"
+        existing_tests = _get_existing_tests_for_node(self.context.project.manifest, node)
 
         # Gather column info
         column_info = []
-        for col in getattr(node, "columns", []):
-            col_name = getattr(col, "name", "")
+        for col_name, col in _iter_node_columns(node):
             col_desc = self.accessor.get_description(node, column_name=col_name) or ""
             col_type = getattr(col, "data_type", "unknown")
-            existing_tests = getattr(col, "tests", [])
 
             column_info.append({
                 "name": col_name,
                 "type": col_type,
                 "description": col_desc,
-                "existing_tests": existing_tests,
+                "existing_tests": [
+                    test.to_yaml_dict() for test in existing_tests.get(col_name, [])
+                ],
             })
 
         # Build context from learned patterns
@@ -534,11 +600,8 @@ def suggest_tests_for_model(
     Returns:
         ModelTestAnalysis with existing and suggested tests
     """
-    # Extract patterns if using pattern-based or hybrid approach
-    extractor: TestPatternExtractor | None = None
-    if not use_ai or use_ai:
-        extractor = TestPatternExtractor(context)
-        extractor.extract_patterns()
+    extractor = TestPatternExtractor(context)
+    extractor.extract_patterns()
 
     suggester = AITestSuggester(context, extractor)
     return suggester.suggest_tests_for_node(node, use_ai=use_ai, temperature=temperature)

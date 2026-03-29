@@ -235,63 +235,14 @@ from dbt_osmosis.core.sync_operations import (
     sync_node_to_yaml,
 )
 
-# Test suggestion operations - conditional on openai availability
-if TYPE_CHECKING:
-    from dbt_osmosis.core.test_suggestions import (
-        AITestSuggester,
-        ModelTestAnalysis,
-        TestPatternExtractor,
-        TestSuggestion,
-        suggest_tests_for_model,
-        suggest_tests_for_project,
-    )
-else:
-    if _llm_available:
-        from dbt_osmosis.core.test_suggestions import (
-            AITestSuggester,
-            ModelTestAnalysis,
-            TestPatternExtractor,
-            TestSuggestion,
-            suggest_tests_for_model,
-            suggest_tests_for_project,
-        )
-    else:
-        # Stub classes/functions
-        class AITestSuggester:
-            def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-                raise ImportError(
-                    "AI test suggestions require OpenAI. "
-                    "Install with: pip install 'dbt-osmosis[openai]'"
-                )
-
-        class ModelTestAnalysis:
-            def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-                raise ImportError(
-                    "AI test analysis requires OpenAI. Install with: pip install 'dbt-osmosis[openai]'"
-                )
-
-        class TestPatternExtractor:
-            def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-                raise ImportError(
-                    "Test pattern extraction requires OpenAI. "
-                    "Install with: pip install 'dbt-osmosis[openai]'"
-                )
-
-        class TestSuggestion:
-            def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-                raise ImportError(
-                    "Test suggestions require OpenAI. Install with: pip install 'dbt-osmosis[openai]'"
-                )
-
-        def suggest_tests_for_model(*args, **kwargs):  # type: ignore[no-untyped-def]
-            raise ImportError(
-                "AI test suggestions require OpenAI. Install with: pip install 'dbt-osmosis[openai]'"
-            )
-
-        def suggest_tests_for_project(*args, **kwargs):  # type: ignore[no-untyped-def]
-            raise ImportError(
-                "AI test suggestions require OpenAI. Install with: pip install 'dbt-osmosis[openai]'"
-            )
+from dbt_osmosis.core.test_suggestions import (
+    AITestSuggester,
+    ModelTestAnalysis,
+    TestPatternExtractor,
+    TestSuggestion,
+    suggest_tests_for_model,
+    suggest_tests_for_project,
+)
 
 
 # Transform operations
