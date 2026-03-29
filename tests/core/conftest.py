@@ -10,38 +10,40 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import manifest_requires_refresh, run_dbt_command
 
-def _ensure_manifest_exists() -> None:
-    """Ensure demo_duckdb/target/manifest.json exists by running dbt parse if needed.
+
+def _ensure_manifest_exists(project_dir: Path = Path("demo_duckdb")) -> None:
+    """Ensure demo_duckdb/target/manifest.json exists and matches current fixture inputs.
 
     This is a lightweight alternative to the full dbt run seed+run pipeline.
-    dbt parse generates the manifest without executing any SQL.
+    dbt parse generates the manifest without executing any SQL, and we rerun it
+    whenever fixture inputs are newer than the compiled artifact.
     """
-    manifest_path = Path("demo_duckdb/target/manifest.json")
+    manifest_path = project_dir / "target" / "manifest.json"
 
-    if manifest_path.exists():
+    if not manifest_requires_refresh(manifest_path, project_dir):
         return
 
-    from dbt.cli.main import dbtRunner
-
     print("\n" + "=" * 60)
-    print("Manifest not found - running dbt parse to generate it")
+    if manifest_path.exists():
+        print("Manifest is stale - running dbt parse to refresh it")
+    else:
+        print("Manifest not found - running dbt parse to generate it")
     print("=" * 60)
 
-    result = dbtRunner().invoke([
+    run_dbt_command([
         "parse",
         "--project-dir",
-        "demo_duckdb",
+        str(project_dir),
         "--profiles-dir",
-        "demo_duckdb",
+        str(project_dir),
     ])
 
-    if result.success:
-        print(f"✓ Manifest generated at {manifest_path}")
-    else:
-        raise RuntimeError(
-            f"dbt parse failed: {result.exception if hasattr(result, 'exception') else 'Unknown error'}",
-        )
+    if not manifest_path.exists():
+        raise RuntimeError(f"Manifest file not created at {manifest_path}")
+
+    print(f"✓ Manifest generated at {manifest_path}")
 
     print("=" * 60 + "\n")
 
@@ -52,9 +54,10 @@ def ensure_demo_manifest() -> None:
 
     This fixture runs automatically (autouse=True) before any tests in this
     directory (tests/core/). It checks if demo_duckdb/target/manifest.json
-    exists and runs dbt parse if it doesn't.
+    exists, and it reruns dbt parse whenever the compiled artifact is stale.
 
     This is a lightweight operation that only runs once per test session.
-    The manifest is cached in the source tree for subsequent test runs.
+    The manifest stays cached in the source tree for subsequent test runs until
+    demo project inputs change.
     """
     _ensure_manifest_exists()
