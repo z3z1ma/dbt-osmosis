@@ -52,6 +52,7 @@ def test_yaml_refactor_help(runner: CliRunner) -> None:
     assert "--check" in result.output
     assert "--synthesize" in result.output
     assert "--fusion-compat" in result.output
+    assert "discovered project root" in result.output
 
 
 def test_fusion_compat_flag_in_yaml_commands(runner: CliRunner) -> None:
@@ -117,6 +118,7 @@ def test_workbench_help(runner: CliRunner) -> None:
     """Test that the workbench command shows help."""
     result = runner.invoke(cli, ["workbench", "--help"])
     assert result.exit_code == 0
+    assert "discovered project root" in result.output
     assert "--host" in result.output
     assert "--port" in result.output
 

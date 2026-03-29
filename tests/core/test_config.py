@@ -46,6 +46,41 @@ def test_discover_profiles_dir(tmp_path):
         os.chdir(original_cwd)
 
 
+def test_discover_profiles_dir_finds_project_root_profiles_from_subdirectory(tmp_path):
+    """Subdirectory invocation should still find a project-local profiles.yml."""
+    project_root = tmp_path / "demo_project"
+    nested_dir = project_root / "models" / "staging"
+    nested_dir.mkdir(parents=True)
+    (project_root / "dbt_project.yml").write_text("name: demo_project\nversion: '1.0'\n")
+    (project_root / "profiles.yml").write_text("demo_project: {}\n")
+
+    original_cwd = os.getcwd()
+    os.chdir(nested_dir)
+    try:
+        found = discover_profiles_dir()
+        assert str(project_root.resolve()) == found
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_discover_profiles_dir_prefers_current_directory_over_project_root(tmp_path):
+    """A local profiles.yml should win before falling back to the project root."""
+    project_root = tmp_path / "demo_project"
+    nested_dir = project_root / "models" / "staging"
+    nested_dir.mkdir(parents=True)
+    (project_root / "dbt_project.yml").write_text("name: demo_project\nversion: '1.0'\n")
+    (project_root / "profiles.yml").write_text("demo_project: {}\n")
+    (nested_dir / "profiles.yml").write_text("nested_profile: {}\n")
+
+    original_cwd = os.getcwd()
+    os.chdir(nested_dir)
+    try:
+        found = discover_profiles_dir()
+        assert str(nested_dir.resolve()) == found
+    finally:
+        os.chdir(original_cwd)
+
+
 def test_config_to_namespace():
     """Tests that DbtConfiguration is properly converted to argparse.Namespace."""
     cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb", target="dev")
@@ -173,25 +208,22 @@ def test_adapter_ttl_expiration(yaml_context: YamlRefactorContext):
 class TestDetectFusionManifest:
     """Tests for _detect_fusion_manifest() Fusion detection logic."""
 
-    def test_no_manifest_no_binary(self, tmp_path):
-        """No manifest and no Fusion binary → returns False."""
-        with mock.patch("shutil.which", return_value=None):
-            assert _detect_fusion_manifest(str(tmp_path)) is False
+    def test_no_manifest_returns_false(self, tmp_path):
+        """Without a manifest, there is no project-local Fusion evidence."""
+        assert _detect_fusion_manifest(str(tmp_path)) is False
 
-    def test_no_manifest_but_dbtf_binary(self, tmp_path):
-        """No manifest but dbtf binary on PATH → returns True."""
-        with mock.patch(
-            "shutil.which", side_effect=lambda cmd: "/usr/bin/dbtf" if cmd == "dbtf" else None
-        ):
-            assert _detect_fusion_manifest(str(tmp_path)) is True
-
-    def test_no_manifest_but_dbt_fusion_binary(self, tmp_path):
-        """No manifest but dbt-fusion binary on PATH → returns True."""
+    def test_no_manifest_ignores_fusion_binaries_on_path(self, tmp_path):
+        """Installed Fusion binaries alone are not evidence about this project."""
         with mock.patch(
             "shutil.which",
-            side_effect=lambda cmd: "/usr/bin/dbt-fusion" if cmd == "dbt-fusion" else None,
-        ):
-            assert _detect_fusion_manifest(str(tmp_path)) is True
+            side_effect=lambda cmd: "/usr/bin/dbtf"
+            if cmd == "dbtf"
+            else "/usr/bin/dbt-fusion"
+            if cmd == "dbt-fusion"
+            else None,
+        ) as mock_which:
+            assert _detect_fusion_manifest(str(tmp_path)) is False
+        mock_which.assert_not_called()
 
     def test_dbt_core_manifest_v12(self, tmp_path):
         """dbt-core manifest (v12) → returns False."""
