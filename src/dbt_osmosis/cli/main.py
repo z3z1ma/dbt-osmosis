@@ -12,34 +12,34 @@ import click
 import yaml as yaml_handler
 
 import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core.config import (
+    DbtConfiguration,
+    create_dbt_project_context,
+    discover_profiles_dir,
+    discover_project_dir,
+)
+from dbt_osmosis.core.diff import SchemaDiff
 from dbt_osmosis.core.generators import (
     generate_sources_from_database,
     generate_staging_from_source,
 )
-from dbt_osmosis.core.osmosis import (
-    DbtConfiguration,
-    YamlRefactorContext,
-    YamlRefactorSettings,
-    SchemaDiff,
+from dbt_osmosis.core.llm import generate_dbt_model_from_nl, generate_sql_from_nl
+from dbt_osmosis.core.path_management import create_missing_source_yamls
+from dbt_osmosis.core.restructuring import (
     apply_restructure_plan,
-    compile_sql_code,
-    create_dbt_project_context,
-    create_missing_source_yamls,
-    discover_profiles_dir,
-    discover_project_dir,
     draft_restructure_delta_plan,
-    execute_sql_code,
-    generate_dbt_model_from_nl,
-    generate_sql_from_nl,
+)
+from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
+from dbt_osmosis.core.sql_lint import SQLLinter, lint_sql_code
+from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
+from dbt_osmosis.core.test_suggestions import suggest_tests_for_model, suggest_tests_for_project
+from dbt_osmosis.core.transforms import (
     inherit_upstream_column_knowledge,
     inject_missing_columns,
-    lint_sql_code,
     remove_columns_not_in_database,
     sort_columns_as_configured,
     synchronize_data_types,
     synthesize_missing_documentation_with_openai,
-    suggest_tests_for_model,
-    suggest_tests_for_project,
 )
 
 T = t.TypeVar("T")
@@ -2101,8 +2101,6 @@ def lint_model_command(
     This command analyzes a dbt model's SQL for style issues, anti-patterns, and potential bugs.
     """
     logger.info(":water_wave: Executing dbt-osmosis SQL linting\n")
-    from dbt_osmosis.core.osmosis import SQLLinter
-
     settings = DbtConfiguration(
         project_dir=t.cast(str, project_dir),
         profiles_dir=t.cast(str, profiles_dir),
@@ -2208,8 +2206,6 @@ def lint_project_command(
     This command analyzes all dbt models' SQL for style issues, anti-patterns, and potential bugs.
     """
     logger.info(":water_wave: Executing dbt-osmosis SQL linting\n")
-    from dbt_osmosis.core.osmosis import SQLLinter
-
     settings = DbtConfiguration(
         project_dir=t.cast(str, project_dir),
         profiles_dir=t.cast(str, profiles_dir),

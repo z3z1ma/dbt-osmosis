@@ -20,18 +20,15 @@ from dbt_common.context import set_invocation_context
 from streamlit import session_state as state
 from streamlit_elements_fluence import elements, event, sync
 
-from dbt_osmosis.core.osmosis import (
+from dbt_osmosis.core.config import (
     DbtConfiguration,
+    DbtProjectContext as DbtProject,
     _reload_manifest,  # pyright: ignore[reportPrivateUsage]
-    compile_sql_code,
     create_dbt_project_context,
     discover_profiles_dir,
     discover_project_dir,
-    execute_sql_code,
 )
-from dbt_osmosis.core.osmosis import (
-    DbtProjectContext as DbtProject,
-)
+from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 from dbt_osmosis.workbench.components.ai_assistant import AIAssistant
 from dbt_osmosis.workbench.components.dashboard import Dashboard
 from dbt_osmosis.workbench.components.editor import Editor

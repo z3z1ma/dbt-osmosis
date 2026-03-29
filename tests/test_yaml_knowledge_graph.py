@@ -1,10 +1,8 @@
 # pyright: reportPrivateUsage=false
 import typing as t
 
-from dbt_osmosis.core.osmosis import (
-    YamlRefactorContext,
-    _build_column_knowledge_graph,
-)
+from dbt_osmosis.core.inheritance import _build_column_knowledge_graph
+from dbt_osmosis.core.settings import YamlRefactorContext
 
 
 def _filter_config_field(d: dict[str, t.Any]) -> dict[str, t.Any]:

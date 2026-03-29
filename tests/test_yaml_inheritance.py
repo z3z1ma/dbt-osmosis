@@ -6,13 +6,10 @@ import dbt.version
 import pytest
 from packaging.version import Version
 
-from dbt_osmosis.core.osmosis import (
-    YamlRefactorContext,
-    _build_node_ancestor_tree,
-    _get_node_yaml,
-    inherit_upstream_column_knowledge,
-    sync_node_to_yaml,
-)
+from dbt_osmosis.core.inheritance import _build_node_ancestor_tree, _get_node_yaml
+from dbt_osmosis.core.settings import YamlRefactorContext
+from dbt_osmosis.core.sync_operations import sync_node_to_yaml
+from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
 
 
 def _filter_config_field(d: dict[str, t.Any]) -> dict[str, t.Any]:
@@ -235,8 +232,8 @@ def test_inherit_upstream_column_knowledge_with_various_settings(
 
     # Perform inheritance
     with (
-        mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
     ):
         _ = inherit_upstream_column_knowledge(yaml_context, target_node)
         sync_node_to_yaml(yaml_context, target_node, commit=False)
@@ -275,8 +272,8 @@ def test_use_unrendered_descriptions(
     yaml_context.settings.force_inherit_descriptions = True
 
     with (
-        mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
     ):
         _ = inherit_upstream_column_knowledge(yaml_context, target_node)
         sync_node_to_yaml(yaml_context, target_node, commit=False)
@@ -378,8 +375,8 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
 
     # Perform inheritance on the node
     with (
-        mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-        mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
     ):
         _ = inherit_upstream_column_knowledge(yaml_context, target_node)
 

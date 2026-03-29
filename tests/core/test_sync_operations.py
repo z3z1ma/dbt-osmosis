@@ -76,8 +76,8 @@ def test_preserve_unrendered_descriptions(yaml_context: YamlRefactorContext, fre
 
         # Sync the node
         with (
-            mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
         ):
             sync_node_to_yaml(yaml_context, node, commit=False)
 
@@ -135,8 +135,8 @@ def test_prefer_yaml_values_preserves_var_jinja(yaml_context: YamlRefactorContex
         yaml_context.settings.prefer_yaml_values = True
 
         with (
-            mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
         ):
             sync_node_to_yaml(yaml_context, node, commit=False)
 
@@ -196,8 +196,8 @@ def test_prefer_yaml_values_preserves_env_var_jinja(
         yaml_context.settings.fusion_compat = False
 
         with (
-            mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
         ):
             sync_node_to_yaml(yaml_context, node, commit=False)
 
@@ -265,8 +265,8 @@ def test_prefer_yaml_values_preserves_all_jinja_patterns(
         yaml_context.settings.fusion_compat = False
 
         with (
-            mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
         ):
             sync_node_to_yaml(yaml_context, node, commit=False)
 
@@ -331,8 +331,8 @@ def test_add_inheritance_for_specified_keys_still_works(
     yaml_context.yaml_handler.dump(original_yaml, buffer)
     with mock.patch("builtins.open", mock.mock_open(read_data=buffer.getvalue())):
         with (
-            mock.patch("dbt_osmosis.core.osmosis._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}),
+            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
         ):
             sync_node_to_yaml(yaml_context, node, commit=False)
 

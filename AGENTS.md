@@ -34,7 +34,7 @@ Package entrypoint: `src/dbt_osmosis/__main__.py`
 - `src/dbt_osmosis/workbench/app.py` reuses the same dbt context but owns Streamlit state and dashboard composition.
 
 ### Public vs. internal surfaces
-- `src/dbt_osmosis/core/osmosis.py` and `src/dbt_osmosis/core/__init__.py` are compatibility facades. Do not put new core behavior there unless the API surface truly needs to expand.
+- `src/dbt_osmosis/core/osmosis.py` is the compatibility/public facade. `src/dbt_osmosis/core/__init__.py` is no longer a re-export surface; internal code should import concrete submodules directly.
 - Deep edits under `src/dbt_osmosis/core/` must also follow `src/dbt_osmosis/core/AGENTS.md`.
 
 ## Key Directories

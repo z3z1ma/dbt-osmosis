@@ -19,7 +19,7 @@ from unittest import mock
 
 import pytest
 
-from dbt_osmosis.core.osmosis import inherit_upstream_column_knowledge
+from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
 
 
 @pytest.fixture(scope="function")
