@@ -573,6 +573,32 @@ class SQLLinter:
 
         return result
 
+    def _lint_dbt_sql(
+        self,
+        context: DbtProjectContext,
+        raw_sql: str,
+    ) -> LintResult:
+        """Compile dbt SQL before linting so Jinja and refs are resolved truthfully."""
+        from dbt_osmosis.core.sql_operations import compile_sql_code
+
+        try:
+            compiled_node = compile_sql_code(context, raw_sql)
+        except Exception as e:
+            logger.debug(":warning: SQL compilation failed: %s", e)
+            return LintResult(
+                violations=[
+                    LintViolation(
+                        rule_id="compile-error",
+                        message=f"Failed to compile SQL: {e}",
+                        level=LintLevel.ERROR,
+                    )
+                ],
+                sql=raw_sql,
+            )
+
+        compiled_sql = compiled_node.compiled_code or compiled_node.raw_code or raw_sql
+        return self.lint(raw_sql, compiled_sql)
+
     def lint_model(
         self,
         context: DbtProjectContext,
@@ -605,11 +631,19 @@ class SQLLinter:
                 ]
             )
 
-        # Lint both raw and compiled SQL
-        raw_sql = model.raw_code or ""
-        compiled_sql = getattr(model, "compiled_code", None) or ""
+        raw_sql = getattr(model, "raw_code", "") or getattr(model, "raw_sql", "")
+        if not raw_sql:
+            return LintResult(
+                violations=[
+                    LintViolation(
+                        rule_id="model-sql-not-found",
+                        message=f"Model '{model_name}' does not have SQL to lint",
+                        level=LintLevel.ERROR,
+                    )
+                ],
+            )
 
-        return self.lint(raw_sql, compiled_sql)
+        return self._lint_dbt_sql(context, raw_sql)
 
     def lint_project(
         self,
@@ -628,8 +662,8 @@ class SQLLinter:
         results: dict[str, LintResult] = {}
 
         for node in context.manifest.nodes.values():
-            # Skip non-model nodes
-            if not hasattr(node, "raw_code") or not node.raw_code:
+            raw_sql = getattr(node, "raw_code", "") or getattr(node, "raw_sql", "")
+            if not raw_sql:
                 continue
 
             # Apply FQN filter if provided
@@ -638,9 +672,7 @@ class SQLLinter:
                 if not any(pattern in node_fqn for pattern in fqn_filter):
                     continue
 
-            # Lint the model
-            compiled_sql = getattr(node, "compiled_code", None) or ""
-            result = self.lint(node.raw_code or "", compiled_sql)
+            result = self._lint_dbt_sql(context, raw_sql)
             results[node.name] = result
 
         return results
@@ -670,14 +702,4 @@ def lint_sql_code(
     # Create linter with dialect
     linter = SQLLinter(dialect=dialect, enabled_rules=rules)
 
-    # Compile SQL first to handle Jinja
-    from dbt_osmosis.core.sql_operations import compile_sql_code
-
-    try:
-        compiled_node = compile_sql_code(context, raw_sql)
-        compiled_sql = compiled_node.compiled_code or raw_sql
-    except Exception as e:
-        logger.debug(":warning: SQL compilation failed: %s", e)
-        compiled_sql = None
-
-    return linter.lint(raw_sql, compiled_sql)
+    return linter._lint_dbt_sql(context, raw_sql)
