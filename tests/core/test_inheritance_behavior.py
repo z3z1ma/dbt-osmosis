@@ -15,10 +15,14 @@ Key scenarios tested:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest import mock
 
 import pytest
 
+from dbt_osmosis.core.inheritance import _get_node_yaml
+from dbt_osmosis.core.schema.reader import _read_yaml
+from dbt_osmosis.core.sync_operations import sync_node_to_yaml
 from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
 
 
@@ -30,6 +34,30 @@ def fresh_caches():
         mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
     ):
         yield
+
+
+def _set_column_progenitor_override(
+    yaml_context,
+    node_id: str,
+    column_name: str,
+    *,
+    model_default_progenitor: str | None = None,
+    column_default_progenitor: str | None = None,
+) -> None:
+    """Mutate the cached YAML for a model so inheritance reads the requested override."""
+    manifest = yaml_context.project.manifest
+    node = manifest.nodes[node_id]
+    project_dir = Path(yaml_context.project.runtime_cfg.project_root)
+    path = project_dir.joinpath(node.patch_path.split("://")[-1])
+    yaml_doc = _read_yaml(yaml_context.yaml_handler, yaml_context.yaml_handler_lock, path)
+    model = next(model for model in yaml_doc["models"] if model["name"] == node.name)
+
+    if model_default_progenitor is not None:
+        model.setdefault("meta", {})["default_progenitor"] = model_default_progenitor
+
+    if column_default_progenitor is not None:
+        column = next(column for column in model["columns"] if column["name"] == column_name)
+        column.setdefault("meta", {})["column_default_progenitor"] = column_default_progenitor
 
 
 def test_multi_generation_inheritance_chain(yaml_context, fresh_caches):
@@ -340,4 +368,85 @@ def test_progenitor_tracking_across_generations(yaml_context, fresh_caches):
     assert (
         customers.columns["first_name"].meta.get("osmosis_progenitor")
         == "seed.jaffle_shop_duckdb.raw_customers"
+    )
+
+
+def test_default_progenitor_override_reuses_selected_ancestor_knowledge(
+    yaml_context,
+    fresh_caches,
+):
+    """A default_progenitor should inherit the override node's resolved lineage, not its raw column."""
+    manifest = yaml_context.project.manifest
+
+    raw_customers = manifest.nodes["seed.jaffle_shop_duckdb.raw_customers"]
+    raw_customers.columns["first_name"].description = "Original first name documentation"
+    raw_customers.columns["first_name"].meta = {"classification": "restricted"}
+    raw_customers.columns["first_name"].tags = ["pii"]
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = ""
+    stg_customers.columns["first_name"].meta = {}
+    stg_customers.columns["first_name"].tags = []
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = ""
+    customers.columns["first_name"].meta = {}
+    customers.columns["first_name"].tags = []
+
+    yaml_context.settings.force_inherit_descriptions = True
+    yaml_context.settings.add_progenitor_to_meta = True
+    _set_column_progenitor_override(
+        yaml_context,
+        "model.jaffle_shop_duckdb.customers",
+        "first_name",
+        model_default_progenitor="model.jaffle_shop_duckdb.stg_customers.v1",
+    )
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["first_name"].description == "Original first name documentation"
+    assert customers.columns["first_name"].meta.get("classification") == "restricted"
+    assert "pii" in customers.columns["first_name"].tags
+    assert (
+        customers.columns["first_name"].meta.get("osmosis_progenitor")
+        == "seed.jaffle_shop_duckdb.raw_customers"
+    )
+
+
+def test_column_default_progenitor_override_applies_without_progenitor_tracking(
+    yaml_context,
+    fresh_caches,
+):
+    """column_default_progenitor should work even when osmosis_progenitor tracking is disabled."""
+    manifest = yaml_context.project.manifest
+
+    raw_customers = manifest.nodes["seed.jaffle_shop_duckdb.raw_customers"]
+    raw_customers.columns["first_name"].description = "Original first name documentation"
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "Stage-level first name documentation"
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = ""
+
+    yaml_context.settings.fusion_compat = False
+    yaml_context.settings.force_inherit_descriptions = True
+    yaml_context.settings.add_progenitor_to_meta = False
+    _set_column_progenitor_override(
+        yaml_context,
+        "model.jaffle_shop_duckdb.customers",
+        "first_name",
+        column_default_progenitor="seed.jaffle_shop_duckdb.raw_customers",
+    )
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+    sync_node_to_yaml(yaml_context, customers, commit=False)
+    yaml_slice = _get_node_yaml(yaml_context, customers)
+    assert yaml_slice is not None
+
+    yaml_column = next(column for column in yaml_slice["columns"] if column["name"] == "first_name")
+
+    assert customers.columns["first_name"].description == "Original first name documentation"
+    assert (
+        yaml_column["meta"]["column_default_progenitor"] == "seed.jaffle_shop_duckdb.raw_customers"
     )
