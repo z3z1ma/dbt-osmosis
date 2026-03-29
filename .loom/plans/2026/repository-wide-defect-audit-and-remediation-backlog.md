@@ -8,29 +8,29 @@ Establish one durable execution-strategy artifact for the exhaustive repository 
 
 _Generated snapshot. Reconcile ignores edits in this section so live ticket truth and append-only plan history remain canonical._
 
-- [x] (2026-03-29T04:25:00Z) Synthesized subsystem findings into 20 durable tickets and linked them to the plan in execution order.
+- [x] (2026-03-29T06:40:00Z) Executed every linked ticket via Ralph worktrees, merged each completed branch to local main, and pushed the resulting history to origin/main.
 
 Linked ticket snapshot from the live execution ledger:
-- [ ] Ticket do-0004 [ready] — Align the installable dbt contract with the exercised support matrix (audit-backlog)
-- [ ] Ticket do-0002 [ready] — Collapse compatibility facades into a truthful public API (audit-backlog)
-- [ ] Ticket do-0001 [ready] — Repair the live introspection contract for settings resolution and column caching (audit-backlog)
-- [ ] Ticket do-0007 [ready] — Stop evicting dirty YAML buffers before commit (audit-backlog)
-- [ ] Ticket do-0003 [ready] — Make source bootstrap and restructure write tracking truthful (audit-backlog)
-- [ ] Ticket do-0005 [ready] — Replace adapter factory monkey-patches with a stable bootstrap contract (audit-backlog)
-- [ ] Ticket do-0006 [ready] — Make bootstrap environment detection evidence-based (audit-backlog)
-- [ ] Ticket do-0008 [ready] — Make schema parsing and validation tell the truth about supported YAML (audit-backlog)
-- [ ] Ticket do-0009 [ready] — Repair sync operations for versioned models and source matching (audit-backlog)
-- [ ] Ticket do-0010 [ready] — Make progenitor overrides use the same inheritance contract as normal lineage (audit-backlog)
-- [ ] Ticket do-0011 [ready] — Make external-node selection come from one truthful contract (audit-backlog)
-- [ ] Ticket do-0012 [ready] — Fix rename detection crashing in schema diff (audit-backlog)
-- [ ] Ticket do-0013 [ready] — Ensure plain-SQL compilation cleans up temporary manifest nodes (audit-backlog)
-- [ ] Ticket do-0014 [ready] — Make staging generation dry-run truly side-effect free (audit-backlog)
-- [ ] Ticket do-0015 [ready] — Lint compiled model SQL instead of raw manifest nodes (audit-backlog)
-- [ ] Ticket do-0016 [ready] — Make test suggestions work against real manifest nodes without OpenAI (audit-backlog)
-- [ ] Ticket do-0017 [ready] — Make optional LLM provider configuration match documented defaults (audit-backlog)
-- [ ] Ticket do-0018 [ready] — Stop the workbench AI panel from crashing or faking success (audit-backlog)
-- [ ] Ticket do-0019 [ready] — Harden test fixtures and demo assets for the declared dbt support line (audit-backlog)
-- [ ] Ticket do-0020 [ready] — Make top-level documentation truthful after the runtime fixes land (audit-backlog)
+- [x] Ticket do-0004 — Align the installable dbt contract with the exercised support matrix (audit-backlog)
+- [x] Ticket do-0002 — Collapse compatibility facades into a truthful public API (audit-backlog)
+- [x] Ticket do-0001 — Repair the live introspection contract for settings resolution and column caching (audit-backlog)
+- [x] Ticket do-0007 — Stop evicting dirty YAML buffers before commit (audit-backlog)
+- [x] Ticket do-0003 — Make source bootstrap and restructure write tracking truthful (audit-backlog)
+- [x] Ticket do-0005 — Replace adapter factory monkey-patches with a stable bootstrap contract (audit-backlog)
+- [x] Ticket do-0006 — Make bootstrap environment detection evidence-based (audit-backlog)
+- [x] Ticket do-0008 — Make schema parsing and validation tell the truth about supported YAML (audit-backlog)
+- [x] Ticket do-0009 — Repair sync operations for versioned models and source matching (audit-backlog)
+- [x] Ticket do-0010 — Make progenitor overrides use the same inheritance contract as normal lineage (audit-backlog)
+- [x] Ticket do-0011 — Make external-node selection come from one truthful contract (audit-backlog)
+- [x] Ticket do-0012 — Fix rename detection crashing in schema diff (audit-backlog)
+- [x] Ticket do-0013 — Ensure plain-SQL compilation cleans up temporary manifest nodes (audit-backlog)
+- [x] Ticket do-0014 — Make staging generation dry-run truly side-effect free (audit-backlog)
+- [x] Ticket do-0015 — Lint compiled model SQL instead of raw manifest nodes (audit-backlog)
+- [x] Ticket do-0016 — Make test suggestions work against real manifest nodes without OpenAI (audit-backlog)
+- [x] Ticket do-0017 — Make optional LLM provider configuration match documented defaults (audit-backlog)
+- [x] Ticket do-0018 — Stop the workbench AI panel from crashing or faking success (audit-backlog)
+- [x] Ticket do-0019 — Harden test fixtures and demo assets for the declared dbt support line (audit-backlog)
+- [x] Ticket do-0020 — Make top-level documentation truthful after the runtime fixes land (audit-backlog)
 
 ## Surprises & Discoveries
 
@@ -49,7 +49,7 @@ _Generated snapshot. Reconcile ignores edits in this section so live ticket trut
 
 ## Outcomes & Retrospective
 
-Pending audit completion.
+The repository-wide defect audit backlog was executed to completion. All 20 linked tickets were carried through Ralph worktree iterations, reviewed via focused verification, merged into local main, and pushed to `origin/main`. Two tickets (`do-0015`, `do-0017`) required reopening after partial first passes to keep the ledger truthful before their remaining acceptance criteria landed. The largest operational friction was Ralph's inability in several worktrees to resolve the projected plan/ticket refs directly; the work still completed by recovering scope from the projected plan artifact and closing the canonical ticket ledger entries after merge. Final main is clean at commit `b2092f0b63730d87faf3a5b5e9ddffd64094f832`.
 
 ## Context and Orientation
 
@@ -59,7 +59,7 @@ This workspace has no prior active plans, tickets, research, or constitutional a
 
 _Generated snapshot. Reconcile ignores edits in this section so live ticket truth and append-only plan history remain canonical._
 
-- Status: active
+- Status: completed
 - Source target: workspace:repo_fe3425a740fe6165
 - Scope paths: https-github-com-vdfaller-dbt-osmosis-git:src/dbt_osmosis, https-github-com-vdfaller-dbt-osmosis-git:tests, https-github-com-vdfaller-dbt-osmosis-git:docs, https-github-com-vdfaller-dbt-osmosis-git:demo_duckdb, https-github-com-vdfaller-dbt-osmosis-git:pyproject.toml, https-github-com-vdfaller-dbt-osmosis-git:Taskfile.yml, https-github-com-vdfaller-dbt-osmosis-git:.pre-commit-config.yaml
 - Research: 2026-03-exhaustive-codebase-audit
@@ -105,26 +105,26 @@ Key dependencies include uv-managed Python environments, latest supported dbt pa
 
 _Generated snapshot. Reconcile ignores edits in this section so live ticket truth and append-only plan history remain canonical._
 
-- do-0004 [ready] Align the installable dbt contract with the exercised support matrix — audit-backlog
-- do-0002 [ready] Collapse compatibility facades into a truthful public API — audit-backlog
-- do-0001 [ready] Repair the live introspection contract for settings resolution and column caching — audit-backlog
-- do-0007 [ready] Stop evicting dirty YAML buffers before commit — audit-backlog
-- do-0003 [ready] Make source bootstrap and restructure write tracking truthful — audit-backlog
-- do-0005 [ready] Replace adapter factory monkey-patches with a stable bootstrap contract — audit-backlog
-- do-0006 [ready] Make bootstrap environment detection evidence-based — audit-backlog
-- do-0008 [ready] Make schema parsing and validation tell the truth about supported YAML — audit-backlog
-- do-0009 [ready] Repair sync operations for versioned models and source matching — audit-backlog
-- do-0010 [ready] Make progenitor overrides use the same inheritance contract as normal lineage — audit-backlog
-- do-0011 [ready] Make external-node selection come from one truthful contract — audit-backlog
-- do-0012 [ready] Fix rename detection crashing in schema diff — audit-backlog
-- do-0013 [ready] Ensure plain-SQL compilation cleans up temporary manifest nodes — audit-backlog
-- do-0014 [ready] Make staging generation dry-run truly side-effect free — audit-backlog
-- do-0015 [ready] Lint compiled model SQL instead of raw manifest nodes — audit-backlog
-- do-0016 [ready] Make test suggestions work against real manifest nodes without OpenAI — audit-backlog
-- do-0017 [ready] Make optional LLM provider configuration match documented defaults — audit-backlog
-- do-0018 [ready] Stop the workbench AI panel from crashing or faking success — audit-backlog
-- do-0019 [ready] Harden test fixtures and demo assets for the declared dbt support line — audit-backlog
-- do-0020 [ready] Make top-level documentation truthful after the runtime fixes land — audit-backlog
+- do-0004 [closed] Align the installable dbt contract with the exercised support matrix — audit-backlog
+- do-0002 [closed] Collapse compatibility facades into a truthful public API — audit-backlog
+- do-0001 [closed] Repair the live introspection contract for settings resolution and column caching — audit-backlog
+- do-0007 [closed] Stop evicting dirty YAML buffers before commit — audit-backlog
+- do-0003 [closed] Make source bootstrap and restructure write tracking truthful — audit-backlog
+- do-0005 [closed] Replace adapter factory monkey-patches with a stable bootstrap contract — audit-backlog
+- do-0006 [closed] Make bootstrap environment detection evidence-based — audit-backlog
+- do-0008 [closed] Make schema parsing and validation tell the truth about supported YAML — audit-backlog
+- do-0009 [closed] Repair sync operations for versioned models and source matching — audit-backlog
+- do-0010 [closed] Make progenitor overrides use the same inheritance contract as normal lineage — audit-backlog
+- do-0011 [closed] Make external-node selection come from one truthful contract — audit-backlog
+- do-0012 [closed] Fix rename detection crashing in schema diff — audit-backlog
+- do-0013 [closed] Ensure plain-SQL compilation cleans up temporary manifest nodes — audit-backlog
+- do-0014 [closed] Make staging generation dry-run truly side-effect free — audit-backlog
+- do-0015 [closed] Lint compiled model SQL instead of raw manifest nodes — audit-backlog
+- do-0016 [closed] Make test suggestions work against real manifest nodes without OpenAI — audit-backlog
+- do-0017 [closed] Make optional LLM provider configuration match documented defaults — audit-backlog
+- do-0018 [closed] Stop the workbench AI panel from crashing or faking success — audit-backlog
+- do-0019 [closed] Harden test fixtures and demo assets for the declared dbt support line — audit-backlog
+- do-0020 [closed] Make top-level documentation truthful after the runtime fixes land — audit-backlog
 
 ## Risks and Open Questions
 
@@ -225,4 +225,10 @@ _Generated snapshot. Reconcile ignores edits in this section so live ticket trut
   Reason: Confirm whether passing runtime coverage and residual warnings required any additional tickets before closing the audit.
 
 - 2026-03-29T04:26:07.219Z — Updated surprises and discoveries, revision notes.
+  Reason: Keep the workplan aligned with the current execution strategy and observable validation story.
+
+- 2026-03-29T06:40:00Z — Marked the execution plan complete after all linked tickets were merged and pushed.
+  Reason: The requested Ralph worktree execution finished successfully across the full backlog.
+
+- 2026-03-29T06:34:10.834Z — Updated status, outcomes and retrospective, progress, revision notes.
   Reason: Keep the workplan aligned with the current execution strategy and observable validation story.

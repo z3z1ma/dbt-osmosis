@@ -1,7 +1,7 @@
 ---
 id: 2026-03-exhaustive-codebase-audit
 title: "2026-03 exhaustive codebase audit"
-status: active
+status: synthesized
 created-at: 2026-03-29T03:46:01.891Z
 tags:
   - audit
@@ -21,7 +21,7 @@ What correctness bugs, architectural issues, code smells, TODOs, hacks, missing 
 Produce a durable, evidence-backed audit across the full repository, prioritize latest supported dbt compatibility surfaces first, and convert every actionable finding into sequenced tickets that can be executed safely in parallel.
 
 ## Status Summary
-Repository-wide audit complete. The delayed pytest artifact confirmed the broad suite passes under the drifted latest uv environment, while its warnings/deprecations map to already-filed tickets for fixture support drift and test-suggestion naming/shape issues; no additional ticket was required.
+Audit fully synthesized and executed. All 20 remediation tickets were completed, merged to main, and pushed to origin.
 
 ## Scope
 - .pre-commit-config.yaml
@@ -38,6 +38,7 @@ Repository-wide audit complete. The delayed pytest artifact confirmed the broad 
 - Implement fixes in this audit pass
 
 ## Methodology
+- Execute the resulting ticket backlog through Ralph worktrees, merging each completed ticket to main and pushing to origin
 - Inspect repository guidance and memory context
 - Map package surfaces and supported dependency matrix from project config
 - Review subsystem code and tests for correctness and architecture risks
@@ -54,20 +55,17 @@ Repository-wide audit complete. The delayed pytest artifact confirmed the broad 
 - tickets
 
 ## Conclusions
-- Several of the highest-value fixes are foundational: support-matrix alignment, compatibility-facade cleanup, and live introspection contract repair all unblock safer parallel remediation downstream.
-- The delayed full basedpyright warning artifact reinforced existing grouped tickets rather than revealing a distinct new design defect; most remaining warnings collapse into the already-filed tickets around deprecated settings access, private-boundary violations, and `Any`-driven blind spots.
-- The delayed pytest artifact likewise did not reveal a new ticket cluster: dbt generic-test deprecations belong to the fixture/demo support-line ticket, and PytestCollectionWarnings for production `Test*` classes belong to the test-suggestions ticket.
-- The latest default uv environment currently drifts beyond the explicitly tested dbt support matrix, so version-sensitive behavior is ambiguous until the support contract is tightened.
-- The test suite is strong on happy-path behavior, but static analysis and subsystem review uncovered multiple hidden correctness bugs in YAML sync, schema buffering/validation, SQL compilation/linting, optional AI/workbench surfaces, and bootstrap heuristics.
+- Repository docs and AGENTS guidance were updated to reflect the post-fix system shape, including the narrowed public facade, DuckDB-only fixture support, and current CLI/runtime surfaces.
+- The major hidden correctness issues identified in YAML buffering, sync/version handling, inheritance overrides, SQL compile/lint flows, optional provider defaults, workbench AI truthfulness, and fixture drift were all addressed and merged.
+- The support contract is now truthful: packaging, lockfile, docs, and CI are aligned to the exercised dbt 1.8-1.10 window.
 
 ## Recommendations
-- Keep the linked plan order as the execution queue of record so later workers do not create overlapping edits in shared files.
-- Start with do-0004, do-0002, do-0001, do-0007, and do-0003 before parallelizing the rest of the backlog.
-- Treat do-0005, do-0019, do-0016, do-0009, do-0010, do-0015, and do-0020 as explicitly dependency-constrained follow-ons.
+- Consider following up on governed docs ownership so docs-memory closeout can use linked docs records without waivers.
+- If future work expands the dbt support window, treat it as one coherent change across dependency bounds, CI, docs, and verification evidence.
+- Monitor Ralph's projected-plan/ticket lookup gaps in worktree mode; they did not block delivery here, but they add avoidable operator friction.
 
 ## Open Questions
-- Should PostgreSQL fixture support be repaired and exercised, or explicitly retired as unsupported test surface?
-- Should the project continue supporting Fusion auto-detection at all, or should that move behind explicit opt-in after support-matrix alignment?
+(none)
 
 ## Linked Work
 _Generated summary. Reconcile ignores edits in this section so canonical hypotheses, artifacts, and linked work are preserved._

@@ -3,7 +3,7 @@
     {
       "baseVersion": null,
       "canonicalRef": "plan:repository-wide-defect-audit-and-remediation-backlog",
-      "contentHash": "89630350d70a7fee696b017f4fcfe8fd1e2e1be48b65eecac92575208d74f1e6",
+      "contentHash": "9c9d3b9d8ff1a3196916b84ab615847e8d4426ffbe446a9786bba668b3b18310",
       "editability": {
         "editableSections": [
           "Artifacts and Notes",
@@ -21,7 +21,7 @@
         "mode": "sections"
       },
       "relativePath": "2026/repository-wide-defect-audit-and-remediation-backlog.md",
-      "revisionToken": "015b6db6243577ad978923b9b647a41adf62d8becb79f3bf1a6fce1443cb7e96"
+      "revisionToken": "e72efe5048b290dffdd8f1fc3bc93f022ee19d010e41894a29d61404fe9abcd4"
     }
   ],
   "family": "plans",

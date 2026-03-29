@@ -3,7 +3,7 @@
     {
       "baseVersion": null,
       "canonicalRef": "research:2026-03-exhaustive-codebase-audit",
-      "contentHash": "14ca3e4d0b055d3d935272e8d25357b147874cec91a1469f9fefc1dec2880cbc",
+      "contentHash": "874cf0bf2e1551947888fe0c41454ffd13b2a40872746fcadf6aa70874d64259",
       "editability": {
         "editableSections": [
           "Conclusions",
@@ -20,7 +20,7 @@
         "mode": "sections"
       },
       "relativePath": "2026-03-exhaustive-codebase-audit.md",
-      "revisionToken": "742697af0e2f79d9b221ccef04fd8c006254204a39502167a550551f3ae9f4e3"
+      "revisionToken": "b0faa1dbf57decd8ffb7afd0381b8704d387c082fd0e754bc9db37e69954eefe"
     }
   ],
   "family": "research",
