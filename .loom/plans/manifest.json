@@ -1,5 +1,29 @@
 {
-  "entries": [],
+  "entries": [
+    {
+      "baseVersion": null,
+      "canonicalRef": "plan:repository-wide-defect-audit-and-remediation-backlog",
+      "contentHash": "89630350d70a7fee696b017f4fcfe8fd1e2e1be48b65eecac92575208d74f1e6",
+      "editability": {
+        "editableSections": [
+          "Artifacts and Notes",
+          "Concrete Steps",
+          "Context and Orientation",
+          "Idempotence and Recovery",
+          "Interfaces and Dependencies",
+          "Milestones",
+          "Outcomes & Retrospective",
+          "Plan of Work",
+          "Purpose / Big Picture",
+          "Risks and Open Questions",
+          "Validation and Acceptance"
+        ],
+        "mode": "sections"
+      },
+      "relativePath": "2026/repository-wide-defect-audit-and-remediation-backlog.md",
+      "revisionToken": "015b6db6243577ad978923b9b647a41adf62d8becb79f3bf1a6fce1443cb7e96"
+    }
+  ],
   "family": "plans",
   "schemaVersion": 1
 }

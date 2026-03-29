@@ -1,5 +1,28 @@
 {
-  "entries": [],
+  "entries": [
+    {
+      "baseVersion": null,
+      "canonicalRef": "research:2026-03-exhaustive-codebase-audit",
+      "contentHash": "14ca3e4d0b055d3d935272e8d25357b147874cec91a1469f9fefc1dec2880cbc",
+      "editability": {
+        "editableSections": [
+          "Conclusions",
+          "Keywords",
+          "Methodology",
+          "Non-Goals",
+          "Objective",
+          "Open Questions",
+          "Question",
+          "Recommendations",
+          "Scope",
+          "Status Summary"
+        ],
+        "mode": "sections"
+      },
+      "relativePath": "2026-03-exhaustive-codebase-audit.md",
+      "revisionToken": "742697af0e2f79d9b221ccef04fd8c006254204a39502167a550551f3ae9f4e3"
+    }
+  ],
   "family": "research",
   "schemaVersion": 1
 }
