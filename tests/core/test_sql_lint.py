@@ -11,6 +11,7 @@ This module contains tests for the sql_lint module, which provides:
 from __future__ import annotations
 
 import pytest
+from dbt.artifacts.resources.types import NodeType
 from sqlglot import parse
 
 from dbt_osmosis.core.sql_lint import (
@@ -642,6 +643,25 @@ class TestSQLLinter:
         assert results["customers"].compiled_sql
         assert "{{" not in results["customers"].compiled_sql
         assert not any(v.rule_id == "parse-error" for v in results["customers"].violations)
+
+    def test_lint_project_skips_non_model_manifest_entries(self, yaml_context):
+        """Project linting should only lint model nodes, not tests or other manifest entries."""
+        linter = SQLLinter(enabled_rules=["select-star"])
+
+        results = linter.lint_project(yaml_context.project, fqn_filter=["customers"])
+        manifest_model_names = {
+            node.name
+            for node in yaml_context.project.manifest.nodes.values()
+            if getattr(node, "resource_type", None) == NodeType.Model
+            and any(pattern in ".".join(getattr(node, "fqn", [])) for pattern in ["customers"])
+            and (getattr(node, "raw_code", "") or getattr(node, "raw_sql", ""))
+        }
+
+        assert set(results) == manifest_model_names
+        assert all(
+            not any(violation.rule_id == "compile-error" for violation in result.violations)
+            for result in results.values()
+        )
 
     def test_lint_parse_error(self):
         """Test handling of parse errors."""
