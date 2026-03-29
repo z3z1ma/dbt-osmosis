@@ -12,11 +12,14 @@ def test_compile_sql_code_no_jinja(yaml_context: YamlRefactorContext):
     should have the raw SQL as is.
     """
     raw_sql = "SELECT 1 AS mycol"
+    before_node_count = len(yaml_context.project.manifest.nodes)
     with mock.patch("dbt_osmosis.core.sql_operations.process_node") as mock_process:
         node = compile_sql_code(yaml_context.project, raw_sql)
         mock_process.assert_not_called()
+    after_node_count = len(yaml_context.project.manifest.nodes)
     assert node.raw_code == raw_sql
     assert node.compiled_code is None
+    assert after_node_count == before_node_count
 
 
 def test_compile_sql_code_with_jinja(yaml_context: YamlRefactorContext):
