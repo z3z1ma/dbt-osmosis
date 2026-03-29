@@ -25,7 +25,7 @@ Use this page as the shortest truthful path from install to a safe first refacto
 
 `dbt-osmosis` keeps its package support open for dbt Core 1.8+.
 
-The repository's DuckDB-backed fixture matrix is still explicitly exercised through the currently published DuckDB-compatible lines in CI, but the package metadata and install path are not capped at dbt Core 1.10. Install an adapter version that is compatible with the dbt runtime in that environment.
+The repository's DuckDB-backed fixture matrix is still explicitly exercised through the currently published DuckDB-compatible lines in CI, and a separate latest-core compatibility job runs basedpyright, `dbt parse`, and the full pytest suite under `dbt-core` 1.11 with the latest published `dbt-duckdb` adapter (currently 1.10.1). The package metadata and install path are not capped at dbt Core 1.10. Install an adapter version that is compatible with the dbt runtime in that environment.
 
 ```bash
 uv tool install --with="dbt-<adapter>" dbt-osmosis

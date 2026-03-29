@@ -33,7 +33,7 @@ The Docusaurus site is the canonical reference for the current CLI, configuratio
 - dbt Core 1.8+
 - a dbt adapter version compatible with the dbt Core runtime in that environment
 
-Repository-managed DuckDB fixture coverage is explicitly exercised through the published DuckDB-backed matrix in CI today (currently 1.8-1.10), but package metadata and install paths are not capped at dbt Core 1.10.
+Repository-managed DuckDB fixture coverage is explicitly exercised through the published DuckDB-backed matrix in CI today (1.8-1.10) plus a latest-core compatibility job that runs basedpyright, `dbt parse`, and the full pytest suite under `dbt-core` 1.11 with the latest published `dbt-duckdb` adapter (currently 1.10.1). Package metadata and install paths are not capped at dbt Core 1.10.
 
 Optional extras:
 

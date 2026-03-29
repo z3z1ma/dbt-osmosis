@@ -60,8 +60,8 @@ jobs:
         run: |
           bash -x integration_tests.sh
 
-  latest-core-smoke:
-    name: Smoke install on latest dbt-core
+  latest-core-compat:
+    name: Validate latest dbt-core compatibility
     runs-on: ubuntu-latest
 
     steps:
@@ -83,14 +83,16 @@ jobs:
           pip install --constraint=.github/workflows/constraints.txt uv
           uv --version
 
-      - name: Smoke-test package installability and adapter-free compatibility on latest dbt-core
+      - name: Validate latest dbt-core compatibility with published DuckDB adapter
         run: |
           SMOKE_ENV=$(mktemp -d)/dbt-osmosis-smoke
           uv venv "$SMOKE_ENV"
-          uv pip install --python "$SMOKE_ENV/bin/python" "dbt-core~=1.11.0" basedpyright pytest pytest-cov hypothesis .
+          uv pip install --python "$SMOKE_ENV/bin/python" "dbt-core~=1.11.0" "dbt-duckdb~=1.10.1" basedpyright pytest pytest-cov hypothesis openai .
           export VIRTUAL_ENV="$SMOKE_ENV"
           export PATH="$SMOKE_ENV/bin:$PATH"
           basedpyright --level error
+          dbt --version
+          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
           dbt-osmosis --help
           python -c "import dbt_osmosis; import dbt_osmosis.cli.main"
-          pytest tests/core/test_cli.py tests/core/test_legacy.py tests/core/test_logger.py -q
+          pytest -q
