@@ -18,6 +18,7 @@ from dbt_osmosis.core.schema.reader import (
     _YAML_BUFFER_CACHE,
     _YAML_BUFFER_CACHE_LOCK,
     _YAML_ORIGINAL_CACHE,
+    _discard_yaml_caches,
 )
 
 __all__ = [
@@ -149,10 +150,7 @@ def _write_yaml(
 
                         # Clear cache entry only after successful write
                         with _YAML_BUFFER_CACHE_LOCK:
-                            if path in _YAML_BUFFER_CACHE:
-                                del _YAML_BUFFER_CACHE[path]
-                            if path in _YAML_ORIGINAL_CACHE:
-                                del _YAML_ORIGINAL_CACHE[path]
+                            _discard_yaml_caches(path)
 
                         if written_file_tracker:
                             written_file_tracker(path)
@@ -176,10 +174,7 @@ def _write_yaml(
                 # Clear cache entry even when no changes (to keep cache consistent)
                 if not dry_run:
                     with _YAML_BUFFER_CACHE_LOCK:
-                        if path in _YAML_BUFFER_CACHE:
-                            del _YAML_BUFFER_CACHE[path]
-                        if path in _YAML_ORIGINAL_CACHE:
-                            del _YAML_ORIGINAL_CACHE[path]
+                        _discard_yaml_caches(path)
 
 
 def _replace_atomically(temp_path: Path, target_path: Path) -> None:
@@ -262,10 +257,7 @@ def commit_yamls(
 
                             # Clear cache entry only after successful write
                             with _YAML_BUFFER_CACHE_LOCK:
-                                if path in _YAML_BUFFER_CACHE:
-                                    del _YAML_BUFFER_CACHE[path]
-                                if path in _YAML_ORIGINAL_CACHE:
-                                    del _YAML_ORIGINAL_CACHE[path]
+                                _discard_yaml_caches(path)
 
                             if written_file_tracker:
                                 written_file_tracker(path)
@@ -290,7 +282,4 @@ def commit_yamls(
                     # Clear cache entry even when no changes (to keep cache consistent)
                     if not dry_run:
                         with _YAML_BUFFER_CACHE_LOCK:
-                            if path in _YAML_BUFFER_CACHE:
-                                del _YAML_BUFFER_CACHE[path]
-                            if path in _YAML_ORIGINAL_CACHE:
-                                del _YAML_ORIGINAL_CACHE[path]
+                            _discard_yaml_caches(path)

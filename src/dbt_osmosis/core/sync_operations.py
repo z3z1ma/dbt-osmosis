@@ -531,6 +531,10 @@ def _sync_single_node_to_yaml(
     from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
 
     current_path = get_current_yaml_path(context, node)
+    target_path = current_path
+    if not target_path or not target_path.exists():
+        target_path = get_target_yaml_path(context, node)
+
     doc = _prepare_yaml_document(context, node, current_path)
     resource_key = _get_resource_type_key(node)
 
@@ -541,6 +545,12 @@ def _sync_single_node_to_yaml(
 
     _cleanup_empty_sections(doc)
 
+    from dbt_osmosis.core.schema.reader import _mark_yaml_caches_dirty
+
+    # sync_node_to_yaml(commit=False) mutates the shared buffer in place, so pin it
+    # until a real disk outcome clears the cache entry.
+    _mark_yaml_caches_dirty(target_path)
+
     if commit:
         # Commit the changes
         logger.info(":inbox_tray: Committing YAML doc changes for => %s", node.unique_id)
@@ -549,7 +559,7 @@ def _sync_single_node_to_yaml(
         _write_yaml(
             context.yaml_handler,
             context.yaml_handler_lock,
-            current_path or get_target_yaml_path(context, node),
+            target_path,
             doc,
             dry_run=context.settings.dry_run,
             mutation_tracker=context.register_mutations,
