@@ -1,64 +1,149 @@
 # dbt-osmosis
 
-<!--![GitHub Actions](https://github.com/z3z1ma/dbt-osmosis/actions/workflows/master.yml/badge.svg)-->
-
 ![PyPI](https://img.shields.io/pypi/v/dbt-osmosis)
 [![Downloads](https://static.pepy.tech/badge/dbt-osmosis)](https://pepy.tech/project/dbt-osmosis)
 ![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)
-![black](https://img.shields.io/badge/code%20style-black-000000.svg)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://dbt-osmosis-playground.streamlit.app/)
 
-[![Scc Count Badge](https://sloc.xyz/github/z3z1ma/dbt-osmosis/)](https://github.com/z3z1ma/dbt-osmosis/)
-[![Scc Count Badge](https://sloc.xyz/github/z3z1ma/dbt-osmosis/?category=cocomo)](https://github.com/z3z1ma/dbt-osmosis/)
+`dbt-osmosis` is a Python CLI and package for dbt development workflows.
 
-## New to dbt-osmosis?
+It centers on four primary surfaces:
 
-We now have a spiffy [dbt-osmosis documentation site](https://z3z1ma.github.io/dbt-osmosis/)! 🎉
+- schema YAML management (`yaml organize`, `yaml document`, `yaml refactor`)
+- column-level documentation inheritance across dbt lineage
+- ad-hoc SQL compile/run helpers
+- an optional Streamlit workbench for interactive dbt SQL development
 
-Please check it out for a more in-depth introduction to dbt-osmosis. 👇
+The repository also ships additional command families for generation, natural-language helpers, schema diffing, SQL linting, and test suggestions.
 
-The docs site is the canonical reference for the current CLI, configuration model, migration notes, and newer command families such as `generate`, `nl`, and `test-llm`.
+The Docusaurus site is the canonical reference for the current CLI, configuration model, support matrix, and workflow guides:
+
+- Docs site: https://z3z1ma.github.io/dbt-osmosis/
+- CLI reference: https://z3z1ma.github.io/dbt-osmosis/docs/reference/cli
+- Configuration guide: https://z3z1ma.github.io/dbt-osmosis/docs/tutorial-yaml/configuration
+- Migration guide: https://z3z1ma.github.io/dbt-osmosis/docs/migrating
 
 [![dbt-osmosis](/screenshots/docs_site.png)](https://z3z1ma.github.io/dbt-osmosis/)
 
-## Migrating from 0.x.x to 1.x.x?
+## Supported runtime
 
-We have a [migration guide](https://z3z1ma.github.io/dbt-osmosis/docs/migrating) to help you out. 🚀
+`dbt-osmosis` currently targets:
 
-## What is dbt-osmosis?
+- Python 3.10-3.13
+- dbt Core 1.8-1.10
+- a matching dbt adapter package for the same supported dbt minor line
 
-Hello and welcome to the project! [dbt-osmosis](https://github.com/z3z1ma/dbt-osmosis) 🌊 serves to enhance the developer experience significantly. We do this through providing 4 core features:
+Optional extras:
 
-1. Automated schema YAML management.
+- `dbt-osmosis[workbench]` for the Streamlit workbench and related UI dependencies
+- `dbt-osmosis[openai]` for LLM-assisted synthesis and natural-language generation features
 
-    1a. `dbt-osmosis yaml refactor --project-dir ... --profiles-dir ...`
+## Install
 
-    > Automatically generate documentation based on upstream documented columns, organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules, inject columns from data warehouse schema if missing in yaml and remove columns no longer present in data warehouse (organize -> document)
+With `uv`:
 
-    1b. `dbt-osmosis yaml organize --project-dir ... --profiles-dir ...`
+```bash
+uv tool install --with="dbt-<adapter>>=1.8,<1.11" dbt-osmosis
+```
 
-    > Organize yaml files based on configurable rules defined in dbt_project.yml, scaffold new yaml files based on the same rules (no documentation changes)
+With `pip`:
 
-    1c. `dbt-osmosis yaml document --project-dir ... --profiles-dir ...`
+```bash
+pip install "dbt-osmosis" "dbt-<adapter>>=1.8,<1.11"
+```
 
-    > Automatically generate documentation based on upstream documented columns (no reorganization)
+Replace `<adapter>` with your dbt adapter package, for example `duckdb`, `snowflake`, `bigquery`, `postgres`, or `redshift`.
 
-2. Workbench for dbt Jinja SQL. This workbench is powered by streamlit and the badge at the top of the readme will take you to a demo on streamlit cloud with jaffle_shop loaded (requires extra `pip install "dbt-osmosis[workbench]"`).
+## Quick start
 
-    2a. `dbt-osmosis workbench --project-dir ... --profiles-dir ...`
+1. Configure YAML routing in `dbt_project.yml`:
 
-    > Spins up a streamlit app. This workbench offers similar functionality to the osmosis server + power-user combo without a reliance on VS code. Realtime compilation, query execution, pandas profiling all via copying and pasting whatever you are working on into the workbenchat your leisure. Spin it up and down as needed.
+```yaml title="dbt_project.yml"
+models:
+  your_project_name:
+    +dbt-osmosis: "_{model}.yml"
+```
 
-____
+2. Optionally set per-folder behavior with `+dbt-osmosis-options` and a repo-level YAML formatter in `dbt-osmosis.yml`:
 
-## Pre-commit
+```yaml title="dbt-osmosis.yml"
+formatter: "prettier --write"
+```
 
-You can use dbt-osmosis as a pre-commit hook. This will run the `dbt-osmosis yaml refactor` command on your models directory before each commit. This is one way to ensure that your schema.yml files are always up to date. I would recommend reading the docs for more information on what this command does.
+3. Preview changes safely:
+
+```bash
+dbt-osmosis yaml refactor --dry-run --check
+```
+
+4. Apply the update once the diff looks right:
+
+```bash
+dbt-osmosis yaml refactor --auto-apply
+```
+
+## CLI surface
+
+Top-level commands currently exposed by `dbt-osmosis --help`:
+
+- `yaml` — manage schema YAML files and documentation inheritance
+- `sql` — compile or run ad-hoc SQL in dbt context
+- `workbench` — launch the Streamlit workbench
+- `generate` — generate sources, staging models, models, and SQL
+- `nl` — natural-language query/model helpers
+- `test` — suggest dbt tests
+- `test-llm` — validate LLM client configuration
+- `diff` — report schema drift between YAML and the database
+- `lint` — lint SQL strings, models, or a whole project
+
+For command-by-command flags and examples, use the docs-site CLI reference rather than relying on this landing page.
+
+## Developer tooling
+
+Local development in this repository is built around `uv`, `task`, and Ruff.
+
+Common workflows:
+
+```bash
+task format
+task lint
+task test
+```
+
+Notes:
+
+- Ruff is the active formatter, linter, and import sorter.
+- `task` is not just verification; the default task formats, lints, runs tests, and then ensures the dev environment is synced.
+- Repository test fixtures are DuckDB-only today; contributor examples use `demo_duckdb`, and targeted core tests may need `uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test` to refresh `demo_duckdb/target/manifest.json`.
+- Docs-site commands use the Node toolchain under `docs/`:
+
+```bash
+npm --prefix docs run start
+npm --prefix docs run build
+npm --prefix docs run serve
+```
+
+## Workbench
+
+The optional workbench is a Streamlit app for interactive dbt SQL development.
+
+Install the extra and launch it with:
+
+```bash
+pip install "dbt-osmosis[workbench]"
+dbt-osmosis workbench
+```
+
+The hosted demo is linked from the badge at the top of this README.
+
+## Pre-commit hook
+
+You can run `dbt-osmosis yaml refactor -C` as a pre-commit hook:
 
 ```yaml title=".pre-commit-config.yaml"
 repos:
   - repo: https://github.com/z3z1ma/dbt-osmosis
-    rev: v1.3.0 # verify the latest version
+    rev: v1.3.0
     hooks:
       - id: dbt-osmosis
         files: ^models/
@@ -66,64 +151,4 @@ repos:
         additional_dependencies: [dbt-<adapter>]
 ```
 
-___
-
-## Workbench
-
-The workbench is a streamlit app that allows you to work on dbt models in a side-by-side editor and query tester. I've kept this portion of the README since users can jump into the streamlit hosted workbench to play around with it via the badge below. Expect the living documentation moving forward to exist at the [dbt-osmosis documentation site](https://z3z1ma.github.io/dbt-osmosis/).
-
-I also expect there is some untapped value in the workbench that is only pending some time from myself. I've seen a path to a truly novel development experience and look forward to exploring it.
-
-Demo the workbench 👇
-
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://dbt-osmosis-playground.streamlit.app/)
-
-```sh
-# NOTE this requires the workbench extra as you can see
-pip install "dbt-osmosis[workbench]"
-
-# Command to start server
-dbt-osmosis workbench
-```
-
-Press "r" to reload the workbench at any time.
-
-✔️ dbt Editor with instant dbt compilation side-by-side or pivoted
-
-✔️ Full control over model and workbench theme, light and dark mode
-
-✔️ Query Tester, test the model you are working on for instant feedback
-
-✔️ Data Profiler (leverages pandas-profiling)
-
-**Editor**
-
-The editor is able to compile models with control+enter or dynamically as you type. Its speedy! You can choose any target defined in your profiles yml for compilation and execution.
-
-![editor](/screenshots/osmosis_editor_main.png?raw=true "dbt-osmosis Workbench")
-
-You can pivot the editor for a fuller view while workbenching some dbt SQL.
-
-![pivot](/screenshots/osmosis_editor_pivot.png?raw=true "dbt-osmosis Pivot Layout")
-
-**Test Query**
-
-Test dbt models as you work against whatever profile you have selected and inspect the results. This allows very fast iterative feedback loops not possible with VS Code alone.
-
-![test-model](/screenshots/osmosis_tester.png?raw=true "dbt-osmosis Test Model")
-
-**Profile Model Results**
-
-Profile your datasets on the fly while you develop without switching context. Allows for more refined interactive data modelling when dataset fits in memory.
-
-![profile-data](/screenshots/osmosis_profile.png?raw=true "dbt-osmosis Profile Data")
-
-**Useful Links and RSS Feed**
-
-Some useful links and RSS feeds at the bottom. 🤓
-
-![profile-data](/screenshots/osmosis_links.png?raw=true "dbt-osmosis Profile Data")
-
-___
-
-![graph](https://repobeats.axiom.co/api/embed/df37714aa5780fc79871c60e6fc623f8f8e45c35.svg "Repobeats analytics image")
+That hook keeps schema YAML changes visible in the commit that introduced them.
