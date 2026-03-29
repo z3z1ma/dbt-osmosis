@@ -222,8 +222,6 @@ def create_missing_source_yamls(context: t.Any) -> None:
     from dbt_osmosis.core.config import _reload_manifest
     from dbt_osmosis.core.introspection import _find_first, get_columns
     from dbt_osmosis.core.schema.reader import (
-        _YAML_BUFFER_CACHE,
-        _YAML_BUFFER_CACHE_LOCK,
         _read_yaml,
     )
     from dbt_osmosis.core.schema.writer import _write_yaml
@@ -232,7 +230,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
         logger.warning(":warning: Introspection is disabled, cannot create missing source YAMLs.")
         return
     logger.info(":factory: Creating missing source YAMLs and updating existing sources (if any).")
-    database: str = context.project.runtime_cfg.credentials.database
+    default_database: str = context.project.runtime_cfg.credentials.database
     lowercase: bool = context.settings.output_to_lower
     uppercase: bool = context.settings.output_to_upper
     project_root = t.cast("str", context.project.runtime_cfg.project_root)
@@ -240,13 +238,16 @@ def create_missing_source_yamls(context: t.Any) -> None:
         raise PathResolutionError("Project root is not set in runtime config.")
     model_paths = t.cast("list[str]", context.project.runtime_cfg.model_paths or ["models"])
 
-    did_side_effect: bool = False
+    starting_disk_mutations = getattr(context, "disk_mutation_count", 0)
+    source_changes_detected = False
+    written_file_tracker = getattr(context, "register_written_file", None)
     for source, spec in context.source_definitions.items():
+        database = default_database
         if isinstance(spec, str):
             schema = source
             src_yaml_path = spec
         elif isinstance(spec, dict):
-            database = t.cast("str", spec.get("database", database))
+            database = t.cast("str", spec.get("database", default_database))
             schema = t.cast("str", spec.get("schema", source))
             src_yaml_path = t.cast("str", spec["path"])
         else:
@@ -363,12 +364,9 @@ def create_missing_source_yamls(context: t.Any) -> None:
                     context.settings.dry_run,
                     context.register_mutations,
                     context.settings.strip_eof_blank_lines,
+                    written_file_tracker=written_file_tracker,
                 )
-                # Clear cache for the updated file
-                with _YAML_BUFFER_CACHE_LOCK:
-                    if src_yaml_path_obj in _YAML_BUFFER_CACHE:
-                        del _YAML_BUFFER_CACHE[src_yaml_path_obj]
-                did_side_effect = True
+                source_changes_detected = True
             else:
                 logger.debug(
                     ":white_check_mark: No new tables found for source => %s",
@@ -393,11 +391,14 @@ def create_missing_source_yamls(context: t.Any) -> None:
                 context.settings.dry_run,
                 context.register_mutations,
                 context.settings.strip_eof_blank_lines,
+                written_file_tracker=written_file_tracker,
             )
 
-            did_side_effect = True
+            source_changes_detected = True
 
-    if did_side_effect:
+    if getattr(
+        context, "disk_mutation_count", starting_disk_mutations
+    ) > starting_disk_mutations or (source_changes_detected and not context.settings.dry_run):
         logger.info(
             ":arrows_counterclockwise: Sources were updated, reloading the project.",
         )
