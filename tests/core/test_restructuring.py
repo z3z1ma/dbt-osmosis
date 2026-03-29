@@ -20,8 +20,15 @@ from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 @pytest.fixture(scope="function")
 def fresh_caches():
     """Patches the internal caches so each test starts with a fresh state."""
-    with mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}):
+    from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE, _YAML_ORIGINAL_CACHE
+
+    _YAML_BUFFER_CACHE.clear()
+    _YAML_ORIGINAL_CACHE.clear()
+    try:
         yield
+    finally:
+        _YAML_BUFFER_CACHE.clear()
+        _YAML_ORIGINAL_CACHE.clear()
 
 
 def _build_source_bootstrap_context(tmp_path: Path, *, dry_run: bool) -> YamlRefactorContext:
@@ -197,6 +204,7 @@ def test_apply_restructure_plan_dry_run_skips_reload(
 def test_apply_restructure_plan_counts_deleted_files_as_disk_mutations(
     yaml_context: YamlRefactorContext,
     tmp_path: Path,
+    fresh_caches,
 ):
     """Restructure tracks both the new file write and the superseded file deletion truthfully."""
     from unittest import mock as mock_patch

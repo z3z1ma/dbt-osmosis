@@ -31,6 +31,9 @@ def test_demo_generic_tests_nest_arguments() -> None:
     offenders: list[str] = []
 
     for schema_path in DEMO_PROJECT_DIR.rglob("*.yml"):
+        if not schema_path.is_file() or "target" in schema_path.parts:
+            continue
+
         raw_doc = yaml.load(schema_path.read_text())
         if not isinstance(raw_doc, dict):
             continue
