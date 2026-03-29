@@ -234,7 +234,7 @@ class SchemaDiff:
         """
         self._context = context
         self._fuzzy_match_threshold = fuzzy_match_threshold
-        self._detect_column_renames = detect_column_renames  # type: ignore[assignment]
+        self._rename_detection_enabled = detect_column_renames
 
     def compare_node(self, node: ResultNode) -> SchemaDiffResult:
         """Compare a single node's YAML schema with database schema.
@@ -303,11 +303,12 @@ class SchemaDiff:
             )
 
         # Detect column renames via fuzzy matching
-        if self._detect_column_renames and added_columns and removed_columns:
-            renames = self._detect_column_renames(  # pyright: ignore[reportArgumentType]
+        if self._rename_detection_enabled and added_columns and removed_columns:
+            renames = self._detect_column_renames(
                 list(removed_columns),
                 list(added_columns),
                 database_columns,
+                node,
             )
             # Replace added/removed with rename if we found a match
             changes = [
@@ -390,6 +391,7 @@ class SchemaDiff:
         removed: list[str],
         added: list[str],
         database_columns: dict[str, ColumnMetadata],
+        node: ResultNode,
     ) -> list[ColumnRenamed]:
         """Detect column renames using fuzzy string matching.
 
@@ -397,12 +399,12 @@ class SchemaDiff:
             removed: Column names in YAML but not in database
             added: Column names in database but not in YAML
             database_columns: Database column metadata for type info
+            node: The dbt node being compared
 
         Returns:
             List of ColumnRenamed changes
         """
         renames: list[ColumnRenamed] = []
-        matched_added: set[str] = set()
 
         for old_name in removed:
             # Use fuzzy matching to find potential rename
@@ -416,15 +418,14 @@ class SchemaDiff:
             if match and match[1] >= self._fuzzy_match_threshold:
                 new_name = match[0]
                 similarity = match[1]
-                matched_added.add(new_name)
 
                 renames.append(
                     ColumnRenamed(
                         category=ChangeCategory.COLUMN_RENAMED,
                         severity=ChangeSeverity.SAFE,
-                        node=self._context.current_node
-                        if hasattr(self._context, "current_node")
-                        else next(iter(self._context.manifest.nodes.values())),  # type: ignore
+                        # compare_node already knows the affected node; relying on
+                        # mutable context state here can misattribute or crash renames.
+                        node=node,
                         description="",
                         old_name=old_name,
                         new_name=new_name,
