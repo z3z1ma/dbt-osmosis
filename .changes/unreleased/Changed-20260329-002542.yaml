@@ -1,0 +1,10 @@
+kind: Changed
+body: |-
+    Align the supported runtime, public import surface, and top-level docs with the code that is actually exercised.
+
+    - Constrain the repository-managed dbt support window to Core 1.8-1.10 and matching adapter minor lines, and update CI/local setup so they stop implying unsupported 1.11+ combinations.
+    - Collapse broad `dbt_osmosis.core` re-exports so `dbt_osmosis.core.osmosis` remains the single compatibility facade and internal code imports concrete submodules directly.
+    - Rework bootstrap detection so project-local profiles and Fusion compatibility are derived from project evidence instead of PATH-only guesses.
+    - Rewrite README and Docusaurus reference pages to enumerate the shipped CLI families, formatter/config behavior, current tooling prerequisites, and DuckDB-only exercised fixture coverage.
+    - Record the narrowed dbt installation support window and cleaned-up core public API surface in repository guidance and documentation memory.
+time: 2026-03-29T00:25:42.288432-07:00

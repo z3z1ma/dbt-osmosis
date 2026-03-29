@@ -1,0 +1,11 @@
+kind: Fixed
+body: |-
+    Repair correctness and trustworthiness issues across YAML management, SQL flows, optional integrations, and CI support tooling.
+
+    - Keep dirty YAML buffers pinned until commit so large refactors cannot silently lose earlier edits, and make source bootstrap plus restructuring write tracking/reload behavior truthful.
+    - Align schema parsing and validation with supported YAML shapes, including nested sources, top-level `data_tests`, seed columns, and `raw_content` validation.
+    - Fix sync and inheritance edge cases for versioned models, source matching, progenitor overrides, and external-node selection.
+    - Stop schema diff rename detection crashes, ensure plain SQL compilation always cleans up temporary manifest nodes, make staging dry-run paths side-effect free, and lint only compiled model SQL instead of raw manifest entries.
+    - Allow pattern-based test suggestions to work without the OpenAI extra, honor LM Studio and Ollama default settings, normalize Azure AD scope handling, and replace the workbench AI panel's fake generate/apply behavior with a truthful unavailable state.
+    - Make fixture dbt commands fail fast, retire the unexercised PostgreSQL fixture branch, refresh manifest freshness checks, isolate shared YAML caches in suite-sensitive tests, apply CI-required Ruff formatting, and bump the gitleaks pre-commit hook to avoid the older wasm panic in CI.
+time: 2026-03-29T00:25:42.251221-07:00
