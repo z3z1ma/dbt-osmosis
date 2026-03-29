@@ -12,6 +12,7 @@ import typing as t
 from dataclasses import dataclass, field
 from enum import Enum
 
+from dbt.artifacts.resources.types import NodeType
 from sqlglot import exp, parse
 from sqlglot.dialects import Dialect
 
@@ -599,6 +600,23 @@ class SQLLinter:
         compiled_sql = compiled_node.compiled_code or compiled_node.raw_code or raw_sql
         return self.lint(raw_sql, compiled_sql)
 
+    def _iter_model_nodes(
+        self,
+        context: DbtProjectContext,
+        fqn_filter: list[str] | None = None,
+    ) -> t.Iterator[t.Any]:
+        """Yield only project model nodes that should participate in model/project linting."""
+        for node in context.manifest.nodes.values():
+            if getattr(node, "resource_type", None) != NodeType.Model:
+                continue
+
+            if fqn_filter:
+                node_fqn = ".".join(getattr(node, "fqn", []))
+                if not any(pattern in node_fqn for pattern in fqn_filter):
+                    continue
+
+            yield node
+
     def lint_model(
         self,
         context: DbtProjectContext,
@@ -615,7 +633,7 @@ class SQLLinter:
         """
         # Find the model in the manifest
         model = None
-        for node in context.manifest.nodes.values():
+        for node in self._iter_model_nodes(context):
             if node.name == model_name:
                 model = node
                 break
@@ -661,16 +679,10 @@ class SQLLinter:
         """
         results: dict[str, LintResult] = {}
 
-        for node in context.manifest.nodes.values():
+        for node in self._iter_model_nodes(context, fqn_filter=fqn_filter):
             raw_sql = getattr(node, "raw_code", "") or getattr(node, "raw_sql", "")
             if not raw_sql:
                 continue
-
-            # Apply FQN filter if provided
-            if fqn_filter:
-                node_fqn = ".".join(node.fqn) if hasattr(node, "fqn") else ""
-                if not any(pattern in node_fqn for pattern in fqn_filter):
-                    continue
 
             result = self._lint_dbt_sql(context, raw_sql)
             results[node.name] = result
