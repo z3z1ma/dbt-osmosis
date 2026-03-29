@@ -32,7 +32,7 @@ def test_schema_diff_initialization(yaml_context: YamlRefactorContext, fresh_cac
     differ = SchemaDiff(yaml_context)
     assert differ._context == yaml_context
     assert differ._fuzzy_match_threshold == 85.0
-    assert differ._detect_column_renames is True
+    assert differ._rename_detection_enabled is True
 
 
 def test_schema_diff_custom_threshold(yaml_context: YamlRefactorContext, fresh_caches):
@@ -44,7 +44,7 @@ def test_schema_diff_custom_threshold(yaml_context: YamlRefactorContext, fresh_c
 def test_schema_diff_disable_renames(yaml_context: YamlRefactorContext, fresh_caches):
     """Test that SchemaDiff can disable rename detection."""
     differ = SchemaDiff(yaml_context, detect_column_renames=False)
-    assert differ._detect_column_renames is False
+    assert differ._rename_detection_enabled is False
 
 
 def test_schema_diff_compare_node(yaml_context: YamlRefactorContext, fresh_caches):
@@ -68,6 +68,43 @@ def test_schema_diff_compare_node(yaml_context: YamlRefactorContext, fresh_cache
             break
     else:
         pytest.skip("No model nodes found in manifest")
+
+
+def test_schema_diff_detects_renamed_columns_without_context_node(
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+):
+    """Rename detection should use the compared node, not mutable context state."""
+    from dbt_common.contracts.metadata import ColumnMetadata
+
+    differ = SchemaDiff(yaml_context)
+    node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
+
+    database_columns = {
+        name: ColumnMetadata(name=name, type="TEXT", index=index)
+        for index, name in enumerate(node.columns)
+        if name != "customer_id"
+    }
+    database_columns["customerid"] = ColumnMetadata(name="customerid", type="TEXT", index=999)
+
+    with mock.patch("dbt_osmosis.core.introspection.get_columns", return_value=database_columns):
+        result = differ.compare_node(node)
+
+    rename_changes = [change for change in result.changes if isinstance(change, ColumnRenamed)]
+    assert len(rename_changes) == 1
+
+    rename_change = rename_changes[0]
+    assert rename_change.node == node
+    assert rename_change.old_name == "customer_id"
+    assert rename_change.new_name == "customerid"
+    assert not any(
+        isinstance(change, ColumnAdded) and change.column_name == "customerid"
+        for change in result.changes
+    )
+    assert not any(
+        isinstance(change, ColumnRemoved) and change.column_name == "customer_id"
+        for change in result.changes
+    )
 
 
 def test_schema_diff_compare_all(yaml_context: YamlRefactorContext, fresh_caches):
