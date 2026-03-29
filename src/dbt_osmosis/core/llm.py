@@ -34,6 +34,27 @@ except ImportError:
 from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 
 
+_LLM_PROVIDER_REQUIRED_ENV_VARS: dict[str, list[str]] = {
+    "openai": ["OPENAI_API_KEY"],
+    "azure-openai": [
+        "AZURE_OPENAI_BASE_URL",
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_DEPLOYMENT_NAME",
+    ],
+    "azure-openai-ad": [
+        "AZURE_OPENAI_BASE_URL",
+        "AZURE_OPENAI_AD_TOKEN_SCOPE",
+        "AZURE_OPENAI_DEPLOYMENT_NAME",
+    ],
+    # These OpenAI-compatible local providers ship with safe local defaults.
+    # Callers may override them, but they should not have to restate them.
+    "lm-studio": [],
+    "ollama": [],
+    "google-gemini": ["GOOGLE_GEMINI_API_KEY"],
+    "anthropic": ["ANTHROPIC_API_KEY"],
+}
+
+
 def _call_with_retry(func, max_retries=5, initial_delay=1.0):
     """Call a function with exponential backoff retry logic for rate limits.
 
@@ -273,25 +294,7 @@ def get_llm_client() -> tuple[t.Any, str]:
             f"Invalid LLM provider '{provider}'. Valid options: openai, azure-openai, azure-openai-ad, google-gemini, anthropic, lm-studio, ollama.",
         )
 
-    required_env_vars = {
-        "openai": ["OPENAI_API_KEY"],
-        "azure-openai": [
-            "AZURE_OPENAI_BASE_URL",
-            "AZURE_OPENAI_API_KEY",
-            "AZURE_OPENAI_DEPLOYMENT_NAME",
-        ],
-        "azure-openai-ad": [
-            "AZURE_OPENAI_BASE_URL",
-            "AZURE_OPENAI_AD_TOKEN_SCOPE",
-            "AZURE_OPENAI_DEPLOYMENT_NAME",
-        ],
-        "lm-studio": ["LM_STUDIO_BASE_URL", "LM_STUDIO_API_KEY"],
-        "ollama": ["OLLAMA_BASE_URL", "OLLAMA_API_KEY"],
-        "google-gemini": ["GOOGLE_GEMINI_API_KEY"],
-        "anthropic": ["ANTHROPIC_API_KEY"],
-    }
-
-    missing_vars = [var for var in required_env_vars[provider] if not os.getenv(var)]
+    missing_vars = [var for var in _LLM_PROVIDER_REQUIRED_ENV_VARS[provider] if not os.getenv(var)]
     if missing_vars:
         raise LLMConfigurationError(
             f"ERROR: Missing environment variables for {provider}: {', '.join(missing_vars)}. Please refer to the documentation to set them correctly.",

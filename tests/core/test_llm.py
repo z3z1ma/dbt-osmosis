@@ -94,25 +94,65 @@ def test_get_llm_client_invalid_provider(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_get_llm_client_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test Ollama client creation with defaults."""
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setenv("OLLAMA_API_KEY", "ollama")
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
 
     client, model = get_llm_client()
 
     assert client is not None
+    assert str(client.base_url) == "http://localhost:11434/v1/"
+    assert client.api_key == "ollama"
     assert model == "llama2:latest"
 
 
 def test_get_llm_client_lm_studio(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test LM Studio client creation with defaults."""
     monkeypatch.setenv("LLM_PROVIDER", "lm-studio")
-    monkeypatch.setenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
-    monkeypatch.setenv("LM_STUDIO_API_KEY", "lm-studio")
+    monkeypatch.delenv("LM_STUDIO_BASE_URL", raising=False)
+    monkeypatch.delenv("LM_STUDIO_API_KEY", raising=False)
+    monkeypatch.delenv("LM_STUDIO_MODEL", raising=False)
 
     client, model = get_llm_client()
 
     assert client is not None
+    assert str(client.base_url) == "http://localhost:1234/v1/"
+    assert client.api_key == "lm-studio"
     assert model == "local-model"
+
+
+def test_get_llm_client_google_gemini_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test Google Gemini client creation with documented optional defaults."""
+    monkeypatch.setenv("LLM_PROVIDER", "google-gemini")
+    monkeypatch.setenv("GOOGLE_GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("GOOGLE_GEMINI_BASE_URL", raising=False)
+    monkeypatch.delenv("GOOGLE_GEMINI_MODEL", raising=False)
+
+    client, model = get_llm_client()
+
+    assert client is not None
+    assert str(client.base_url) == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert client.api_key == "test-key"
+    assert model == "gemini-2.0-flash"
+
+
+def test_get_llm_client_anthropic_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test Anthropic client creation with documented optional defaults."""
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+
+    client, model = get_llm_client()
+
+    assert client is not None
+    assert str(client.base_url) == "https://api.anthropic.com/v1/"
+    assert client.api_key == "test-key"
+    assert model == "claude-3-5-haiku-latest"
 
 
 def test_generate_model_spec_as_json(monkeypatch: pytest.MonkeyPatch) -> None:
