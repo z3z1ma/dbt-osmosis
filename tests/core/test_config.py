@@ -5,12 +5,14 @@ import os
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from dbt_osmosis.core.config import (
     DbtConfiguration,
     _detect_fusion_manifest,
     _reload_manifest,
+    create_dbt_project_context,
     config_to_namespace,
     discover_profiles_dir,
     discover_project_dir,
@@ -56,6 +58,95 @@ def test_config_to_namespace():
 def test_reload_manifest(yaml_context: YamlRefactorContext):
     """Basic check that _reload_manifest doesn't raise, given a real project."""
     _reload_manifest(yaml_context.project)
+
+
+def test_create_dbt_project_context_accepts_interface_registered_adapter():
+    """Bootstrap succeeds when dbt-core-interface owns the factory registration."""
+    cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
+    adapter = mock.Mock()
+    project = SimpleNamespace(
+        runtime_config=SimpleNamespace(
+            credentials=SimpleNamespace(type="duckdb"),
+            adapter=adapter,
+        ),
+        manifest=mock.Mock(),
+        project_name="demo_duckdb",
+    )
+    factory = SimpleNamespace(adapters={"duckdb": adapter})
+    context = mock.sentinel.context
+
+    with (
+        mock.patch("dbt.adapters.factory.FACTORY", factory),
+        mock.patch("dbt_osmosis.core.config._detect_fusion_manifest", return_value=False),
+        mock.patch("dbt_osmosis.core.config.InterfaceDbtProject.from_config", return_value=project),
+        mock.patch("dbt_osmosis.core.config.DbtProjectContext.from_project", return_value=context),
+        mock.patch("dbt_osmosis.core.config.importlib.import_module", side_effect=ImportError),
+    ):
+        result = create_dbt_project_context(cfg)
+
+    assert result is context
+
+
+def test_create_dbt_project_context_registers_project_adapter_when_factory_missing():
+    """Bootstrap binds the current project adapter when the factory is empty."""
+    cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
+    adapter = mock.Mock()
+    project = SimpleNamespace(
+        runtime_config=SimpleNamespace(
+            credentials=SimpleNamespace(type="duckdb"),
+            adapter=adapter,
+        ),
+        manifest=mock.Mock(),
+        project_name="demo_duckdb",
+    )
+    factory = SimpleNamespace(adapters={})
+
+    with (
+        mock.patch("dbt.adapters.factory.FACTORY", factory),
+        mock.patch("dbt_osmosis.core.config._detect_fusion_manifest", return_value=False),
+        mock.patch("dbt_osmosis.core.config.InterfaceDbtProject.from_config", return_value=project),
+        mock.patch(
+            "dbt_osmosis.core.config.DbtProjectContext.from_project",
+            return_value=mock.sentinel.context,
+        ),
+        mock.patch("dbt_osmosis.core.config.importlib.import_module", side_effect=ImportError),
+    ):
+        result = create_dbt_project_context(cfg)
+
+    assert result is mock.sentinel.context
+    assert factory.adapters["duckdb"] is adapter
+
+
+def test_create_dbt_project_context_replaces_stale_factory_adapter():
+    """Bootstrap replaces stale factory state with the current project adapter."""
+    cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
+    project_adapter = mock.Mock()
+    registered_adapter = mock.Mock()
+    project = SimpleNamespace(
+        runtime_config=SimpleNamespace(
+            credentials=SimpleNamespace(type="duckdb"),
+            adapter=project_adapter,
+        ),
+        manifest=mock.Mock(),
+        project_name="demo_duckdb",
+    )
+    factory = SimpleNamespace(adapters={"duckdb": registered_adapter})
+
+    with (
+        mock.patch("dbt.adapters.factory.FACTORY", factory),
+        mock.patch("dbt_osmosis.core.config._detect_fusion_manifest", return_value=False),
+        mock.patch("dbt_osmosis.core.config.InterfaceDbtProject.from_config", return_value=project),
+        mock.patch(
+            "dbt_osmosis.core.config.DbtProjectContext.from_project",
+            return_value=mock.sentinel.context,
+        ),
+        mock.patch("dbt_osmosis.core.config.importlib.import_module", side_effect=ImportError),
+    ):
+        result = create_dbt_project_context(cfg)
+
+    assert result is mock.sentinel.context
+    registered_adapter.cleanup_connections.assert_called_once_with()
+    assert factory.adapters["duckdb"] is project_adapter
 
 
 def test_adapter_ttl_expiration(yaml_context: YamlRefactorContext):
