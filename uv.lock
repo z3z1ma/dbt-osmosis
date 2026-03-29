@@ -476,7 +476,7 @@ wheels = [
 
 [[package]]
 name = "dbt-common"
-version = "1.37.2"
+version = "1.37.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agate" },
@@ -493,14 +493,14 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/ab/1d49b812472d4f064d715b6968f60f6636624ad18ef8e243055ee74ca5c2/dbt_common-1.37.2.tar.gz", hash = "sha256:f83f2b4c1ed234ef38edc6817e0c2bd19f27c653bc1eb8b8411285fe670c2d3c", size = 86051, upload-time = "2025-12-15T18:24:19.189Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/3a/c95078b7ebb87795551f73fd58e5ddbcf7f75b478e9b50ab72fe2939baf0/dbt_common-1.37.3.tar.gz", hash = "sha256:f99304cf93f549c09d302eb61d9b280748bbe24e2245e214189ea08b41196ec3", size = 86217, upload-time = "2026-03-02T17:26:34.027Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/5a/cfc59817a398a96701243c03a4547b6457dbc18b62f375d6857a3d4c74f8/dbt_common-1.37.2-py3-none-any.whl", hash = "sha256:883a0b4af3e9a03e15b0d4862b654c5316d9525303683a8ead4dcc406eaa8a9a", size = 87670, upload-time = "2025-12-15T18:24:17.588Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/7e/629351d21ffa1b51a893334faf8c497f0c34f4da3cece9b24d7a5af29d90/dbt_common-1.37.3-py3-none-any.whl", hash = "sha256:e11b81903107d9f254d0ec7ac14b2bcf6d531e46456cbc7881fdbfeb9bbd8eec", size = 87733, upload-time = "2026-03-02T17:26:31.248Z" },
 ]
 
 [[package]]
 name = "dbt-core"
-version = "1.11.2"
+version = "1.10.20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agate" },
@@ -527,9 +527,9 @@ dependencies = [
     { name = "sqlparse" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/82/662621bd430fc6d8ee8e0e917bc551efba1b08b82372b3c0f37fd3ef4746/dbt_core-1.11.2.tar.gz", hash = "sha256:3306fee149b9f4e648071f2c9a46c0551100e1c829f13ad7ce026eb7226ad454", size = 914480, upload-time = "2025-12-22T19:14:04.488Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/d7/c2668baa1b75859f47df85b7800b175a2a852dc7073dfa717cd50b1726fa/dbt_core-1.10.20.tar.gz", hash = "sha256:023bf4fe5012460498686a0c03cf183747b39937a64cadfa5d6a1650a436b16f", size = 900816, upload-time = "2026-03-03T20:26:06.25Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/57/dad11af27a21840252234b05d682d73ca8eb721fc79d1b4aa9502bb1b6f5/dbt_core-1.11.2-py3-none-any.whl", hash = "sha256:ac332fd61a4494494f48e1bbdc0696e309e79036b94eb0a929233bb71f4b3898", size = 1004018, upload-time = "2025-12-22T19:14:03.213Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/6b/80eed8dc0c88d4798e8c1def8c1d62c8ad273f7c1f06a7a90def1f42fda3/dbt_core-1.10.20-py3-none-any.whl", hash = "sha256:1ddb350cbb7cbffe3db6ecaf409f90341941eabf2fae2e70d141e979ef0e6ffe", size = 987258, upload-time = "2026-03-03T20:26:03.213Z" },
 ]
 
 [[package]]
@@ -633,10 +633,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">7,<9" },
-    { name = "dbt-core", specifier = ">=1.8" },
+    { name = "dbt-core", specifier = ">=1.8,<1.11" },
     { name = "dbt-core-interface", specifier = ">=1.1.7" },
-    { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1,<2" },
-    { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1.8.0" },
+    { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1.8,<1.11" },
+    { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1.8,<1.11" },
     { name = "feedparser", marker = "extra == 'workbench'", specifier = "~=6.0.12" },
     { name = "hypothesis", marker = "extra == 'dev'" },
     { name = "mutmut", marker = "extra == 'dev'" },
@@ -660,7 +660,7 @@ provides-extras = ["workbench", "openai", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "dbt-duckdb", specifier = ">=1.10.0" },
+    { name = "dbt-duckdb", specifier = ">=1.8,<1.11" },
     { name = "openai", specifier = ">=1.58.1" },
     { name = "pytest", specifier = ">=8.3.5" },
 ]

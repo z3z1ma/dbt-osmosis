@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-        dbt-version: ["1.8.0", "1.9.0", "1.10.0", "1.10.17", "1.11.2"]
+        dbt-version: ["1.8.0", "1.9.0", "1.10.0"]
         exclude:
           - python-version: "3.13"
             dbt-version: "1.8.0"
@@ -43,9 +43,9 @@ jobs:
         run: | # install dev and openai extras to be able to parse manifest and run all tests
           uv sync --extra dev --extra openai
 
-      - name: Install dbt-core
+      - name: Install dbt runtime
         run: |
-          uv pip install dbt-core==${{ matrix.dbt-version }}
+          uv pip install "dbt-core~=${{ matrix.dbt-version }}" "dbt-duckdb~=${{ matrix.dbt-version }}"
 
       - name: Parse manifest
         run: |

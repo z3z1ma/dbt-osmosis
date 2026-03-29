@@ -74,7 +74,7 @@ Follow-up TODOs: None - all placeholders filled
 - Tests MUST fail before implementation begins
 - Core transformations MUST have unit tests in `tests/core/` mirroring `src/dbt_osmosis/core/`
 - Integration tests MUST use the `demo_duckdb/` project fixture
-- Test matrix MUST cover Python 3.10-3.12 × dbt-core 1.8-1.10
+- Test matrix MUST cover Python 3.10-3.13 × dbt-core 1.8-1.10
 - Mutation testing (mutmut) SHOULD be used for critical path validation
 - Coverage MUST remain above 70% (enforced by pyproject.toml)
 

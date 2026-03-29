@@ -14,21 +14,23 @@ dbt-osmosis automates dbt YAML management: file placement, column documentation 
 
 ## Prerequisites
 
-- Python 3.10+
-- dbt Core 1.8+ and a dbt adapter package
+- Python 3.10-3.13
+- dbt Core 1.8-1.10 and a matching dbt adapter package
 - A dbt project with models (and optionally sources)
 - A clean git working tree (recommended)
 
 ## 1. Install
 
+dbt-osmosis is exercised against dbt Core 1.8-1.10. Install a dbt adapter from the same supported minor line as your project.
+
 ```bash
-uv tool install --with="dbt-<adapter>~=1.9.0" dbt-osmosis
+uv tool install --with="dbt-<adapter>>=1.8,<1.11" dbt-osmosis
 ```
 
 Or with pip:
 
 ```bash
-pip install dbt-osmosis dbt-<adapter>
+pip install "dbt-osmosis" "dbt-<adapter>>=1.8,<1.11"
 ```
 
 ## 2. Configure YAML routing
