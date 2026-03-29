@@ -8,9 +8,9 @@ Tutorials are **learning-oriented**: follow a linear path and finish with a work
 
 ## Start here
 
-- [Intro](../docs/intro)
-- [Installation](../docs/tutorial-basics/installation)
-- [Your first refactor](./tutorials/first-refactor)
+- [Intro](../intro)
+- [Installation](../tutorial-basics/installation)
+- [Your first refactor](./first-refactor)
 
 ## What you will accomplish
 
