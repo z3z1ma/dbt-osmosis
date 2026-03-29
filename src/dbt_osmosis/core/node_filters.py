@@ -112,15 +112,16 @@ def _topological_sort(
 
 def _iter_candidate_nodes(
     context: t.Any,  # YamlRefactorContext type will be imported
-    include_external: bool = False,
 ) -> t.Iterator[tuple[str, ResultNode]]:
-    """Iterate over the models in the dbt project manifest applying the filter settings."""
+    """Iterate over candidate nodes using the context's single selection contract."""
     logger.debug(
         ":mag: Filtering nodes (models/sources/seeds) with user-specified settings => %s",
         context.settings,
     )
 
-    def f(node: ResultNode, include_external: bool = False) -> bool:
+    include_external = context.settings.include_external
+
+    def f(node: ResultNode) -> bool:
         """Closure to filter models based on the context settings."""
         if node.resource_type not in (NodeType.Model, NodeType.Source, NodeType.Seed):
             return False
@@ -129,13 +130,10 @@ def _iter_candidate_nodes(
         if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
             return False
         if context.settings.models:
-            if (
-                not _is_file_match(
-                    node,
-                    context.settings.models,
-                    context.project.runtime_cfg.project_root,
-                )
-                and not include_external
+            if not _is_file_match(
+                node,
+                context.settings.models,
+                context.project.runtime_cfg.project_root,
             ):
                 return False
         if context.settings.fqn:
@@ -147,7 +145,7 @@ def _iter_candidate_nodes(
     candidate_nodes: list[t.Any] = []
     items = chain(context.project.manifest.nodes.items(), context.project.manifest.sources.items())
     for uid, dbt_node in items:
-        if f(dbt_node, include_external):
+        if f(dbt_node):
             candidate_nodes.append((uid, dbt_node))
 
     for uid, node in _topological_sort(candidate_nodes):
