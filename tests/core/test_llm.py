@@ -452,14 +452,22 @@ def test_get_llm_client_azure_ad_with_default_credential(
     mock_token = mock.Mock()
     mock_token.token = "test-access-token-from-cli"
 
+    captured_scope = None
+
+    def capture_scope(scope: str):
+        nonlocal captured_scope
+        captured_scope = scope
+        return mock_token
+
     with mock.patch(
         "dbt_osmosis.core.llm.DefaultAzureCredential.get_token",
-        return_value=mock_token,
+        side_effect=capture_scope,
     ):
         client, model = get_llm_client()
 
         assert client is not None
         assert model == "gpt-4"
+        assert captured_scope == "https://cognitiveservices.azure.com/.default"
 
 
 def test_get_llm_client_azure_ad_without_azure_identity(
@@ -537,6 +545,42 @@ def test_get_llm_client_azure_ad_scope_with_default_suffix(
 
     # Verify /.default was appended
     assert captured_scope == "https://cognitiveservices.azure.com/.default"
+
+
+def test_get_llm_client_azure_ad_preserves_explicit_scoped_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that already-scoped gateway values are passed through unchanged."""
+    try:
+        pytest.importorskip("azure.identity")
+    except Exception:
+        pytest.skip("azure-identity not installed")
+
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
+    monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "api://gateway-app/access_as_user")
+    monkeypatch.delenv("AZURE_TENANT_ID", raising=False)
+    monkeypatch.delenv("AZURE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("AZURE_CLIENT_SECRET", raising=False)
+
+    mock_token = mock.Mock()
+    mock_token.token = "test-token"
+
+    captured_scope = None
+
+    def capture_scope(scope: str):
+        nonlocal captured_scope
+        captured_scope = scope
+        return mock_token
+
+    with mock.patch(
+        "dbt_osmosis.core.llm.DefaultAzureCredential.get_token",
+        side_effect=capture_scope,
+    ):
+        get_llm_client()
+
+    assert captured_scope == "api://gateway-app/access_as_user"
 
 
 def test_get_llm_client_azure_ad_missing_token_scope(
