@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import typing as t
-from functools import partial
 from pathlib import Path
 
 from dbt.artifacts.resources.types import NodeType
@@ -315,10 +314,49 @@ def _prepare_yaml_document(
     return doc
 
 
+def _finalize_synced_document(
+    context: YamlRefactorContextProtocol,
+    target_path: Path,
+    doc: dict[str, t.Any],
+    *,
+    commit: bool,
+) -> None:
+    """Persist or pin a synchronized YAML document after in-memory updates."""
+    _cleanup_empty_sections(doc)
+
+    from dbt_osmosis.core.schema.reader import _mark_yaml_caches_dirty
+
+    # sync_node_to_yaml(commit=False) mutates the shared buffer in place, so pin it
+    # until a real disk outcome clears the cache entry.
+    _mark_yaml_caches_dirty(target_path)
+
+    if not commit:
+        return
+
+    logger.info(":inbox_tray: Committing YAML doc changes for => %s", target_path)
+
+    from dbt_osmosis.core.schema.writer import _write_yaml
+
+    _write_yaml(
+        context.yaml_handler,
+        context.yaml_handler_lock,
+        target_path,
+        doc,
+        dry_run=context.settings.dry_run,
+        mutation_tracker=context.register_mutations,
+        strip_eof_blank_lines=context.settings.strip_eof_blank_lines,
+        written_file_tracker=getattr(context, "register_written_file", None),
+    )
+
+
 def _get_or_create_source(
     doc: dict[str, t.Any],
     source_name: str,
     table_name: str | None = None,
+    *,
+    table_identifier: str | None = None,
+    schema_name: str | None = None,
+    database_name: str | None = None,
 ) -> dict[str, t.Any]:
     """Find or create a source entry in the YAML document.
 
@@ -334,22 +372,61 @@ def _get_or_create_source(
         if source.get("name") == source_name:
             return source
 
-    # If no exact match and we have a table name, check if any existing source
-    # already contains this table (which could indicate a Jinja template source name)
+    def _matching_sources(match_field: str, match_value: str) -> list[dict[str, t.Any]]:
+        return [
+            source
+            for source in sources
+            if any(table.get(match_field) == match_value for table in source.get("tables", []))
+        ]
+
+    def _disambiguate(candidates: list[dict[str, t.Any]]) -> dict[str, t.Any] | None:
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+
+        narrowed = candidates
+        if schema_name is not None:
+            schema_matches = [source for source in narrowed if source.get("schema") == schema_name]
+            if len(schema_matches) == 1:
+                return schema_matches[0]
+            if schema_matches:
+                narrowed = schema_matches
+
+        if database_name is not None:
+            database_matches = [
+                source for source in narrowed if source.get("database") == database_name
+            ]
+            if len(database_matches) == 1:
+                return database_matches[0]
+            if database_matches:
+                narrowed = database_matches
+
+        return narrowed[0] if len(narrowed) == 1 else None
+
+    # If no exact match and we have a table name, check for an existing source that can be
+    # truthfully identified by table identifier/name plus optional schema/database narrowing.
     if table_name:
-        for source in sources:
-            for table in source.get("tables", []):
-                if table.get("name") == table_name:
-                    # Found the table in an existing source with a different name
-                    # This is likely a Jinja template source name situation
-                    logger.debug(
-                        ":link: Found table %s in source %s (node source_name is %s), "
-                        "likely Jinja template source name - using existing source",
-                        table_name,
-                        source.get("name"),
-                        source_name,
-                    )
-                    return source
+        candidates = _matching_sources("identifier", table_identifier) if table_identifier else []
+        if not candidates:
+            candidates = _matching_sources("name", table_name)
+
+        matched_source = _disambiguate(candidates)
+        if matched_source is not None:
+            logger.debug(
+                ":link: Reusing source %s for table %s (node source_name is %s)",
+                matched_source.get("name"),
+                table_name,
+                source_name,
+            )
+            return matched_source
+
+        if candidates:
+            logger.warning(
+                ":warning: Ambiguous source match for %s.%s; creating a new source entry instead of guessing",
+                source_name,
+                table_name,
+            )
 
     # Create new source
     new_source = {"name": source_name, "tables": []}
@@ -378,7 +455,14 @@ def _sync_source_node(
 
     Sources have a nested structure: sources -> [source_name] -> tables -> [table_name]
     """
-    doc_source = _get_or_create_source(doc, node.source_name, table_name=node.name)
+    doc_source = _get_or_create_source(
+        doc,
+        node.source_name,
+        table_name=node.name,
+        table_identifier=getattr(node, "identifier", None),
+        schema_name=getattr(node, "schema", None),
+        database_name=getattr(node, "database", None),
+    )
     doc_table = _get_or_create_source_table(doc_source, node.name)
     _sync_doc_section(context, node, doc_table)
 
@@ -462,8 +546,12 @@ def _sync_versioned_model(
 
     doc_version = _get_or_create_version(doc_model, version)
 
-    # Ensure latest_version is set
-    if "latest_version" not in doc_model:
+    # Keep the top-level version metadata aligned with the manifest rather than preserving
+    # stale YAML values when a newer latest_version is introduced.
+    latest_version = getattr(node, "latest_version", None)
+    if latest_version is not None:
+        doc_model["latest_version"] = latest_version
+    elif "latest_version" not in doc_model:
         doc_model["latest_version"] = version
 
     # Sync data to the version object
@@ -501,6 +589,33 @@ def _cleanup_empty_sections(doc: dict[str, t.Any]) -> None:
     for k in ("models", "sources", "seeds"):
         if len(doc.get(k, [])) == 0:
             _ = doc.pop(k, None)
+
+
+def _sync_versioned_model_group_to_yaml(
+    context: YamlRefactorContextProtocol,
+    nodes: list[ModelNode],
+    *,
+    commit: bool = True,
+) -> None:
+    """Synchronize all versions of one model through a single YAML document update."""
+    representative = nodes[0]
+
+    from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
+
+    current_path = get_current_yaml_path(context, representative)
+    target_path = current_path
+    if not target_path or not target_path.exists():
+        target_path = get_target_yaml_path(context, representative)
+
+    doc = _prepare_yaml_document(context, representative, current_path)
+    resource_key = _get_resource_type_key(representative)
+    doc_list = doc.setdefault(resource_key, [])
+    doc_model = _get_or_create_model(doc_list, representative.name)
+
+    for versioned_node in sorted(nodes, key=lambda current: str(current.version)):
+        _sync_versioned_model(context, versioned_node, doc_model)
+
+    _finalize_synced_document(context, target_path, doc, commit=commit)
 
 
 def _sync_single_node_to_yaml(
@@ -543,42 +658,34 @@ def _sync_single_node_to_yaml(
     else:
         _sync_model_or_seed_node(context, node, doc, resource_key)
 
-    _cleanup_empty_sections(doc)
-
-    from dbt_osmosis.core.schema.reader import _mark_yaml_caches_dirty
-
-    # sync_node_to_yaml(commit=False) mutates the shared buffer in place, so pin it
-    # until a real disk outcome clears the cache entry.
-    _mark_yaml_caches_dirty(target_path)
-
-    if commit:
-        # Commit the changes
-        logger.info(":inbox_tray: Committing YAML doc changes for => %s", node.unique_id)
-        from dbt_osmosis.core.schema.writer import _write_yaml
-
-        _write_yaml(
-            context.yaml_handler,
-            context.yaml_handler_lock,
-            target_path,
-            doc,
-            dry_run=context.settings.dry_run,
-            mutation_tracker=context.register_mutations,
-            strip_eof_blank_lines=context.settings.strip_eof_blank_lines,
-            written_file_tracker=getattr(context, "register_written_file", None),
-        )
+    _finalize_synced_document(context, target_path, doc, commit=commit)
 
 
-def _deduplicated_version_nodes(context: YamlRefactorContextProtocol) -> t.Iterator[ResultNode]:
-    """Yield nodes, deduplicating versioned models by base name."""
+def _group_sync_nodes(context: YamlRefactorContextProtocol) -> list[list[ResultNode]]:
+    """Group candidate nodes so each YAML document is updated truthfully once per work item."""
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
-    processed_models = set()
+    groups: list[list[ResultNode]] = []
+    version_group_index: dict[tuple[str, str, str], int] = {}
+
     for _, n in _iter_candidate_nodes(context):
-        # For versioned models, only process each base model name once
-        if n.resource_type == NodeType.Model and n.name in processed_models:
+        if isinstance(n, ModelNode) and n.version is not None:
+            group_key = (
+                n.package_name,
+                n.name,
+                t.cast("str", n.patch_path or n.original_file_path or n.unique_id),
+            )
+            group_idx = version_group_index.get(group_key)
+            if group_idx is None:
+                version_group_index[group_key] = len(groups)
+                groups.append([n])
+            else:
+                groups[group_idx].append(n)
             continue
-        processed_models.add(n.name) if n.resource_type == NodeType.Model else None
-        yield n
+
+        groups.append([n])
+
+    return groups
 
 
 def sync_node_to_yaml(
@@ -609,9 +716,18 @@ def sync_node_to_yaml(
     """
     if node is None:
         logger.info(":wave: No single node specified; synchronizing all matched nodes.")
+
+        def _sync_group(group: list[ResultNode]) -> None:
+            if len(group) == 1:
+                sync_node_to_yaml(context, group[0], commit=commit)
+                return
+
+            versioned_group = t.cast("list[ModelNode]", group)
+            _sync_versioned_model_group_to_yaml(context, versioned_group, commit=commit)
+
         for _ in context.pool.map(
-            partial(sync_node_to_yaml, context, commit=commit),
-            _deduplicated_version_nodes(context),
+            _sync_group,
+            _group_sync_nodes(context),
         ):
             ...
         return

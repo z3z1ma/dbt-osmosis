@@ -1,5 +1,6 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -7,7 +8,11 @@ import pytest
 from dbt_osmosis.core.inheritance import _get_node_yaml
 from dbt_osmosis.core.schema.writer import commit_yamls
 from dbt_osmosis.core.settings import YamlRefactorContext
-from dbt_osmosis.core.sync_operations import _sync_doc_section, sync_node_to_yaml
+from dbt_osmosis.core.sync_operations import (
+    _get_or_create_source,
+    _sync_doc_section,
+    sync_node_to_yaml,
+)
 
 
 @pytest.fixture(scope="function")
@@ -33,6 +38,46 @@ def test_sync_node_to_yaml_versioned(yaml_context: YamlRefactorContext, fresh_ca
     sync_node_to_yaml(yaml_context, node, commit=False)
 
 
+def test_sync_node_to_yaml_all_versions_share_one_truthful_write(
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+):
+    """Syncing all candidates must update every versioned entry in the shared YAML file.
+
+    Regression coverage for the grouped versioned-model path: older code deduplicated by
+    base model name before parallel sync, which meant only one version was refreshed.
+    """
+    from dbt_osmosis.core.path_management import get_current_yaml_path
+    from dbt_osmosis.core.schema.reader import _read_yaml
+
+    version_one = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    version_two = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]
+
+    version_one.columns["customer_id"].description = "v1 synced description"
+    version_two.columns["id"].description = "v2 synced description"
+
+    project_root = Path(str(yaml_context.project.runtime_cfg.project_root))
+    yaml_context.settings.models = [project_root / "models" / "staging" / "jaffle_shop" / "main"]
+
+    sync_node_to_yaml(yaml_context, commit=False)
+
+    target_path = get_current_yaml_path(yaml_context, version_one)
+    assert target_path is not None
+    doc = _read_yaml(
+        yaml_context.yaml_handler,
+        yaml_context.yaml_handler_lock,
+        target_path,
+    )
+    model_entry = next(model for model in doc["models"] if model["name"] == "stg_customers")
+    versions = {version_doc["v"]: version_doc for version_doc in model_entry["versions"]}
+
+    version_one_columns = {column["name"]: column for column in versions[1]["columns"]}
+    version_two_columns = {column["name"]: column for column in versions[2]["columns"]}
+
+    assert version_one_columns["customer_id"]["description"] == "v1 synced description"
+    assert version_two_columns["id"]["description"] == "v2 synced description"
+
+
 def test_commit_yamls_no_write(yaml_context: YamlRefactorContext):
     """Since dry_run=True, commit_yamls should not actually write anything to disk.
     We just ensure no exceptions are raised.
@@ -43,6 +88,72 @@ def test_commit_yamls_no_write(yaml_context: YamlRefactorContext):
         dry_run=yaml_context.settings.dry_run,
         mutation_tracker=yaml_context.register_mutations,
     )
+
+
+def test_get_or_create_source_reuses_unique_table_match() -> None:
+    """Rendered source names should still reuse one unrendered YAML source entry."""
+    doc = {
+        "sources": [
+            {
+                "name": "{{ var('raw_source')[target.name] }}",
+                "schema": "analytics",
+                "database": "warehouse",
+                "tables": [{"name": "orders", "identifier": "raw_orders_prod"}],
+            },
+        ],
+    }
+
+    matched = _get_or_create_source(
+        doc,
+        source_name="raw_source_prod",
+        table_name="orders",
+        table_identifier="raw_orders_prod",
+        schema_name="analytics",
+        database_name="warehouse",
+    )
+
+    assert matched["name"] == "{{ var('raw_source')[target.name] }}"
+    assert len(doc["sources"]) == 1
+
+
+def test_get_or_create_source_does_not_guess_across_ambiguous_table_matches() -> None:
+    """When multiple sources contain the same table name, sync must not merge into one arbitrarily."""
+    doc = {
+        "sources": [
+            {"name": "source_a", "schema": "raw_a", "tables": [{"name": "events"}]},
+            {"name": "source_b", "schema": "raw_b", "tables": [{"name": "events"}]},
+        ],
+    }
+
+    created = _get_or_create_source(
+        doc,
+        source_name="resolved_events",
+        table_name="events",
+        schema_name="raw_c",
+    )
+
+    assert created["name"] == "resolved_events"
+    assert len(doc["sources"]) == 3
+
+
+def test_get_or_create_source_uses_schema_to_break_table_match_ties() -> None:
+    """Schema metadata should disambiguate repeated table names before sync creates duplicates."""
+    doc = {
+        "sources": [
+            {"name": "source_a", "schema": "raw_a", "tables": [{"name": "events"}]},
+            {"name": "source_b", "schema": "raw_b", "tables": [{"name": "events"}]},
+        ],
+    }
+
+    matched = _get_or_create_source(
+        doc,
+        source_name="resolved_events",
+        table_name="events",
+        schema_name="raw_b",
+    )
+
+    assert matched["name"] == "source_b"
+    assert len(doc["sources"]) == 2
 
 
 def test_preserve_unrendered_descriptions(yaml_context: YamlRefactorContext, fresh_caches):
