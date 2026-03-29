@@ -84,7 +84,8 @@ class YamlRefactorSettings:
     fusion_compat: bool | None = None
     """When True, output Fusion-compatible YAML with meta/tags nested inside config blocks.
     When False, output classic format with meta/tags at top level.
-    When None (default), auto-detect from installed dbt version: True if dbt >= 1.9.6."""
+    When None (default), auto-detect from Fusion manifest evidence or installed dbt version:
+    True if the project has a Fusion manifest or dbt >= 1.9.6."""
 
 
 @dataclass

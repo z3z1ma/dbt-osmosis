@@ -11,7 +11,6 @@ import argparse
 import importlib
 import os
 import re
-import shutil
 import threading
 import time
 import typing as t
@@ -68,14 +67,12 @@ def _detect_fusion_manifest(project_dir: str) -> bool:
         project_dir: Path to the dbt project root.
 
     Returns:
-        True if a Fusion manifest (schema version > 12) is detected.
+        True if an existing manifest proves the project was last parsed by dbt Fusion.
     """
     manifest_path = Path(project_dir) / "target" / "manifest.json"
     if not manifest_path.exists():
-        # No existing manifest — also check for Fusion binary on PATH
-        if shutil.which("dbt-fusion") or shutil.which("dbtf"):
-            logger.debug(":rocket: dbt Fusion binary found on PATH")
-            return True
+        # PATH contents are not project evidence: a globally installed Fusion binary
+        # does not mean this project was parsed with Fusion.
         return False
 
     try:
@@ -133,17 +130,29 @@ def discover_project_dir() -> str:
     return str(cwd.resolve())
 
 
-def discover_profiles_dir() -> str:
-    """Return the directory containing a profiles.yml if found, else ~/.dbt. Checks DBT_PROFILES_DIR first if set."""
+def discover_profiles_dir(project_dir: str | os.PathLike[str] | None = None) -> str:
+    """Return the directory containing a profiles.yml if found, else ~/.dbt.
+
+    Search order:
+    1. DBT_PROFILES_DIR when set to a valid directory
+    2. The current working directory
+    3. The provided or discovered dbt project root
+    4. ~/.dbt
+    """
     if "DBT_PROFILES_DIR" in os.environ:
         profiles_dir = Path(os.environ["DBT_PROFILES_DIR"])
         if profiles_dir.is_dir():
             logger.info(":mag: DBT_PROFILES_DIR detected => %s", profiles_dir)
             return str(profiles_dir.resolve())
         logger.warning(":warning: DBT_PROFILES_DIR %s is not a valid directory.", profiles_dir)
-    if (Path.cwd() / "profiles.yml").exists():
+    cwd = Path.cwd().resolve()
+    if (cwd / "profiles.yml").exists():
         logger.info(":mag: Found profiles.yml in current directory.")
-        return str(Path.cwd().resolve())
+        return str(cwd)
+    resolved_project_dir = Path(project_dir).resolve() if project_dir is not None else Path(discover_project_dir())
+    if resolved_project_dir != cwd and (resolved_project_dir / "profiles.yml").exists():
+        logger.info(":mag: Found profiles.yml in project root => %s", resolved_project_dir)
+        return str(resolved_project_dir)
     home_profiles = str(Path.home() / ".dbt")
     logger.info(":mag: Defaulting to => %s", home_profiles)
     return home_profiles

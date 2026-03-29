@@ -144,7 +144,7 @@ def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
         "--profiles-dir",
         type=click.Path(exists=True, dir_okay=True, file_okay=False),
         default=discover_profiles_dir,
-        help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
+        help="Which directory to look in for the profiles.yml file. Defaults to DBT_PROFILES_DIR, the current directory, the discovered project root, or ~/.dbt.",
     )
     @click.option(
         "-t",
@@ -221,7 +221,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @click.option(
         "--fusion-compat/--no-fusion-compat",
         default=None,
-        help="Output Fusion-compatible YAML with meta/tags nested inside config blocks. Auto-detects from dbt >= 1.9.6 if not specified.",
+        help="Output Fusion-compatible YAML with meta/tags nested inside config blocks. Auto-detects from Fusion manifest evidence or dbt >= 1.9.6 if not specified.",
     )
     @click.option(
         "--formatter",
@@ -1284,7 +1284,7 @@ def query(
     "--profiles-dir",
     default=discover_profiles_dir,
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
-    help="Which directory to look in for the profiles.yml file. Defaults to ~/.dbt",
+    help="Which directory to look in for the profiles.yml file. Defaults to DBT_PROFILES_DIR, the current directory, the discovered project root, or ~/.dbt.",
 )
 @click.option(
     "--host",
