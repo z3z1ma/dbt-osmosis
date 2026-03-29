@@ -621,6 +621,28 @@ class TestSQLLinter:
         # Should lint the compiled SQL
         assert len(result.violations) > 0
 
+    def test_lint_model_compiles_manifest_sql(self, yaml_context):
+        """Model linting should compile manifest SQL before parsing it."""
+        linter = SQLLinter(enabled_rules=["select-star"])
+
+        result = linter.lint_model(yaml_context.project, "customers")
+
+        assert result.compiled_sql
+        assert "{{" not in result.compiled_sql
+        assert any(v.rule_id == "select-star" for v in result.violations)
+        assert not any(v.rule_id == "parse-error" for v in result.violations)
+
+    def test_lint_project_compiles_manifest_sql(self, yaml_context):
+        """Project linting should compile each model instead of parsing raw Jinja."""
+        linter = SQLLinter(enabled_rules=["select-star"])
+
+        results = linter.lint_project(yaml_context.project, fqn_filter=["customers"])
+
+        assert "customers" in results
+        assert results["customers"].compiled_sql
+        assert "{{" not in results["customers"].compiled_sql
+        assert not any(v.rule_id == "parse-error" for v in results["customers"].violations)
+
     def test_lint_parse_error(self):
         """Test handling of parse errors."""
         linter = SQLLinter()
