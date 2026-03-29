@@ -23,12 +23,14 @@ from mysql_mimic.session import Query
 from sqlglot import exp
 
 from dbt_osmosis.core import logger
-from dbt_osmosis.core.osmosis import (
+from dbt_osmosis.core.config import (
     DbtConfiguration,
     DbtProjectContext,
+    create_dbt_project_context,
+)
+from dbt_osmosis.core.sql_operations import (
     _has_jinja,  # pyright: ignore[reportPrivateUsage]
     compile_sql_code,
-    create_dbt_project_context,
     execute_sql_code,
 )
 

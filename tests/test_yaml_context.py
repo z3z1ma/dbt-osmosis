@@ -1,14 +1,11 @@
 from unittest import mock
 
-from dbt_osmosis.core.osmosis import (
-    YamlRefactorContext,
-    _reload_manifest,
-    apply_restructure_plan,
-    create_missing_source_yamls,
-    draft_restructure_delta_plan,
-    get_columns,
-    inherit_upstream_column_knowledge,
-)
+from dbt_osmosis.core.config import _reload_manifest
+from dbt_osmosis.core.introspection import _COLUMN_LIST_CACHE, get_columns
+from dbt_osmosis.core.path_management import create_missing_source_yamls
+from dbt_osmosis.core.restructuring import apply_restructure_plan, draft_restructure_delta_plan
+from dbt_osmosis.core.settings import YamlRefactorContext
+from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
 
 # Note: The yaml_context fixture is defined in conftest.py
 
@@ -53,7 +50,7 @@ def _customer_column_types(yaml_context: YamlRefactorContext) -> dict[str, str]:
 
 
 def test_get_columns_meta(yaml_context: YamlRefactorContext):
-    with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
+    with mock.patch.dict(_COLUMN_LIST_CACHE, {}, clear=True):
         assert _customer_column_types(yaml_context) == {
             # in DuckDB decimals always have presision and scale
             "customer_average_value": "DECIMAL(18,3)",
@@ -71,7 +68,7 @@ def test_get_columns_meta_char_length(yaml_context: YamlRefactorContext):
     """Test string_length setting uses catalog types (VARCHAR)."""
     # Update the context settings for this test
     yaml_context.settings.string_length = True
-    with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
+    with mock.patch.dict(_COLUMN_LIST_CACHE, {}, clear=True):
         # Catalog returns VARCHAR, not character varying(256)
         assert _customer_column_types(yaml_context) == {
             "customer_average_value": "DECIMAL(18,3)",
@@ -88,7 +85,7 @@ def test_get_columns_meta_char_length(yaml_context: YamlRefactorContext):
 def test_get_columns_meta_numeric_precision(yaml_context: YamlRefactorContext):
     """Test numeric_precision_and_scale setting."""
     yaml_context.settings.numeric_precision_and_scale = True
-    with mock.patch("dbt_osmosis.core.osmosis._COLUMN_LIST_CACHE", {}):
+    with mock.patch.dict(_COLUMN_LIST_CACHE, {}, clear=True):
         assert _customer_column_types(yaml_context) == {
             # in DuckDB decimals always have presision and scale
             "customer_average_value": "DECIMAL(18,3)",
