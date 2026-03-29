@@ -149,7 +149,9 @@ def discover_profiles_dir(project_dir: str | os.PathLike[str] | None = None) -> 
     if (cwd / "profiles.yml").exists():
         logger.info(":mag: Found profiles.yml in current directory.")
         return str(cwd)
-    resolved_project_dir = Path(project_dir).resolve() if project_dir is not None else Path(discover_project_dir())
+    resolved_project_dir = (
+        Path(project_dir).resolve() if project_dir is not None else Path(discover_project_dir())
+    )
     if resolved_project_dir != cwd and (resolved_project_dir / "profiles.yml").exists():
         logger.info(":mag: Found profiles.yml in project root => %s", resolved_project_dir)
         return str(resolved_project_dir)
