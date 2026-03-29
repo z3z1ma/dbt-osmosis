@@ -30,34 +30,30 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
     tmp_id = str(uuid.uuid4())
     key = f"{NodeType.SqlOperation}.{context.runtime_cfg.project_name}.{tmp_id}"
 
-    try:
-        with context.manifest_mutex:
-            # Clean up any existing node with this key to avoid conflicts
-            _ = context.manifest.nodes.pop(key, None)
-
+    with context.manifest_mutex:
+        # Clean up any existing node with this key to avoid conflicts.
+        # parse_remote/process_node may re-register the temporary node in the manifest,
+        # so cleanup must run for both the Jinja and plain-SQL paths.
+        _ = context.manifest.nodes.pop(key, None)
+        try:
             node = context.sql_parser.parse_remote(raw_sql, tmp_id)
             if not _has_jinja(raw_sql):
                 logger.debug(":scroll: No jinja found in the raw SQL, skipping compile steps.")
-                return node
-            process_node(context.runtime_cfg, context.manifest, node)
-            compiled_node = SqlCompileRunner(
-                context.runtime_cfg,
-                context.adapter,
-                node=node,
-                node_index=1,
-                num_nodes=1,
-            ).compile(context.manifest)
-
-            # Clean up the temporary node after successful compilation
+                result = node
+            else:
+                process_node(context.runtime_cfg, context.manifest, node)
+                result = SqlCompileRunner(
+                    context.runtime_cfg,
+                    context.adapter,
+                    node=node,
+                    node_index=1,
+                    num_nodes=1,
+                ).compile(context.manifest)
+        finally:
             _ = context.manifest.nodes.pop(key, None)
 
-        logger.info(":sparkles: Compilation complete.")
-        return compiled_node
-    except Exception:
-        # Ensure cleanup happens even if compilation fails
-        with context.manifest_mutex:
-            _ = context.manifest.nodes.pop(key, None)
-        raise
+    logger.info(":sparkles: Compilation complete.")
+    return result
 
 
 def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterResponse, Table]:
