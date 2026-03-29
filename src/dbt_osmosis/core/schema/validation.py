@@ -12,6 +12,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+import ruamel.yaml
+
+from dbt_osmosis.core.schema.parser import (
+    MANAGED_RESOURCE_TOP_LEVEL_KEYS,
+    _partition_yaml_top_level_sections,
+)
+
 __all__ = [
     "ValidationSeverity",
     "ValidationIssue",
@@ -255,8 +262,27 @@ class Validator:
         raise NotImplementedError
 
 
+def _default_validators(*, require_managed_resources: bool = True) -> list[Validator]:
+    """Build the default validator chain for schema YAML validation."""
+    return [
+        StructureValidator(require_managed_resources=require_managed_resources),
+        ModelValidator(),
+        SourceValidator(),
+        SeedValidator(),
+    ]
+
+
 class StructureValidator(Validator):
     """Validates basic YAML structure and required fields."""
+
+    def __init__(
+        self,
+        auto_fix: bool = False,
+        *,
+        require_managed_resources: bool = True,
+    ) -> None:
+        super().__init__(auto_fix=auto_fix)
+        self.require_managed_resources = require_managed_resources
 
     def _validate(
         self,
@@ -268,7 +294,7 @@ class StructureValidator(Validator):
 
         Checks:
         - version field is present and valid
-        - At least one of models, sources, seeds, or unit_tests is present
+        - At least one dbt-osmosis-managed resource section is present when required
         """
         # Check version
         version = data.get("version")
@@ -290,10 +316,10 @@ class StructureValidator(Validator):
             )
 
         # Check for at least one resource type
-        resource_types = ["models", "sources", "seeds", "unit_tests"]
+        resource_types = list(MANAGED_RESOURCE_TOP_LEVEL_KEYS)
         has_resources = any(data.get(rt) for rt in resource_types)
 
-        if not has_resources:
+        if not has_resources and self.require_managed_resources:
             result.add_error(
                 code="NO_RESOURCES",
                 message=f"YAML file must contain at least one of: {', '.join(resource_types)}",
@@ -301,8 +327,8 @@ class StructureValidator(Validator):
             )
 
 
-class ModelValidator(Validator):
-    """Validates model definitions."""
+class TestConfigValidator(Validator):
+    """Shared validation helpers for dbt resource and column test configs."""
 
     # Valid test names for models
     VALID_TESTS = {
@@ -312,6 +338,336 @@ class ModelValidator(Validator):
         "relationships",
         "accepted_values",
     }
+
+    def _validate_resource_tests(
+        self,
+        resource: dict[str, t.Any],
+        result: ValidationResult,
+        file_path: Path | None,
+        resource_kind: str,
+        resource_name: str,
+    ) -> None:
+        """Validate tests defined at the resource level."""
+        tests = resource.get("data_tests", resource.get("tests", []))
+        if tests:
+            self._validate_tests(
+                tests,
+                result,
+                file_path,
+                resource_kind=resource_kind,
+                resource_name=resource_name,
+                column_name=None,
+            )
+
+    def _validate_columns(
+        self,
+        columns: list[dict[str, t.Any]] | t.Any,
+        result: ValidationResult,
+        file_path: Path | None,
+        owner_kind: str,
+        owner_name: str,
+    ) -> None:
+        """Validate column definitions on a dbt resource."""
+        if not isinstance(columns, list):
+            result.add_error(
+                code="INVALID_COLUMNS_TYPE",
+                message=f"Columns for {owner_kind} '{owner_name}' must be a list",
+                file_path=file_path,
+                column_name=owner_name,
+            )
+            return
+
+        for idx, column in enumerate(columns):
+            if not isinstance(column, dict):
+                result.add_error(
+                    code="INVALID_COLUMN_TYPE",
+                    message=f"Column at index {idx} in {owner_kind} '{owner_name}' must be a dictionary",
+                    file_path=file_path,
+                    column_name=owner_name,
+                )
+                continue
+
+            # Check column name
+            name = column.get("name")
+            if not name:
+                result.add_error(
+                    code="MISSING_COLUMN_NAME",
+                    message=f"Column at index {idx} in {owner_kind} '{owner_name}' is missing required 'name' field",
+                    file_path=file_path,
+                    column_name=owner_name,
+                )
+            elif not isinstance(name, str):
+                result.add_error(
+                    code="INVALID_COLUMN_NAME",
+                    message=f"Column name must be a string, got {type(name).__name__}",
+                    file_path=file_path,
+                    column_name=str(name),
+                )
+
+            column_name = name if isinstance(name, str) else "<unknown>"
+            tests = column.get("data_tests", column.get("tests", []))
+            if tests:
+                self._validate_tests(
+                    tests,
+                    result,
+                    file_path,
+                    resource_kind=owner_kind,
+                    resource_name=owner_name,
+                    column_name=column_name,
+                )
+
+    def _validate_tests(
+        self,
+        tests: list[dict[str, t.Any] | str] | t.Any,
+        result: ValidationResult,
+        file_path: Path | None,
+        resource_kind: str,
+        resource_name: str,
+        column_name: str | None,
+    ) -> None:
+        """Validate test configurations."""
+        if not isinstance(tests, list):
+            result.add_error(
+                code="INVALID_TESTS_TYPE",
+                message=f"Tests for {resource_kind} '{resource_name}' must be a list",
+                file_path=file_path,
+                column_name=column_name,
+            )
+            return
+
+        for idx, test in enumerate(tests):
+            if isinstance(test, str):
+                if test not in self.VALID_TESTS:
+                    location = (
+                        f"column '{column_name}' of {resource_kind} '{resource_name}'"
+                        if column_name
+                        else f"{resource_kind} '{resource_name}'"
+                    )
+                    result.add_warning(
+                        code="UNKNOWN_TEST",
+                        message=f"Unknown test '{test}' in {location}",
+                        file_path=file_path,
+                        column_name=column_name,
+                    )
+                continue
+
+            if not isinstance(test, dict):
+                result.add_error(
+                    code="INVALID_TEST_TYPE",
+                    message=f"Test must be a string or dict, got {type(test).__name__}",
+                    file_path=file_path,
+                    column_name=column_name,
+                )
+                continue
+
+            if len(test) != 1:
+                result.add_warning(
+                    code="INVALID_TEST_CONFIG",
+                    message=f"Test configuration at index {idx} should have exactly one key",
+                    file_path=file_path,
+                    column_name=column_name,
+                    context={"test_config": test},
+                )
+                continue
+
+            test_name = next(iter(test))
+            test_config = test[test_name]
+
+            if test_name == "relationships":
+                self._validate_relationships_test(
+                    test_config,
+                    result,
+                    file_path,
+                    resource_kind,
+                    resource_name,
+                    column_name,
+                )
+            elif test_name == "accepted_values":
+                self._validate_accepted_values_test(
+                    test_config,
+                    result,
+                    file_path,
+                    resource_kind,
+                    resource_name,
+                    column_name,
+                )
+            elif test_name == "unique_combination_of_columns":
+                self._validate_unique_combination_test(
+                    test_config,
+                    result,
+                    file_path,
+                    resource_kind,
+                    resource_name,
+                    column_name,
+                )
+
+    def _extract_test_arguments(
+        self,
+        test_name: str,
+        config: t.Any,
+        result: ValidationResult,
+        file_path: Path | None,
+        column_name: str | None,
+    ) -> dict[str, t.Any] | None:
+        """Support both legacy flat test args and dbt's nested `arguments` shape."""
+        if not isinstance(config, dict):
+            result.add_error(
+                code="INVALID_TEST_CONFIG_TYPE",
+                message=f"{test_name} test configuration must be a dictionary",
+                file_path=file_path,
+                column_name=column_name,
+                context={"config_type": type(config).__name__},
+            )
+            return None
+
+        arguments = config.get("arguments")
+        if arguments is None:
+            return config
+        if not isinstance(arguments, dict):
+            result.add_error(
+                code="INVALID_TEST_ARGUMENTS_TYPE",
+                message=f"{test_name} test 'arguments' must be a dictionary",
+                file_path=file_path,
+                column_name=column_name,
+                context={"arguments_type": type(arguments).__name__},
+            )
+            return None
+        return arguments
+
+    def _validate_relationships_test(
+        self,
+        config: t.Any,
+        result: ValidationResult,
+        file_path: Path | None,
+        resource_kind: str,
+        resource_name: str,
+        column_name: str | None,
+    ) -> None:
+        """Validate relationships test configuration."""
+        arguments = self._extract_test_arguments(
+            "relationships",
+            config,
+            result,
+            file_path,
+            column_name,
+        )
+        if arguments is None:
+            return
+
+        required_fields = ["to", "field"]
+        for required_field in required_fields:
+            if required_field not in arguments:
+                result.add_error(
+                    code="MISSING_RELATIONSHIP_FIELD",
+                    message=f"relationships test missing required field '{required_field}'",
+                    file_path=file_path,
+                    column_name=column_name,
+                    context={
+                        "resource_kind": resource_kind,
+                        "resource_name": resource_name,
+                        "test": "relationships",
+                        "missing_field": required_field,
+                    },
+                )
+
+    def _validate_accepted_values_test(
+        self,
+        config: t.Any,
+        result: ValidationResult,
+        file_path: Path | None,
+        resource_kind: str,
+        resource_name: str,
+        column_name: str | None,
+    ) -> None:
+        """Validate accepted_values test configuration."""
+        arguments = self._extract_test_arguments(
+            "accepted_values",
+            config,
+            result,
+            file_path,
+            column_name,
+        )
+        if arguments is None:
+            return
+
+        if "values" not in arguments:
+            result.add_error(
+                code="MISSING_ACCEPTED_VALUES",
+                message="accepted_values test missing required 'values' field",
+                file_path=file_path,
+                column_name=column_name,
+            )
+            return
+
+        values = arguments["values"]
+        if not isinstance(values, list):
+            result.add_error(
+                code="INVALID_ACCEPTED_VALUES_TYPE",
+                message="'values' field must be a list",
+                file_path=file_path,
+                column_name=column_name,
+                context={
+                    "resource_kind": resource_kind,
+                    "resource_name": resource_name,
+                    "values_type": type(values).__name__,
+                },
+            )
+        elif len(values) == 0:
+            result.add_warning(
+                code="EMPTY_ACCEPTED_VALUES",
+                message="'values' list is empty",
+                file_path=file_path,
+                column_name=column_name,
+            )
+
+    def _validate_unique_combination_test(
+        self,
+        config: t.Any,
+        result: ValidationResult,
+        file_path: Path | None,
+        resource_kind: str,
+        resource_name: str,
+        column_name: str | None,
+    ) -> None:
+        """Validate unique_combination_of_columns test configuration."""
+        arguments = self._extract_test_arguments(
+            "unique_combination_of_columns",
+            config,
+            result,
+            file_path,
+            column_name,
+        )
+        if arguments is None:
+            return
+
+        if "combination_of_columns" not in arguments:
+            result.add_error(
+                code="MISSING_COMBINATION_COLUMNS",
+                message="unique_combination_of_columns test missing required 'combination_of_columns' field",
+                file_path=file_path,
+                column_name=column_name,
+            )
+            return
+
+        columns = arguments["combination_of_columns"]
+        if not isinstance(columns, list):
+            result.add_error(
+                code="INVALID_COMBINATION_TYPE",
+                message="'combination_of_columns' must be a list",
+                file_path=file_path,
+                column_name=column_name,
+            )
+        elif len(columns) < 2:
+            result.add_warning(
+                code="INSUFFICIENT_COMBINATION_COLUMNS",
+                message="'combination_of_columns' should have at least 2 columns",
+                file_path=file_path,
+                column_name=column_name,
+            )
+
+
+class ModelValidator(TestConfigValidator):
+    """Validates model definitions."""
 
     def _validate(
         self,
@@ -355,194 +711,11 @@ class ModelValidator(Validator):
                 )
 
             model_name = name if isinstance(name, str) else "<unknown>"
-            # Validate columns
-            self._validate_columns(model.get("columns", []), result, file_path, model_name)
-
-    def _validate_columns(
-        self,
-        columns: list[dict[str, t.Any]],
-        result: ValidationResult,
-        file_path: Path | None,
-        model_name: str,
-    ) -> None:
-        """Validate column definitions."""
-        for idx, column in enumerate(columns):
-            if not isinstance(column, dict):
-                result.add_error(
-                    code="INVALID_COLUMN_TYPE",
-                    message=f"Column at index {idx} in model '{model_name}' must be a dictionary",
-                    file_path=file_path,
-                    column_name=model_name,
-                )
-                continue
-
-            # Check column name
-            name = column.get("name")
-            if not name:
-                result.add_error(
-                    code="MISSING_COLUMN_NAME",
-                    message=f"Column at index {idx} in model '{model_name}' is missing required 'name' field",
-                    file_path=file_path,
-                    column_name=model_name,
-                )
-            elif not isinstance(name, str):
-                result.add_error(
-                    code="INVALID_COLUMN_NAME",
-                    message=f"Column name must be a string, got {type(name).__name__}",
-                    file_path=file_path,
-                    column_name=name,
-                )
-
-            column_name = name if isinstance(name, str) else "<unknown>"
-            # Validate tests (support both legacy 'tests' and Fusion 'data_tests')
-            tests = column.get("tests", column.get("data_tests", []))
-            if tests:
-                self._validate_tests(tests, result, file_path, model_name, column_name)
-
-    def _validate_tests(
-        self,
-        tests: list[dict[str, t.Any] | str],
-        result: ValidationResult,
-        file_path: Path | None,
-        model_name: str,
-        column_name: str,
-    ) -> None:
-        """Validate test configurations."""
-        for idx, test in enumerate(tests):
-            if isinstance(test, str):
-                # Simple test name
-                if test not in self.VALID_TESTS:
-                    result.add_warning(
-                        code="UNKNOWN_TEST",
-                        message=f"Unknown test '{test}' in column '{column_name}' of model '{model_name}'",
-                        file_path=file_path,
-                        column_name=column_name,
-                    )
-            elif isinstance(test, dict):
-                # Test configuration
-                if len(test) != 1:
-                    result.add_warning(
-                        code="INVALID_TEST_CONFIG",
-                        message=f"Test configuration at index {idx} should have exactly one key",
-                        file_path=file_path,
-                        column_name=column_name,
-                        context={"test_config": test},
-                    )
-                    continue
-
-                test_name = next(iter(test))
-                test_config = test[test_name]
-
-                # Validate specific test types
-                if test_name == "relationships":
-                    self._validate_relationships_test(
-                        test_config, result, file_path, model_name, column_name
-                    )
-                elif test_name == "accepted_values":
-                    self._validate_accepted_values_test(
-                        test_config, result, file_path, model_name, column_name
-                    )
-                elif test_name == "unique_combination_of_columns":
-                    self._validate_unique_combination_test(
-                        test_config, result, file_path, model_name, column_name
-                    )
-            else:
-                result.add_error(
-                    code="INVALID_TEST_TYPE",
-                    message=f"Test must be a string or dict, got {type(test).__name__}",
-                    file_path=file_path,
-                    column_name=column_name,
-                )
-
-    def _validate_relationships_test(
-        self,
-        config: dict[str, t.Any],
-        result: ValidationResult,
-        file_path: Path | None,
-        model_name: str,
-        column_name: str,
-    ) -> None:
-        """Validate relationships test configuration."""
-        required_fields = ["to", "field"]
-        for required_field in required_fields:
-            if required_field not in config:
-                result.add_error(
-                    code="MISSING_RELATIONSHIP_FIELD",
-                    message=f"relationships test missing required field '{required_field}'",
-                    file_path=file_path,
-                    column_name=column_name,
-                    context={"test": "relationships", "missing_field": required_field},
-                )
-
-    def _validate_accepted_values_test(
-        self,
-        config: dict[str, t.Any],
-        result: ValidationResult,
-        file_path: Path | None,
-        model_name: str,
-        column_name: str,
-    ) -> None:
-        """Validate accepted_values test configuration."""
-        if "values" not in config:
-            result.add_error(
-                code="MISSING_ACCEPTED_VALUES",
-                message="accepted_values test missing required 'values' field",
-                file_path=file_path,
-                column_name=column_name,
-            )
-        else:
-            values = config["values"]
-            if not isinstance(values, list):
-                result.add_error(
-                    code="INVALID_ACCEPTED_VALUES_TYPE",
-                    message="'values' field must be a list",
-                    file_path=file_path,
-                    column_name=column_name,
-                    context={"values_type": type(values).__name__},
-                )
-            elif len(values) == 0:
-                result.add_warning(
-                    code="EMPTY_ACCEPTED_VALUES",
-                    message="'values' list is empty",
-                    file_path=file_path,
-                    column_name=column_name,
-                )
-
-    def _validate_unique_combination_test(
-        self,
-        config: dict[str, t.Any],
-        result: ValidationResult,
-        file_path: Path | None,
-        model_name: str,
-        column_name: str,
-    ) -> None:
-        """Validate unique_combination_of_columns test configuration."""
-        if "combination_of_columns" not in config:
-            result.add_error(
-                code="MISSING_COMBINATION_COLUMNS",
-                message="unique_combination_of_columns test missing required 'combination_of_columns' field",
-                file_path=file_path,
-                column_name=column_name,
-            )
-        else:
-            columns = config["combination_of_columns"]
-            if not isinstance(columns, list):
-                result.add_error(
-                    code="INVALID_COMBINATION_TYPE",
-                    message="'combination_of_columns' must be a list",
-                    file_path=file_path,
-                    column_name=column_name,
-                )
-            elif len(columns) < 2:
-                result.add_warning(
-                    code="INSUFFICIENT_COMBINATION_COLUMNS",
-                    message="'combination_of_columns' should have at least 2 columns",
-                    file_path=file_path,
-                    column_name=column_name,
-                )
+            self._validate_resource_tests(model, result, file_path, "model", model_name)
+            self._validate_columns(model.get("columns", []), result, file_path, "model", model_name)
 
 
-class SourceValidator(Validator):
+class SourceValidator(TestConfigValidator):
     """Validates source definitions."""
 
     def _validate(
@@ -554,8 +727,9 @@ class SourceValidator(Validator):
         """Validate source definitions.
 
         Checks:
-        - Each source has a name and table/database
-        - Source columns are properly defined
+        - Each source has a name
+        - Source tables are properly defined
+        - Table and column-level test configs are valid
         """
         sources = data.get("sources", [])
         if not sources:
@@ -585,50 +759,60 @@ class SourceValidator(Validator):
                     file_path=file_path,
                 )
 
-            # Check for table or database
-            has_table = "table" in source
-            has_database = "database" in source
-            if not has_table and not has_database:
+            tables = source.get("tables", [])
+            if not tables:
                 result.add_warning(
-                    code="MISSING_SOURCE_TABLE",
-                    message=f"Source '{name}' is missing 'table' or 'database' field",
-                    file_path=file_path,
-                )
-
-            source_name = name if isinstance(name, str) else "<unknown>"
-            # Validate columns
-            columns = source.get("columns", [])
-            if columns:
-                self._validate_columns(columns, result, file_path, source_name)
-
-    def _validate_columns(
-        self,
-        columns: list[dict[str, t.Any]],
-        result: ValidationResult,
-        file_path: Path | None,
-        source_name: str,
-    ) -> None:
-        """Validate column definitions in sources."""
-        for idx, column in enumerate(columns):
-            if not isinstance(column, dict):
-                result.add_error(
-                    code="INVALID_COLUMN_TYPE",
-                    message=f"Column at index {idx} in source '{source_name}' must be a dictionary",
+                    code="MISSING_SOURCE_TABLES",
+                    message=f"Source '{name}' has no tables defined",
                     file_path=file_path,
                 )
                 continue
 
-            # Check column name
-            name = column.get("name")
-            if not name:
+            if not isinstance(tables, list):
                 result.add_error(
-                    code="MISSING_COLUMN_NAME",
-                    message=f"Column at index {idx} in source '{source_name}' is missing required 'name' field",
+                    code="INVALID_SOURCE_TABLES_TYPE",
+                    message=f"Source '{name}' must define 'tables' as a list",
                     file_path=file_path,
+                )
+                continue
+
+            source_name = name if isinstance(name, str) else "<unknown>"
+            for table_idx, table in enumerate(tables):
+                if not isinstance(table, dict):
+                    result.add_error(
+                        code="INVALID_SOURCE_TABLE_TYPE",
+                        message=f"Table at index {table_idx} in source '{source_name}' must be a dictionary",
+                        file_path=file_path,
+                    )
+                    continue
+
+                table_name = table.get("name")
+                if not table_name:
+                    result.add_error(
+                        code="MISSING_SOURCE_TABLE_NAME",
+                        message=f"Table at index {table_idx} in source '{source_name}' is missing required 'name' field",
+                        file_path=file_path,
+                    )
+                    continue
+                if not isinstance(table_name, str):
+                    result.add_error(
+                        code="INVALID_SOURCE_TABLE_NAME",
+                        message=f"Source table name must be a string, got {type(table_name).__name__}",
+                        file_path=file_path,
+                    )
+                    continue
+
+                self._validate_resource_tests(table, result, file_path, "source table", table_name)
+                self._validate_columns(
+                    table.get("columns", []),
+                    result,
+                    file_path,
+                    "source table",
+                    table_name,
                 )
 
 
-class SeedValidator(Validator):
+class SeedValidator(TestConfigValidator):
     """Validates seed definitions."""
 
     def _validate(
@@ -641,7 +825,7 @@ class SeedValidator(Validator):
 
         Checks:
         - Each seed has a name
-        - Seed columns are properly defined
+        - Seed-level and column-level test configs are valid
         """
         seeds = data.get("seeds", [])
         if not seeds:
@@ -670,6 +854,10 @@ class SeedValidator(Validator):
                     message=f"Seed name must be a string, got {type(name).__name__}",
                     file_path=file_path,
                 )
+
+            seed_name = name if isinstance(name, str) else "<unknown>"
+            self._validate_resource_tests(seed, result, file_path, "seed", seed_name)
+            self._validate_columns(seed.get("columns", []), result, file_path, "seed", seed_name)
 
 
 class FormattingValidator(Validator):
@@ -752,12 +940,7 @@ def validate_yaml_structure(
         ValidationResult with any issues found
     """
     if validators is None:
-        validators = [
-            StructureValidator(),
-            ModelValidator(),
-            SourceValidator(),
-            SeedValidator(),
-        ]
+        validators = _default_validators()
 
     result = ValidationResult()
     for validator in validators:
@@ -784,15 +967,22 @@ def validate_yaml_file(
     Returns:
         ValidationResult with any issues found
     """
-    import threading
-
-    from dbt_osmosis.core.schema.parser import create_yaml_instance
-    from dbt_osmosis.core.schema.reader import _read_yaml
-
     try:
-        yaml_handler = create_yaml_instance()
-        yaml_handler_lock = threading.Lock()
-        data = _read_yaml(yaml_handler, yaml_handler_lock, file_path)
+        yaml_handler = ruamel.yaml.YAML()
+        yaml_handler.preserve_quotes = True
+        raw_data = yaml_handler.load(file_path)
+        if raw_data is None:
+            raw_data = {}
+        if not isinstance(raw_data, dict):
+            result = ValidationResult()
+            result.add_error(
+                code="INVALID_TOP_LEVEL_TYPE",
+                message=f"YAML file must parse to a dictionary, got {type(raw_data).__name__}",
+                file_path=file_path,
+            )
+            return result
+
+        data, unmanaged_sections = _partition_yaml_top_level_sections(raw_data)
     except Exception as e:
         result = ValidationResult()
         result.add_error(
@@ -802,23 +992,35 @@ def validate_yaml_file(
         )
         return result
 
+    require_managed_resources = (
+        any(data.get(rt) for rt in MANAGED_RESOURCE_TOP_LEVEL_KEYS) or not unmanaged_sections
+    )
+
     # Add raw content to formatting validator if provided
     if raw_content:
         formatting_validator = FormattingValidator()
         formatting_validator.raw_content = raw_content
         if validators is None:
-            validators = []
+            validators = _default_validators(require_managed_resources=require_managed_resources)
         validators = [v for v in validators if not isinstance(v, FormattingValidator)]
         validators.append(formatting_validator)
     elif validators is None:
-        validators = [
-            StructureValidator(),
-            ModelValidator(),
-            SourceValidator(),
-            SeedValidator(),
-        ]
+        validators = _default_validators(require_managed_resources=require_managed_resources)
 
-    return validate_yaml_structure(data, file_path, validators)
+    result = validate_yaml_structure(data, file_path, validators)
+
+    if unmanaged_sections:
+        result.add_warning(
+            code="UNMANAGED_TOP_LEVEL_KEYS",
+            message=(
+                "dbt-osmosis preserves but does not validate or mutate these top-level keys: "
+                f"{', '.join(sorted(unmanaged_sections))}"
+            ),
+            file_path=file_path,
+            context={"keys": sorted(unmanaged_sections)},
+        )
+
+    return result
 
 
 def auto_fix_yaml(

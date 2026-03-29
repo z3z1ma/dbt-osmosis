@@ -270,7 +270,7 @@ data_tests:
         # data_tests passes through the parser's allowed_keys
         assert "models" in data
         assert "data_tests" in data
-        # anchors is filtered out by the parser but restored by the writer via _PRESERVED_KEYS
+        # anchors is filtered out by the parser but restored by the writer from the original YAML
         assert "anchors" not in data
     finally:
         temp_path.unlink()
@@ -297,6 +297,80 @@ def test_merge_preserved_sections_includes_anchors():
     assert "macros" in merged
     assert "anchors" in merged
     assert merged["anchors"] == original["anchors"]
+
+
+def test_merge_preserved_sections_keeps_unknown_top_level_keys():
+    """Unknown dbt top-level sections should survive writer merges unchanged."""
+    filtered = {
+        "version": 2,
+        "models": [{"name": "test_model"}],
+    }
+
+    original = {
+        "version": 2,
+        "models": [{"name": "test_model"}],
+        "snapshots": [{"name": "customer_snapshot"}],
+        "exposures": [{"name": "executive_dashboard"}],
+        "groups": [{"name": "analytics"}],
+    }
+
+    merged = _merge_preserved_sections(filtered, original)
+
+    assert merged["snapshots"] == original["snapshots"]
+    assert merged["exposures"] == original["exposures"]
+    assert merged["groups"] == original["groups"]
+
+
+def test_yaml_read_write_preserves_unknown_top_level_sections():
+    """Read/write cycles should preserve unmanaged dbt sections beyond the hard-coded legacy list."""
+    import threading
+
+    yaml_content = """version: 2
+
+models:
+  - name: test_model
+    description: "Test model"
+
+snapshots:
+  - name: customer_snapshot
+    relation: ref('test_model')
+
+exposures:
+  - name: executive_dashboard
+    type: dashboard
+    owner:
+      name: Analytics
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+        data["models"][0]["description"] = "Updated test model"
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        import ruamel.yaml
+
+        unfiltered_handler = ruamel.yaml.YAML()
+        with temp_path.open("r") as f:
+            written_data = unfiltered_handler.load(f)
+
+        assert written_data["models"][0]["description"] == "Updated test model"
+        assert written_data["snapshots"][0]["name"] == "customer_snapshot"
+        assert written_data["exposures"][0]["name"] == "executive_dashboard"
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
 
 
 def _clear_cache(cache, key):
