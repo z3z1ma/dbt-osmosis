@@ -304,6 +304,57 @@ class TestModelValidator:
         warnings = result.get_warnings()
         assert any(e.code == "UNKNOWN_TEST" for e in warnings)
 
+    def test_validate_model_level_data_tests_with_arguments(self) -> None:
+        """Model-level data_tests should accept dbt's nested arguments shape."""
+        validator = ModelValidator()
+        data = {
+            "version": 2,
+            "models": [
+                {
+                    "name": "test",
+                    "data_tests": [
+                        {
+                            "unique_combination_of_columns": {
+                                "arguments": {"combination_of_columns": ["id", "tenant_id"]}
+                            }
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = validator.validate(data)
+
+        assert result.is_valid
+
+    def test_validate_relationships_arguments_shape(self) -> None:
+        """Column relationships tests should accept the nested arguments key."""
+        validator = ModelValidator()
+        data = {
+            "version": 2,
+            "models": [
+                {
+                    "name": "test",
+                    "columns": [
+                        {
+                            "name": "parent_id",
+                            "data_tests": [
+                                {
+                                    "relationships": {
+                                        "arguments": {"to": "ref('parents')", "field": "id"}
+                                    }
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = validator.validate(data)
+
+        assert result.is_valid
+
 
 class TestSourceValidator:
     """Test SourceValidator class."""
@@ -316,8 +367,7 @@ class TestSourceValidator:
             "sources": [
                 {
                     "name": "raw_data",
-                    "table": "customers",
-                    "columns": [{"name": "id"}],
+                    "tables": [{"name": "customers", "columns": [{"name": "id"}]}],
                 }
             ],
         }
@@ -328,7 +378,7 @@ class TestSourceValidator:
     def test_validate_source_missing_name(self) -> None:
         """Test validation fails when source is missing name."""
         validator = SourceValidator()
-        data = {"version": 2, "sources": [{"table": "test"}]}
+        data = {"version": 2, "sources": [{"tables": [{"name": "test"}]}]}
         result = validator.validate(data)
 
         assert not result.is_valid
@@ -336,13 +386,42 @@ class TestSourceValidator:
         assert any(e.code == "MISSING_SOURCE_NAME" for e in errors)
 
     def test_validate_source_missing_table_warning(self) -> None:
-        """Test validation warns when source is missing table."""
+        """Test validation warns when source defines no tables."""
         validator = SourceValidator()
         data = {"version": 2, "sources": [{"name": "raw_data"}]}
         result = validator.validate(data)
 
         warnings = result.get_warnings()
-        assert any(e.code == "MISSING_SOURCE_TABLE" for e in warnings)
+        assert any(e.code == "MISSING_SOURCE_TABLES" for e in warnings)
+
+    def test_validate_source_table_data_tests_with_arguments(self) -> None:
+        """Source table tests should accept nested dbt arguments."""
+        validator = SourceValidator()
+        data = {
+            "version": 2,
+            "sources": [
+                {
+                    "name": "raw_data",
+                    "tables": [
+                        {
+                            "name": "customers",
+                            "data_tests": [
+                                {
+                                    "accepted_values": {
+                                        "arguments": {"values": ["active", "inactive"]}
+                                    }
+                                }
+                            ],
+                            "columns": [{"name": "status"}],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = validator.validate(data)
+
+        assert result.is_valid
 
 
 class TestSeedValidator:
@@ -488,6 +567,53 @@ models:
             assert not result.is_valid
             errors = result.get_errors()
             assert any(e.code == "PARSE_ERROR" for e in errors)
+        finally:
+            temp_path.unlink()
+
+    def test_validate_unmanaged_top_level_keys_warning(self) -> None:
+        """Files with unsupported dbt sections should be preserved and warned, not misreported as malformed."""
+        yaml_content = """version: 2
+snapshots:
+  - name: customer_snapshot
+    relation: ref('customers')
+exposures:
+  - name: executive_dashboard
+    type: dashboard
+    owner:
+      name: Analytics
+"""
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write(yaml_content)
+            temp_path = Path(f.name)
+
+        try:
+            result = validate_yaml_file(temp_path)
+            errors = result.get_errors()
+            warnings = result.get_warnings()
+
+            assert not any(e.code == "NO_RESOURCES" for e in errors)
+            assert any(e.code == "UNMANAGED_TOP_LEVEL_KEYS" for e in warnings)
+        finally:
+            temp_path.unlink()
+
+    def test_validate_top_level_data_tests_without_other_resources(self) -> None:
+        """Top-level data_tests should count as a managed resource section."""
+        yaml_content = """version: 2
+data_tests:
+  - name: customer_row_count
+    description: Row count smoke test
+"""
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write(yaml_content)
+            temp_path = Path(f.name)
+
+        try:
+            result = validate_yaml_file(temp_path)
+            errors = result.get_errors()
+
+            assert not any(e.code == "NO_RESOURCES" for e in errors)
         finally:
             temp_path.unlink()
 

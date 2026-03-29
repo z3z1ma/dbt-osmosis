@@ -14,6 +14,7 @@ from pathlib import Path
 import ruamel.yaml
 
 from dbt_osmosis.core import logger
+from dbt_osmosis.core.schema.parser import _partition_yaml_top_level_sections
 from dbt_osmosis.core.schema.reader import (
     _YAML_BUFFER_CACHE,
     _YAML_BUFFER_CACHE_LOCK,
@@ -28,22 +29,19 @@ __all__ = [
 ]
 
 
-# Keys that are filtered out by OsmosisYAML but should be preserved when writing
-_PRESERVED_KEYS = {"semantic_models", "macros", "metrics", "anchors"}
-
-
 def _merge_preserved_sections(
     filtered_data: dict[str, t.Any], original_data: dict[str, t.Any]
 ) -> dict[str, t.Any]:
-    """Merge preserved sections (semantic_models, macros, etc.) from original YAML.
+    """Merge preserved top-level sections from original YAML.
 
-    When dbt-osmosis processes a YAML file, it filters out sections like semantic_models
-    and macros that it shouldn't modify. This function restores those sections from the
-    original file so they're not lost when writing back to disk.
+    When dbt-osmosis processes a YAML file, it filters out top-level sections that it
+    does not manage directly. This function restores every preserved section from the
+    original file so mixed schema files do not lose snapshots, exposures, anchors,
+    semantic models, or any future dbt keys that dbt-osmosis still ignores.
 
     Args:
         filtered_data: The processed YAML data (may have models, sources, etc.)
-        original_data: The original unfiltered YAML data (may have semantic_models, macros, etc.)
+        original_data: The original unfiltered YAML data with unmanaged top-level keys
 
     Returns:
         A merged dictionary containing both processed and preserved sections.
@@ -53,9 +51,10 @@ def _merge_preserved_sections(
     merged = dict(filtered_data)
 
     # Add back any preserved sections from the original data
-    for key in _PRESERVED_KEYS:
+    _, preserved_sections = _partition_yaml_top_level_sections(original_data)
+    for key, value in preserved_sections.items():
         if key in original_data and key not in merged:
-            merged[key] = original_data[key]
+            merged[key] = value
             logger.debug(f":recycle: Restoring preserved section '{key}' from original YAML")
 
     return merged

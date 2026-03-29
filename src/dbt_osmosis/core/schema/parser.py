@@ -12,18 +12,45 @@ __all__ = [
 ]
 
 
+MANAGED_RESOURCE_TOP_LEVEL_KEYS = frozenset({
+    "models",
+    "sources",
+    "seeds",
+    "unit_tests",
+    "data_tests",
+})
+MANAGED_TOP_LEVEL_KEYS = frozenset({"version", *MANAGED_RESOURCE_TOP_LEVEL_KEYS})
+
+
+def _partition_yaml_top_level_sections(
+    data: t.Mapping[str, t.Any],
+) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
+    """Split top-level YAML sections into dbt-osmosis-managed and preserved keys.
+
+    dbt-osmosis only mutates a bounded subset of schema YAML sections. Every other
+    top-level key must survive read/modify/write cycles unchanged so mixed schema
+    files do not silently lose information.
+    """
+    managed: dict[str, t.Any] = {}
+    preserved: dict[str, t.Any] = {}
+
+    for key, value in data.items():
+        target = managed if key in MANAGED_TOP_LEVEL_KEYS else preserved
+        target[key] = value
+
+    return managed, preserved
+
+
 def _filter_yaml_content(data: dict) -> dict:
     """Filters a parsed YAML dictionary to only include keys relevant to dbt-osmosis.
 
     This prevents the tool from processing or being aware of semantic_models, macros, etc.
     """
-    allowed_keys = {"version", "models", "sources", "seeds", "unit_tests", "data_tests"}
-
     # Create a new dictionary containing only the allowed keys from the parsed file
-    filtered_data = {key: value for key, value in data.items() if key in allowed_keys}
+    filtered_data, preserved_data = _partition_yaml_top_level_sections(data)
 
     # Log which keys were ignored for debugging and transparency
-    ignored_keys = set(data.keys()) - allowed_keys
+    ignored_keys = set(preserved_data.keys())
     if ignored_keys:
         logger.debug(
             ":magnifying_glass_left: Parser ignoring irrelevant top-level keys in YAML: %s",
@@ -41,7 +68,9 @@ class OsmosisYAML(ruamel.yaml.YAML):
     This prevents the tool from accidentally processing or modifying content
     it shouldn't touch.
 
-    The following keys are preserved: version, models, sources, seeds, unit_tests.
+    The following keys are managed directly: version, models, sources, seeds,
+    unit_tests, and data_tests. Other top-level keys are preserved on write but
+    intentionally excluded from dbt-osmosis mutations.
     """
 
     def load(self, stream: t.Any) -> t.Any:
