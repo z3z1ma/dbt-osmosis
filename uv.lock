@@ -633,10 +633,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">7,<9" },
-    { name = "dbt-core", specifier = ">=1.8,<1.11" },
+    { name = "dbt-core", specifier = ">=1.8" },
     { name = "dbt-core-interface", specifier = ">=1.1.7" },
-    { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1.8,<1.11" },
-    { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1.8,<1.11" },
+    { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1,<2" },
+    { name = "dbt-duckdb", marker = "extra == 'workbench'", specifier = ">=1,<2" },
     { name = "feedparser", marker = "extra == 'workbench'", specifier = "~=6.0.12" },
     { name = "hypothesis", marker = "extra == 'dev'" },
     { name = "mutmut", marker = "extra == 'dev'" },
@@ -660,7 +660,7 @@ provides-extras = ["workbench", "openai", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "dbt-duckdb", specifier = ">=1.8,<1.11" },
+    { name = "dbt-duckdb", specifier = ">=1,<2" },
     { name = "openai", specifier = ">=1.58.1" },
     { name = "pytest", specifier = ">=8.3.5" },
 ]

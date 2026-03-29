@@ -6,12 +6,14 @@ sidebar_position: 1
 
 Pick the installation approach that matches your workflow. All examples assume you install a dbt adapter alongside dbt-osmosis.
 
-dbt-osmosis is exercised against dbt Core 1.8-1.10. Keep your adapter on the same supported minor line as the dbt Core runtime in that environment.
+dbt-osmosis keeps its package support open for dbt Core 1.8+.
+
+The repository's DuckDB-backed fixture matrix is still explicitly exercised through the currently published DuckDB-compatible lines in CI, but the package metadata and install path are not capped at dbt Core 1.10. Install an adapter version that is compatible with the dbt Core runtime in that environment.
 
 ## Install with `uv` (recommended)
 
 ```bash
-uv tool install --with="dbt-<adapter>>=1.8,<1.11" dbt-osmosis
+uv tool install --with="dbt-<adapter>" dbt-osmosis
 ```
 
 This creates an isolated tool environment and exposes the `dbt-osmosis` command globally.
@@ -19,7 +21,7 @@ This creates an isolated tool environment and exposes the `dbt-osmosis` command 
 ## Run with `uvx` (ephemeral)
 
 ```bash
-uvx --with="dbt-<adapter>>=1.8,<1.11" dbt-osmosis --help
+uvx --with="dbt-<adapter>" dbt-osmosis --help
 ```
 
 Use `uvx` when you want a one-off run without installing the tool globally.
@@ -27,7 +29,7 @@ Use `uvx` when you want a one-off run without installing the tool globally.
 ## Install with `pip`
 
 ```bash
-pip install "dbt-osmosis" "dbt-<adapter>>=1.8,<1.11"
+pip install "dbt-osmosis" "dbt-<adapter>"
 ```
 
 This installs into the active Python environment (virtualenv, venv, or system Python).

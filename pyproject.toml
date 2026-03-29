@@ -24,7 +24,7 @@ requires-python = ">=3.10,<3.14"
 
 dependencies = [
   "click>7,<9",
-  "dbt-core>=1.8,<1.11",
+  "dbt-core>=1.8",
   "dbt-core-interface>=1.1.7",
   "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
@@ -40,7 +40,7 @@ workbench = [
   "ydata-profiling>=4.17.0",
   "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
-  "dbt-duckdb>=1.8,<1.11",
+  "dbt-duckdb>=1,<2",
   "setuptools>=70",
 ]
 
@@ -53,7 +53,7 @@ dev = [
   "hypothesis",
   "mutmut",
   "pre-commit>3.0.0,<5",
-  "dbt-duckdb>=1.8,<1.11",
+  "dbt-duckdb>=1,<2",
 ]
 
 [project.scripts]
@@ -97,6 +97,7 @@ reportUnknownParameterType = false
 reportOptionalMemberAccess = false
 reportAttributeAccessIssue = false
 reportPrivateImportUsage = false
+reportImportCycles = false
 reportUnsupportedDunderAll = false
 
 [tool.pytest.ini_options]
@@ -140,7 +141,7 @@ skip_covered = false
 
 [dependency-groups]
 dev = [
-    "dbt-duckdb>=1.8,<1.11",
+    "dbt-duckdb>=1,<2",
     "openai>=1.58.1",
     "pytest>=8.3.5",
 ]

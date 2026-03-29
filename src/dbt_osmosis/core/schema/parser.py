@@ -41,7 +41,7 @@ def _partition_yaml_top_level_sections(
     return managed, preserved
 
 
-def _filter_yaml_content(data: dict) -> dict:
+def _filter_yaml_content(data: dict[str, t.Any]) -> dict[str, t.Any]:
     """Filters a parsed YAML dictionary to only include keys relevant to dbt-osmosis.
 
     This prevents the tool from processing or being aware of semantic_models, macros, etc.
@@ -144,7 +144,7 @@ def create_yaml_instance(
 
     def mapping_proxy_representer(
         dumper: ruamel.yaml.RoundTripDumper,
-        data: MappingProxyType,
+        data: MappingProxyType[str, t.Any],
     ) -> t.Any:
         """Representer for MappingProxyType to allow dumping read-only dicts.
 

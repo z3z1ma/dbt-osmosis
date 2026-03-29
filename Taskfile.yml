@@ -51,7 +51,7 @@ tasks:
       - test -f .git/hooks/pre-commit
 
   test:
-    desc: Run tests against supported python and dbt versions
+    desc: Run DuckDB-backed tests against the explicit python/dbt matrix
     env:
       UV_FROZEN: 1
       UV_NO_SYNC: 1
@@ -81,6 +81,24 @@ tasks:
           uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
           uv run pytest
         silent: true
+
+  test-latest-core-smoke:
+    desc: Validate package import, basedpyright, and adapter-free tests against latest dbt-core
+    env:
+      UV_FROZEN: 1
+      UV_NO_SYNC: 1
+      UV_NO_PROGRESS: 1
+    cmds:
+      - |
+        echo -e "\033[32mtask: [test-latest-core-smoke] package install against dbt-core~=1.11.0\033[0m"
+        export UV_PYTHON=3.13
+        SMOKE_ENV=$(mktemp -d)/dbt-osmosis-smoke
+        uv venv "$SMOKE_ENV"
+        uv pip install --python "$SMOKE_ENV/bin/python" "dbt-core~=1.11.0" basedpyright pytest pytest-cov hypothesis .
+        "$SMOKE_ENV/bin/basedpyright" --level error
+        "$SMOKE_ENV/bin/dbt-osmosis" --help
+        "$SMOKE_ENV/bin/python" -c "import dbt_osmosis; import dbt_osmosis.cli.main"
+        "$SMOKE_ENV/bin/pytest" tests/core/test_cli.py tests/core/test_legacy.py tests/core/test_logger.py -q
 
   mutation-test:
     desc: Run mutation testing with mutmut (ensures tests catch bugs)

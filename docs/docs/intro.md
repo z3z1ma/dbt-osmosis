@@ -17,22 +17,24 @@ Use this page as the shortest truthful path from install to a safe first refacto
 ## Prerequisites
 
 - Python 3.10-3.13
-- dbt Core 1.8-1.10 and a matching dbt adapter package
+- dbt Core 1.8+ and a dbt adapter version compatible with that runtime
 - a dbt project with models (and optionally sources)
 - a clean git working tree for reviewable YAML diffs
 
 ## 1. Install
 
-`dbt-osmosis` is exercised against dbt Core 1.8-1.10. Keep the adapter package in the same supported minor line as the dbt runtime in that environment.
+`dbt-osmosis` keeps its package support open for dbt Core 1.8+.
+
+The repository's DuckDB-backed fixture matrix is still explicitly exercised through the currently published DuckDB-compatible lines in CI, but the package metadata and install path are not capped at dbt Core 1.10. Install an adapter version that is compatible with the dbt runtime in that environment.
 
 ```bash
-uv tool install --with="dbt-<adapter>>=1.8,<1.11" dbt-osmosis
+uv tool install --with="dbt-<adapter>" dbt-osmosis
 ```
 
 Or with pip:
 
 ```bash
-pip install "dbt-osmosis" "dbt-<adapter>>=1.8,<1.11"
+pip install "dbt-osmosis" "dbt-<adapter>"
 ```
 
 Optional extras:

@@ -1,3 +1,4 @@
+# pyright: reportMissingImports=false, reportConstantRedefinition=false
 """Supplementary module for LLM synthesis of dbt documentation."""
 
 from __future__ import annotations
@@ -246,6 +247,9 @@ def get_llm_client() -> tuple[t.Any, str]:
                 "Azure Identity library is not installed. "
                 "Please install it with: pip install 'dbt-osmosis[azure]' or pip install azure-identity"
             )
+
+        assert EnvironmentCredential is not None
+        assert DefaultAzureCredential is not None
 
         try:
             azure_tenant_id = os.getenv("AZURE_TENANT_ID")

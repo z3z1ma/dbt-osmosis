@@ -30,8 +30,10 @@ The Docusaurus site is the canonical reference for the current CLI, configuratio
 `dbt-osmosis` currently targets:
 
 - Python 3.10-3.13
-- dbt Core 1.8-1.10
-- a matching dbt adapter package for the same supported dbt minor line
+- dbt Core 1.8+
+- a dbt adapter version compatible with the dbt Core runtime in that environment
+
+Repository-managed DuckDB fixture coverage is explicitly exercised through the published DuckDB-backed matrix in CI today (currently 1.8-1.10), but package metadata and install paths are not capped at dbt Core 1.10.
 
 Optional extras:
 
@@ -43,13 +45,13 @@ Optional extras:
 With `uv`:
 
 ```bash
-uv tool install --with="dbt-<adapter>>=1.8,<1.11" dbt-osmosis
+uv tool install --with="dbt-<adapter>" dbt-osmosis
 ```
 
 With `pip`:
 
 ```bash
-pip install "dbt-osmosis" "dbt-<adapter>>=1.8,<1.11"
+pip install "dbt-osmosis" "dbt-<adapter>"
 ```
 
 Replace `<adapter>` with your dbt adapter package, for example `duckdb`, `snowflake`, `bigquery`, `postgres`, or `redshift`.

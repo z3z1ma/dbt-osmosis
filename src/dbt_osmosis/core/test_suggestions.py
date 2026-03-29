@@ -167,9 +167,9 @@ class TestPatternExtractor:
         self.accessor = PropertyAccessor(context=context)
 
         # Track patterns across the project
-        self.column_pattern_tests: defaultdict[str, Counter] = defaultdict(Counter)
-        self.data_type_tests: defaultdict[str, Counter] = defaultdict(Counter)
-        self.test_frequency: Counter = Counter()
+        self.column_pattern_tests: defaultdict[str, Counter[str]] = defaultdict(Counter)
+        self.data_type_tests: defaultdict[str, Counter[str]] = defaultdict(Counter)
+        self.test_frequency: Counter[str] = Counter()
         self.relationship_patterns: list[dict[str, t.Any]] = []
 
         # Common patterns learned from the project
