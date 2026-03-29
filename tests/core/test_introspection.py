@@ -10,9 +10,13 @@ The utility function tests (_find_first, _maybe_use_precise_dtype, etc.) test
 well-defined behaviors of helper functions that have clear input/output contracts.
 """
 
+from dataclasses import dataclass, field
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+
+from dbt.adapters.base.column import Column
 
 from dbt_osmosis.core.introspection import (
     _find_first,
@@ -22,6 +26,75 @@ from dbt_osmosis.core.introspection import (
     normalize_column_name,
 )
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
+
+
+@dataclass(frozen=True)
+class _FakeRelation:
+    rendered: str
+    meta: dict = field(default_factory=dict)
+    config: SimpleNamespace = field(
+        default_factory=lambda: SimpleNamespace(extra={}, meta={}),
+    )
+    columns: dict = field(default_factory=dict)
+    unrendered_config: dict = field(default_factory=dict)
+
+    def render(self) -> str:
+        return self.rendered
+
+    def __str__(self) -> str:
+        return self.rendered
+
+
+class _RecordingAdapter:
+    Relation = SimpleNamespace(create_from=staticmethod(lambda config, relation: relation))
+    config = object()
+
+    def __init__(
+        self,
+        runtime_cfg,
+        columns_by_target,
+        calls,
+    ) -> None:
+        self._runtime_cfg = runtime_cfg
+        self._columns_by_target = columns_by_target
+        self.calls = calls
+
+    def get_columns_in_relation(self, relation):
+        key = (self._runtime_cfg.target_name, relation.render())
+        self.calls.append(key)
+        return self._columns_by_target[key]
+
+
+def _make_introspection_context(
+    columns_by_target,
+    calls,
+    *,
+    target_name: str = "dev",
+    string_length: bool = False,
+    numeric_precision_and_scale: bool = False,
+    ignore_patterns=None,
+):
+    runtime_cfg = SimpleNamespace(
+        project_root="/tmp/project",
+        profile_name="default",
+        target_name=target_name,
+        credentials=SimpleNamespace(type="duckdb"),
+    )
+    adapter = _RecordingAdapter(runtime_cfg, columns_by_target, calls)
+    project = SimpleNamespace(
+        runtime_cfg=runtime_cfg,
+        adapter=adapter,
+        config=SimpleNamespace(disable_introspection=False),
+    )
+    return SimpleNamespace(
+        project=project,
+        settings=YamlRefactorSettings(
+            string_length=string_length,
+            numeric_precision_and_scale=numeric_precision_and_scale,
+        ),
+        ignore_patterns=list(ignore_patterns or []),
+        read_catalog=lambda: None,
+    )
 
 
 @pytest.fixture(scope="function")
@@ -38,6 +111,70 @@ def test_get_columns_simple(yaml_context: YamlRefactorContext):
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
     cols = get_columns(yaml_context, node)
     assert "customer_id" in cols
+
+
+def test_get_columns_reprocesses_cached_columns_when_settings_change(fresh_caches):
+    """Changing dtype settings must not reuse stale processed column metadata."""
+    relation = _FakeRelation("db.schema.orders")
+    calls = []
+    columns_by_target = {
+        ("dev", relation.render()): [Column.from_description("description", "varchar(256)")],
+    }
+    context = _make_introspection_context(columns_by_target, calls, string_length=False)
+
+    initial = get_columns(context, relation)
+    assert initial["description"].type == "varchar"
+    assert calls == [("dev", relation.render())]
+
+    context.settings.string_length = True
+    updated = get_columns(context, relation)
+
+    assert updated["description"].type == "character varying(256)"
+    assert calls == [("dev", relation.render())]
+
+
+def test_get_columns_scopes_cache_by_target(fresh_caches):
+    """Switching targets must not reuse warehouse metadata from another target."""
+    relation = _FakeRelation("db.schema.orders")
+    calls = []
+    columns_by_target = {
+        ("dev", relation.render()): [Column.from_description("description", "varchar(256)")],
+        ("prod", relation.render()): [Column.from_description("amount", "decimal(18,3)")],
+    }
+    dev_context = _make_introspection_context(columns_by_target, calls, target_name="dev")
+    prod_context = _make_introspection_context(columns_by_target, calls, target_name="prod")
+
+    dev_columns = get_columns(dev_context, relation)
+    prod_columns = get_columns(prod_context, relation)
+
+    assert set(dev_columns) == {"description"}
+    assert set(prod_columns) == {"amount"}
+    assert calls == [("dev", relation.render()), ("prod", relation.render())]
+
+
+def test_get_columns_reprocesses_cached_columns_for_new_context_filters(fresh_caches):
+    """A new context must be able to apply different ignore patterns truthfully."""
+    relation = _FakeRelation("db.schema.orders")
+    calls = []
+    columns_by_target = {
+        ("dev", relation.render()): [
+            Column.from_description("visible", "varchar(256)"),
+            Column.from_description("skip_me", "varchar(256)"),
+        ],
+    }
+    initial_context = _make_introspection_context(columns_by_target, calls)
+    filtered_context = _make_introspection_context(
+        columns_by_target,
+        calls,
+        ignore_patterns=[r"^skip_"],
+    )
+
+    initial = get_columns(initial_context, relation)
+    filtered = get_columns(filtered_context, relation)
+
+    assert set(initial) == {"visible", "skip_me"}
+    assert set(filtered) == {"visible"}
+    assert calls == [("dev", relation.render())]
 
 
 def test_find_first():

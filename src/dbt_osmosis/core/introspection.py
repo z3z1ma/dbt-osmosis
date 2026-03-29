@@ -49,7 +49,49 @@ __all__ = [
 
 T = t.TypeVar("T")
 
-_COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
+
+@dataclass(frozen=True)
+class _WarehouseColumnCacheKey:
+    """Scope warehouse column cache entries to the active dbt connection context.
+
+    We intentionally cache raw adapter columns instead of processed ColumnMetadata
+    because the final metadata depends on per-call settings, ignore patterns, and
+    node-level overrides.
+    """
+
+    rendered_relation: str
+    project_root: str
+    profile_name: str
+    target_name: str
+    database_type: str
+
+
+_COLUMN_LIST_CACHE: dict[_WarehouseColumnCacheKey, tuple[BaseColumn, ...]] = {}
+"""Cache raw warehouse columns to avoid redundant live introspection.
+
+Thread-safety: Protected by _COLUMN_LIST_CACHE_LOCK. All reads and writes
+must be guarded by this lock. The cache is unbounded and may grow indefinitely.
+"""
+
+_COLUMN_LIST_CACHE_LOCK = threading.Lock()
+"""Lock to protect _COLUMN_LIST_CACHE from concurrent access.
+
+Critical sections: get_columns() function performs cache reads and writes
+under this lock. All access to _COLUMN_LIST_CACHE must be synchronized.
+"""
+
+
+def _build_column_cache_key(context: t.Any, rendered_relation: str) -> _WarehouseColumnCacheKey:
+    """Build a warehouse cache key for a relation in the active dbt context."""
+    runtime_cfg = context.project.runtime_cfg
+    credentials = getattr(runtime_cfg, "credentials", None)
+    return _WarehouseColumnCacheKey(
+        rendered_relation=rendered_relation,
+        project_root=str(getattr(runtime_cfg, "project_root", "") or ""),
+        profile_name=str(getattr(runtime_cfg, "profile_name", "") or ""),
+        target_name=str(getattr(runtime_cfg, "target_name", "") or ""),
+        database_type=str(getattr(credentials, "type", "") or ""),
+    )
 
 
 # =============================================================================
@@ -911,19 +953,7 @@ class SettingsResolver:
         return None
 
 
-_COLUMN_LIST_CACHE: dict[str, OrderedDict[str, ColumnMetadata]] = {}
-"""Cache for column lists to avoid redundant introspection.
-
-Thread-safety: Protected by _COLUMN_LIST_CACHE_LOCK. All reads and writes
-must be guarded by this lock. The cache is unbounded and may grow indefinitely.
-"""
-
-_COLUMN_LIST_CACHE_LOCK = threading.Lock()
-"""Lock to protect _COLUMN_LIST_CACHE from concurrent access.
-
-Critical sections: get_columns() function performs cache reads and writes
-under this lock. All access to _COLUMN_LIST_CACHE must be synchronized.
-"""
+_SETTINGS_RESOLVER = SettingsResolver()
 
 
 @t.overload
@@ -1039,34 +1069,12 @@ def _get_setting_for_node(
     - dbt_osmosis_<key> # allows use in {{ config(...) }} by being a valid python identifier
     - dbt_osmosis_options.<key> # allows use in {{ config(...) }} by being a valid python identifier
     """
-    if node is None:
-        return fallback
-    k, identifier = opt.replace("_", "-"), opt.replace("-", "_")
-    sources = [
-        node.meta,
-        node.meta.get("dbt-osmosis-options", {}),
-        node.meta.get("dbt_osmosis_options", {}),
-        node.config.extra,
-        node.config.extra.get("dbt-osmosis-options", {}),
-        node.config.extra.get("dbt_osmosis_options", {}),
-    ]
-    if col and (column := node.columns.get(col)):
-        sources = [
-            column.meta,
-            column.meta.get("dbt-osmosis-options", {}),
-            column.meta.get("dbt_osmosis_options", {}),
-            *sources,
-        ]
-    for source in sources:
-        for variation in (f"dbt-osmosis-{k}", f"dbt_osmosis_{identifier}"):
-            if variation in source:
-                return source[variation]
-        if source is not node.config.extra:
-            if k in source:
-                return source[k]
-            if identifier in source:
-                return source[identifier]
-    return fallback
+    return _SETTINGS_RESOLVER.resolve(
+        opt,
+        node,
+        column_name=col,
+        fallback=fallback,
+    )
 
 
 def get_columns(
@@ -1107,11 +1115,6 @@ def get_columns(
         rendered_relation = t.cast("str", renderer()) if callable(renderer) else str(relation)
     else:
         rendered_relation = ""
-
-    with _COLUMN_LIST_CACHE_LOCK:
-        if rendered_relation in _COLUMN_LIST_CACHE:
-            logger.debug(":blue_book: Column list cache HIT => %s", rendered_relation)
-            return _COLUMN_LIST_CACHE[rendered_relation]  # pyright: ignore[reportOptionalMemberAccess]
 
     logger.info(":mag_right: Collecting columns for table => %s", rendered_relation)
     index = 0
@@ -1186,18 +1189,34 @@ def get_columns(
         )
         return normalized_columns
 
+    cache_key = _build_column_cache_key(context, rendered_relation)
+    with _COLUMN_LIST_CACHE_LOCK:
+        cached_columns = _COLUMN_LIST_CACHE.get(cache_key)
+
+    if cached_columns is not None:
+        logger.debug(":blue_book: Column list cache HIT => %s", rendered_relation)
+        for column in cached_columns:
+            process_column(column)
+        return normalized_columns
+
     try:
         logger.info(":mag: Introspecting columns in warehouse for => %s", rendered_relation)
-        for column in t.cast(
-            "t.Iterable[BaseColumn]",
-            context.project.adapter.get_columns_in_relation(relation),
-        ):
-            process_column(column)
+        warehouse_columns = tuple(
+            t.cast(
+                "t.Iterable[BaseColumn]",
+                context.project.adapter.get_columns_in_relation(relation),
+            ),
+        )
     except Exception as ex:
         logger.warning(":warning: Could not introspect columns for %s: %s", rendered_relation, ex)
+        return normalized_columns
 
     with _COLUMN_LIST_CACHE_LOCK:
-        _COLUMN_LIST_CACHE[rendered_relation] = normalized_columns
+        _COLUMN_LIST_CACHE[cache_key] = warehouse_columns
+
+    for column in warehouse_columns:
+        process_column(column)
+
     return normalized_columns
 
 

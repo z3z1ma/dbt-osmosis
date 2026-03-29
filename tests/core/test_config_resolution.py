@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -1209,20 +1209,41 @@ class TestBackwardCompatibility:
         """T067: Test _get_setting_for_node delegates to SettingsResolver."""
         from dbt_osmosis.core.introspection import _get_setting_for_node
 
-        # Create a mock node with configuration
         mock_node = Mock()
-        mock_node.meta = {"dbt-osmosis-test-setting": "test-value"}
+        with patch.object(
+            SettingsResolver,
+            "resolve",
+            return_value="resolved-value",
+        ) as resolve:
+            result = _get_setting_for_node(
+                "test-setting",
+                mock_node,
+                col="test_col",
+                fallback="default",
+            )
+
+        assert result == "resolved-value"
+        resolve.assert_called_once_with(
+            "test-setting",
+            mock_node,
+            column_name="test_col",
+            fallback="default",
+        )
+
+    def test_get_setting_for_node_uses_resolver_sources(self) -> None:
+        """T067: Test _get_setting_for_node reaches config.meta and unrendered_config."""
+        from dbt_osmosis.core.introspection import _get_setting_for_node
+
+        mock_node = Mock()
+        mock_node.meta = {}
         mock_node.config = Mock()
         mock_node.config.extra = {}
+        mock_node.config.meta = {"dbt-osmosis-output-to-lower": True}
+        mock_node.unrendered_config = {"dbt_osmosis_prefix": "orders_"}
         mock_node.columns = {}
 
-        # Test that _get_setting_for_node works
-        result = _get_setting_for_node("test-setting", mock_node)
-        assert result == "test-value"
-
-        # Test with fallback
-        result = _get_setting_for_node("nonexistent", mock_node, fallback="default")
-        assert result == "default"
+        assert _get_setting_for_node("output-to-lower", mock_node, fallback=False) is True
+        assert _get_setting_for_node("prefix", mock_node, fallback=None) == "orders_"
 
     def test_get_setting_for_node_with_column(self) -> None:
         """T067: Test _get_setting_for_node works with column-level settings."""
