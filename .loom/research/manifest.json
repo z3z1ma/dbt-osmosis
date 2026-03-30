@@ -21,6 +21,28 @@
       },
       "relativePath": "2026-03-exhaustive-codebase-audit.md",
       "revisionToken": "b0faa1dbf57decd8ffb7afd0381b8704d387c082fd0e754bc9db37e69954eefe"
+    },
+    {
+      "baseVersion": null,
+      "canonicalRef": "research:incremental-basedpyright-hardening-across-supported-dbt-core-versions",
+      "contentHash": "e71402548142c70badda90e81fbb11e37f239001a87a9a9a70553080e720ea30",
+      "editability": {
+        "editableSections": [
+          "Conclusions",
+          "Keywords",
+          "Methodology",
+          "Non-Goals",
+          "Objective",
+          "Open Questions",
+          "Question",
+          "Recommendations",
+          "Scope",
+          "Status Summary"
+        ],
+        "mode": "sections"
+      },
+      "relativePath": "incremental-basedpyright-hardening-across-supported-dbt-core-versions.md",
+      "revisionToken": "852072223b6fce108a6f725c95b26454bb65677bf17fe5551229e5a9862bbd00"
     }
   ],
   "family": "research",

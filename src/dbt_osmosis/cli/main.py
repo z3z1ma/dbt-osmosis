@@ -1609,11 +1609,12 @@ def _output_diff_json(results: dict[str, t.Any], severity_filter: str) -> None:
     import json
     from datetime import datetime
 
-    output = {
+    nodes: list[dict[str, object]] = []
+    output: dict[str, object] = {
         "timestamp": datetime.utcnow().isoformat(),
         "total_nodes": len(results),
         "total_changes": sum(len(r.changes) for r in results.values()),
-        "nodes": [],
+        "nodes": nodes,
     }
 
     for node_id, result in results.items():
@@ -1632,7 +1633,7 @@ def _output_diff_json(results: dict[str, t.Any], severity_filter: str) -> None:
         if not changes:
             continue
 
-        node_data = {
+        node_data: dict[str, object] = {
             "unique_id": node_id,
             "name": result.node.name,
             "resource_type": str(result.node.resource_type),
@@ -1647,7 +1648,7 @@ def _output_diff_json(results: dict[str, t.Any], severity_filter: str) -> None:
                 for c in changes
             ],
         }
-        output["nodes"].append(node_data)
+        nodes.append(node_data)
 
     click.echo(json.dumps(output, indent=2))
 

@@ -47,6 +47,11 @@ jobs:
         run: |
           uv pip install "dbt-core~=${{ matrix.dbt-version }}" "dbt-duckdb~=${{ matrix.dbt-version }}"
 
+      - name: Run basedpyright
+        run: |
+          uv run basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright.json || true
+          python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
+
       - name: Parse manifest
         run: |
           uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test

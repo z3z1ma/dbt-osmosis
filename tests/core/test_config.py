@@ -184,6 +184,69 @@ def test_create_dbt_project_context_replaces_stale_factory_adapter():
     assert factory.adapters["duckdb"] is project_adapter
 
 
+def test_create_dbt_project_context_falls_back_to_close_all_connections():
+    """Bootstrap still cleans up stale adapters that only expose legacy cleanup hooks."""
+    cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
+    project_adapter = mock.Mock()
+    registered_adapter = SimpleNamespace(close_all_connections=mock.Mock())
+    project = SimpleNamespace(
+        runtime_config=SimpleNamespace(
+            credentials=SimpleNamespace(type="duckdb"),
+            adapter=project_adapter,
+        ),
+        manifest=mock.Mock(),
+        project_name="demo_duckdb",
+    )
+    factory = SimpleNamespace(adapters={"duckdb": registered_adapter})
+
+    with (
+        mock.patch("dbt.adapters.factory.FACTORY", factory),
+        mock.patch("dbt_osmosis.core.config._detect_fusion_manifest", return_value=False),
+        mock.patch("dbt_osmosis.core.config.InterfaceDbtProject.from_config", return_value=project),
+        mock.patch(
+            "dbt_osmosis.core.config.DbtProjectContext.from_project",
+            return_value=mock.sentinel.context,
+        ),
+        mock.patch("dbt_osmosis.core.config.importlib.import_module", side_effect=ImportError),
+    ):
+        result = create_dbt_project_context(cfg)
+
+    assert result is mock.sentinel.context
+    registered_adapter.close_all_connections.assert_called_once_with()
+    assert factory.adapters["duckdb"] is project_adapter
+
+
+def test_create_dbt_project_context_rebinds_when_stale_adapter_has_no_cleanup_hook():
+    """Bootstrap should not fail if a stale adapter exposes neither known cleanup hook."""
+    cfg = DbtConfiguration(project_dir="demo_duckdb", profiles_dir="demo_duckdb")
+    project_adapter = mock.Mock()
+    registered_adapter = SimpleNamespace()
+    project = SimpleNamespace(
+        runtime_config=SimpleNamespace(
+            credentials=SimpleNamespace(type="duckdb"),
+            adapter=project_adapter,
+        ),
+        manifest=mock.Mock(),
+        project_name="demo_duckdb",
+    )
+    factory = SimpleNamespace(adapters={"duckdb": registered_adapter})
+
+    with (
+        mock.patch("dbt.adapters.factory.FACTORY", factory),
+        mock.patch("dbt_osmosis.core.config._detect_fusion_manifest", return_value=False),
+        mock.patch("dbt_osmosis.core.config.InterfaceDbtProject.from_config", return_value=project),
+        mock.patch(
+            "dbt_osmosis.core.config.DbtProjectContext.from_project",
+            return_value=mock.sentinel.context,
+        ),
+        mock.patch("dbt_osmosis.core.config.importlib.import_module", side_effect=ImportError),
+    ):
+        result = create_dbt_project_context(cfg)
+
+    assert result is mock.sentinel.context
+    assert factory.adapters["duckdb"] is project_adapter
+
+
 def test_adapter_ttl_expiration(yaml_context: YamlRefactorContext):
     """Check that if the TTL is expired, we refresh the connection in DbtProjectContext.adapter.
     We patch time.time to simulate a large jump.

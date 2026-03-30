@@ -52,6 +52,29 @@ except (ImportError, AttributeError):
 _SCHEMA_VERSION_RE = re.compile(r"/v(\d+)(?:\.json)?$")
 
 
+def _cleanup_stale_adapter(registered_adapter: object, adapter_type: str) -> None:
+    """Release connections held by a stale adapter before rebinding the factory.
+
+    dbt adapter implementations do not expose one stable cleanup method across
+    supported versions. Prefer the modern ``cleanup_connections`` method when it
+    exists, but fall back to ``close_all_connections`` for older adapters.
+    """
+    cleanup = getattr(registered_adapter, "cleanup_connections", None)
+    if callable(cleanup):
+        cleanup()
+        return
+
+    close_all = getattr(registered_adapter, "close_all_connections", None)
+    if callable(close_all):
+        close_all()
+        return
+
+    logger.debug(
+        ":information_source: Stale adapter '%s' exposes no known cleanup hook; rebinding directly",
+        adapter_type,
+    )
+
+
 def _detect_fusion_manifest(project_dir: str) -> bool:
     """Check if the target directory contains a manifest produced by dbt Fusion.
 
@@ -542,7 +565,7 @@ def _bind_project_adapter(project: InterfaceDbtProject) -> None:
 
     if registered_adapter is not None:
         try:
-            registered_adapter.cleanup_connections()
+            _cleanup_stale_adapter(registered_adapter, adapter_type)
         except Exception as e:
             logger.debug(
                 ":information_source: Could not clean up stale adapter '%s' before rebinding: %s",

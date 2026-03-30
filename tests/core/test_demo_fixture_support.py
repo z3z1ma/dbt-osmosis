@@ -20,12 +20,13 @@ DEMO_PROJECT_DIR = Path("demo_duckdb")
 GENERIC_TESTS_REQUIRING_ARGUMENTS = {"accepted_values", "relationships"}
 
 
-def test_demo_generic_tests_nest_arguments() -> None:
-    """Demo schema files should use the current dbt generic-test argument shape.
+def test_demo_generic_tests_keep_legacy_argument_shape_for_oldest_supported_dbt() -> None:
+    """Demo schema files must remain parseable on the oldest supported dbt-core line.
 
-    The demo project is parsed during test bootstrap and doubles as the canonical fixture
-    for integration-style YAML tests. If it drifts back to legacy top-level generic-test
-    arguments, latest supported dbt versions emit deprecation warnings during parse.
+    The repository still supports dbt-core 1.8.x, whose generic-test macros do not yet
+    accept the newer nested ``arguments`` shape. Until that floor is raised, keep the demo
+    fixture on the legacy top-level argument layout even though newer dbt versions emit a
+    deprecation warning during parse.
     """
     yaml = ruamel.yaml.YAML(typ="safe")
     offenders: list[str] = []
@@ -60,13 +61,13 @@ def test_demo_generic_tests_nest_arguments() -> None:
                     if test_name not in GENERIC_TESTS_REQUIRING_ARGUMENTS:
                         continue
 
-                    if not isinstance(config, dict) or "arguments" not in config:
+                    if not isinstance(config, dict) or "arguments" in config:
                         offenders.append(
                             f"{schema_path}:{model_name}.{column_name}.{test_name}",
                         )
 
     assert not offenders, (
-        "Demo schema generic tests must nest config under `arguments` for latest supported dbt: "
+        "Demo schema generic tests must keep legacy top-level arguments while dbt-core 1.8 remains supported: "
         + ", ".join(sorted(offenders))
     )
 

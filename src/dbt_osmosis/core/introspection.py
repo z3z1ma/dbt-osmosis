@@ -50,6 +50,43 @@ __all__ = [
 T = t.TypeVar("T")
 
 
+class _CatalogArtifactProtocol(t.Protocol):
+    nodes: t.Mapping[str, object]
+    sources: t.Mapping[str, object]
+
+    def write(self, path: str) -> None: ...
+
+
+class _CatalogArtifactFactoryProtocol(t.Protocol):
+    @staticmethod
+    def from_dict(data: object) -> _CatalogArtifactProtocol: ...
+
+    @staticmethod
+    def from_results(
+        *,
+        nodes: object,
+        sources: object,
+        generated_at: datetime,
+        compile_results: object,
+        errors: list[str] | None,
+    ) -> _CatalogArtifactProtocol: ...
+
+
+def _catalog_artifact_factory() -> _CatalogArtifactFactoryProtocol:
+    """Return a typed view over dbt's versioned catalog artifact factory.
+
+    dbt's shipped type surface varies across supported core lines even though the
+    runtime object exposes the methods dbt-osmosis needs. Centralize the cast so
+    compatibility shims stay local to catalog loading/generation.
+    """
+    return t.cast("_CatalogArtifactFactoryProtocol", t.cast("object", CatalogArtifact))
+
+
+def _as_catalog_results(artifact: _CatalogArtifactProtocol) -> CatalogResults:
+    """Normalize a versioned catalog artifact to the concrete CatalogResults alias."""
+    return t.cast("CatalogResults", t.cast("object", artifact))
+
+
 @dataclass(frozen=True)
 class _WarehouseColumnCacheKey:
     """Scope warehouse column cache entries to the active dbt connection context.
@@ -1230,7 +1267,7 @@ def _load_catalog(settings: t.Any) -> CatalogResults | None:
         logger.warning(":warning: Catalog path => %s does not exist.", fp)
         return None
     logger.info(":books: Loading existing catalog => %s", fp)
-    return t.cast("CatalogResults", CatalogArtifact.from_dict(json.loads(fp.read_text())))
+    return _as_catalog_results(_catalog_artifact_factory().from_dict(json.loads(fp.read_text())))
 
 
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans
@@ -1269,7 +1306,7 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
         logger.warning(":warning: Exceptions encountered in get_filtered_catalog => %s", errors)
 
     nodes, sources = catalog.make_unique_id_map(context.manifest)
-    artifact = CatalogArtifact.from_results(  # pyright: ignore[reportOptionalMemberAccess,reportUnknownMemberType]
+    artifact = _catalog_artifact_factory().from_results(
         nodes=nodes,
         sources=sources,
         generated_at=datetime.now(timezone.utc),
@@ -1279,7 +1316,7 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
     artifact_path = Path(context.runtime_cfg.project_target_path, "catalog.json")
     logger.info(":bookmark_tabs: Writing fresh catalog => %s", artifact_path)
     artifact.write(str(artifact_path.resolve()))  # Cache it, same as dbt
-    return t.cast("CatalogResults", artifact)
+    return _as_catalog_results(artifact)
 
 
 # =============================================================================

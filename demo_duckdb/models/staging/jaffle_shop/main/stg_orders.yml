@@ -15,8 +15,7 @@ models:
       - name: status
         tests:
           - accepted_values:
-              arguments:
-                values: [placed, shipped, completed, return_pending, returned]
+              values: [placed, shipped, completed, return_pending, returned]
 
         data_type: VARCHAR
         description: '{{ doc("orders_status") }}'
