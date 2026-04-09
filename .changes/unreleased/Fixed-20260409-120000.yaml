@@ -1,0 +1,7 @@
+kind: Fixed
+body: |-
+    Restore passing the real dbt node when rendering YAML path templates so node-derived expressions resolve correctly again.
+
+    - Fixes path templates that depend on real node attributes and metadata, including expressions like `{node.meta[competitor]}`.
+    - Follow-up release note for the merged path management fix in #340.
+time: 2026-04-09T12:00:00Z
