@@ -35,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 workbench = [
-  "streamlit>=1.20.0,<1.42.0",
+  "streamlit>=1.20.0,<1.55.0",
   "streamlit-ace~=0.1.1",
   "ydata-profiling>=4.17.0",
   "feedparser~=6.0.12",
