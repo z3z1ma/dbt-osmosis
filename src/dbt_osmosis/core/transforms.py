@@ -269,16 +269,20 @@ def inherit_upstream_column_knowledge(
                     inheritable.append("meta")
 
         # Special case: if force_inherit_descriptions is False and the local column already has
-        # a description, don't inherit the description from upstream (preserve local description)
+        # a description, don't inherit the description from upstream (preserve local description).
+        # If anchor-description is set on a column, it is exempt from force-inherit-descriptions,
+        # preserving the manually curated description even during a forced re-propagation pass.
+        force_inherit = _get_setting_for_node(
+            "force-inherit-descriptions",
+            node,
+            name,
+            fallback=context.settings.force_inherit_descriptions,
+        )
+        is_anchored = bool(_get_setting_for_node("anchor-description", node, name, fallback=False))
         if (
             "description" in inheritable
-            and not _get_setting_for_node(
-                "force-inherit-descriptions",
-                node,
-                name,
-                fallback=context.settings.force_inherit_descriptions,
-            )
-            and node_column.description
+            and (not force_inherit or is_anchored)
+            and node_column.description.strip()
         ):
             inheritable.remove("description")
 

@@ -75,8 +75,11 @@ def _initialize_column_knowledge(column: t.Any, node: ResultNode) -> dict[str, t
             if not column_data["config"]:
                 column_data.pop("config", None)
 
-    # Match the existing graph-builder behavior by dropping empty scalars/collections.
-    return {k: v for k, v in column_data.items() if v not in ("", [], ())}
+    # Match the existing graph-builder behavior by dropping empty/whitespace-only strings and empty lists.
+    return {
+        k: v for k, v in column_data.items()
+        if not (isinstance(v, str) and not v.strip()) and v not in ([], ())
+    }
 
 
 def _strip_progenitor_override_controls(column_data: dict[str, t.Any]) -> None:
@@ -347,8 +350,8 @@ def _clean_graph_edge(
     ):
         graph_edge.pop("description", None)
 
-    # Remove empty descriptions (that weren't caught by placeholder check)
-    if graph_edge.get("description") == "":
+    # Remove empty/whitespace-only descriptions (that weren't caught by placeholder check)
+    if not graph_edge.get("description", "").strip():
         graph_edge.pop("description", None)
 
     # Remove empty tags and meta objects
