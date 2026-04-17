@@ -108,6 +108,7 @@ def create_yaml_instance(
     y = OsmosisYAML()
     y.indent(mapping=indent_mapping, sequence=indent_sequence, offset=indent_offset)
     y.width = width
+    y.best_width = width
     y.preserve_quotes = preserve_quotes
     y.default_flow_style = default_flow_style
     y.encoding = encoding

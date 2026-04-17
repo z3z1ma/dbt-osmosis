@@ -33,7 +33,7 @@ def _sync_doc_section(
     logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
     if node.description and not doc_section.get("description"):
         if context.settings.scaffold_empty_configs or node.description not in context.placeholders:
-            doc_section["description"] = node.description
+            doc_section["description"] = str(node.description)
 
     current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
     incoming_columns: list[dict[str, t.Any]] = []
@@ -170,7 +170,7 @@ def _sync_doc_section(
             if k in preserved_yaml_fields:
                 # Preserve unrendered jinja templates from current YAML (prefer-yaml-values)
                 continue
-            merged[k] = v
+            merged[k] = str(v) if k == "description" and isinstance(v, str) else v
 
         if context.fusion_compat:
             # Fusion mode: push top-level meta/tags INTO config block
