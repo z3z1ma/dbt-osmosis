@@ -31,6 +31,8 @@ def _sync_doc_section(
     takes precedence over the manifest's data_type.
     """
     logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
+    if "description" in doc_section and doc_section["description"] is not None:
+        doc_section["description"] = str(doc_section["description"])
     if node.description and not doc_section.get("description"):
         if context.settings.scaffold_empty_configs or node.description not in context.placeholders:
             doc_section["description"] = str(node.description)

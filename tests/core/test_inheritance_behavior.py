@@ -413,6 +413,48 @@ def test_default_progenitor_override_reuses_selected_ancestor_knowledge(
     )
 
 
+def test_whitespace_only_description_inherits_from_upstream(yaml_context, fresh_caches):
+    """Whitespace-only local descriptions are treated as empty and inherit from upstream.
+
+    A column with description "   " should behave identically to one with description ""
+    — the whitespace is not considered real documentation, so upstream docs flow in.
+    """
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "Customer first name"
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = "   "  # whitespace-only — should inherit
+
+    yaml_context.settings.force_inherit_descriptions = False
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["first_name"].description == "Customer first name"
+
+
+def test_whitespace_only_upstream_description_does_not_propagate(yaml_context, fresh_caches):
+    """A whitespace-only description on an upstream column is not propagated downstream.
+
+    When the upstream source has a whitespace-only description it is stripped from the
+    graph edge during _clean_graph_edge, so the downstream column stays undocumented
+    rather than inheriting meaningless whitespace.
+    """
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "   "  # whitespace-only upstream
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = ""
+
+    yaml_context.settings.force_inherit_descriptions = True
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    # Whitespace-only upstream doc must not propagate; description stays empty/unchanged
+    assert not customers.columns["first_name"].description.strip()
+
+
 def test_column_default_progenitor_override_applies_without_progenitor_tracking(
     yaml_context,
     fresh_caches,
