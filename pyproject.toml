@@ -2,6 +2,9 @@
 requires = ["hatchling==1.26.3"]  # hatch-vcs
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [project]
 name = "dbt-osmosis"
 version = "1.3.0"
