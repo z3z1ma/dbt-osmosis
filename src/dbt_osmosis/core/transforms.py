@@ -22,6 +22,7 @@ __all__ = [
     "TransformOperation",
     "TransformPipeline",
     "_transform_op",
+    "enrich_rename_descriptions",
     "inherit_upstream_column_knowledge",
     "inject_missing_columns",
     "remove_columns_not_in_database",
@@ -592,6 +593,208 @@ def synchronize_data_types(
                     column.data_type = inc_c.type.lower()
                 else:
                     column.data_type = inc_c.type
+
+
+# Module-level cache for column lineage results keyed by (project_dir, model_name).
+# This prevents repeated dbt adapter calls when the transform is applied to many nodes
+# in a single run. The cache is intentionally process-scoped (no TTL) because a single
+# osmosis invocation operates against a single, stable manifest snapshot.
+_LINEAGE_CACHE: dict[tuple[str, str], list[t.Any]] = {}
+
+
+def _find_progenitor_description(
+    context: YamlRefactorContextProtocol,
+    progenitor_model: str | None,
+    progenitor_column: str | None,
+) -> str | None:
+    """Look up the description for a progenitor column in the in-memory manifest.
+
+    Args:
+        context: The YamlRefactorContext instance.
+        progenitor_model: The model name (not unique_id) of the progenitor.
+        progenitor_column: The column name in the progenitor model.
+
+    Returns:
+        The description string, or None if not found / empty / placeholder.
+    """
+    if not progenitor_model or not progenitor_column:
+        return None
+
+    col_lower = progenitor_column.lower()
+    for uid, upstream_node in context.project.manifest.nodes.items():
+        if getattr(upstream_node, "name", None) != progenitor_model:
+            continue
+        cols: dict[str, t.Any] = getattr(upstream_node, "columns", {})
+        # Case-insensitive column lookup (Snowflake uppercases column names)
+        col_info = cols.get(progenitor_column) or next(
+            (v for k, v in cols.items() if k.lower() == col_lower), None
+        )
+        if col_info is None:
+            return None
+        desc = getattr(col_info, "description", None) or ""
+        if desc and desc not in context.placeholders:
+            return desc
+        return None
+
+    return None
+
+
+@_transform_op("Enrich Renamed Column Descriptions")
+def enrich_rename_descriptions(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode | None = None,
+) -> None:
+    """Enrich descriptions for columns that are SQL renames of upstream columns.
+
+    For each column that ``get_column_lineage`` identifies as a rename
+    (``is_rename=True``), this transform builds a description from:
+    - The ``rename-description-prefix`` template (default: ``"renamed from {source_col}"``)
+    - The upstream progenitor column description (if found in the manifest)
+
+    The enrichment is controlled by two per-node osmosis-options keys:
+
+    - ``rename-descriptions`` (bool, default False): must be True to activate.
+    - ``rename-description-prefix`` (str): prefix template; ``{source_col}``
+      is substituted with the original column name.
+
+    Interaction with ``force-inherit-descriptions``:
+    - If False and the column already has a non-placeholder description, the
+      column is left untouched.
+    - If True, the rename description is always applied.
+
+    Nodes without compiled SQL (sources, ephemeral) are silently skipped.
+    Any failure from ``get_column_lineage`` is logged as a warning and the
+    node is skipped gracefully.
+    """
+    from pathlib import Path as _Path
+
+    from dbt.artifacts.resources.types import NodeType
+    from dbt_osmosis.core.introspection import _get_setting_for_node
+    from dbt_osmosis.core.node_filters import _iter_candidate_nodes
+
+    if node is None:
+        logger.info(":wave: Enriching renamed column descriptions across all matched nodes.")
+        for _ in context.pool.map(
+            partial(enrich_rename_descriptions, context),
+            (n for _, n in _iter_candidate_nodes(context)),
+        ):
+            ...
+        return
+
+    # --- Guard: feature must be enabled for this node ---
+    rename_descriptions = _get_setting_for_node(
+        "rename-descriptions",
+        node,
+        fallback=False,
+    )
+    if not rename_descriptions:
+        logger.debug(
+            ":no_entry_sign: rename-descriptions disabled for => %s",
+            node.unique_id,
+        )
+        return
+
+    # --- Guard: sources and ephemeral models have no compiled SQL ---
+    if node.resource_type == NodeType.Source:
+        logger.debug(
+            ":no_entry_sign: Skipping rename enrichment for source => %s",
+            node.unique_id,
+        )
+        return
+    compiled_code = getattr(node, "compiled_code", None) or getattr(node, "compiled_sql", None)
+    if not compiled_code:
+        logger.debug(
+            ":no_entry_sign: No compiled SQL for => %s, skipping rename enrichment",
+            node.unique_id,
+        )
+        return
+
+    force_inherit = _get_setting_for_node(
+        "force-inherit-descriptions",
+        node,
+        fallback=context.settings.force_inherit_descriptions,
+    )
+    prefix_template: str = _get_setting_for_node(
+        "rename-description-prefix",
+        node,
+        fallback="renamed from {source_col}",
+    )
+
+    # --- Fetch lineage (with per-process caching) ---
+    project_dir: str = context.project.config.project_dir
+    manifest_path = str(_Path(project_dir) / "target" / "manifest.json")
+    profiles_dir: str = context.project.config.profiles_dir
+    target: str | None = context.project.config.target
+
+    cache_key = (project_dir, node.name)
+    if cache_key not in _LINEAGE_CACHE:
+        try:
+            from dbt_column_lineage.api import get_column_lineage
+
+            _LINEAGE_CACHE[cache_key] = get_column_lineage(
+                manifest_path=manifest_path,
+                live_db=True,
+                project_dir=project_dir,
+                profiles_dir=profiles_dir,
+                target=target,
+                models=[node.name],
+                compiled_sql_source="target_dir",
+            )
+        except Exception as exc:
+            logger.warning(
+                ":warning: get_column_lineage failed for %s: %s — skipping rename enrichment",
+                node.unique_id,
+                exc,
+            )
+            _LINEAGE_CACHE[cache_key] = []
+
+    lineage_results = _LINEAGE_CACHE[cache_key]
+
+    # Build a case-insensitive column lookup restricted to this node's results
+    lineage_by_col: dict[str, t.Any] = {
+        r.column.lower(): r for r in lineage_results if r.model == node.name
+    }
+    if not lineage_by_col:
+        logger.debug(
+            ":mag: No lineage results found for => %s",
+            node.unique_id,
+        )
+        return
+
+    # --- Enrich each column that is a rename ---
+    for col_name, node_col in node.columns.items():
+        lineage = lineage_by_col.get(col_name.lower())
+        if lineage is None or not lineage.is_rename:
+            logger.debug(
+                ":mag: %s.%s: not a rename, skipping",
+                node.name,
+                col_name,
+            )
+            continue
+
+        existing_desc = (node_col.description or "").strip()
+        is_placeholder = not existing_desc or existing_desc in context.placeholders
+        if not is_placeholder and not force_inherit:
+            logger.debug(
+                ":no_entry_sign: %s.%s has description and force_inherit=False, skipping",
+                node.name,
+                col_name,
+            )
+            continue
+
+        prefix = prefix_template.replace("{source_col}", lineage.source_column or "")
+        source_desc = _find_progenitor_description(
+            context, lineage.progenitor_model, lineage.progenitor_column
+        )
+        new_desc = f"{prefix} | {source_desc}" if source_desc else prefix
+
+        node.columns[col_name] = node_col.replace(description=new_desc)
+        logger.debug(
+            ":pencil: Enriched %s.%s => %r",
+            node.name,
+            col_name,
+            new_desc,
+        )
 
 
 def _collect_upstream_documents(

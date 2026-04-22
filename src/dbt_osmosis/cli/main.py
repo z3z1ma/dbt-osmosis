@@ -34,6 +34,7 @@ from dbt_osmosis.core.sql_lint import SQLLinter, lint_sql_code
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 from dbt_osmosis.core.test_suggestions import suggest_tests_for_model, suggest_tests_for_project
 from dbt_osmosis.core.transforms import (
+    enrich_rename_descriptions,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     remove_columns_not_in_database,
@@ -390,6 +391,7 @@ def refactor(
             inject_missing_columns
             >> remove_columns_not_in_database
             >> inherit_upstream_column_knowledge
+            >> enrich_rename_descriptions
             >> sort_columns_as_configured
             >> synchronize_data_types
         )
@@ -587,6 +589,7 @@ def document(
         transform = (
             inject_missing_columns
             >> inherit_upstream_column_knowledge
+            >> enrich_rename_descriptions
             >> sort_columns_as_configured
         )
         if synthesize:
