@@ -5,7 +5,7 @@ status: complete_pending_acceptance
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T22:48:24Z
+updated_at: 2026-05-03T23:03:34Z
 scope:
   kind: repository
   repositories:
@@ -17,9 +17,11 @@ links:
     - evidence:oracle-backlog-scan
     - evidence:c10ci06-ci-gate-local-verification
     - evidence:c10ci06-ci-run-no-sync-fix
+    - evidence:c10ci06-main-ci-dbt18-test-fix
   critique:
     - critique:c10ci06-dbt-111-ci-gate
     - critique:c10ci06-no-sync-follow-up
+    - critique:c10ci06-dbt18-test-fix
   packets:
     - packet:ralph-ticket-c10ci06-20260503T222300Z
 depends_on: []
@@ -75,7 +77,7 @@ Covers:
 | --- | --- | --- | --- |
 | ticket:c10ci06#ACC-001 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
 | ticket:c10ci06#ACC-002 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
-| ticket:c10ci06#ACC-003 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | partially supported by isolated dbt 1.11 parse/import/CLI smoke; full matrix/pytest pending main CI |
+| ticket:c10ci06#ACC-003 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix; evidence:c10ci06-main-ci-dbt18-test-fix | critique:c10ci06-dbt-111-ci-gate | dbt 1.10/1.11 rows passed on main; dbt 1.8 test-compat fix pending rerun |
 | ticket:c10ci06#ACC-004 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
 | ticket:c10ci06#ACC-005 | evidence:c10ci06-ci-gate-local-verification | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending first scheduled/manual CI observation |
 
@@ -96,6 +98,7 @@ Existing evidence:
 - evidence:oracle-backlog-scan - backlog scan that identified the missing dbt 1.11 gate.
 - evidence:c10ci06-ci-gate-local-verification - local structural checks and isolated dbt 1.11 parse/import/CLI smoke for the implementation diff.
 - evidence:c10ci06-ci-run-no-sync-fix - branch CI failure showed `uv run` resynced matrix jobs back to locked `dbt-core 1.10.20`; workflow now sets `UV_NO_SYNC=1`, matching `Taskfile.yml`, and local overlay verification confirms `uv run` keeps the requested dbt 1.11 runtime.
+- evidence:c10ci06-main-ci-dbt18-test-fix - main CI run `25293085888` showed all dbt 1.10/1.11 rows passing but dbt 1.8 rows failing on config-field-only test assertions; local dbt 1.8 and 1.11 targeted checks passed after making those tests version-aware.
 
 Missing evidence:
 
@@ -115,6 +118,7 @@ Critique completed:
 
 - critique:c10ci06-dbt-111-ci-gate - mandatory implementation critique returned `pass_with_findings` and the ticket resolved the stale-ledger finding.
 - critique:c10ci06-no-sync-follow-up - follow-up critique for the `UV_NO_SYNC=1` workflow fix returned pass with no open findings.
+- critique:c10ci06-dbt18-test-fix - follow-up critique for the dbt 1.8 test compatibility fix returned pass with no open findings.
 
 Findings:
 
@@ -155,3 +159,5 @@ Coordinate with ticket:c10lock07, ticket:c10fix11, and ticket:c10cfg12 for relia
 - 2026-05-03T22:32:44Z: Mandatory critique `critique:c10ci06-dbt-111-ci-gate` returned `pass_with_findings`; ticket-owned disposition resolved the stale-ledger finding and left post-push CI evidence pending.
 - 2026-05-03T22:45:13Z: Branch CI run `25292770214` showed matrix jobs were resynced by `uv run` back to locked `dbt-core 1.10.20`; added workflow `UV_NO_SYNC=1` env to preserve the installed dbt runtime and recorded `evidence:c10ci06-ci-run-no-sync-fix`.
 - 2026-05-03T22:48:24Z: Follow-up critique `critique:c10ci06-no-sync-follow-up` reviewed the final workflow no-sync fix and found no open findings; main CI evidence remains required before closure.
+- 2026-05-03T23:00:07Z: Main CI run `25293085888` passed all dbt 1.10/1.11 rows and both latest-compat jobs, but dbt 1.8 rows failed on tests that assumed `ColumnInfo.config`; made those tests version-aware and recorded `evidence:c10ci06-main-ci-dbt18-test-fix`.
+- 2026-05-03T23:03:34Z: Follow-up critique `critique:c10ci06-dbt18-test-fix` reviewed the dbt 1.8 test compatibility patch and found no open findings.

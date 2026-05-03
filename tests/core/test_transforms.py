@@ -275,7 +275,8 @@ def test_inject_missing_columns_preserves_column_config_for_sync(
         doc_section: dict[str, object] = {}
         _sync_doc_section(context, mock_node, doc_section)
 
-    assert hasattr(mock_node.columns["new_col"], "config")
+    if hasattr(mock_node.columns["new_col"], "config"):
+        assert mock_node.columns["new_col"].config is not None
     assert doc_section["columns"] == [
         {"name": "new_col", "description": "from database", "data_type": "text"}
     ]
