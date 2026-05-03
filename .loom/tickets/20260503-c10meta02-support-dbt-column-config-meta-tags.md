@@ -5,7 +5,7 @@ status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T22:36:00Z
+updated_at: 2026-05-03T22:45:00Z
 scope:
   kind: repository
   repositories:
@@ -17,6 +17,7 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10meta02-column-config-meta-tags
   critique:
     - critique:c10meta02-column-config-meta-tags
   packet:
@@ -81,12 +82,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10meta02#ACC-001 | packet:ralph-ticket-c10meta02-20260503T215906Z, `uv run pytest tests/core/test_settings_resolver.py` | critique:c10meta02-column-config-meta-tags | supported |
-| ticket:c10meta02#ACC-002 | packet:ralph-ticket-c10meta02-20260503T215906Z, packet:ralph-ticket-c10meta02-20260503T220442Z, packet:ralph-ticket-c10meta02-20260503T221219Z | critique:c10meta02-column-config-meta-tags#FIND-002 withdrawn after fix | supported |
-| ticket:c10meta02#ACC-003 | packet:ralph-ticket-c10meta02-20260503T215906Z, `uv run pytest tests/core/test_inheritance_behavior.py` | critique:c10meta02-column-config-meta-tags#FIND-003 withdrawn after fix | supported |
-| ticket:c10meta02#ACC-004 | packet:ralph-ticket-c10meta02-20260503T215906Z, packet:ralph-ticket-c10meta02-20260503T221219Z | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-001 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-002 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags#FIND-002 withdrawn after fix | supported |
+| ticket:c10meta02#ACC-003 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags#FIND-003 withdrawn after fix | supported |
+| ticket:c10meta02#ACC-004 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags | supported |
 | ticket:c10meta02#ACC-005 | None - dbt 1.11 adapter-backed parsed-fixture evidence not gathered yet | critique:c10meta02-column-config-meta-tags#FIND-001 | converted_to_follow_up: ticket:c10cfg12 and ticket:c10ci06 |
-| ticket:c10meta02#ACC-006 | helper docstrings and focused tests in `src/dbt_osmosis/core/introspection.py` and related tests | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-006 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags | supported |
 
 # Execution Notes
 
@@ -105,6 +106,7 @@ Implementation evidence:
 - packet:ralph-ticket-c10meta02-20260503T215906Z recorded red/green tests for column `config.meta` settings resolution, manifest property access, and inheritance.
 - packet:ralph-ticket-c10meta02-20260503T220442Z recorded YAML-source property access coverage; strict red state was not observed because the prior uncommitted implementation already satisfied the new test.
 - packet:ralph-ticket-c10meta02-20260503T221219Z recorded red/green fallback regression coverage after critique found the YAML fallback issue.
+- evidence:c10meta02-column-config-meta-tags preserves the observed red/green and post-commit validation output.
 - Parent verification: `uv run pytest tests/core/test_settings_resolver.py tests/core/test_property_accessor.py tests/core/test_inheritance_behavior.py` passed with `50 passed, 3 skipped in 13.05s`.
 - Parent verification: `uv run ruff check ...` passed.
 - Parent verification: `uv run pyright src/dbt_osmosis/core/introspection.py src/dbt_osmosis/core/inheritance.py` reported `0 errors`.
@@ -133,11 +135,11 @@ Deferral / not-required rationale: Mandatory critique completed. The open eviden
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None yet - run retrospective after the implementation commit per operator request.
+Promoted: evidence:c10meta02-column-config-meta-tags preserves red/green and post-commit validation output.
 
-Deferred / not-required rationale: Retrospective pending. A wiki/config-resolution note may be useful after the broader resolver and config-shape tickets complete.
+Deferred / not-required rationale: Wiki promotion deferred until the broader resolver/config-shape tickets finish, so the accepted explanation can cover the full precedence model rather than this partial compatibility slice.
 
 # Wiki Disposition
 
@@ -158,3 +160,4 @@ Coordinate with ticket:c10cfg12 for fixture coverage and ticket:c10res14 for bro
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility oracle and dbt docs/source research.
 - 2026-05-03T22:36:00Z: Ralph iterations added effective column config metadata/tag helpers, settings/property/inheritance coverage, YAML-source fallback protection, and mandatory critique. dbt 1.11 parsed-fixture evidence converted to follow-up under ticket:c10cfg12 and ticket:c10ci06.
+- 2026-05-03T22:45:00Z: Retrospective completed. Promoted validation output to evidence:c10meta02-column-config-meta-tags; wiki explanation deferred until broader config-resolution tickets settle the full precedence model.
