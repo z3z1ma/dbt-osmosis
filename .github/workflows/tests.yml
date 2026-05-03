@@ -1,8 +1,10 @@
 name: Tests
 
 on:
-  - push
-  - pull_request
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 8 * * 1"
 
 jobs:
   tests:
@@ -13,7 +15,16 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-        dbt-version: ["1.8.0", "1.9.0", "1.10.0"]
+        dbt-version: ["1.8.0", "1.9.0", "1.10.0", "1.11.0"]
+        include:
+          - dbt-version: "1.8.0"
+            dbt-duckdb-version: "1.8.0"
+          - dbt-version: "1.9.0"
+            dbt-duckdb-version: "1.9.0"
+          - dbt-version: "1.10.0"
+            dbt-duckdb-version: "1.10.0"
+          - dbt-version: "1.11.0"
+            dbt-duckdb-version: "1.10.1"
         exclude:
           - python-version: "3.13"
             dbt-version: "1.8.0"
@@ -45,7 +56,32 @@ jobs:
 
       - name: Install dbt runtime
         run: |
-          uv pip install "dbt-core~=${{ matrix.dbt-version }}" "dbt-duckdb~=${{ matrix.dbt-version }}"
+          uv pip install "dbt-core~=${{ matrix.dbt-version }}" "dbt-duckdb~=${{ matrix.dbt-duckdb-version }}"
+
+      - name: Assert installed versions
+        run: |
+          uv run python - <<'PY'
+          import importlib.metadata as metadata
+          import platform
+          import sys
+
+          expected_python = "${{ matrix.python-version }}"
+          expected = {
+              "dbt-core": "${{ matrix.dbt-version }}",
+              "dbt-duckdb": "${{ matrix.dbt-duckdb-version }}",
+          }
+
+          print(f"python: {sys.version}")
+          print(f"python executable: {sys.executable}")
+          assert platform.python_version().startswith(expected_python + "."), platform.python_version()
+
+          for package in ("dbt-core", "dbt-duckdb", "dbt-osmosis"):
+              version = metadata.version(package)
+              print(f"{package}: {version}")
+              if package in expected:
+                  expected_prefix = ".".join(expected[package].split(".")[:2]) + "."
+                  assert version.startswith(expected_prefix), f"{package} {version} does not match {expected_prefix}x"
+          PY
 
       - name: Run basedpyright
         run: |
@@ -66,8 +102,18 @@ jobs:
           bash -x integration_tests.sh
 
   latest-core-compat:
-    name: Validate latest dbt-core compatibility
+    name: Validate latest dbt compatibility (${{ matrix.dbt-version }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        dbt-version: ["1.10.0", "1.11.0"]
+        include:
+          - dbt-version: "1.10.0"
+            dbt-duckdb-version: "1.10.0"
+          - dbt-version: "1.11.0"
+            dbt-duckdb-version: "1.10.1"
 
     steps:
       - name: Check out the repository
@@ -92,9 +138,31 @@ jobs:
         run: |
           SMOKE_ENV=$(mktemp -d)/dbt-osmosis-smoke
           uv venv "$SMOKE_ENV"
-          uv pip install --python "$SMOKE_ENV/bin/python" "dbt-core~=1.11.0" "dbt-duckdb~=1.10.1" basedpyright pytest pytest-cov hypothesis openai .
+          uv pip install --python "$SMOKE_ENV/bin/python" "dbt-core~=${{ matrix.dbt-version }}" "dbt-duckdb~=${{ matrix.dbt-duckdb-version }}" basedpyright pytest pytest-cov hypothesis openai .
           export VIRTUAL_ENV="$SMOKE_ENV"
           export PATH="$SMOKE_ENV/bin:$PATH"
+          python - <<'PY'
+          import importlib.metadata as metadata
+          import platform
+          import sys
+
+          expected_python = "3.13"
+          expected = {
+              "dbt-core": "${{ matrix.dbt-version }}",
+              "dbt-duckdb": "${{ matrix.dbt-duckdb-version }}",
+          }
+
+          print(f"python: {sys.version}")
+          print(f"python executable: {sys.executable}")
+          assert platform.python_version().startswith(expected_python + "."), platform.python_version()
+
+          for package in ("dbt-core", "dbt-duckdb", "dbt-osmosis"):
+              version = metadata.version(package)
+              print(f"{package}: {version}")
+              if package in expected:
+                  expected_prefix = ".".join(expected[package].split(".")[:2]) + "."
+                  assert version.startswith(expected_prefix), f"{package} {version} does not match {expected_prefix}x"
+          PY
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright.json || true
           python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
           dbt --version

@@ -8,7 +8,7 @@ from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-import rich
+from rich.console import Console
 from rich.logging import RichHandler
 
 __all__ = [
@@ -66,7 +66,7 @@ def get_logger(
     logger.addHandler(
         RichHandler(
             level=level,
-            console=rich.console.Console(stderr=True),
+            console=Console(stderr=True),
             rich_tracebacks=True,
             markup=True,
             show_time=False,
