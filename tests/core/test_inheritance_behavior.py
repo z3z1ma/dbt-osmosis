@@ -16,6 +16,7 @@ Key scenarios tested:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -58,6 +59,19 @@ def _set_column_progenitor_override(
     if column_default_progenitor is not None:
         column = next(column for column in model["columns"] if column["name"] == column_name)
         column.setdefault("meta", {})["column_default_progenitor"] = column_default_progenitor
+
+
+def _ensure_column_config(column):
+    """Ensure a dbt column-like object has a mutable config object for tests."""
+    config = getattr(column, "config", None)
+    if config is None:
+        config = SimpleNamespace()
+        column.config = config
+    if not hasattr(config, "tags"):
+        config.tags = []
+    if not hasattr(config, "meta"):
+        config.meta = {}
+    return config
 
 
 def test_multi_generation_inheritance_chain(yaml_context, fresh_caches):
@@ -188,6 +202,35 @@ def test_tag_and_meta_inheritance(yaml_context, fresh_caches):
     assert "identifier" in customers.columns["customer_id"].tags
     assert customers.columns["customer_id"].meta.get("sensitivity") == "public"
     assert customers.columns["customer_id"].meta.get("governance") == "customer_key"
+
+
+def test_config_tag_and_meta_inheritance(yaml_context, fresh_caches):
+    """Column config.tags and config.meta should inherit as effective tags/meta."""
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["customer_id"].tags = []
+    stg_customers.columns["customer_id"].meta = {}
+    stg_customer_id_config = _ensure_column_config(stg_customers.columns["customer_id"])
+    stg_customer_id_config.tags = ["config_pk", "config_identifier"]
+    stg_customer_id_config.meta = {
+        "classification": "restricted",
+        "governance": "config_customer_key",
+    }
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["customer_id"].tags = []
+    customers.columns["customer_id"].meta = {}
+    customer_id_config = _ensure_column_config(customers.columns["customer_id"])
+    customer_id_config.tags = []
+    customer_id_config.meta = {}
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert "config_pk" in customers.columns["customer_id"].tags
+    assert "config_identifier" in customers.columns["customer_id"].tags
+    assert customers.columns["customer_id"].meta.get("classification") == "restricted"
+    assert customers.columns["customer_id"].meta.get("governance") == "config_customer_key"
 
 
 def test_diamond_pattern_inheritance(yaml_context, fresh_caches):

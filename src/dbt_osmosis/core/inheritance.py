@@ -55,9 +55,23 @@ def _column_to_dict(column: t.Any, **kwargs: t.Any) -> dict[str, t.Any]:
     return column.to_dict(**kwargs)
 
 
+def _apply_effective_column_metadata(column_data: dict[str, t.Any]) -> None:
+    """Expose config.meta/config.tags through the inherited meta/tags fields."""
+    from dbt_osmosis.core.introspection import (
+        _get_effective_column_meta,
+        _get_effective_column_tags,
+    )
+
+    if effective_meta := _get_effective_column_meta(column_data):
+        column_data["meta"] = effective_meta
+    if effective_tags := _get_effective_column_tags(column_data):
+        column_data["tags"] = effective_tags
+
+
 def _initialize_column_knowledge(column: t.Any, node: ResultNode) -> dict[str, t.Any]:
     """Normalize one local column into the knowledge-graph representation."""
     column_data = _column_to_dict(column, omit_none=True)
+    _apply_effective_column_metadata(column_data)
 
     # Clear out self-referential progenitors left behind by prior runs.
     if column_data.get("meta", {}).get("osmosis_progenitor") == node.unique_id:
@@ -274,6 +288,7 @@ def _build_graph_edge(
 ) -> dict[str, t.Any]:
     """Build a graph edge from incoming column with inheritance applied."""
     graph_edge = _column_to_dict(incoming, omit_none=True)
+    _apply_effective_column_metadata(graph_edge)
 
     from dbt_osmosis.core.introspection import _get_setting_for_node
 
@@ -664,6 +679,7 @@ def _build_column_knowledge_graph(
                             # Get the current column data to build the edge
                             incoming = node.columns[name]
                             graph_edge = _column_to_dict(incoming, omit_none=True)
+                            _apply_effective_column_metadata(graph_edge)
                             # Set osmosis_progenitor to the target node itself
                             graph_edge.setdefault("meta", {})["osmosis_progenitor"] = node.unique_id
 

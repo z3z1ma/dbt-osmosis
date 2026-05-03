@@ -22,6 +22,18 @@ import pytest
 from dbt_osmosis.core.introspection import PropertyAccessor
 
 
+class MockColumnConfig:
+    """Mock column config for dbt 1.10+ column properties."""
+
+    def __init__(
+        self,
+        meta: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+    ) -> None:
+        self.meta = meta or {}
+        self.tags = tags or []
+
+
 class MockColumn:
     """Mock column for testing property access."""
 
@@ -32,6 +44,8 @@ class MockColumn:
         meta: dict[str, Any] | None = None,
         data_type: str | None = None,
         tags: list[str] | None = None,
+        config_meta: dict[str, Any] | None = None,
+        config_tags: list[str] | None = None,
     ) -> None:
         """Initialize a mock column.
 
@@ -48,6 +62,7 @@ class MockColumn:
         self.meta = meta or {}
         self.data_type = data_type
         self.tags = tags or []
+        self.config = MockColumnConfig(config_meta, config_tags)
 
 
 class MockNode:
@@ -304,6 +319,143 @@ class TestPropertyAccessor:
         result = accessor.get_meta(sample_node_rendered, column_name="id", source="manifest")
         assert result is not None
         assert "output-to-lower" in str(result).lower() or "dbt-osmosis" in str(result).lower()
+
+    def test_get_column_meta_merges_legacy_and_config_meta(
+        self,
+        mock_context: Mock,
+    ) -> None:
+        """Column config.meta is effective meta and wins conflicts over legacy meta."""
+        node = MockNode(
+            columns={
+                "id": MockColumn(
+                    "id",
+                    meta={"legacy": True, "shared": "legacy"},
+                    config_meta={"classification": "restricted", "shared": "config"},
+                ),
+            },
+        )
+        accessor = PropertyAccessor(context=mock_context)
+
+        result = accessor.get_meta(node, column_name="id", source="manifest")
+
+        assert result == {
+            "legacy": True,
+            "classification": "restricted",
+            "shared": "config",
+        }
+
+    def test_get_column_tags_merges_legacy_and_config_tags(
+        self,
+        mock_context: Mock,
+    ) -> None:
+        """Column config.tags are effective tags after legacy tags with duplicates removed."""
+        node = MockNode(
+            columns={
+                "id": MockColumn(
+                    "id",
+                    tags=["legacy", "shared"],
+                    config_tags=["config", "shared"],
+                ),
+            },
+        )
+        accessor = PropertyAccessor(context=mock_context)
+
+        result = accessor.get("tags", node, column_name="id", source="manifest")
+
+        assert result == ["legacy", "shared", "config"]
+
+    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    def test_get_yaml_column_config_meta_and_tags_are_effective(
+        self,
+        mock_get_yaml,
+        mock_context: Mock,
+    ) -> None:
+        """YAML column config.meta and config.tags participate in effective values."""
+        mock_get_yaml.return_value = {
+            "name": "my_model",
+            "columns": [
+                {
+                    "name": "id",
+                    "meta": {
+                        "legacy": True,
+                        "shared": "legacy",
+                        "dbt-osmosis-options": {
+                            "legacy_only": True,
+                            "shared_option": "legacy",
+                        },
+                    },
+                    "tags": ["legacy", "shared"],
+                    "config": {
+                        "meta": {
+                            "classification": "restricted",
+                            "shared": "config",
+                            "dbt-osmosis-options": {
+                                "config_only": True,
+                                "shared_option": "config",
+                            },
+                        },
+                        "tags": ["config", "shared"],
+                    },
+                },
+            ],
+        }
+        node = MockNode(
+            columns={
+                "id": MockColumn(
+                    "id",
+                    meta={"manifest": True},
+                    tags=["manifest"],
+                ),
+            },
+        )
+        accessor = PropertyAccessor(context=mock_context)
+
+        meta_result = accessor.get_meta(node, column_name="id", source="yaml")
+        tags_result = accessor.get("tags", node, column_name="id", source="yaml")
+
+        assert meta_result == {
+            "legacy": True,
+            "classification": "restricted",
+            "shared": "config",
+            "dbt-osmosis-options": {
+                "legacy_only": True,
+                "config_only": True,
+                "shared_option": "config",
+            },
+        }
+        assert tags_result == ["legacy", "shared", "config"]
+
+    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    def test_yaml_column_without_meta_or_tags_falls_back_to_manifest(
+        self,
+        mock_get_yaml,
+        mock_context: Mock,
+    ) -> None:
+        """YAML source falls back when a YAML column lacks meta/tags fields."""
+        mock_get_yaml.return_value = {
+            "name": "my_model",
+            "columns": [
+                {"name": "id", "description": "YAML description without governance fields"},
+            ],
+        }
+        node = MockNode(
+            columns={
+                "id": MockColumn(
+                    "id",
+                    meta={"legacy": True},
+                    tags=["legacy"],
+                    config_meta={"classification": "restricted"},
+                    config_tags=["config"],
+                ),
+            },
+        )
+        accessor = PropertyAccessor(context=mock_context)
+
+        meta_result = accessor.get_meta(node, column_name="id", source="yaml")
+        tags_result = accessor.get("tags", node, column_name="id", source="yaml")
+
+        assert meta_result == {"legacy": True, "classification": "restricted"}
+        assert tags_result == ["legacy", "config"]
 
     def test_get_data_type(self, mock_context: Mock) -> None:
         """Test getting data type for a column."""

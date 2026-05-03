@@ -45,6 +45,8 @@ __all__ = [
     "UnrenderedConfigSource",
     "ProjectVarsSource",
     "SupplementaryFileSource",
+    "_get_effective_column_meta",
+    "_get_effective_column_tags",
 ]
 
 T = t.TypeVar("T")
@@ -218,6 +220,63 @@ class PropertySource(Enum):
     MANIFEST = "manifest"
     YAML = "yaml"
     DATABASE = "database"
+
+
+def _get_mapping_value(source: t.Any, key: str) -> t.Any | None:
+    """Read a value from either a mapping or an object attribute."""
+    if isinstance(source, t.Mapping):
+        return source.get(key)
+    return getattr(source, key, None)
+
+
+def _merge_column_meta(
+    legacy_meta: t.Mapping[str, t.Any],
+    config_meta: t.Mapping[str, t.Any],
+) -> dict[str, t.Any]:
+    """Merge legacy column meta with dbt 1.10+ config.meta.
+
+    config.meta is the newer dbt location and wins key conflicts; legacy top-level
+    meta remains supported. Nested dbt-osmosis options objects are merged so one
+    location does not discard unrelated options from the other.
+    """
+    merged = dict(legacy_meta)
+    for key, value in config_meta.items():
+        current = merged.get(key)
+        if key in {"dbt-osmosis-options", "dbt_osmosis_options"} and isinstance(
+            current,
+            dict,
+        ) and isinstance(value, dict):
+            merged[key] = {**current, **value}
+        else:
+            merged[key] = value
+    return merged
+
+
+def _get_effective_column_meta(column: t.Any) -> dict[str, t.Any]:
+    """Return column meta with legacy meta plus dbt 1.10+ config.meta."""
+    legacy_meta = _get_mapping_value(column, "meta")
+    config = _get_mapping_value(column, "config")
+    config_meta = _get_mapping_value(config, "meta") if config is not None else None
+
+    legacy_meta = legacy_meta if isinstance(legacy_meta, t.Mapping) else {}
+    config_meta = config_meta if isinstance(config_meta, t.Mapping) else {}
+    return _merge_column_meta(legacy_meta, config_meta)
+
+
+def _get_effective_column_tags(column: t.Any) -> list[str]:
+    """Return column tags with legacy tags followed by dbt 1.10+ config.tags."""
+    legacy_tags = _get_mapping_value(column, "tags")
+    config = _get_mapping_value(column, "config")
+    config_tags = _get_mapping_value(config, "tags") if config is not None else None
+
+    tags: list[str] = []
+    for source in (legacy_tags, config_tags):
+        if not isinstance(source, (list, tuple)):
+            continue
+        for tag in source:
+            if isinstance(tag, str) and tag not in tags:
+                tags.append(tag)
+    return tags
 
 
 class ConfigurationSource(ABC):
@@ -719,10 +778,11 @@ class SettingsResolver:
 
         # Column-level sources (if column specified) - HIGHEST precedence
         if column_name and (column := node.columns.get(column_name)):
+            column_meta = _get_effective_column_meta(column)
             sources = [
-                column.meta,
-                column.meta.get("dbt-osmosis-options", {}),
-                column.meta.get("dbt_osmosis_options", {}),
+                column_meta,
+                column_meta.get("dbt-osmosis-options", {}),
+                column_meta.get("dbt_osmosis_options", {}),
             ]
             # Add node-level sources after column sources
             sources.extend([
@@ -872,7 +932,7 @@ class SettingsResolver:
 
         # Column-level sources
         if column_name and (column := node.columns.get(column_name)):
-            value = extract_value(column.meta)
+            value = extract_value(_get_effective_column_meta(column))
             chain.append((ConfigSourceName.COLUMN_META, value))
 
         # Node meta sources
@@ -1387,9 +1447,9 @@ class PropertyAccessor:
             if property_key == "data_type":
                 return getattr(column, "data_type", None)
             if property_key == "tags":
-                return getattr(column, "tags", None)
+                return _get_effective_column_tags(column)
             if property_key == "meta":
-                return getattr(column, "meta", None)
+                return _get_effective_column_meta(column)
             if property_key == "name":
                 return getattr(column, "name", None)
             # Try generic attribute access
@@ -1451,7 +1511,23 @@ class PropertyAccessor:
             if column_name:
                 columns = yaml_content.get("columns", [])
                 for column in columns:
+                    if not isinstance(column, t.Mapping):
+                        continue
                     if column.get("name") == column_name:
+                        if property_key == "tags":
+                            config = column.get("config")
+                            if "tags" not in column and not (
+                                isinstance(config, t.Mapping) and "tags" in config
+                            ):
+                                return None
+                            return _get_effective_column_tags(column)
+                        if property_key == "meta":
+                            config = column.get("config")
+                            if "meta" not in column and not (
+                                isinstance(config, t.Mapping) and "meta" in config
+                            ):
+                                return None
+                            return _get_effective_column_meta(column)
                         return column.get(property_key)
                 return None
 

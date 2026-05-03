@@ -1,11 +1,11 @@
 ---
 id: ticket:c10meta02
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-03T22:36:00Z
 scope:
   kind: repository
   repositories:
@@ -17,7 +17,14 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+  critique:
+    - critique:c10meta02-column-config-meta-tags
+  packet:
+    - packet:ralph-ticket-c10meta02-20260503T215906Z
+    - packet:ralph-ticket-c10meta02-20260503T220442Z
+    - packet:ralph-ticket-c10meta02-20260503T221219Z
 external_refs:
+  github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/353
   dbt_meta_docs: https://docs.getdbt.com/reference/resource-configs/meta
   dbt_columns_docs: https://docs.getdbt.com/reference/resource-properties/columns
 depends_on: []
@@ -74,12 +81,16 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10meta02#ACC-001 | research:dbt-110-111-api-surfaces | None | open |
-| ticket:c10meta02#ACC-005 | None - fixture tests not written yet | None | open |
+| ticket:c10meta02#ACC-001 | packet:ralph-ticket-c10meta02-20260503T215906Z, `uv run pytest tests/core/test_settings_resolver.py` | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-002 | packet:ralph-ticket-c10meta02-20260503T215906Z, packet:ralph-ticket-c10meta02-20260503T220442Z, packet:ralph-ticket-c10meta02-20260503T221219Z | critique:c10meta02-column-config-meta-tags#FIND-002 withdrawn after fix | supported |
+| ticket:c10meta02#ACC-003 | packet:ralph-ticket-c10meta02-20260503T215906Z, `uv run pytest tests/core/test_inheritance_behavior.py` | critique:c10meta02-column-config-meta-tags#FIND-003 withdrawn after fix | supported |
+| ticket:c10meta02#ACC-004 | packet:ralph-ticket-c10meta02-20260503T215906Z, packet:ralph-ticket-c10meta02-20260503T221219Z | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-005 | None - dbt 1.11 adapter-backed parsed-fixture evidence not gathered yet | critique:c10meta02-column-config-meta-tags#FIND-001 | converted_to_follow_up: ticket:c10cfg12 and ticket:c10ci06 |
+| ticket:c10meta02#ACC-006 | helper docstrings and focused tests in `src/dbt_osmosis/core/introspection.py` and related tests | critique:c10meta02-column-config-meta-tags | supported |
 
 # Execution Notes
 
-Prefer a small helper that returns merged/effective column meta and tags from a dbt `ColumnInfo` object, then reuse it from resolver, property accessor, and inheritance paths. Avoid sprinkling ad hoc `hasattr(column, "config")` blocks across every caller.
+Implemented with helper functions that return effective column meta/tags from legacy top-level fields plus dbt 1.10+ `config.meta` / `config.tags`. The helpers are reused by `SettingsResolver`, `PropertyAccessor`, and inheritance graph normalization. Config metadata wins exact meta-key conflicts; tag merging preserves legacy order and appends new config tags without duplicates.
 
 # Blockers
 
@@ -87,7 +98,18 @@ None.
 
 # Evidence
 
-Existing evidence: research:dbt-110-111-api-surfaces and evidence:oracle-backlog-scan. Missing evidence: focused dbt 1.10/1.11 fixture output and regression tests.
+Existing evidence: research:dbt-110-111-api-surfaces and evidence:oracle-backlog-scan.
+
+Implementation evidence:
+
+- packet:ralph-ticket-c10meta02-20260503T215906Z recorded red/green tests for column `config.meta` settings resolution, manifest property access, and inheritance.
+- packet:ralph-ticket-c10meta02-20260503T220442Z recorded YAML-source property access coverage; strict red state was not observed because the prior uncommitted implementation already satisfied the new test.
+- packet:ralph-ticket-c10meta02-20260503T221219Z recorded red/green fallback regression coverage after critique found the YAML fallback issue.
+- Parent verification: `uv run pytest tests/core/test_settings_resolver.py tests/core/test_property_accessor.py tests/core/test_inheritance_behavior.py` passed with `50 passed, 3 skipped in 13.05s`.
+- Parent verification: `uv run ruff check ...` passed.
+- Parent verification: `uv run pyright src/dbt_osmosis/core/introspection.py src/dbt_osmosis/core/inheritance.py` reported `0 errors`.
+
+Missing evidence: dbt 1.11 adapter-backed parsed-fixture evidence for ACC-005. That evidence is converted to follow-up under ticket:c10cfg12 and ticket:c10ci06 because those tickets own real config-shape fixtures and CI matrix execution.
 
 # Critique Disposition
 
@@ -99,19 +121,23 @@ Policy rationale: This changes config precedence and inheritance behavior across
 
 Required critique profiles: code-change, test-coverage, dbt-compatibility, regression-risk
 
-Findings: None - no critique yet.
+Findings:
 
-Disposition status: pending
+- critique:c10meta02-column-config-meta-tags#FIND-001 remains open for missing dbt 1.11 parsed-fixture evidence; ticket disposition: converted_to_follow_up to ticket:c10cfg12 and ticket:c10ci06.
+- critique:c10meta02-column-config-meta-tags#FIND-002 was withdrawn after packet:ralph-ticket-c10meta02-20260503T221219Z fixed YAML-source fallback behavior.
+- critique:c10meta02-column-config-meta-tags#FIND-003 was withdrawn after packet:ralph-ticket-c10meta02-20260503T221219Z added older-dbt-safe test config setup.
 
-Deferral / not-required rationale: None.
+Disposition status: completed
+
+Deferral / not-required rationale: Mandatory critique completed. The open evidence gap is not ignored; it is converted to follow-up because dbt 1.11 adapter-backed parsed-fixture coverage belongs with ticket:c10cfg12 and ticket:c10ci06.
 
 # Retrospective / Promotion Disposition
 
 Disposition status: pending
 
-Promoted: None - implementation not complete.
+Promoted: None yet - run retrospective after the implementation commit per operator request.
 
-Deferred / not-required rationale: Consider a wiki/config-resolution note after acceptance.
+Deferred / not-required rationale: Retrospective pending. A wiki/config-resolution note may be useful after the broader resolver and config-shape tickets complete.
 
 # Wiki Disposition
 
@@ -121,8 +147,8 @@ N/A - no wiki promotion selected yet.
 
 Accepted by: Not accepted yet.
 Accepted at: N/A.
-Basis: Pending implementation evidence and critique.
-Residual risks: Config precedence regressions until covered by real parsed fixtures.
+Basis: Implementation evidence and critique support ACC-001 through ACC-004 and ACC-006. Final acceptance remains pending because ACC-005 was converted to follow-up coverage under ticket:c10cfg12 and ticket:c10ci06.
+Residual risks: dbt 1.11 parsed-fixture behavior is not yet verified in this ticket's evidence.
 
 # Dependencies
 
@@ -131,3 +157,4 @@ Coordinate with ticket:c10cfg12 for fixture coverage and ticket:c10res14 for bro
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility oracle and dbt docs/source research.
+- 2026-05-03T22:36:00Z: Ralph iterations added effective column config metadata/tag helpers, settings/property/inheritance coverage, YAML-source fallback protection, and mandatory critique. dbt 1.11 parsed-fixture evidence converted to follow-up under ticket:c10cfg12 and ticket:c10ci06.

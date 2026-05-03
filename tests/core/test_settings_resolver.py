@@ -7,12 +7,31 @@ import pytest
 from dbt_osmosis.core.introspection import SettingsResolver
 
 
+class MockColumnConfig:
+    """Mock column config for testing dbt 1.10+ column config."""
+
+    def __init__(
+        self,
+        meta: dict | None = None,
+        tags: list[str] | None = None,
+    ) -> None:
+        self.meta = meta or {}
+        self.tags = tags or []
+
+
 class MockColumn:
     """Mock column for testing."""
 
-    def __init__(self, name: str, meta: dict | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        meta: dict | None = None,
+        config_meta: dict | None = None,
+        config_tags: list[str] | None = None,
+    ) -> None:
         self.name = name
         self.meta = meta or {}
+        self.config = MockColumnConfig(config_meta, config_tags)
 
 
 class MockConfig:
@@ -88,6 +107,26 @@ def test_resolve_from_column_meta(resolver: SettingsResolver, sample_node: MockN
     # The column has output-to-lower: True, but also has dbt-osmosis-output-to-lower: False
     # The prefixed variant should take precedence over direct key
     assert result is False
+
+
+def test_resolve_from_column_config_meta_over_node_settings(
+    resolver: SettingsResolver,
+) -> None:
+    """Column config.meta dbt-osmosis options should override node-level settings."""
+    node = MockNode(
+        meta={"dbt-osmosis-output-to-lower": False},
+        config_extra={"dbt-osmosis-options": {"output-to-lower": False}},
+        columns={
+            "col1": MockColumn(
+                "col1",
+                config_meta={"dbt-osmosis-options": {"output-to-lower": True}},
+            ),
+        },
+    )
+
+    result = resolver.resolve("output-to-lower", node, column_name="col1", fallback=False)
+
+    assert result is True
 
 
 def test_resolve_from_column_prefixed_setting(
