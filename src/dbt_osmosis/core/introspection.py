@@ -242,10 +242,14 @@ def _merge_column_meta(
     merged = dict(legacy_meta)
     for key, value in config_meta.items():
         current = merged.get(key)
-        if key in {"dbt-osmosis-options", "dbt_osmosis_options"} and isinstance(
-            current,
-            dict,
-        ) and isinstance(value, dict):
+        if (
+            key in {"dbt-osmosis-options", "dbt_osmosis_options"}
+            and isinstance(
+                current,
+                dict,
+            )
+            and isinstance(value, dict)
+        ):
             merged[key] = {**current, **value}
         else:
             merged[key] = value
