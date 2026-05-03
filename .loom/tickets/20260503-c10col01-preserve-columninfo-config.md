@@ -5,7 +5,7 @@ status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T22:08:00Z
+updated_at: 2026-05-03T22:18:00Z
 scope:
   kind: repository
   repositories:
@@ -17,6 +17,7 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10col01-columninfo-config-red-green
   critique:
     - critique:c10col01-columninfo-config
   packet:
@@ -78,10 +79,10 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10col01#ACC-001 | packet:ralph-ticket-c10col01-20260503T214308Z, `uv run pytest tests/core/test_transforms.py` | critique:c10col01-columninfo-config | supported |
-| ticket:c10col01#ACC-002 | packet:ralph-ticket-c10col01-20260503T214308Z, `uv run pytest tests/core/test_transforms.py` | critique:c10col01-columninfo-config | supported |
-| ticket:c10col01#ACC-003 | packet:ralph-ticket-c10col01-20260503T215123Z, `uv run pytest tests/core/test_transforms.py` | critique:c10col01-columninfo-config#FIND-002 withdrawn after coverage refinement | supported |
-| ticket:c10col01#ACC-004 | packet:ralph-ticket-c10col01-20260503T214308Z, packet:ralph-ticket-c10col01-20260503T215123Z | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-001 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-002 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-003 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config#FIND-002 withdrawn after coverage refinement | supported |
+| ticket:c10col01#ACC-004 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config | supported |
 | ticket:c10col01#ACC-005 | None - dbt 1.11 adapter-backed matrix/integration evidence not gathered yet | critique:c10col01-columninfo-config#FIND-001 | converted_to_follow_up: ticket:c10ci06 and ticket:c10cfg12 |
 
 # Execution Notes
@@ -100,6 +101,7 @@ Implementation evidence:
 
 - packet:ralph-ticket-c10col01-20260503T214308Z recorded red/green evidence: focused regression failed before the fix with `AttributeError: 'ColumnInfo' object has no attribute 'config'`, then passed after removing the deletion.
 - packet:ralph-ticket-c10col01-20260503T215123Z recorded coverage refinement for `fusion_compat=False` and `fusion_compat=True`.
+- evidence:c10col01-columninfo-config-red-green preserves the observed red/green and post-commit validation output.
 - Parent verification: `uv run pytest tests/core/test_transforms.py` passed with `18 passed in 9.76s` on Python 3.13.9.
 
 Missing evidence: dbt 1.11 adapter-backed matrix/integration evidence for ACC-005. That evidence is converted to follow-up under ticket:c10ci06 and ticket:c10cfg12 because those tickets own matrix/config-shape coverage across dbt versions.
@@ -125,11 +127,11 @@ Deferral / not-required rationale: Mandatory critique completed. The only open h
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None yet - run retrospective after the implementation commit per operator request.
+Promoted: evidence:c10col01-columninfo-config-red-green preserves the red/green and post-commit validation output.
 
-Deferred / not-required rationale: Retrospective pending. Likely no wiki promotion is needed for this narrow fix unless later tickets expose a repeated dbt object serialization pattern.
+Deferred / not-required rationale: Wiki promotion not required for this narrow fix. The reusable lesson is local: never mutate dbt dataclass objects to hide YAML output; preserve observed validation as evidence and leave broader dbt serialization guidance to future tickets if the pattern repeats.
 
 # Wiki Disposition
 
@@ -150,3 +152,4 @@ Coordinate with ticket:c10meta02 if the fix changes shared column serialization 
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility and core architecture oracle findings.
 - 2026-05-03T22:08:00Z: Ralph iterations removed the `ColumnInfo.config` deletion and added classic/fusion-compatible sync serialization regression coverage. Mandatory critique completed with dbt 1.11 runtime evidence converted to follow-up under ticket:c10ci06 and ticket:c10cfg12.
+- 2026-05-03T22:18:00Z: Retrospective completed. Promoted red/green and post-commit validation output to evidence:c10col01-columninfo-config-red-green; no wiki promotion required for this narrow fix.
