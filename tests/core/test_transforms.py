@@ -225,9 +225,7 @@ def test_inject_missing_columns_idempotent_with_output_to_upper_on_postgres(fres
 
 
 @pytest.mark.parametrize("fusion_compat", [False, True])
-def test_inject_missing_columns_preserves_column_config_for_sync(
-    fresh_caches, fusion_compat: bool
-):
+def test_inject_missing_columns_preserves_column_config_for_sync(fresh_caches, fusion_compat: bool):
     """Injected ColumnInfo objects must keep dbt's config field and sync without empty config."""
     from collections import OrderedDict
 
