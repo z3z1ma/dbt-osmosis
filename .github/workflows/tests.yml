@@ -10,6 +10,10 @@ jobs:
   tests:
     name: Run pytest
     runs-on: ubuntu-latest
+    env:
+      UV_FROZEN: "1"
+      UV_NO_PROGRESS: "1"
+      UV_NO_SYNC: "1"
 
     strategy:
       fail-fast: false

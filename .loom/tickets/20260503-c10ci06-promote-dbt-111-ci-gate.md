@@ -5,7 +5,7 @@ status: complete_pending_acceptance
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T22:33:52Z
+updated_at: 2026-05-03T22:48:24Z
 scope:
   kind: repository
   repositories:
@@ -16,8 +16,10 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10ci06-ci-gate-local-verification
+    - evidence:c10ci06-ci-run-no-sync-fix
   critique:
     - critique:c10ci06-dbt-111-ci-gate
+    - critique:c10ci06-no-sync-follow-up
   packets:
     - packet:ralph-ticket-c10ci06-20260503T222300Z
 depends_on: []
@@ -71,10 +73,10 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10ci06#ACC-001 | evidence:c10ci06-ci-gate-local-verification | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending post-push CI run |
-| ticket:c10ci06#ACC-002 | evidence:c10ci06-ci-gate-local-verification | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending post-push CI run |
-| ticket:c10ci06#ACC-003 | evidence:c10ci06-ci-gate-local-verification | critique:c10ci06-dbt-111-ci-gate | partially supported by isolated dbt 1.11 parse/import/CLI smoke; full matrix/pytest pending CI |
-| ticket:c10ci06#ACC-004 | evidence:c10ci06-ci-gate-local-verification | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending post-push CI run |
+| ticket:c10ci06#ACC-001 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
+| ticket:c10ci06#ACC-002 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
+| ticket:c10ci06#ACC-003 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | partially supported by isolated dbt 1.11 parse/import/CLI smoke; full matrix/pytest pending main CI |
+| ticket:c10ci06#ACC-004 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
 | ticket:c10ci06#ACC-005 | evidence:c10ci06-ci-gate-local-verification | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending first scheduled/manual CI observation |
 
 # Execution Notes
@@ -83,7 +85,7 @@ Avoid making the matrix huge without first isolating fixtures. If dbt-duckdb for
 
 # Blockers
 
-No active blocker. Remaining acceptance gap: post-push GitHub Actions evidence from the expanded matrix/canary.
+No active blocker. Remaining acceptance gap: GitHub Actions evidence from the expanded matrix/canary after landing on `main`.
 
 Published adapter boundary remains explicit: dbt 1.11 jobs use `dbt-duckdb~=1.10.1` until upstream adapter support changes.
 
@@ -93,10 +95,11 @@ Existing evidence:
 
 - evidence:oracle-backlog-scan - backlog scan that identified the missing dbt 1.11 gate.
 - evidence:c10ci06-ci-gate-local-verification - local structural checks and isolated dbt 1.11 parse/import/CLI smoke for the implementation diff.
+- evidence:c10ci06-ci-run-no-sync-fix - branch CI failure showed `uv run` resynced matrix jobs back to locked `dbt-core 1.10.20`; workflow now sets `UV_NO_SYNC=1`, matching `Taskfile.yml`, and local overlay verification confirms `uv run` keeps the requested dbt 1.11 runtime.
 
 Missing evidence:
 
-- Post-push GitHub Actions run logs for the expanded matrix and latest-patch canary job.
+- GitHub Actions run logs from `main` for the expanded matrix and latest-patch canary job.
 
 # Critique Disposition
 
@@ -108,7 +111,10 @@ Policy rationale: CI support claims affect release quality and compatibility gua
 
 Required critique profiles: release-packaging, test-coverage, operator-clarity
 
-Critique completed: critique:c10ci06-dbt-111-ci-gate.
+Critique completed:
+
+- critique:c10ci06-dbt-111-ci-gate - mandatory implementation critique returned `pass_with_findings` and the ticket resolved the stale-ledger finding.
+- critique:c10ci06-no-sync-follow-up - follow-up critique for the `UV_NO_SYNC=1` workflow fix returned pass with no open findings.
 
 Findings:
 
@@ -134,8 +140,8 @@ N/A - no wiki promotion selected yet.
 
 Accepted by: Not accepted yet.
 Accepted at: N/A.
-Basis: Local evidence and mandatory critique support committing and pushing the implementation for CI trial; final acceptance is pending post-push GitHub Actions evidence and retrospective disposition.
-Residual risks: Full expanded matrix has not run on the pushed branch yet; matrix cost and dbt 1.11 adapter boundary remain active risks.
+Basis: Local evidence and mandatory critique support committing and pushing the implementation for CI trial on `main`; final acceptance is pending GitHub Actions evidence from `main` and retrospective disposition.
+Residual risks: Full expanded matrix has not passed on `main` yet; matrix cost and dbt 1.11 adapter boundary remain active risks.
 
 # Dependencies
 
@@ -147,3 +153,5 @@ Coordinate with ticket:c10lock07, ticket:c10fix11, and ticket:c10cfg12 for relia
 - 2026-05-03T22:23:00Z: Compiled Ralph packet `packet:ralph-ticket-c10ci06-20260503T222300Z` for CI matrix, Taskfile parity, and Rich import smoke fix.
 - 2026-05-03T22:30:07Z: Reconciled Ralph output as consumed and recorded `evidence:c10ci06-ci-gate-local-verification` after focused local checks and isolated dbt 1.11 parse/import/CLI smoke passed.
 - 2026-05-03T22:32:44Z: Mandatory critique `critique:c10ci06-dbt-111-ci-gate` returned `pass_with_findings`; ticket-owned disposition resolved the stale-ledger finding and left post-push CI evidence pending.
+- 2026-05-03T22:45:13Z: Branch CI run `25292770214` showed matrix jobs were resynced by `uv run` back to locked `dbt-core 1.10.20`; added workflow `UV_NO_SYNC=1` env to preserve the installed dbt runtime and recorded `evidence:c10ci06-ci-run-no-sync-fix`.
+- 2026-05-03T22:48:24Z: Follow-up critique `critique:c10ci06-no-sync-follow-up` reviewed the final workflow no-sync fix and found no open findings; main CI evidence remains required before closure.
