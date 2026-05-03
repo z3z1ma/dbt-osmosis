@@ -1,11 +1,11 @@
 ---
 id: ticket:c10ci06
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T23:03:34Z
+updated_at: 2026-05-03T23:36:45Z
 scope:
   kind: repository
   repositories:
@@ -18,10 +18,13 @@ links:
     - evidence:c10ci06-ci-gate-local-verification
     - evidence:c10ci06-ci-run-no-sync-fix
     - evidence:c10ci06-main-ci-dbt18-test-fix
+    - evidence:c10ci06-main-ci-success
   critique:
     - critique:c10ci06-dbt-111-ci-gate
     - critique:c10ci06-no-sync-follow-up
     - critique:c10ci06-dbt18-test-fix
+  wiki:
+    - wiki:ci-compatibility-matrix
   packets:
     - packet:ralph-ticket-c10ci06-20260503T222300Z
 depends_on: []
@@ -33,7 +36,7 @@ Promote dbt 1.11.x from a narrow canary job to an explicit, meaningful compatibi
 
 # Context
 
-Original gap: the main CI matrix covered Python 3.10-3.13 against dbt 1.8/1.9/1.10 only, and dbt 1.11 existed only as a narrow latest-core smoke. Current implementation adds dbt 1.11 to the explicit matrix with `dbt-duckdb~=1.10.1`, adds installed-version assertions, widens the latest-patch canary to dbt 1.10 and 1.11, mirrors that story in `Taskfile.yml`, and fixes the Rich 15 CLI import failure observed in GitHub Actions run `25291931743`.
+Original gap: the main CI matrix covered Python 3.10-3.13 against dbt 1.8/1.9/1.10 only, and dbt 1.11 existed only as a narrow latest-core smoke. Current implementation adds dbt 1.11 to the explicit matrix with `dbt-duckdb~=1.10.1`, adds installed-version assertions, widens the latest-patch canary to dbt 1.10 and 1.11, mirrors that story in `Taskfile.yml`, fixes the Rich 15 CLI import failure observed in GitHub Actions run `25291931743`, and preserves the matrix overlay runtime with `UV_NO_SYNC=1`.
 
 # Why Now
 
@@ -75,11 +78,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10ci06#ACC-001 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
-| ticket:c10ci06#ACC-002 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
-| ticket:c10ci06#ACC-003 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix; evidence:c10ci06-main-ci-dbt18-test-fix | critique:c10ci06-dbt-111-ci-gate | dbt 1.10/1.11 rows passed on main; dbt 1.8 test-compat fix pending rerun |
-| ticket:c10ci06#ACC-004 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending main CI run |
-| ticket:c10ci06#ACC-005 | evidence:c10ci06-ci-gate-local-verification | critique:c10ci06-dbt-111-ci-gate | structurally supported; pending first scheduled/manual CI observation |
+| ticket:c10ci06#ACC-001 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix; evidence:c10ci06-main-ci-success | critique:c10ci06-dbt-111-ci-gate | supported; dbt 1.11 matrix rows passed on `main` for Python 3.10-3.13 |
+| ticket:c10ci06#ACC-002 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix; evidence:c10ci06-main-ci-success | critique:c10ci06-dbt-111-ci-gate | supported; installed-version assertions ran in the passing matrix |
+| ticket:c10ci06#ACC-003 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix; evidence:c10ci06-main-ci-dbt18-test-fix; evidence:c10ci06-main-ci-success | critique:c10ci06-dbt-111-ci-gate; critique:c10ci06-dbt18-test-fix | supported; dbt 1.10/1.11 matrix rows and latest-compat jobs passed on `main` |
+| ticket:c10ci06#ACC-004 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-ci-run-no-sync-fix; evidence:c10ci06-main-ci-success | critique:c10ci06-dbt-111-ci-gate | supported; `Taskfile.yml` mirrors the accepted support story |
+| ticket:c10ci06#ACC-005 | evidence:c10ci06-ci-gate-local-verification; evidence:c10ci06-main-ci-success | critique:c10ci06-dbt-111-ci-gate | supported; schedule is configured and latest-compat job logic passed on `main` |
 
 # Execution Notes
 
@@ -87,7 +90,7 @@ Avoid making the matrix huge without first isolating fixtures. If dbt-duckdb for
 
 # Blockers
 
-No active blocker. Remaining acceptance gap: GitHub Actions evidence from the expanded matrix/canary after landing on `main`.
+No active blocker.
 
 Published adapter boundary remains explicit: dbt 1.11 jobs use `dbt-duckdb~=1.10.1` until upstream adapter support changes.
 
@@ -99,10 +102,11 @@ Existing evidence:
 - evidence:c10ci06-ci-gate-local-verification - local structural checks and isolated dbt 1.11 parse/import/CLI smoke for the implementation diff.
 - evidence:c10ci06-ci-run-no-sync-fix - branch CI failure showed `uv run` resynced matrix jobs back to locked `dbt-core 1.10.20`; workflow now sets `UV_NO_SYNC=1`, matching `Taskfile.yml`, and local overlay verification confirms `uv run` keeps the requested dbt 1.11 runtime.
 - evidence:c10ci06-main-ci-dbt18-test-fix - main CI run `25293085888` showed all dbt 1.10/1.11 rows passing but dbt 1.8 rows failing on config-field-only test assertions; local dbt 1.8 and 1.11 targeted checks passed after making those tests version-aware.
+- evidence:c10ci06-main-ci-success - final `main` `Tests` run `25293813881` and `lint` run `25293813907` passed for commit `b3470bff42566dfb475a8a21ec19e45cc7faaf0d`, including dbt 1.11 matrix rows and latest dbt 1.10/1.11 compatibility jobs.
 
 Missing evidence:
 
-- GitHub Actions run logs from `main` for the expanded matrix and latest-patch canary job.
+- None for this ticket's acceptance scope. The first future cron-triggered canary execution remains a normal maintenance recheck, not a closure blocker, because the scheduled job is configured and its dbt 1.10/1.11 job logic passed on `main`.
 
 # Critique Disposition
 
@@ -130,22 +134,22 @@ Deferral / not-required rationale: None. Mandatory critique is complete; post-pu
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None yet - retrospective runs after implementation commit/push and CI observation.
+Promoted: `wiki:ci-compatibility-matrix` now preserves the accepted dbt/Python matrix workflow, adapter mapping, `UV_NO_SYNC=1` overlay rule, installed-version assertion requirement, and known failure modes observed during this ticket.
 
-Deferred / not-required rationale: Pending post-push evidence; consider wiki/update docs if support policy changes.
+Deferred / not-required rationale: No further retrospective promotion is required for this ticket. Release workflow ordering, dependency lockfile policy, and future dbt version widening remain separate backlog concerns already represented by related tickets.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed: `wiki:ci-compatibility-matrix` created as the selected retrospective promotion path for reusable operator knowledge.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Local evidence and mandatory critique support committing and pushing the implementation for CI trial on `main`; final acceptance is pending GitHub Actions evidence from `main` and retrospective disposition.
-Residual risks: Full expanded matrix has not passed on `main` yet; matrix cost and dbt 1.11 adapter boundary remain active risks.
+Accepted by: OpenCode agent via Loom ticket acceptance gate.
+Accepted at: 2026-05-03T23:36:45Z.
+Basis: Acceptance criteria are supported by `evidence:c10ci06-main-ci-success`; mandatory critique completed with all findings resolved or no open findings; retrospective promotion completed via `wiki:ci-compatibility-matrix`.
+Residual risks: dbt 1.11 remains bounded to the published `dbt-duckdb~=1.10.1` adapter mapping; the first future cron-triggered latest-compat run has not occurred yet; matrix cost and release workflow ordering remain adjacent maintenance risks outside this ticket's closure scope.
 
 # Dependencies
 
@@ -161,3 +165,6 @@ Coordinate with ticket:c10lock07, ticket:c10fix11, and ticket:c10cfg12 for relia
 - 2026-05-03T22:48:24Z: Follow-up critique `critique:c10ci06-no-sync-follow-up` reviewed the final workflow no-sync fix and found no open findings; main CI evidence remains required before closure.
 - 2026-05-03T23:00:07Z: Main CI run `25293085888` passed all dbt 1.10/1.11 rows and both latest-compat jobs, but dbt 1.8 rows failed on tests that assumed `ColumnInfo.config`; made those tests version-aware and recorded `evidence:c10ci06-main-ci-dbt18-test-fix`.
 - 2026-05-03T23:03:34Z: Follow-up critique `critique:c10ci06-dbt18-test-fix` reviewed the dbt 1.8 test compatibility patch and found no open findings.
+- 2026-05-03T23:36:45Z: Final `main` `Tests` run `25293813881` and `lint` run `25293813907` passed for commit `b3470bff42566dfb475a8a21ec19e45cc7faaf0d`; recorded `evidence:c10ci06-main-ci-success`.
+- 2026-05-03T23:36:45Z: Retrospective promoted the accepted CI matrix and `UV_NO_SYNC=1` overlay lesson into `wiki:ci-compatibility-matrix`.
+- 2026-05-03T23:36:45Z: Closed ticket after evidence, mandatory critique, retrospective, and acceptance gate checks were satisfied.

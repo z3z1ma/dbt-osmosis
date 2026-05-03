@@ -4,7 +4,7 @@ kind: wiki
 page_type: atlas
 status: active
 created_at: 2026-05-03T20:46:40Z
-updated_at: 2026-05-03T20:46:40Z
+updated_at: 2026-05-03T23:36:45Z
 scope:
   kind: repository
   repositories:
@@ -102,4 +102,5 @@ Treat these commands as operational references, not blind instructions.
 
 # Related Pages
 
-None yet. Future useful pages may include a core module atlas, YAML schema pipeline reference, configuration resolution concept page, and workbench atlas if those areas keep requiring repeated orientation.
+- `wiki:ci-compatibility-matrix` explains the dbt/Python compatibility CI workflow, adapter mapping, `UV_NO_SYNC=1` overlay rule, and known matrix failure modes.
+- Future useful pages may include a core module atlas, YAML schema pipeline reference, configuration resolution concept page, and workbench atlas if those areas keep requiring repeated orientation.
