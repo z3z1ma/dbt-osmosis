@@ -1,11 +1,11 @@
 ---
 id: ticket:c10col01
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-03T22:08:00Z
 scope:
   kind: repository
   repositories:
@@ -17,7 +17,13 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+  critique:
+    - critique:c10col01-columninfo-config
+  packet:
+    - packet:ralph-ticket-c10col01-20260503T214308Z
+    - packet:ralph-ticket-c10col01-20260503T215123Z
 external_refs:
+  github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/352
   dbt_core_110_components: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.10.0/core/dbt/artifacts/resources/v1/components.py
   dbt_core_111_components: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.11.0/core/dbt/artifacts/resources/v1/components.py
 depends_on: []
@@ -72,13 +78,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10col01#ACC-001 | evidence:oracle-backlog-scan, research:dbt-110-111-api-surfaces | None | open |
-| ticket:c10col01#ACC-004 | None - implementation test not written yet | None | open |
-| ticket:c10col01#ACC-005 | None - matrix/integration evidence not gathered yet | None | open |
+| ticket:c10col01#ACC-001 | packet:ralph-ticket-c10col01-20260503T214308Z, `uv run pytest tests/core/test_transforms.py` | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-002 | packet:ralph-ticket-c10col01-20260503T214308Z, `uv run pytest tests/core/test_transforms.py` | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-003 | packet:ralph-ticket-c10col01-20260503T215123Z, `uv run pytest tests/core/test_transforms.py` | critique:c10col01-columninfo-config#FIND-002 withdrawn after coverage refinement | supported |
+| ticket:c10col01#ACC-004 | packet:ralph-ticket-c10col01-20260503T214308Z, packet:ralph-ticket-c10col01-20260503T215123Z | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-005 | None - dbt 1.11 adapter-backed matrix/integration evidence not gathered yet | critique:c10col01-columninfo-config#FIND-001 | converted_to_follow_up: ticket:c10ci06 and ticket:c10cfg12 |
 
 # Execution Notes
 
-Start with the smallest fix: remove the deletion and inspect YAML output. If empty config appears, add filtering in the path that converts `ColumnInfo` to a plain dict before ruamel writes YAML. Avoid adding backwards-compatibility shims for invalid `ColumnInfo` objects unless tests show persisted state can contain them.
+Implemented in two Ralph iterations. Iteration 1 removed the invalid deletion and added a regression test for sync serialization. Iteration 2 parameterized the regression coverage across classic and fusion-compatible output paths so empty `config` does not leak into YAML-facing output.
 
 # Blockers
 
@@ -86,7 +94,15 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan and research:dbt-110-111-api-surfaces support that dbt 1.10/1.11 define `ColumnInfo.config` and that local code deletes it. Missing evidence: red/green regression output and dbt matrix run after the fix.
+Existing evidence: evidence:oracle-backlog-scan and research:dbt-110-111-api-surfaces support that dbt 1.10/1.11 define `ColumnInfo.config` and that local code deleted it.
+
+Implementation evidence:
+
+- packet:ralph-ticket-c10col01-20260503T214308Z recorded red/green evidence: focused regression failed before the fix with `AttributeError: 'ColumnInfo' object has no attribute 'config'`, then passed after removing the deletion.
+- packet:ralph-ticket-c10col01-20260503T215123Z recorded coverage refinement for `fusion_compat=False` and `fusion_compat=True`.
+- Parent verification: `uv run pytest tests/core/test_transforms.py` passed with `18 passed in 9.76s` on Python 3.13.9.
+
+Missing evidence: dbt 1.11 adapter-backed matrix/integration evidence for ACC-005. That evidence is converted to follow-up under ticket:c10ci06 and ticket:c10cfg12 because those tickets own matrix/config-shape coverage across dbt versions.
 
 # Critique Disposition
 
@@ -98,19 +114,22 @@ Policy rationale: This touches core YAML sync behavior and dbt compatibility, wi
 
 Required critique profiles: code-change, test-coverage, dbt-compatibility
 
-Findings: None - no critique yet.
+Findings:
 
-Disposition status: pending
+- critique:c10col01-columninfo-config#FIND-001 remains open for missing dbt 1.11 adapter-backed evidence; ticket disposition: converted_to_follow_up to ticket:c10ci06 and ticket:c10cfg12.
+- critique:c10col01-columninfo-config#FIND-002 was withdrawn after packet:ralph-ticket-c10col01-20260503T215123Z added fusion-compatible output coverage.
 
-Deferral / not-required rationale: None.
+Disposition status: completed
+
+Deferral / not-required rationale: Mandatory critique completed. The only open high finding is not ignored; it is converted to follow-up because the dbt 1.11 adapter-backed evidence belongs with the broader CI/config-shape matrix work.
 
 # Retrospective / Promotion Disposition
 
 Disposition status: pending
 
-Promoted: None - implementation not complete.
+Promoted: None yet - run retrospective after the implementation commit per operator request.
 
-Deferred / not-required rationale: Decide after fix and critique whether a wiki note about safe dbt object serialization is needed.
+Deferred / not-required rationale: Retrospective pending. Likely no wiki promotion is needed for this narrow fix unless later tickets expose a repeated dbt object serialization pattern.
 
 # Wiki Disposition
 
@@ -120,8 +139,8 @@ N/A - no wiki promotion selected yet.
 
 Accepted by: Not accepted yet.
 Accepted at: N/A.
-Basis: Pending implementation evidence and critique.
-Residual risks: Unknown until dbt 1.10/1.11 tests run.
+Basis: Implementation evidence and critique exist for ACC-001 through ACC-004. Final acceptance remains pending because ACC-005 was converted to follow-up coverage under ticket:c10ci06 and ticket:c10cfg12.
+Residual risks: dbt 1.11 adapter-backed runtime evidence is not yet available for this exact missing-column scenario.
 
 # Dependencies
 
@@ -130,3 +149,4 @@ Coordinate with ticket:c10meta02 if the fix changes shared column serialization 
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility and core architecture oracle findings.
+- 2026-05-03T22:08:00Z: Ralph iterations removed the `ColumnInfo.config` deletion and added classic/fusion-compatible sync serialization regression coverage. Mandatory critique completed with dbt 1.11 runtime evidence converted to follow-up under ticket:c10ci06 and ticket:c10cfg12.

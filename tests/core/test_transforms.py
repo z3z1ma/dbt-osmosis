@@ -224,6 +224,64 @@ def test_inject_missing_columns_idempotent_with_output_to_upper_on_postgres(fres
     assert mock_node.columns["ZEBRA"].description == "existing"
 
 
+@pytest.mark.parametrize("fusion_compat", [False, True])
+def test_inject_missing_columns_preserves_column_config_for_sync(
+    fresh_caches, fusion_compat: bool
+):
+    """Injected ColumnInfo objects must keep dbt's config field and sync without empty config."""
+    from collections import OrderedDict
+
+    from dbt_osmosis.core.sync_operations import _sync_doc_section
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.name = "test_model"
+    mock_node.schema = "main"
+    mock_node.description = ""
+    mock_node.resource_type = "model"
+    mock_node.columns = OrderedDict()
+
+    context = mock.MagicMock()
+    context.settings.skip_add_columns = False
+    context.settings.skip_add_source_columns = False
+    context.settings.skip_add_data_types = False
+    context.settings.scaffold_empty_configs = False
+    context.settings.skip_merge_meta = False
+    context.settings.prefer_yaml_values = False
+    context.settings.use_unrendered_descriptions = False
+    context.settings.output_to_lower = False
+    context.settings.output_to_upper = False
+    context.fusion_compat = fusion_compat
+    context.placeholders = set()
+    context.read_catalog.return_value = None
+    context.project.runtime_cfg.credentials.type = "postgres"
+
+    mock_col = mock.MagicMock()
+    mock_col.type = "text"
+    mock_col.comment = "from database"
+    incoming = OrderedDict([("new_col", mock_col)])
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=incoming,
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection._get_setting_for_node",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        inject_missing_columns(context, mock_node)
+        doc_section: dict[str, object] = {}
+        _sync_doc_section(context, mock_node, doc_section)
+
+    assert hasattr(mock_node.columns["new_col"], "config")
+    assert doc_section["columns"] == [
+        {"name": "new_col", "description": "from database", "data_type": "text"}
+    ]
+    assert "config" not in doc_section["columns"][0]
+
+
 def test_remove_columns_not_in_database_with_output_to_upper_on_postgres(fresh_caches):
     """Test that remove_columns_not_in_database doesn't incorrectly remove columns
     when output-to-upper is active on a non-Snowflake DB.
