@@ -396,11 +396,23 @@ def _get_or_create_source(
         if source.get("name") == source_name:
             return source
 
+    def _tables_for_source_scan(source: dict[str, t.Any]) -> list[t.Any]:
+        tables = source.get("tables", [])
+        if not isinstance(tables, list):
+            source_label = source.get("name", "<unknown>")
+            raise YamlValidationError(
+                f"Invalid YAML source '{source_label}': expected 'tables' to be a list before "
+                "matching source tables. Fix the source tables structure before syncing."
+            )
+        return tables
+
     def _matching_sources(match_field: str, match_value: str) -> list[dict[str, t.Any]]:
         return [
             source
             for source in sources
-            if any(table.get(match_field) == match_value for table in source.get("tables", []))
+            if any(
+                table.get(match_field) == match_value for table in _tables_for_source_scan(source)
+            )
         ]
 
     def _disambiguate(candidates: list[dict[str, t.Any]]) -> dict[str, t.Any] | None:
@@ -460,12 +472,20 @@ def _get_or_create_source(
 
 def _get_or_create_source_table(doc_source: dict[str, t.Any], table_name: str) -> dict[str, t.Any]:
     """Find or create a table entry within a source."""
-    for table in doc_source["tables"]:
+    tables = doc_source.setdefault("tables", [])
+    if not isinstance(tables, list):
+        source_label = doc_source.get("name", "<unknown>")
+        raise YamlValidationError(
+            f"Invalid YAML source '{source_label}': expected 'tables' to be a list before "
+            "syncing source tables. Fix the source tables structure before syncing."
+        )
+
+    for table in tables:
         if table.get("name") == table_name:
             return table
     # Create new table
     new_table = {"name": table_name, "columns": []}
-    doc_source["tables"].append(new_table)
+    tables.append(new_table)
     return new_table
 
 

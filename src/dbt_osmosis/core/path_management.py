@@ -142,7 +142,19 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
         "node": node,
     }
 
-    rendered = tpl.format(**format_dict)
+    try:
+        rendered = tpl.format(**format_dict)
+    except KeyError as exc:
+        missing_key = exc.args[0] if exc.args else "<unknown>"
+        raise PathResolutionError(
+            f"Unable to render YAML path template for node '{node.unique_id}' using template "
+            f"'{tpl}': missing template key '{missing_key}'."
+        ) from exc
+    except AttributeError as exc:
+        raise PathResolutionError(
+            f"Unable to render YAML path template for node '{node.unique_id}' using template "
+            f"'{tpl}': missing or invalid template attribute ({exc})."
+        ) from exc
 
     segments: list[Path | str] = []
 

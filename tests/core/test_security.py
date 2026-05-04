@@ -361,8 +361,9 @@ class TestSchemaValidation:
         # Invalid template with missing placeholder
         mock_node.config.extra = {"dbt-osmosis": "{nonexistent}/{placeholder}.yml"}
 
-        with pytest.raises(KeyError):
+        with pytest.raises(PathResolutionError, match="nonexistent") as exc_info:
             get_target_yaml_path(context, mock_node)
+        assert "{nonexistent}/{placeholder}.yml" in str(exc_info.value)
 
     def test_empty_yaml_template(self):
         """Test that empty YAML templates are handled."""

@@ -14,6 +14,7 @@ from dbt.artifacts.resources.types import NodeType
 
 from dbt_osmosis.core.path_management import (
     MissingOsmosisConfig,
+    PathResolutionError,
     get_target_yaml_path,
 )
 from dbt_osmosis.core.settings import YamlRefactorContext
@@ -70,7 +71,7 @@ def test_source_name_in_path_template(yaml_context: YamlRefactorContext):
 
 def test_source_name_not_available_for_models(yaml_context: YamlRefactorContext):
     """Ensures that using {node.source_name} in a path template for a non-source node
-    (model, seed) raises an AttributeError.
+    (model, seed) raises a clear PathResolutionError.
     """
     model_node = None
     for n in yaml_context.project.manifest.nodes.values():
@@ -83,11 +84,41 @@ def test_source_name_not_available_for_models(yaml_context: YamlRefactorContext)
     old = model_node.config.extra.get("dbt-osmosis")
     model_node.config.extra["dbt-osmosis"] = "models/{node.source_name}.yml"
 
-    # Should raise AttributeError because source_name is not available for models
-    with pytest.raises(AttributeError, match="source_name"):
+    # Should raise a user-facing path error because source_name is not available for models
+    with pytest.raises(PathResolutionError, match="source_name") as exc_info:
         get_target_yaml_path(yaml_context, model_node)
+    message = str(exc_info.value)
+    assert model_node.unique_id in message
+    assert "models/{node.source_name}.yml" in message
 
     # Restore original config
+    if old is not None:
+        model_node.config.extra["dbt-osmosis"] = old
+    else:
+        model_node.config.extra.pop("dbt-osmosis", None)
+
+
+def test_missing_path_template_placeholder_raises_path_resolution_error(
+    yaml_context: YamlRefactorContext,
+):
+    """Missing format keys in user templates should not leak raw KeyError."""
+    model_node = None
+    for n in yaml_context.project.manifest.nodes.values():
+        if n.resource_type == NodeType.Model:
+            model_node = n
+            break
+    assert model_node, "No model found in your demo_duckdb project"
+
+    old = model_node.config.extra.get("dbt-osmosis")
+    template = "models/{missing_placeholder}.yml"
+    model_node.config.extra["dbt-osmosis"] = template
+
+    with pytest.raises(PathResolutionError, match="missing_placeholder") as exc_info:
+        get_target_yaml_path(yaml_context, model_node)
+    message = str(exc_info.value)
+    assert model_node.unique_id in message
+    assert template in message
+
     if old is not None:
         model_node.config.extra["dbt-osmosis"] = old
     else:

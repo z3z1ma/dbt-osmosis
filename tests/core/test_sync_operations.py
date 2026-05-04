@@ -21,6 +21,7 @@ from dbt_osmosis.core.sync_operations import (
     _get_or_create_model,
     _get_or_create_version,
     _get_or_create_source,
+    _get_or_create_source_table,
     _group_sync_nodes,
     _sync_doc_section,
     sync_node_to_yaml,
@@ -545,6 +546,40 @@ def test_get_or_create_source_uses_schema_to_break_table_match_ties() -> None:
 
     assert matched["name"] == "source_b"
     assert len(doc["sources"]) == 2
+
+
+def test_get_or_create_source_table_initializes_missing_tables_list() -> None:
+    """Existing source YAML without tables should sync by creating an empty list."""
+    doc_source: dict[str, object] = {"name": "raw"}
+
+    table = _get_or_create_source_table(doc_source, "orders")
+
+    assert table == {"name": "orders", "columns": []}
+    assert doc_source["tables"] == [table]
+
+
+def test_get_or_create_source_table_rejects_non_list_tables() -> None:
+    """Malformed source tables must fail clearly instead of leaking AttributeError."""
+    doc_source: dict[str, object] = {"name": "raw", "tables": {"name": "orders"}}
+
+    with pytest.raises(YamlValidationError, match="source 'raw'.*tables.*list"):
+        _get_or_create_source_table(doc_source, "orders")
+
+    assert doc_source["tables"] == {"name": "orders"}
+
+
+def test_get_or_create_source_rejects_non_list_tables_when_matching_by_table() -> None:
+    """Source matching by table should fail clearly for malformed tables entries."""
+    doc = {
+        "sources": [
+            {"name": "templated_raw", "tables": {"name": "orders"}},
+        ],
+    }
+
+    with pytest.raises(YamlValidationError, match="source 'templated_raw'.*tables.*list"):
+        _get_or_create_source(doc, source_name="raw_prod", table_name="orders")
+
+    assert len(doc["sources"]) == 1
 
 
 def test_preserve_unrendered_descriptions(yaml_context: YamlRefactorContext, fresh_caches):
