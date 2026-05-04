@@ -38,7 +38,10 @@ Repository-managed DuckDB fixture coverage is explicitly exercised through the p
 Optional extras:
 
 - `dbt-osmosis[workbench]` for the Streamlit workbench and related UI dependencies
+- `dbt-osmosis[duckdb]` for the DuckDB adapter used by the demo project and local fixture workflows
 - `dbt-osmosis[openai]` for LLM-assisted synthesis and natural-language generation features
+- `dbt-osmosis[azure]` for Azure AD authentication used with Azure OpenAI
+- `dbt-osmosis[proxy]` only installs dependencies for the experimental SQL proxy runtime; it does not expand the supported product surface, and `ticket:c10proxy25` owns proxy support semantics
 
 ## Install
 
@@ -132,7 +135,7 @@ The optional workbench is a Streamlit app for interactive dbt SQL development.
 Install the extra and launch it with:
 
 ```bash
-pip install "dbt-osmosis[workbench]"
+pip install "dbt-osmosis[workbench]" "dbt-<adapter>"
 dbt-osmosis workbench
 ```
 

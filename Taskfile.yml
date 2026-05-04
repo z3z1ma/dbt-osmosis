@@ -24,13 +24,13 @@ tasks:
   lint:
     desc: Run ruff to check code for linting issues
     cmds:
-      - uvx ruff check
+      - uvx ruff==0.8.6 check
 
   format:
     desc: Auto-fix imports, then format code with ruff
     cmds:
-      - uvx ruff check --fix --select I
-      - uvx ruff format --preview
+      - uvx ruff==0.8.6 check --fix --select I
+      - uvx ruff==0.8.6 format --preview
 
   dev:
     desc: Sets up dev environment (.venv + pre-commit), syncs dev extra
@@ -41,8 +41,6 @@ tasks:
   venv:
     desc: Creates the virtual environment via uv
     internal: true
-    sources:
-      - .python-version
     generates:
       - .venv/bin/python
     cmds:
@@ -52,7 +50,7 @@ tasks:
     desc: Installs pre-commit hooks in .git/hooks/pre-commit
     internal: true
     cmds:
-      - uv tool install pre-commit
+      - uv tool install 'pre-commit>3.0.0,<5'
       - uv tool run pre-commit install
     status:
       - test -f .git/hooks/pre-commit
@@ -71,7 +69,7 @@ tasks:
           echo -e "\033[32mtask: [test] basedpyright + pytest (python=={{.ITEM.python_version}}, dbt-core~={{.ITEM.dbt_version}}, dbt-duckdb~={{.ITEM.dbt_version}})\033[0m"
           MATRIX_ENV=$(mktemp -d)/dbt-osmosis-matrix
           uv venv --python {{.ITEM.python_version}} "$MATRIX_ENV"
-          uv --no-config -q pip install --python "$MATRIX_ENV/bin/python" -e ".[dev,openai]" dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_version}} "$DBT_ADAPTERS_CONSTRAINT"
+          uv --no-config -q pip install --python "$MATRIX_ENV/bin/python" -e ".[dev,openai,duckdb]" dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_version}} "$DBT_ADAPTERS_CONSTRAINT"
           export VIRTUAL_ENV="$MATRIX_ENV"
           export PATH="$MATRIX_ENV/bin:$PATH"
           uv --version
@@ -117,7 +115,7 @@ tasks:
           echo -e "\033[32mtask: [test] basedpyright + pytest (python=={{.ITEM.python_version}}, dbt-core~={{.ITEM.dbt_version}}, dbt-duckdb~={{.ITEM.dbt_version}})\033[0m"
           MATRIX_ENV=$(mktemp -d)/dbt-osmosis-matrix
           uv venv --python {{.ITEM.python_version}} "$MATRIX_ENV"
-          uv --no-config -q pip install --python "$MATRIX_ENV/bin/python" -e ".[dev,openai]" dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_version}} "$DBT_ADAPTERS_CONSTRAINT"
+          uv --no-config -q pip install --python "$MATRIX_ENV/bin/python" -e ".[dev,openai,duckdb]" dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_version}} "$DBT_ADAPTERS_CONSTRAINT"
           export VIRTUAL_ENV="$MATRIX_ENV"
           export PATH="$MATRIX_ENV/bin:$PATH"
           uv --version
@@ -164,7 +162,7 @@ tasks:
           echo -e "\033[32mtask: [test] basedpyright + pytest (python=={{.ITEM.python_version}}, dbt-core~={{.ITEM.dbt_version}}, dbt-duckdb~={{.ITEM.dbt_duckdb_version}})\033[0m"
           MATRIX_ENV=$(mktemp -d)/dbt-osmosis-matrix
           uv venv --python {{.ITEM.python_version}} "$MATRIX_ENV"
-          uv --no-config -q pip install --python "$MATRIX_ENV/bin/python" -e ".[dev,openai]" dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_duckdb_version}} "$DBT_ADAPTERS_CONSTRAINT"
+          uv --no-config -q pip install --python "$MATRIX_ENV/bin/python" -e ".[dev,openai,duckdb]" dbt-core~={{.ITEM.dbt_version}} dbt-duckdb~={{.ITEM.dbt_duckdb_version}} "$DBT_ADAPTERS_CONSTRAINT"
           export VIRTUAL_ENV="$MATRIX_ENV"
           export PATH="$MATRIX_ENV/bin:$PATH"
           uv --version
@@ -218,7 +216,7 @@ tasks:
           export UV_PYTHON=3.13
           SMOKE_ENV=$(mktemp -d)/dbt-osmosis-smoke
           uv venv "$SMOKE_ENV"
-          uv --no-config pip install --python "$SMOKE_ENV/bin/python" -e ".[dev,openai]" "dbt-core~={{.ITEM.dbt_version}}" "dbt-duckdb~={{.ITEM.dbt_duckdb_version}}" "$DBT_ADAPTERS_CONSTRAINT"
+          uv --no-config pip install --python "$SMOKE_ENV/bin/python" -e ".[dev,openai,duckdb]" "dbt-core~={{.ITEM.dbt_version}}" "dbt-duckdb~={{.ITEM.dbt_duckdb_version}}" "$DBT_ADAPTERS_CONSTRAINT"
           export VIRTUAL_ENV="$SMOKE_ENV"
           export PATH="$SMOKE_ENV/bin:$PATH"
           uv --version
@@ -267,7 +265,7 @@ tasks:
           export UV_PYTHON=3.13
           SMOKE_ENV=$(mktemp -d)/dbt-osmosis-smoke
           uv venv "$SMOKE_ENV"
-          uv --no-config pip install --python "$SMOKE_ENV/bin/python" -e ".[dev,openai]" "dbt-core~={{.ITEM.dbt_version}}" "dbt-duckdb~={{.ITEM.dbt_duckdb_version}}" "$DBT_ADAPTERS_CONSTRAINT"
+          uv --no-config pip install --python "$SMOKE_ENV/bin/python" -e ".[dev,openai,duckdb]" "dbt-core~={{.ITEM.dbt_version}}" "dbt-duckdb~={{.ITEM.dbt_duckdb_version}}" "$DBT_ADAPTERS_CONSTRAINT"
           export VIRTUAL_ENV="$SMOKE_ENV"
           export PATH="$SMOKE_ENV/bin:$PATH"
           uv --version
@@ -312,34 +310,74 @@ tasks:
     desc: Validate published package metadata with pip outside uv resolution
     cmds:
       - |
-        SMOKE_ENV=$(mktemp -d)/dbt-osmosis-pip-smoke
-        python -m venv "$SMOKE_ENV"
-        export VIRTUAL_ENV="$SMOKE_ENV"
-        export PATH="$SMOKE_ENV/bin:$PATH"
-        python -m pip install --upgrade pip
-        python -m pip install ".[openai]" "dbt-core~=1.11.0" "dbt-duckdb~=1.10.1"
-        python -m pip check
-        python - <<'PY'
+        run_smoke() {
+          label="$1"
+          package_spec="$2"
+          shift 2
+          smoke_env="$(mktemp -d)/dbt-osmosis-pip-smoke-${label}"
+          uv venv --seed --python 3.13 "$smoke_env"
+          "$smoke_env/bin/python" -m pip install --upgrade pip
+          "$smoke_env/bin/python" -m pip install "$package_spec" "dbt-core~=1.11.0" "$@"
+          "$smoke_env/bin/python" -m pip check
+          "$smoke_env/bin/dbt-osmosis" --help >/dev/null
+          SMOKE_LABEL="$label" "$smoke_env/bin/python" - <<'PY'
         import importlib.metadata as metadata
+        import importlib
+        import importlib.util
+        import os
         import platform
         import sys
 
+        label = os.environ["SMOKE_LABEL"]
+        print(f"smoke: {label}")
         print(f"python: {sys.version}")
         print(f"python executable: {sys.executable}")
         print(f"python platform version: {platform.python_version()}")
+        assert platform.python_version().startswith("3.13."), platform.python_version()
 
-        expected = {
-            "dbt-core": "1.11.",
-            "dbt-duckdb": "1.10.",
+        expected_prefixes = {"dbt-core": "1.11."}
+        expected_modules = {
+            "base": ["sqlglot", "yaml", "dbt_osmosis.cli.main"],
+            "openai": ["openai"],
+            "azure": ["azure.identity"],
+            "workbench": [
+                "streamlit",
+                "streamlit_ace",
+                "streamlit_elements_fluence",
+                "ydata_profiling",
+                "feedparser",
+                "dbt_osmosis.workbench.components.dashboard",
+                "dbt_osmosis.workbench.components.feed",
+                "dbt_osmosis.workbench.components.profiler",
+            ],
+            "duckdb": ["dbt.adapters.duckdb"],
+            "proxy": ["mysql_mimic"],
         }
-        for package in ("dbt-core", "dbt-duckdb", "dbt-adapters", "dbt-osmosis"):
+        if label == "duckdb":
+            expected_prefixes["dbt-duckdb"] = "1.10."
+        if label == "base":
+            assert importlib.util.find_spec("mysql_mimic") is None
+        if label == "workbench":
+            assert importlib.util.find_spec("dbt.adapters.duckdb") is None
+
+        for package in ("dbt-osmosis", "dbt-core", "dbt-adapters", *expected_prefixes.keys()):
             version = metadata.version(package)
             print(f"{package}: {version}")
-            if package in expected:
-                assert version.startswith(expected[package]), f"{package} {version} does not match {expected[package]}x"
+            if package in expected_prefixes:
+                expected = expected_prefixes[package]
+                assert version.startswith(expected), f"{package} {version} does not match {expected}x"
+        for module in expected_modules[label]:
+            assert importlib.util.find_spec(module) is not None, module
+            importlib.import_module(module)
         PY
-        dbt-osmosis --help
-        python -c "import dbt_osmosis; import dbt_osmosis.cli.main"
+        }
+
+        run_smoke base "."
+        run_smoke openai ".[openai]"
+        run_smoke azure ".[azure]"
+        run_smoke workbench ".[workbench]"
+        run_smoke duckdb ".[duckdb]"
+        run_smoke proxy ".[proxy]"
 
   mutation-test:
     desc: Run mutation testing with mutmut (ensures tests catch bugs)

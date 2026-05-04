@@ -71,8 +71,8 @@ export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
 
 ### Azure AD Token (Enterprise)
 ```bash
-# Install azure-identity
-pip install "dbt-osmosis[openai]" azure-identity
+# Install OpenAI and Azure AD auth dependencies
+pip install "dbt-osmosis[openai,azure]"
 
 # Authenticate with Azure CLI
 az login

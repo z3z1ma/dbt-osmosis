@@ -40,7 +40,10 @@ pip install "dbt-osmosis" "dbt-<adapter>"
 Optional extras:
 
 - `dbt-osmosis[workbench]` enables the Streamlit workbench
+- `dbt-osmosis[duckdb]` installs the DuckDB adapter used by the demo project and fixture workflows
 - `dbt-osmosis[openai]` enables synthesis and natural-language generation features
+- `dbt-osmosis[azure]` installs Azure AD authentication support for Azure OpenAI
+- `dbt-osmosis[proxy]` only installs dependencies for the experimental SQL proxy runtime; `ticket:c10proxy25` owns proxy support semantics
 
 ## 2. Configure YAML routing
 

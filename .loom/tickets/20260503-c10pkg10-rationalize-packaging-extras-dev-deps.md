@@ -1,11 +1,11 @@
 ---
 id: ticket:c10pkg10
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: release-packaging
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T04:18:06Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10pkg10-package-metadata-smoke
+  critique:
+    - critique:c10pkg10-release-packaging-review
+  packets:
+    - packet:ralph-ticket-c10pkg10-20260504T033410Z
 depends_on: []
 ---
 
@@ -71,20 +76,29 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10pkg10#ACC-003 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10pkg10#ACC-006 | None - install smoke not added yet | None | open |
+| ticket:c10pkg10#ACC-001 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-006 resolved | supported |
+| ticket:c10pkg10#ACC-002 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-002 and #FIND-006 resolved | supported |
+| ticket:c10pkg10#ACC-003 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-003 resolved | supported |
+| ticket:c10pkg10#ACC-004 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-001 and #FIND-005 resolved | supported |
+| ticket:c10pkg10#ACC-005 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review | supported |
+| ticket:c10pkg10#ACC-006 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-003 and #FIND-004 resolved | supported |
 
 # Execution Notes
 
-Keep this ticket focused on packaging truth. If deciding proxy support requires product choice, stop and route to ticket:c10proxy25 or ask the user.
+Ralph implementation completed the package metadata cleanup and stopped without changing proxy product semantics. Proxy support/removal remains with ticket:c10proxy25.
 
 # Blockers
 
-Human decision may be needed if removing base dependencies or adding extras changes public install expectations.
+None currently. Acceptance remains pending post-commit CI evidence and retrospective / promotion disposition.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: install smoke outputs and dependency checks.
+Existing evidence:
+
+- evidence:oracle-backlog-scan
+- evidence:c10pkg10-package-metadata-smoke
+
+Evidence disposition: locally sufficient for package metadata, dependency routing, dev dependency canonicalization, and independent pip install smoke claims. Final closure should also cite post-commit/main CI evidence if the implementation commit changes the observed source state.
 
 # Critique Disposition
 
@@ -96,9 +110,16 @@ Policy rationale: Packaging changes affect user installs but can be validated wi
 
 Required critique profiles: release-packaging, operator-clarity
 
-Findings: None - no critique yet.
+Findings:
 
-Disposition status: pending
+- critique:c10pkg10-release-packaging-review#FIND-001 — `resolved` by adding Python 3.10 `tomli` fallback and canonical dev dependency coverage; supported by evidence:c10pkg10-package-metadata-smoke.
+- critique:c10pkg10-release-packaging-review#FIND-002 — `resolved` by adding direct `PyYAML>=6.0` and base import smoke; supported by evidence:c10pkg10-package-metadata-smoke.
+- critique:c10pkg10-release-packaging-review#FIND-003 — `resolved` by strengthening workbench import smoke and bounding `setuptools>=70,<81`; supported by evidence:c10pkg10-package-metadata-smoke.
+- critique:c10pkg10-release-packaging-review#FIND-004 — `resolved` by making DuckDB smoke rely on `.[duckdb]` without an explicit adapter install argument; supported by evidence:c10pkg10-package-metadata-smoke.
+- critique:c10pkg10-release-packaging-review#FIND-005 — `resolved` by pinning Taskfile pre-commit tool installation to `pre-commit>3.0.0,<5`; supported by evidence:c10pkg10-package-metadata-smoke.
+- critique:c10pkg10-release-packaging-review#FIND-006 — `resolved` by documenting `dbt-osmosis[proxy]` as dependency-only and leaving support semantics to ticket:c10proxy25; supported by evidence:c10pkg10-package-metadata-smoke.
+
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
@@ -106,20 +127,20 @@ Deferral / not-required rationale: None.
 
 Disposition status: pending
 
-Promoted: None - implementation not complete.
+Promoted: None yet - implementation is complete locally, but acceptance is waiting for post-commit CI and retrospective review.
 
-Deferred / not-required rationale: Consider docs/wiki updates if extras change.
+Deferred / not-required rationale: Retrospective should decide whether install-extra explanation belongs only in updated docs or also in wiki after CI acceptance.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Pending retrospective. Source docs were updated for install extras; no wiki promotion has been selected yet.
 
 # Acceptance Decision
 
 Accepted by: Not accepted yet.
 Accepted at: N/A.
-Basis: Pending install evidence.
-Residual risks: Extras changes can surprise existing users if not documented.
+Basis: Pending implementation commit, post-commit/main CI evidence, and retrospective / promotion disposition.
+Residual risks: Workbench was import-smoked but not interactively launched; proxy remains dependency-only and experimental; package index resolution can drift.
 
 # Dependencies
 
@@ -128,3 +149,5 @@ Coordinate with ticket:c10wb22, ticket:c10llm23, and ticket:c10proxy25.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CI/build and CLI/workbench oracle findings.
+- 2026-05-04T03:34:10Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10pkg10-20260504T033410Z` for package extras/dev tooling/install-smoke implementation.
+- 2026-05-04T04:18:06Z: Reconciled Ralph output, recorded release-packaging critique `critique:c10pkg10-release-packaging-review`, recorded install evidence `evidence:c10pkg10-package-metadata-smoke`, and moved ticket to `complete_pending_acceptance` pending post-commit CI and retrospective disposition.

@@ -29,31 +29,38 @@ dependencies = [
   "ruamel.yaml>=0.17,<0.19",
   "rich>=10",
   "pluggy>=1.5.0,<2",
-  "mysql-mimic>=2.5.7",
+  "PyYAML>=6.0",
+  "sqlglot>=28,<29",
   "rapidfuzz>=3.0.0",
 ]
 
 [project.optional-dependencies]
 workbench = [
-  "streamlit>=1.20.0,<1.42.0",
+  "streamlit>=1.45.0,<2.0",
   "streamlit-ace~=0.1.1",
   "ydata-profiling>=4.17.0",
   "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
-  "dbt-duckdb>=1,<2",
-  "setuptools>=70",
+  "setuptools>=70,<81",
 ]
 
 openai = ["openai~=1.58.1"]
 
+azure = ["azure-identity>=1.19,<2"]
+
+duckdb = ["dbt-duckdb>=1,<2"]
+
+proxy = ["mysql-mimic>=2.5.7"]
+
 dev = [
   "basedpyright~=1.38.4",
-  "ruff~=0.8.4",
+  "ruff==0.8.6",
   "pytest~=8.3.4",
   "pytest-cov~=6.0",
   "hypothesis",
   "mutmut",
   "pre-commit>3.0.0,<5",
+  "tomli>=2; python_version < \"3.11\"",
   "dbt-duckdb>=1,<2",
 ]
 
@@ -142,8 +149,13 @@ skip_covered = false
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.38.4",
-    "dbt-duckdb>=1,<2",
-    "openai>=1.58.1",
-    "pytest>=8.3.5",
+  "basedpyright~=1.38.4",
+  "ruff==0.8.6",
+  "pytest~=8.3.4",
+  "pytest-cov~=6.0",
+  "hypothesis",
+  "mutmut",
+  "pre-commit>3.0.0,<5",
+  "tomli>=2; python_version < \"3.11\"",
+  "dbt-duckdb>=1,<2",
 ]

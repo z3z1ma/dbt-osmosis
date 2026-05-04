@@ -34,6 +34,14 @@ pip install "dbt-osmosis" "dbt-<adapter>"
 
 This installs into the active Python environment (virtualenv, venv, or system Python).
 
+## Optional extras
+
+- `dbt-osmosis[workbench]` installs the Streamlit workbench UI dependencies.
+- `dbt-osmosis[duckdb]` installs the DuckDB adapter used by the demo project and fixture workflows.
+- `dbt-osmosis[openai]` installs the OpenAI SDK for synthesis and natural-language generation features.
+- `dbt-osmosis[azure]` installs Azure AD authentication support for Azure OpenAI.
+- `dbt-osmosis[proxy]` only installs dependencies for the experimental SQL proxy runtime; it does not imply support beyond the proxy semantics owned by `ticket:c10proxy25`.
+
 ## Verify
 
 ```bash

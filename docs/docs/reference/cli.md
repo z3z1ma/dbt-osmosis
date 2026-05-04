@@ -85,7 +85,7 @@ External formatting:
 
 Experimental:
 
-- `--synthesize` requires installing `dbt-osmosis[openai]` and configuring `LLM_PROVIDER` plus the provider-specific environment variables.
+- `--synthesize` requires installing `dbt-osmosis[openai]` and configuring `LLM_PROVIDER` plus the provider-specific environment variables. Azure AD authentication also requires `dbt-osmosis[azure]`.
 
 Example:
 
@@ -127,7 +127,7 @@ Core options:
 - `--options` passes through to Streamlit help output
 - `--config` prints Streamlit configuration
 
-The workbench runtime requires installing `dbt-osmosis[workbench]`.
+The workbench runtime requires installing `dbt-osmosis[workbench]` plus a dbt adapter for your project, such as `dbt-osmosis[duckdb]` for the demo DuckDB project.
 
 ## `dbt-osmosis generate`
 
@@ -142,7 +142,7 @@ Generates dbt artifacts.
 - `dbt-osmosis generate query "<question>"`
   - option: `--execute`
 
-LLM-assisted subcommands require `dbt-osmosis[openai]` and a configured `LLM_PROVIDER`.
+LLM-assisted subcommands require `dbt-osmosis[openai]` and a configured `LLM_PROVIDER`. Azure AD authentication also requires `dbt-osmosis[azure]`.
 
 ## `dbt-osmosis nl`
 
