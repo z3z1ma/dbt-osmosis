@@ -87,4 +87,10 @@ def test_proxy_extra_docs_are_dependency_only() -> None:
     ])
 
     assert "dbt-osmosis[proxy]` only installs dependencies" in docs
+    assert "experimental opt-in SQL proxy runtime" in docs
+    assert "does not start a proxy server" in docs
+    assert "configure authentication, TLS, or listen/bind settings" in docs
+    assert "local-only experiment with `mysql-mimic` defaults" in docs
+    assert "do not expose it to untrusted networks" in docs
+    assert "proxy comment middleware is in-memory only" in docs
     assert "ticket:c10proxy25" in docs

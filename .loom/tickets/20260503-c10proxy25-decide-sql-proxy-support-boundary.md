@@ -1,11 +1,11 @@
 ---
 id: ticket:c10proxy25
 kind: ticket
-status: ready
+status: active
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T16:31:03Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,8 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+  packets:
+    - packet:ralph-ticket-c10proxy25-20260504T163103Z
 depends_on: []
 ---
 
@@ -127,3 +129,4 @@ Coordinate with ticket:c10pkg10 and ticket:c10sql21.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench oracle finding.
+- 2026-05-04T16:31:03Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10proxy25-20260504T163103Z` for experimental opt-in proxy boundary, dependency, SQL preservation, docs, and in-memory comment middleware tests.

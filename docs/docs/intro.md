@@ -43,7 +43,7 @@ Optional extras:
 - `dbt-osmosis[duckdb]` installs the DuckDB adapter used by the demo project and fixture workflows
 - `dbt-osmosis[openai]` enables synthesis and natural-language generation features
 - `dbt-osmosis[azure]` installs Azure AD authentication support for Azure OpenAI
-- `dbt-osmosis[proxy]` only installs dependencies for the experimental SQL proxy runtime; `ticket:c10proxy25` owns proxy support semantics
+- `dbt-osmosis[proxy]` only installs dependencies for the experimental opt-in SQL proxy runtime; it does not start a proxy server, configure authentication, TLS, or listen/bind settings, or make comment middleware durable. The proxy module entrypoint is a local-only experiment with `mysql-mimic` defaults, not a hardened user-facing server; do not expose it to untrusted networks. The proxy comment middleware is in-memory only, and `ticket:c10proxy25` owns proxy support semantics.
 
 ## 2. Configure YAML routing
 

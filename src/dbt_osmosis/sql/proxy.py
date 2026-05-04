@@ -1,5 +1,5 @@
 # pyright: reportMissingTypeStubs=false, reportAny=false, reportImplicitOverride=false, reportUnknownMemberType=false, reportUnusedImport=false, reportUnknownParameterType=false
-"""Proxy server experiment that any MySQL client (including BI tools) can connect to."""
+"""Experimental local SQL proxy with no dbt-osmosis auth, TLS, or bind hardening."""
 
 import asyncio
 import functools
@@ -72,8 +72,8 @@ class DbtSession(Session):
     async def _alter_table_comment_middleware(self, q: Query) -> AllowedResult:
         """Intercept ALTER TABLE ... MODIFY COLUMN ... COMMENT statements
 
-        This middleware will update the column description in the dbt project manifest. Eventually
-        it could use our Yaml context class to actually write the changes to disk.
+        This middleware updates descriptions only in the in-memory dbt project manifest for the
+        current proxy session. It does not write schema YAML or any other durable files to disk.
         """
         if isinstance(q.expression, exp.Command):
             lower_sql = q.sql.lower()
@@ -119,7 +119,7 @@ class DbtSession(Session):
         resp, table = await asyncio.to_thread(
             execute_sql_code,
             self.project,
-            expression.sql(dialect=self.project.adapter.type()),
+            sql,
         )
         if resp.code:
             raise QueryException(resp)

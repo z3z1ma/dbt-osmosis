@@ -40,7 +40,7 @@ This installs into the active Python environment (virtualenv, venv, or system Py
 - `dbt-osmosis[duckdb]` installs the DuckDB adapter used by the demo project and fixture workflows.
 - `dbt-osmosis[openai]` installs the OpenAI SDK for synthesis, natural-language generation, `test-llm`, and AI test suggestions. If `LLM_PROVIDER` is unset, these commands default to the OpenAI provider.
 - `dbt-osmosis[azure]` installs Azure AD authentication support for Azure OpenAI; use it together with `dbt-osmosis[openai]` for `LLM_PROVIDER=azure-openai-ad`.
-- `dbt-osmosis[proxy]` only installs dependencies for the experimental SQL proxy runtime; it does not imply support beyond the proxy semantics owned by `ticket:c10proxy25`.
+- `dbt-osmosis[proxy]` only installs dependencies for the experimental opt-in SQL proxy runtime; it does not imply production support, start a proxy server, configure authentication, TLS, or listen/bind settings, or make comment middleware durable. The proxy module entrypoint is a local-only experiment with `mysql-mimic` defaults, not a hardened user-facing server; do not expose it to untrusted networks. The proxy comment middleware is in-memory only, and `ticket:c10proxy25` owns proxy support semantics.
 
 ## Verify
 
