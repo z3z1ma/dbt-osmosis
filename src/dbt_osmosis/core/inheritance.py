@@ -30,6 +30,26 @@ __all__ = [
 ]
 
 
+def _generation_sort_key(generation: str) -> tuple[int, str]:
+    """Sort generation_N keys by numeric depth with a deterministic fallback."""
+    try:
+        return (int(generation.rsplit("_", 1)[1]), generation)
+    except (IndexError, ValueError):
+        return (-1, generation)
+
+
+def _order_preserving_union(primary: t.Iterable[str], secondary: t.Iterable[str]) -> list[str]:
+    """Return primary items followed by unseen secondary items in their original order."""
+    merged: list[str] = []
+    seen: set[str] = set()
+    for item in (*primary, *secondary):
+        if item in seen:
+            continue
+        seen.add(item)
+        merged.append(item)
+    return merged
+
+
 def _column_to_dict(column: t.Any, **kwargs: t.Any) -> dict[str, t.Any]:
     """Convert a ColumnInfo to dict, handling missing config attribute in dbt-core 1.10+.
 
@@ -278,7 +298,7 @@ def _build_node_ancestor_tree(
     """Build a flat graph of a node and it's ancestors."""
     logger.debug(":seedling: Building ancestor tree/branch for => %s", node.unique_id)
     if tree is None or visited is None:
-        visited = set(node.unique_id)
+        visited = {node.unique_id}
         tree = {"generation_0": [node.unique_id]}
         depth = 1
 
@@ -540,7 +560,7 @@ def _merge_graph_node_data(
     """Merge graph edge data into existing graph node, handling tags and meta merging."""
     # Merge top-level tags
     current_tags = graph_node.get("tags", [])
-    if merged_tags := (set(graph_edge.pop("tags", [])) | set(current_tags)):
+    if merged_tags := _order_preserving_union(current_tags, graph_edge.pop("tags", [])):
         graph_edge["tags"] = list(merged_tags)
 
     # Merge top-level meta, but preserve osmosis_progenitor from the first (farthest) generation
@@ -574,7 +594,10 @@ def _merge_graph_node_data(
         # Merge config.tags
         current_config_tags = current_config.get("tags", [])
         edge_config_tags = edge_config.pop("tags", [])
-        if merged_config_tags := (set(edge_config_tags) | set(current_config_tags)):
+        if merged_config_tags := _order_preserving_union(
+            current_config_tags,
+            edge_config_tags,
+        ):
             edge_config["tags"] = list(merged_config_tags)
         # Merge remaining config keys
         for k, v in current_config.items():
@@ -779,7 +802,7 @@ def _build_column_knowledge_graph(
     progenitor_alternatives: dict[str, list[str]] = {}
 
     # Process ancestors from farthest to closest
-    for generation in reversed(sorted(tree.keys())):
+    for generation in sorted(tree.keys(), key=_generation_sort_key, reverse=True):
         ancestors = tree[generation]
         processed_columns_in_generation[generation] = set()
 

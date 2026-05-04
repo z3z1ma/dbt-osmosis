@@ -22,13 +22,16 @@ from unittest import mock
 import pytest
 
 from dbt_osmosis.core.inheritance import (
+    _build_column_knowledge_graph,
+    _build_node_ancestor_tree,
     _collect_column_variants,
     _get_node_yaml,
+    _merge_graph_node_data,
     _versioned_model_yaml_view,
 )
 from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.sync_operations import sync_node_to_yaml
-from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
+from dbt_osmosis.core.transforms import apply_semantic_analysis, inherit_upstream_column_knowledge
 
 
 def _set_column_progenitor_override(
@@ -65,6 +68,142 @@ def _ensure_column_config(column):
     if not hasattr(config, "meta"):
         config.meta = {}
     return config
+
+
+def test_ancestor_tree_detects_cycle_back_to_root_unique_id():
+    """A root node revisited through an ancestor cycle should be skipped by full unique ID."""
+    root_id = "model.pkg.a"
+    parent_id = "model.pkg.b"
+    root = SimpleNamespace(
+        unique_id=root_id,
+        depends_on=SimpleNamespace(nodes=[parent_id]),
+    )
+    parent = SimpleNamespace(
+        unique_id=parent_id,
+        depends_on=SimpleNamespace(nodes=[root_id]),
+    )
+    manifest = SimpleNamespace(nodes={root_id: root, parent_id: parent}, sources={})
+
+    tree = _build_node_ancestor_tree(manifest, root)
+
+    assert tree == {
+        "generation_0": [root_id],
+        "generation_1": [parent_id],
+    }
+
+
+def test_column_knowledge_processes_numeric_generations_farthest_to_closest(
+    yaml_context,
+    fresh_caches,
+    monkeypatch,
+):
+    """generation_10 should be treated as farther away than generation_2, not lexicographic."""
+    import dbt_osmosis.core.inheritance as inheritance_module
+
+    manifest = yaml_context.project.manifest
+    raw_customers = manifest.nodes["seed.jaffle_shop_duckdb.raw_customers"]
+    raw_customers.columns["first_name"].description = "Raw source description"
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "Closer staging description"
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = ""
+
+    monkeypatch.setattr(
+        inheritance_module,
+        "_build_node_ancestor_tree",
+        lambda manifest, node: {
+            "generation_0": [customers.unique_id],
+            "generation_2": [stg_customers.unique_id],
+            "generation_10": [raw_customers.unique_id],
+        },
+    )
+
+    graph = _build_column_knowledge_graph(yaml_context, customers)
+
+    assert graph["first_name"]["description"] == "Closer staging description"
+
+
+def test_graph_node_tag_merges_preserve_local_then_inherited_order():
+    """Top-level and config tags should use order-preserving union, not set order."""
+    graph_node = {
+        "tags": ["local", "shared"],
+        "config": {"tags": ["config_local", "config_shared"]},
+    }
+    graph_edge = {
+        "tags": ["upstream", "shared", "upstream_2"],
+        "config": {"tags": ["config_upstream", "config_shared", "config_upstream_2"]},
+    }
+
+    _merge_graph_node_data(graph_node, graph_edge)
+
+    assert graph_node["tags"] == ["local", "shared", "upstream", "upstream_2"]
+    assert graph_node["config"]["tags"] == [
+        "config_local",
+        "config_shared",
+        "config_upstream",
+        "config_upstream_2",
+    ]
+
+
+def test_semantic_analysis_tag_merge_preserves_existing_then_suggested_order(
+    yaml_context,
+    monkeypatch,
+):
+    """Semantic tag suggestions should append unseen tags without set reordering."""
+    import dbt_osmosis.core.inheritance as inheritance_module
+    import dbt_osmosis.core.llm as llm_module
+
+    class FakeColumn:
+        def __init__(
+            self,
+            *,
+            description="",
+            tags=None,
+            meta=None,
+            data_type="integer",
+        ):
+            self.description = description
+            self.tags = tags or []
+            self.meta = meta or {}
+            self.data_type = data_type
+
+        def replace(self, **kwargs):
+            values = {
+                "description": self.description,
+                "tags": self.tags,
+                "meta": self.meta,
+                "data_type": self.data_type,
+            }
+            values.update(kwargs)
+            return FakeColumn(**values)
+
+    node = SimpleNamespace(
+        unique_id="model.pkg.semantic_target",
+        name="semantic_target",
+        description="",
+        raw_sql="select 1 as id",
+        columns={"id": FakeColumn(tags=["existing", "shared"])},
+    )
+
+    def fake_analyze_column_semantics(**kwargs):
+        return {"tags": ["semantic", "shared", "new"], "semantic_type": "primary_key"}
+
+    monkeypatch.setattr(
+        inheritance_module, "_build_column_knowledge_graph", lambda context, node: {}
+    )
+    monkeypatch.setitem(
+        fake_analyze_column_semantics.__globals__, "get_llm_client", lambda: object()
+    )
+    monkeypatch.setattr(llm_module, "analyze_column_semantics", fake_analyze_column_semantics)
+    monkeypatch.setattr(
+        llm_module,
+        "generate_semantic_description",
+        lambda **kwargs: "Generated description",
+    )
+
+    apply_semantic_analysis(yaml_context, node)
+
+    assert node.columns["id"].tags == ["existing", "shared", "semantic", "new"]
 
 
 def test_collect_column_variants_honors_project_level_prefix(tmp_path, fresh_caches):

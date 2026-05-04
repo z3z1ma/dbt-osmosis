@@ -35,6 +35,18 @@ __all__ = [
 ]
 
 
+def _order_preserving_union(primary: t.Iterable[str], secondary: t.Iterable[str]) -> list[str]:
+    """Return primary items followed by unseen secondary items in their original order."""
+    merged: list[str] = []
+    seen: set[str] = set()
+    for item in (*primary, *secondary):
+        if item in seen:
+            continue
+        seen.add(item)
+        merged.append(item)
+    return merged
+
+
 @dataclass
 class TransformOperation:
     """An operation to be run on a dbt manifest node."""
@@ -913,7 +925,7 @@ def apply_semantic_analysis(
             if semantic_result.get("tags"):
                 existing_tags = list(column_info.tags) if column_info.tags else []
                 new_tags = semantic_result["tags"]
-                merged_tags = list(set(existing_tags + new_tags))
+                merged_tags = _order_preserving_union(existing_tags, new_tags)
                 if merged_tags != existing_tags:
                     node.columns[column_name] = column_info.replace(tags=merged_tags)
                     logger.debug(
