@@ -4,7 +4,7 @@ kind: wiki
 page_type: reference
 status: active
 created_at: 2026-05-04T08:19:55Z
-updated_at: 2026-05-04T11:48:07Z
+updated_at: 2026-05-04T12:24:01Z
 scope:
   kind: repository
   repositories:
@@ -13,13 +13,16 @@ links:
   tickets:
     - ticket:c10race13
     - ticket:c10loss16
+    - ticket:c10dry17
   evidence:
     - evidence:c10race13-yaml-sync-serialization-verification
     - evidence:c10race13-main-ci-success
     - evidence:c10loss16-duplicate-yaml-fail-closed-validation
+    - evidence:c10dry17-dry-run-cache-isolation-validation
   critique:
     - critique:c10race13-yaml-sync-serialization-review
     - critique:c10loss16-duplicate-yaml-fail-closed-review
+    - critique:c10dry17-dry-run-cache-isolation-review
 ---
 
 # Summary
@@ -37,6 +40,9 @@ YAML sync must serialize work by resolved target YAML path. Within one `sync_nod
 - Preflight all grouped target YAML documents before all-node sync dispatches workers, so a duplicate in one target aborts the command before unrelated YAML files are finalized or written.
 - Use unique temporary files in the target directory for YAML writes, then atomically replace the target after write validation.
 - Preserve existing YAML file mode when replacing an existing target file.
+- Dry-run and `--check` paths may compare mutated YAML and count mutations, but they must discard processed `_YAML_BUFFER_CACHE` and `_YAML_ORIGINAL_CACHE` entries before later reads in the same process.
+- Keep non-dry-run `sync_node_to_yaml(..., commit=False)` as the intentional in-memory inspection path; tests that rely on that helper behavior should set `dry_run = False` explicitly.
+- Test cache reset fixtures should clear `_COLUMN_LIST_CACHE`, `_YAML_BUFFER_CACHE`, and `_YAML_ORIGINAL_CACHE` in place under their production locks instead of monkeypatching the cache globals to replacement dicts.
 
 # Boundaries
 
@@ -44,6 +50,8 @@ YAML sync must serialize work by resolved target YAML path. Within one `sync_nod
 - Direct concurrent calls to `sync_node_to_yaml(context, node=<single node>)` remain outside the grouped scheduler.
 - Source grouping coverage currently relies on source-shaped nodes because the demo fixture does not parse sources.
 - Generated/NL writer migration is outside this page's current sync path and is tracked separately by ticket:c10gen20.
+- Dry-run cleanup intentionally discards original-cache state. A preview-then-apply helper flow should reread YAML before the real write rather than reusing filtered data from before the dry-run preview.
+- Dry-run sync can still mutate a shared cached document transiently before finalization discards it; the accepted guarantee is post-call same-process read isolation, not concurrent-reader isolation during the call.
 
 # Sources
 
@@ -54,9 +62,14 @@ YAML sync must serialize work by resolved target YAML path. Within one `sync_nod
 - ticket:c10loss16
 - evidence:c10loss16-duplicate-yaml-fail-closed-validation
 - critique:c10loss16-duplicate-yaml-fail-closed-review
+- ticket:c10dry17
+- evidence:c10dry17-dry-run-cache-isolation-validation
+- critique:c10dry17-dry-run-cache-isolation-review
 - `src/dbt_osmosis/core/sync_operations.py`
 - `src/dbt_osmosis/core/schema/writer.py`
 - `tests/core/test_sync_operations.py`
+- `tests/core/test_schema.py`
+- `tests/conftest.py`
 
 # Related Pages
 

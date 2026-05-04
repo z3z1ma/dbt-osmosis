@@ -1,11 +1,11 @@
 ---
 id: ticket:c10dry17
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T12:24:01Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,13 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10dry17-dry-run-cache-isolation-validation
+  packets:
+    - packet:ralph-ticket-c10dry17-20260504T115035Z
+  critique:
+    - critique:c10dry17-dry-run-cache-isolation-review
+  wiki:
+    - wiki:yaml-sync-safety
 depends_on: []
 ---
 
@@ -66,8 +73,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10dry17#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10dry17#ACC-004 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10dry17#ACC-001 | evidence:c10dry17-dry-run-cache-isolation-validation | critique:c10dry17-dry-run-cache-isolation-review | accepted |
+| ticket:c10dry17#ACC-002 | evidence:c10dry17-dry-run-cache-isolation-validation | critique:c10dry17-dry-run-cache-isolation-review | accepted |
+| ticket:c10dry17#ACC-003 | evidence:c10dry17-dry-run-cache-isolation-validation | critique:c10dry17-dry-run-cache-isolation-review | accepted |
+| ticket:c10dry17#ACC-004 | evidence:c10dry17-dry-run-cache-isolation-validation | critique:c10dry17-dry-run-cache-isolation-review | accepted |
+| ticket:c10dry17#ACC-005 | evidence:c10dry17-dry-run-cache-isolation-validation | critique:c10dry17-dry-run-cache-isolation-review | accepted |
 
 # Execution Notes
 
@@ -79,7 +89,10 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: dry-run regression test output.
+Evidence recorded:
+
+- evidence:oracle-backlog-scan
+- evidence:c10dry17-dry-run-cache-isolation-validation
 
 # Critique Disposition
 
@@ -91,30 +104,30 @@ Policy rationale: Cache behavior is subtle and can create cross-test/process con
 
 Required critique profiles: code-change, test-coverage
 
-Findings: None - no critique yet.
+Findings: critique:c10dry17-dry-run-cache-isolation-review#FIND-001 is low severity and accepted as a non-blocking residual risk. No medium/high findings.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: N/A - critique completed with no blockers.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: dry-run cache isolation and test-fixture rules updated in wiki:yaml-sync-safety.
 
-Deferred / not-required rationale: Consider wiki/testing note if cache reset becomes canonical.
+Deferred / not-required rationale: Final initiative-level CI evidence remains deferred to the initiative validation pass.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+wiki:yaml-sync-safety updated with dry-run cache cleanup and cache-fixture guidance.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests.
-Residual risks: Long-lived CLI/workbench processes may expose additional cache assumptions.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-04T12:24:01Z.
+Basis: implementation commit `d9eee85a212485c5d6f2944e52eafc2fad3c345e`, evidence:c10dry17-dry-run-cache-isolation-validation, critique:c10dry17-dry-run-cache-isolation-review, and wiki:yaml-sync-safety promotion.
+Residual risks: Full repository suite and GitHub Actions matrix are deferred to final initiative validation; `--check` coverage is helper-level rather than Click integration-level; dry-run sync can still expose transient in-memory state to concurrent same-process readers before finalization discards it; preview-then-apply helper flows should reread YAML after dry-run cleanup before a real write to preserve unmanaged sections.
 
 # Dependencies
 
@@ -123,3 +136,5 @@ Coordinate with ticket:c10race13 if grouping changes cache mutation flow.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from core architecture and tests/fixtures oracle findings.
+- 2026-05-04T11:50:35Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10dry17-20260504T115035Z` for test-first dry-run YAML cache isolation and production-cache fixture reset behavior with local-only validation.
+- 2026-05-04T12:24:01Z: Ralph iteration consumed. Implementation commit `d9eee85a212485c5d6f2944e52eafc2fad3c345e` isolated dry-run writer/sync cache state, converted cache fixtures to clear production cache instances, and added regression coverage. Local validation passed with `186 passed, 3 skipped`; final critique found no medium/high blockers. Accepted and closed with final initiative-level CI deferred.
