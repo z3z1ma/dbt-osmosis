@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.7.0",
-    "@docusaurus/types": "3.7.0"
+    "@docusaurus/types": "3.10.1"
   },
   "overrides": {
     "qs": "6.14.1",
