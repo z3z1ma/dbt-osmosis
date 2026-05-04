@@ -1,18 +1,147 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  DBT_ADAPTERS_CONSTRAINT: "dbt-adapters>=1.16.3,<2.0"
+  UV_NO_PROGRESS: "1"
 
 jobs:
-  release:
-    name: Release
+  validate:
+    name: Validate release candidate
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Check out the repository
+      - name: Check out the tested commit
         uses: actions/checkout@v4.1.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.1.0
+        with:
+          python-version: "3.10"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4.0.4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Upgrade pip
+        run: |
+          pip install --constraint=.github/workflows/constraints.txt pip
+          pip --version
+
+      - name: Install uv
+        run: |
+          pip install --constraint=.github/workflows/constraints.txt uv
+          uv --version
+
+      - name: Check uv lockfile freshness
+        run: |
+          uv lock --check
+
+      - name: Install Python check dependencies
+        run: |
+          uv pip install --system -e ".[dev,openai]" "$DBT_ADAPTERS_CONSTRAINT"
+
+      - name: Run ruff
+        run: |
+          ruff check
+
+      - name: Run basedpyright
+        run: |
+          basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright.json || true
+          python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
+
+      - name: Parse demo manifest
+        run: |
+          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+
+      - name: Run pytest
+        run: |
+          pytest -q
+
+      - name: Install docs dependencies
+        run: |
+          npm --prefix docs ci
+
+      - name: Build docs
+        run: |
+          npm --prefix docs run build
+
+      - name: Build package
+        run: |
+          uvx --from=hatchling==1.26.3 hatchling build
+
+      - name: Validate package metadata
+        run: |
+          uvx --from=twine==6.1.0 twine check --strict dist/*
+
+      - name: Smoke test built wheel install
+        run: |
+          WHEEL="$(python - <<'PY'
+          from pathlib import Path
+
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"expected exactly one wheel, found: {wheels}")
+          print(wheels[0])
+          PY
+          )"
+          SMOKE_ENV="${RUNNER_TEMP}/dbt-osmosis-wheel-smoke"
+          uv venv --python 3.10 "$SMOKE_ENV"
+          uv --no-config pip install --python "$SMOKE_ENV/bin/python" "$WHEEL"
+          "$SMOKE_ENV/bin/dbt-osmosis" --help
+          "$SMOKE_ENV/bin/python" -m dbt_osmosis --help
+          "$SMOKE_ENV/bin/python" -c "import dbt_osmosis.cli.main"
+          uv --no-config pip check --python "$SMOKE_ENV/bin/python"
+
+      - name: Declare release notes source
+        run: |
+          echo "Release Drafter is the GitHub release notes source for this workflow."
+
+      - name: Upload validated package artifacts
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: release-dist
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Tag and publish release
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@v4.1.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
       - name: Set up Python
@@ -30,6 +159,12 @@ jobs:
           pip install --constraint=.github/workflows/constraints.txt uv
           uv --version
 
+      - name: Download validated package artifacts
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: release-dist
+          path: dist
+
       - name: Check if there is a parent commit
         id: check-parent-commit
         run: |
@@ -44,13 +179,15 @@ jobs:
           version-command: |
             sed -nE 's/^version = "([^"]+)"/\1/p' pyproject.toml
 
-      - name: Bump version for developmental release
+      - name: Bump version for developmental build
         if: "! steps.check-version.outputs.tag"
         run: |
           sed -i -E "s/^version\s*=\s*\"[^\"]+\"/version = \"1.0.0.dev.$(date +%Y%m%d)\"/" pyproject.toml
 
-      - name: Build package
+      - name: Build developmental package
+        if: "! steps.check-version.outputs.tag"
         run: |
+          rm -rf dist
           uvx --from=hatchling==1.26.3 hatchling build
 
       - name: Publish package on PyPI
@@ -60,15 +197,9 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
 
-      # - name: Publish package on TestPyPI
-      #   if: "! steps.check-version.outputs.tag"
-      #   uses: pypa/gh-action-pypi-publish@v1.12.3
-      #   with:
-      #     user: __token__
-      #     password: ${{ secrets.TEST_PYPI_TOKEN }}
-      #     repository_url: https://test.pypi.org/legacy/
-
+      # Release Drafter is the GitHub release notes source for published releases.
       - name: Publish the release notes
+        if: steps.check-version.outputs.tag
         uses: release-drafter/release-drafter@v5.23.0
         with:
           publish: ${{ steps.check-version.outputs.tag != '' }}

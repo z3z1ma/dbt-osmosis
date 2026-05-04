@@ -1,11 +1,11 @@
 ---
 id: ticket:c10rel08
 kind: ticket
-status: ready
+status: active
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T01:50:21Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10rel08-local-release-workflow-validation
+  critique:
+    - critique:c10rel08-release-workflow-hardening
+  packets:
+    - packet:ralph-ticket-c10rel08-20260504T012824Z
 depends_on: []
 ---
 
@@ -68,8 +73,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10rel08#ACC-004 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10rel08#ACC-002 | None - release workflow not changed/run yet | None | open |
+| ticket:c10rel08#ACC-001 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | locally supported; final main CI pending |
+| ticket:c10rel08#ACC-002 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | locally supported; final main CI pending |
+| ticket:c10rel08#ACC-003 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | partially supported; full workflow CI pending |
+| ticket:c10rel08#ACC-004 | evidence:oracle-backlog-scan; evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | locally supported; final main CI pending |
+| ticket:c10rel08#ACC-005 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | supported by workflow review; final main CI pending |
+| ticket:c10rel08#ACC-006 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | supported by workflow review; final main CI pending |
 
 # Execution Notes
 
@@ -77,11 +86,11 @@ Use non-destructive dry-run or workflow reasoning for validation. Do not push ta
 
 # Blockers
 
-Potential human decision if switching to PyPI trusted publishing requires repository/project setup outside code.
+Final GitHub Actions evidence is pending before acceptance. Trusted publishing was not adopted because it may require external PyPI/repository setup; token-based PyPI publishing remains explicit.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: workflow diff review and dry-run/pass evidence.
+Existing evidence: evidence:oracle-backlog-scan; evidence:c10rel08-local-release-workflow-validation. Missing evidence: final GitHub Actions evidence from `main`.
 
 # Critique Disposition
 
@@ -93,11 +102,11 @@ Policy rationale: Release workflow changes can affect irreversible tags and publ
 
 Required critique profiles: release-packaging, operator-clarity, security
 
-Findings: None - no critique yet.
+Findings: None open. Pre-final findings about validation credentials, missing full Tests workflow gate, and broad `workflow_run` triggers were resolved before final verdict.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: None. Mandatory critique passed in `critique:c10rel08-release-workflow-hardening`.
 
 # Retrospective / Promotion Disposition
 
@@ -125,3 +134,6 @@ Coordinate with ticket:c10docs09 and ticket:c10pkg10 if package/docs checks beco
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CI/build oracle finding.
+- 2026-05-04T01:28:24Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10rel08-20260504T012824Z` for release workflow validation-before-tag/publish implementation.
+- 2026-05-04T01:35:08Z: Consumed Ralph packet after `.github/workflows/release.yml` was updated to gate version tagging, PyPI publishing, and GitHub release-note publishing behind lock/package/test/docs/build/metadata/wheel-smoke checks; recorded local evidence and moved to mandatory critique.
+- 2026-05-04T01:50:21Z: Mandatory critique passed after parent follow-up split release validation into a read-only `validate` job, restricted write credentials to the post-validation `release` job, and narrowed `workflow_run` to successful same-repository push runs of `Tests` on `main`. Final `main` GitHub Actions evidence remains pending before acceptance.
