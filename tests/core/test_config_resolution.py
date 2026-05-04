@@ -409,10 +409,11 @@ dbt-osmosis-options:
             "dbt_osmosis_options": {"output_to_lower": True},
         }
         mock_node.unrendered_config = {
-            "dbt_osmosis_options": {"skip_add_tags": False},
+            "dbt_osmosis_options": {"output_to_lower": True, "skip_add_tags": False},
         }
 
         assert ConfigMetaSource(mock_node).get("output-to-lower") is True
+        assert UnrenderedConfigSource(mock_node).get("output-to-lower") is True
         assert UnrenderedConfigSource(mock_node).get("skip-add-tags") is False
 
     def test_supplementary_file_supports_snake_inner_keys_in_both_namespaces(
