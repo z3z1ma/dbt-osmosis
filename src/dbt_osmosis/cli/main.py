@@ -115,28 +115,24 @@ def cli() -> None:
     pass
 
 
-def test_llm_connection(llm_client=None) -> None:
+def test_llm_connection(llm_client: tuple[t.Any, str] | None = None) -> None:
     """Test the connection to the LLM client."""
     import os
 
-    from dbt_osmosis.core.llm import get_llm_client
+    if llm_client is None:
+        from dbt_osmosis.core.llm import get_llm_client
 
-    llm_client = os.getenv("LLM_PROVIDER")
-    if not llm_client:
-        click.echo(
-            "ERROR: LLM_PROVIDER environment variable is not set. Please set it to one of the available providers."
-        )
-        return
+        llm_client = get_llm_client()
 
-    client, model_engine = get_llm_client()
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    client, model_engine = llm_client
     if not client or not model_engine:
-        click.echo(
-            f"Connection ERROR: The environment variables for LLM provider {llm_client} are not set correctly."
+        raise click.ClickException(
+            f"The environment variables for LLM provider {provider} are not set correctly."
         )
-        return
 
     click.echo(
-        f"LLM client connection successful. Provider: {llm_client}, Model Engine: {model_engine}"
+        f"LLM client connection successful. Provider: {provider}, Model Engine: {model_engine}"
     )
 
 
@@ -144,10 +140,15 @@ def test_llm_connection(llm_client=None) -> None:
 def test_llm() -> None:
     """Test the connection to the LLM client"""
     logger.info("INFO: Invoking test_llm_connection...")
+    from dbt_osmosis.core.exceptions import LLMConfigurationError
     from dbt_osmosis.core.llm import get_llm_client
 
-    llm_client = get_llm_client()
-    test_llm_connection(llm_client)
+    try:
+        llm_client = get_llm_client()
+        test_llm_connection(llm_client)
+    except (ImportError, LLMConfigurationError) as e:
+        raise click.ClickException(str(e)) from e
+
     click.echo("LLM client connection test completed.")
 
 
@@ -1946,7 +1947,10 @@ def _output_diff_markdown(results: dict[str, t.Any], severity_filter: str) -> No
     "--use-ai",
     is_flag=True,
     default=True,
-    help="Use AI for test suggestions (requires OpenAI). Falls back to pattern-based if False.",
+    help=(
+        "Use AI for test suggestions (enabled by default; requires OpenAI). "
+        "AI failures fall back to pattern-based suggestions."
+    ),
 )
 @click.option(
     "--pattern-only",
@@ -2015,6 +2019,17 @@ def suggest(
 
     # Determine if we should use AI
     use_ai_for_suggestions = use_ai and not pattern_only
+    if use_ai_for_suggestions:
+        click.echo(
+            "AI test suggestions are enabled by default; if AI configuration fails, "
+            "dbt-osmosis falls back to pattern-based suggestions.",
+            err=True,
+        )
+    else:
+        click.echo(
+            "Pattern-only test suggestions enabled; AI will not be used.",
+            err=True,
+        )
 
     # Check if specific models are requested via FQN or models args
     if fqn or models:

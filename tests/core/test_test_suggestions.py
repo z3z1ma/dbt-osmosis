@@ -463,6 +463,26 @@ class TestAITestSuggester:
             # Should fall back to pattern-based
             assert isinstance(suggestions, dict)
 
+    def test_ai_suggest_fallback_logs_visible_warning(
+        self, mock_context, sample_node, caplog: pytest.LogCaptureFixture
+    ):
+        """AI failures should make the fallback visible to users/operators."""
+        extractor = TestPatternExtractor(mock_context)
+        extractor.extract_patterns()
+
+        suggester = AITestSuggester(mock_context, extractor)
+        mock_client = mock.MagicMock()
+        mock_client.chat.completions.create.side_effect = Exception("LLM unavailable")
+
+        with mock.patch(
+            "dbt_osmosis.core.test_suggestions.get_llm_client", return_value=(mock_client, "gpt-4")
+        ):
+            suggestions = suggester._ai_suggest_tests(sample_node)
+
+        assert isinstance(suggestions, dict)
+        assert "AI test suggestions failed" in caplog.text
+        assert "falling back to pattern-based suggestions" in caplog.text
+
 
 class TestConvenienceFunctions:
     """Tests for convenience functions."""

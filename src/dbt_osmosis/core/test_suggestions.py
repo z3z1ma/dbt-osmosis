@@ -11,6 +11,7 @@ This module provides functionality to:
 from __future__ import annotations
 
 import json
+import logging
 import typing as t
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from dbt_osmosis.core.exceptions import LLMResponseError
 from dbt_osmosis.core.introspection import PropertyAccessor
 from dbt_osmosis.core.llm import get_llm_client
 from dbt_osmosis.core.settings import YamlRefactorContext
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "TestPatternExtractor",
@@ -424,12 +427,12 @@ class AITestSuggester:
         self, node: t.Any, temperature: float = 0.3
     ) -> dict[str, list[TestSuggestion]]:
         """Generate test suggestions using AI."""
-        client, model_engine = get_llm_client()
-
-        # Build the prompt
-        prompt = self._create_test_suggestion_prompt(node)
-
         try:
+            client, model_engine = get_llm_client()
+
+            # Build the prompt
+            prompt = self._create_test_suggestion_prompt(node)
+
             if hasattr(client, "chat"):
                 response = client.chat.completions.create(
                     model=model_engine,
@@ -449,7 +452,11 @@ class AITestSuggester:
 
             return self._parse_ai_response(content)
 
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "AI test suggestions failed; falling back to pattern-based suggestions: %s",
+                exc,
+            )
             # Fallback to pattern-based suggestions
             return self._pattern_suggest_tests(node)
 

@@ -1,11 +1,11 @@
 ---
 id: ticket:c10llm23
 kind: ticket
-status: ready
+status: active
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T14:49:51Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,8 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+  packets:
+    - packet:ralph-ticket-c10llm23-20260504T144951Z
 depends_on: []
 ---
 
@@ -127,3 +129,4 @@ Coordinate with ticket:c10pkg10 for extras.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench oracle findings.
+- 2026-05-04T14:49:51Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10llm23-20260504T144951Z` for test-first LLM client/default-provider, Azure AD, optional dependency, and AI fallback visibility work with recommended critique before acceptance.

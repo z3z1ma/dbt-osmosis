@@ -85,7 +85,7 @@ External formatting:
 
 Experimental:
 
-- `--synthesize` requires installing `dbt-osmosis[openai]` and configuring `LLM_PROVIDER` plus the provider-specific environment variables. Azure AD authentication also requires `dbt-osmosis[azure]`.
+- `--synthesize` requires installing `dbt-osmosis[openai]` and configuring provider-specific environment variables. If `LLM_PROVIDER` is unset, dbt-osmosis uses the OpenAI provider by default. Azure AD authentication also requires `dbt-osmosis[azure]`.
 
 Example:
 
@@ -142,7 +142,7 @@ Generates dbt artifacts.
 - `dbt-osmosis generate query "<question>"`
   - option: `--execute`
 
-LLM-assisted subcommands require `dbt-osmosis[openai]` and a configured `LLM_PROVIDER`. Azure AD authentication also requires `dbt-osmosis[azure]`.
+LLM-assisted subcommands require `dbt-osmosis[openai]` and provider-specific environment variables. If `LLM_PROVIDER` is unset, dbt-osmosis uses the OpenAI provider by default. Azure AD authentication also requires `dbt-osmosis[azure]`.
 
 ## `dbt-osmosis nl`
 
@@ -168,14 +168,15 @@ Important options:
 - `-o, --output`
 - `--format [json|yaml|table]`
 
-`--use-ai` requires the OpenAI extra; `--pattern-only` keeps suggestions deterministic.
+AI suggestions are enabled by default and require the OpenAI extra plus provider-specific environment variables. If AI configuration or generation fails, dbt-osmosis reports that fallback and uses pattern-based suggestions. `--pattern-only` disables AI and keeps suggestions deterministic.
 
 ## `dbt-osmosis test-llm`
 
 Validates LLM client configuration.
 
-- Reads `LLM_PROVIDER`
+- Reads `LLM_PROVIDER`, defaulting to `openai` when it is unset
 - Verifies the provider-specific environment variables are present
+- Reports missing optional packages and invalid providers as friendly CLI errors
 - Prints the configured provider and model engine on success
 
 ## `dbt-osmosis diff`

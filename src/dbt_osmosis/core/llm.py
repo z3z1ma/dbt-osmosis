@@ -16,11 +16,16 @@ try:
     import openai
     from openai import AzureOpenAI, OpenAI
 
+    _OpenAIRateLimitError = openai.RateLimitError
     _OPENAI_AVAILABLE = True
 except ImportError:
     openai = None  # type: ignore[assignment]
     OpenAI = None  # type: ignore[assignment,misc]
     AzureOpenAI = None  # type: ignore[assignment,misc]
+
+    class _OpenAIRateLimitError(Exception):  # type: ignore[no-redef]
+        """Fallback sentinel used when the optional OpenAI SDK is unavailable."""
+
     _OPENAI_AVAILABLE = False
 
 
@@ -77,7 +82,7 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
     for attempt in range(max_retries + 1):
         try:
             return func()
-        except openai.RateLimitError as e:
+        except _OpenAIRateLimitError as e:
             last_exception = e
             if attempt == max_retries:
                 raise
@@ -185,7 +190,7 @@ def get_llm_client() -> tuple[t.Any, str]:
 
     """
     if not _OPENAI_AVAILABLE:
-        raise ImportError(
+        raise LLMConfigurationError(
             "OpenAI is not installed. Please install it with: "
             "pip install 'dbt-osmosis[openai]' or pip install openai"
         )
@@ -228,6 +233,7 @@ def get_llm_client() -> tuple[t.Any, str]:
     elif provider == "azure-openai-ad":
         azure_endpoint = os.getenv("AZURE_OPENAI_BASE_URL")
         model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
         azure_ad_token_scope = os.getenv("AZURE_OPENAI_AD_TOKEN_SCOPE")
 
         if not (azure_endpoint and model_engine):
@@ -267,9 +273,10 @@ def get_llm_client() -> tuple[t.Any, str]:
                 f"Failed to acquire Azure AD token: {_redact_credentials(str(e))}"
             ) from e
 
-        client = OpenAI(
-            base_url=azure_endpoint.rstrip("/"),
-            api_key=token,
+        client = AzureOpenAI(
+            azure_endpoint=azure_endpoint,
+            azure_ad_token=token,
+            api_version=api_version,
         )
 
     elif provider == "lm-studio":

@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from dbt_osmosis.cli.main import cli
+from dbt_osmosis.core.exceptions import LLMConfigurationError
 from dbt_osmosis.core.settings import YamlRefactorContext
 
 
@@ -260,6 +261,94 @@ def test_test_llm_command(runner: CliRunner) -> None:
         or "LLM_PROVIDER" in result.output
         or "openai" in result.output.lower()
     )
+
+
+def test_test_llm_defaults_to_openai_and_resolves_once(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """test-llm should use the default OpenAI provider without requiring LLM_PROVIDER."""
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    mock_client = mock.Mock()
+
+    with mock.patch(
+        "dbt_osmosis.core.llm.get_llm_client",
+        return_value=(mock_client, "gpt-4o"),
+    ) as get_client:
+        result = runner.invoke(cli, ["test-llm"])
+
+    assert result.exit_code == 0
+    assert "Provider: openai" in result.output
+    assert "Model Engine: gpt-4o" in result.output
+    get_client.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (LLMConfigurationError("OPENAI_API_KEY not set for OpenAI provider"), "OPENAI_API_KEY"),
+        (LLMConfigurationError("Invalid LLM provider 'bogus'"), "Invalid LLM provider"),
+        (
+            ImportError("OpenAI is not installed. Please install dbt-osmosis[openai]"),
+            "dbt-osmosis[openai]",
+        ),
+    ],
+)
+def test_test_llm_reports_friendly_click_errors(
+    runner: CliRunner,
+    error: Exception,
+    expected: str,
+) -> None:
+    """LLM config failures should be nonzero Click errors instead of tracebacks."""
+    with mock.patch("dbt_osmosis.core.llm.get_llm_client", side_effect=error):
+        result = runner.invoke(cli, ["test-llm"])
+
+    assert result.exit_code != 0
+    assert "Error:" in result.output
+    assert expected in result.output
+
+
+def test_test_suggest_pattern_only_reports_ai_disabled(
+    runner: CliRunner,
+) -> None:
+    """Pattern-only mode should be explicit and not invoke AI suggestions."""
+    mock_project = mock.Mock()
+
+    with (
+        mock.patch("dbt_osmosis.cli.main.create_dbt_project_context", return_value=mock_project),
+        mock.patch("dbt_osmosis.cli.main.YamlRefactorContext", return_value=mock.Mock()),
+        mock.patch(
+            "dbt_osmosis.cli.main.suggest_tests_for_project", return_value={}
+        ) as suggest_project,
+    ):
+        result = runner.invoke(cli, ["test", "suggest", "--pattern-only"])
+
+    assert result.exit_code == 0
+    assert "Pattern-only test suggestions enabled" in result.output
+    suggest_project.assert_called_once()
+    assert suggest_project.call_args.kwargs["use_ai"] is False
+
+
+def test_test_suggest_default_reports_ai_enabled(
+    runner: CliRunner,
+) -> None:
+    """Default suggestion mode should visibly tell users AI is on with fallback."""
+    mock_project = mock.Mock()
+
+    with (
+        mock.patch("dbt_osmosis.cli.main.create_dbt_project_context", return_value=mock_project),
+        mock.patch("dbt_osmosis.cli.main.YamlRefactorContext", return_value=mock.Mock()),
+        mock.patch(
+            "dbt_osmosis.cli.main.suggest_tests_for_project", return_value={}
+        ) as suggest_project,
+    ):
+        result = runner.invoke(cli, ["test", "suggest"])
+
+    assert result.exit_code == 0
+    assert "AI test suggestions are enabled by default" in result.output
+    assert "falls back to pattern-based suggestions" in result.output
+    suggest_project.assert_called_once()
+    assert suggest_project.call_args.kwargs["use_ai"] is True
 
 
 def test_version_option(runner: CliRunner) -> None:

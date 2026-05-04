@@ -6,7 +6,6 @@ import json
 from unittest import mock
 
 import pytest
-from openai.types.chat import ChatCompletionMessage
 
 from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 from dbt_osmosis.core.llm import (
@@ -17,6 +16,41 @@ from dbt_osmosis.core.llm import (
     generate_table_doc,
     get_llm_client,
 )
+
+
+class FakeBaseURL:
+    """Minimal stand-in for OpenAI's URL object."""
+
+    def __init__(self, url: str) -> None:
+        self.url = url if url.endswith("/") else f"{url}/"
+
+    def __str__(self) -> str:
+        return self.url
+
+
+class FakeOpenAI:
+    """Minimal OpenAI-compatible client used by provider-selection tests."""
+
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+        self.api_key = kwargs.get("api_key")
+        self.base_url = FakeBaseURL(kwargs.get("base_url", "https://api.openai.com/v1"))
+        self.chat = mock.Mock()
+
+
+class FakeAzureOpenAI(FakeOpenAI):
+    """Minimal Azure OpenAI-compatible client used by provider-selection tests."""
+
+
+@pytest.fixture(autouse=True)
+def _mock_openai_sdk(monkeypatch: pytest.MonkeyPatch):
+    """Keep LLM tests mock-only so the base env need not install OpenAI."""
+    openai_client = mock.Mock(side_effect=FakeOpenAI)
+    azure_openai_client = mock.Mock(side_effect=FakeAzureOpenAI)
+    monkeypatch.setattr("dbt_osmosis.core.llm._OPENAI_AVAILABLE", True)
+    monkeypatch.setattr("dbt_osmosis.core.llm.OpenAI", openai_client)
+    monkeypatch.setattr("dbt_osmosis.core.llm.AzureOpenAI", azure_openai_client)
+    return openai_client, azure_openai_client
 
 
 def _make_mock_response(headers: dict[str, str] | None = None) -> mock.Mock:
@@ -31,7 +65,7 @@ class MockChoice:
     """Mock choice for OpenAI response."""
 
     def __init__(self, content: str) -> None:
-        self.message = ChatCompletionMessage(content=content, role="assistant")
+        self.message = mock.Mock(content=content, role="assistant")
 
 
 class MockResponse:
@@ -39,6 +73,13 @@ class MockResponse:
 
     def __init__(self, content: str) -> None:
         self.choices = [MockChoice(content)]
+
+
+def _make_mock_llm_client(response: mock.Mock | MockResponse) -> mock.Mock:
+    """Create a mocked chat-completions client without importing OpenAI."""
+    mock_client = mock.Mock()
+    mock_client.chat.completions.create.return_value = response
+    return mock_client
 
 
 def test_redact_credentials_empty() -> None:
@@ -72,6 +113,30 @@ def test_get_llm_client_openai(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert client is not None
     assert model == "gpt-4o"
+
+
+def test_get_llm_client_defaults_to_openai_when_provider_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider should default to OpenAI when LLM_PROVIDER is not set."""
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+
+    with mock.patch("dbt_osmosis.core.llm.OpenAI") as openai_client:
+        client, model = get_llm_client()
+
+    openai_client.assert_called_once_with(api_key="test-openai-key")
+    assert client is openai_client.return_value
+    assert model == "gpt-4o"
+
+
+def test_get_llm_client_missing_openai_dependency_is_configuration_error() -> None:
+    """Missing OpenAI SDK should produce a core configuration error with a real extra hint."""
+    with (
+        mock.patch("dbt_osmosis.core.llm._OPENAI_AVAILABLE", False),
+        pytest.raises(LLMConfigurationError, match=r"dbt-osmosis\[openai\]"),
+    ):
+        get_llm_client()
 
 
 def test_get_llm_client_openai_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,9 +237,11 @@ def test_generate_model_spec_as_json(monkeypatch: pytest.MonkeyPatch) -> None:
         }),
     )
 
+    mock_client = _make_mock_llm_client(mock_response)
+
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create",
-        return_value=mock_response,
+        "dbt_osmosis.core.llm.get_llm_client",
+        return_value=(mock_client, "gpt-4o"),
     ):
         result = generate_model_spec_as_json(
             sql_content="SELECT id, name FROM users",
@@ -197,9 +264,11 @@ def test_generate_model_spec_as_json_with_markdown_fences(monkeypatch: pytest.Mo
         '```json\n{\n  "description": "A test model",\n  "columns": []\n}\n```',
     )
 
+    mock_client = _make_mock_llm_client(mock_response)
+
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create",
-        return_value=mock_response,
+        "dbt_osmosis.core.llm.get_llm_client",
+        return_value=(mock_client, "gpt-4o"),
     ):
         result = generate_model_spec_as_json(sql_content="SELECT * FROM users")
 
@@ -215,8 +284,8 @@ def test_generate_model_spec_as_json_invalid_json(monkeypatch: pytest.MonkeyPatc
 
     with (
         mock.patch(
-            "openai.resources.chat.completions.Completions.create",
-            return_value=mock_response,
+            "dbt_osmosis.core.llm.get_llm_client",
+            return_value=(_make_mock_llm_client(mock_response), "gpt-4o"),
         ),
         pytest.raises(LLMResponseError, match="LLM returned invalid JSON"),
     ):
@@ -236,8 +305,8 @@ def test_generate_model_spec_as_json_empty_response(monkeypatch: pytest.MonkeyPa
 
     with (
         mock.patch(
-            "openai.resources.chat.completions.Completions.create",
-            return_value=mock_response_with_none,
+            "dbt_osmosis.core.llm.get_llm_client",
+            return_value=(_make_mock_llm_client(mock_response_with_none), "gpt-4o"),
         ),
         pytest.raises(LLMResponseError, match="LLM returned an empty response"),
     ):
@@ -251,9 +320,11 @@ def test_generate_column_doc(monkeypatch: pytest.MonkeyPatch) -> None:
 
     mock_response = MockResponse("The unique identifier for each user")
 
+    mock_client = _make_mock_llm_client(mock_response)
+
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create",
-        return_value=mock_response,
+        "dbt_osmosis.core.llm.get_llm_client",
+        return_value=(mock_client, "gpt-4o"),
     ):
         result = generate_column_doc(
             column_name="user_id",
@@ -274,8 +345,8 @@ def test_generate_column_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> 
 
     with (
         mock.patch(
-            "openai.resources.chat.completions.Completions.create",
-            return_value=mock_response,
+            "dbt_osmosis.core.llm.get_llm_client",
+            return_value=(_make_mock_llm_client(mock_response), "gpt-4o"),
         ),
         pytest.raises(LLMResponseError, match="LLM returned an empty response"),
     ):
@@ -289,9 +360,11 @@ def test_generate_table_doc(monkeypatch: pytest.MonkeyPatch) -> None:
 
     mock_response = MockResponse("A table containing user account information")
 
+    mock_client = _make_mock_llm_client(mock_response)
+
     with mock.patch(
-        "openai.resources.chat.completions.Completions.create",
-        return_value=mock_response,
+        "dbt_osmosis.core.llm.get_llm_client",
+        return_value=(mock_client, "gpt-4o"),
     ):
         result = generate_table_doc(
             sql_content="SELECT * FROM users",
@@ -311,8 +384,8 @@ def test_generate_table_doc_empty_response(monkeypatch: pytest.MonkeyPatch) -> N
 
     with (
         mock.patch(
-            "openai.resources.chat.completions.Completions.create",
-            return_value=mock_response,
+            "dbt_osmosis.core.llm.get_llm_client",
+            return_value=(_make_mock_llm_client(mock_response), "gpt-4o"),
         ),
         pytest.raises(LLMResponseError, match="LLM returned an empty response"),
     ):
@@ -329,12 +402,16 @@ def test_sql_truncation_with_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
 
     mock_response = MockResponse('{"description": "Test", "columns": []}')
 
-    with mock.patch("openai.resources.chat.completions.Completions.create") as mock_create:
-        mock_create.return_value = mock_response
+    mock_client = _make_mock_llm_client(mock_response)
+
+    with mock.patch(
+        "dbt_osmosis.core.llm.get_llm_client",
+        return_value=(mock_client, "gpt-4o"),
+    ):
         generate_model_spec_as_json(sql_content=long_sql)
 
         # Check that the SQL in the prompt was truncated
-        call_args = mock_create.call_args
+        call_args = mock_client.chat.completions.create.call_args
         messages = call_args[1]["messages"]
         user_message = messages[1]["content"]
         assert "(TRUNCATED)" in user_message
@@ -358,7 +435,7 @@ def test_get_llm_client_azure_with_api_key(monkeypatch: pytest.MonkeyPatch) -> N
     assert client is not None
     assert model == "gpt-4"
     # Verify it's an AzureOpenAI client
-    assert client.__class__.__name__ == "AzureOpenAI"
+    assert isinstance(client, FakeAzureOpenAI)
 
 
 def test_get_llm_client_azure_missing_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -430,8 +507,44 @@ def test_get_llm_client_azure_ad_with_service_principal(
 
         assert client is not None
         assert model == "gpt-4"
-        # With AD auth, we use regular OpenAI client with base_url
-        assert client.__class__.__name__ == "OpenAI"
+        assert isinstance(client, FakeAzureOpenAI)
+
+
+def test_get_llm_client_azure_ad_uses_azure_client_token_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Azure AD should construct AzureOpenAI with token auth and an API version."""
+    monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
+    monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://test.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
+    monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "https://cognitiveservices.azure.com")
+    monkeypatch.setenv("AZURE_TENANT_ID", "test-tenant-id")
+    monkeypatch.setenv("AZURE_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "test-client-secret")
+
+    mock_token = mock.Mock(token="test-access-token-123")
+    mock_environment_credential = mock.Mock()
+    mock_environment_credential.return_value.get_token.return_value = mock_token
+
+    with (
+        mock.patch("dbt_osmosis.core.llm._AZURE_IDENTITY_AVAILABLE", True),
+        mock.patch("dbt_osmosis.core.llm.EnvironmentCredential", mock_environment_credential),
+        mock.patch("dbt_osmosis.core.llm.DefaultAzureCredential", mock.Mock()),
+        mock.patch("dbt_osmosis.core.llm.AzureOpenAI") as azure_openai,
+    ):
+        client, model = get_llm_client()
+
+    mock_environment_credential.return_value.get_token.assert_called_once_with(
+        "https://cognitiveservices.azure.com/.default"
+    )
+    azure_openai.assert_called_once_with(
+        azure_endpoint="https://test.openai.azure.com",
+        azure_ad_token="test-access-token-123",
+        api_version="2024-02-15-preview",
+    )
+    assert client is azure_openai.return_value
+    assert model == "gpt-4"
 
 
 def test_get_llm_client_azure_ad_with_default_credential(
