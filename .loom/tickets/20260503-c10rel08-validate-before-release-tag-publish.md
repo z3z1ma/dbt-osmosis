@@ -1,11 +1,11 @@
 ---
 id: ticket:c10rel08
 kind: ticket
-status: active
+status: closed
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T02:18:25Z
+updated_at: 2026-05-04T02:40:27Z
 scope:
   kind: repository
   repositories:
@@ -17,10 +17,13 @@ links:
     - evidence:oracle-backlog-scan
     - evidence:c10rel08-local-release-workflow-validation
     - evidence:c10rel08-main-release-detached-head-failure
+    - evidence:c10rel08-main-release-success
   critique:
     - critique:c10rel08-release-workflow-hardening
   packets:
     - packet:ralph-ticket-c10rel08-20260504T012824Z
+  wiki:
+    - wiki:release-publishing-workflow
 depends_on: []
 ---
 
@@ -74,12 +77,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10rel08#ACC-001 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | locally supported; final main CI pending |
-| ticket:c10rel08#ACC-002 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | locally supported; final main CI pending |
-| ticket:c10rel08#ACC-003 | evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-detached-head-failure | critique:c10rel08-release-workflow-hardening | validation passed on main; release rerun pending |
-| ticket:c10rel08#ACC-004 | evidence:oracle-backlog-scan; evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-detached-head-failure | critique:c10rel08-release-workflow-hardening | locally supported; release rerun pending |
-| ticket:c10rel08#ACC-005 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | supported by workflow review; final main CI pending |
-| ticket:c10rel08#ACC-006 | evidence:c10rel08-local-release-workflow-validation | critique:c10rel08-release-workflow-hardening | supported by workflow review; final main CI pending |
+| ticket:c10rel08#ACC-001 | evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-success | critique:c10rel08-release-workflow-hardening | accepted |
+| ticket:c10rel08#ACC-002 | evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-success | critique:c10rel08-release-workflow-hardening | accepted |
+| ticket:c10rel08#ACC-003 | evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-detached-head-failure; evidence:c10rel08-main-release-success | critique:c10rel08-release-workflow-hardening | accepted |
+| ticket:c10rel08#ACC-004 | evidence:oracle-backlog-scan; evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-detached-head-failure; evidence:c10rel08-main-release-success | critique:c10rel08-release-workflow-hardening | accepted |
+| ticket:c10rel08#ACC-005 | evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-success | critique:c10rel08-release-workflow-hardening | accepted with external PyPI-token residual risk |
+| ticket:c10rel08#ACC-006 | evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-success; wiki:release-publishing-workflow | critique:c10rel08-release-workflow-hardening | accepted |
 
 # Execution Notes
 
@@ -87,11 +90,11 @@ Use non-destructive dry-run or workflow reasoning for validation. Do not push ta
 
 # Blockers
 
-Final green GitHub Actions evidence is pending before acceptance. First `main` Release run validated successfully but failed in post-validation tag detection because the tested commit checkout was detached; follow-up branch-attach fix is in progress. Trusted publishing was not adopted because it may require external PyPI/repository setup; token-based PyPI publishing remains explicit.
+None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan; evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-detached-head-failure. Missing evidence: final green GitHub Actions evidence from `main`.
+Existing evidence: evidence:oracle-backlog-scan; evidence:c10rel08-local-release-workflow-validation; evidence:c10rel08-main-release-detached-head-failure; evidence:c10rel08-main-release-success. Missing evidence: none for ticket acceptance.
 
 # Critique Disposition
 
@@ -111,22 +114,22 @@ Deferral / not-required rationale: None. Mandatory critique passed in `critique:
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: `wiki:release-publishing-workflow` explains the accepted post-Tests release publishing gate, least-privilege validation boundary, same-repository push guards, local branch attach requirement, no-tag behavior, and residual release risks.
 
-Deferred / not-required rationale: Consider wiki/release process update after acceptance.
+Deferred / not-required rationale: no research/spec/plan/constitution promotion needed; the ticket-owned acceptance criteria were sufficient and no durable policy changed.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed: `wiki:release-publishing-workflow`.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending workflow evidence and review.
-Residual risks: GitHub/PyPI environment behavior may require live verification.
+Accepted by: OpenCode.
+Accepted at: 2026-05-04T02:40:27Z.
+Basis: `evidence:c10rel08-main-release-success` shows commit `8058f91d3faf90300ad571db11522bee7e02c45d` passed `lint`, `Tests`, and Release. Mandatory critique passed in `critique:c10rel08-release-workflow-hardening`, including the branch-attach follow-up.
+Residual risks: PyPI token scope/project restriction is external to repository evidence. The observed Release run covered no-tag behavior, not a real PyPI/GitHub release publish. Tag creation, PyPI publishing, and GitHub release publishing are not atomic if a future tagged release fails after tag creation.
 
 # Dependencies
 
@@ -140,3 +143,4 @@ Coordinate with ticket:c10docs09 and ticket:c10pkg10 if package/docs checks beco
 - 2026-05-04T01:50:21Z: Mandatory critique passed after parent follow-up split release validation into a read-only `validate` job, restricted write credentials to the post-validation `release` job, and narrowed `workflow_run` to successful same-repository push runs of `Tests` on `main`. Final `main` GitHub Actions evidence remains pending before acceptance.
 - 2026-05-04T02:15:26Z: First pushed Release run validated successfully but failed in post-validation tag detection because `action-detect-and-tag-new-version` expected local `refs/heads/main` and the workflow checked out the tested SHA detached. Recorded red evidence and added a local branch attach step before tag detection.
 - 2026-05-04T02:18:25Z: Mandatory follow-up critique passed the branch-attach fix with no open findings. Final green Release evidence remains pending after the next push.
+- 2026-05-04T02:40:27Z: Follow-up commit `8058f91d3faf90300ad571db11522bee7e02c45d` passed `lint`, `Tests`, and Release on `main`; Release validated the tested commit, completed tag detection and no-tag developmental build, and skipped PyPI/Release Drafter publish steps. Promoted accepted workflow explanation to `wiki:release-publishing-workflow` and closed the ticket.
