@@ -1,11 +1,11 @@
 ---
 id: ticket:c10pyright32
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: developer-tooling
 risk_class: medium
 created_at: 2026-05-04T17:16:38Z
-updated_at: 2026-05-04T18:01:26Z
+updated_at: 2026-05-04T18:15:28Z
 scope:
   kind: repository
   repositories:
@@ -18,6 +18,7 @@ links:
     - evidence:c10pyright32-basedpyright-precommit-validation
     - evidence:c10pyright32-ci-basedpyright-remediation
     - evidence:c10pyright32-ci-pytest-profiles-remediation
+    - evidence:c10pyright32-green-ci-after-pytest-remediation
   critique:
     - critique:c10pyright32-basedpyright-precommit-review
     - critique:c10pyright32-ci-basedpyright-remediation-review
@@ -97,7 +98,9 @@ Evidence `evidence:c10pyright32-ci-basedpyright-remediation` records the post-pu
 
 Evidence `evidence:c10pyright32-ci-pytest-profiles-remediation` records the later GitHub Actions `Tests` run `25333721046` failure after basedpyright passed, the reproduced missing-home-profiles Click validation failure, and the remediation commit `e151e760cce2bdeda8dcb9e4c269b1786be9a676` that returns the affected CLI tests to green locally.
 
-Evidence disposition: sufficient for the scoped developer-tooling gate and local CI pytest remediation before re-push. Full GitHub Actions confirmation for `e151e760cce2bdeda8dcb9e4c269b1786be9a676` remains pending.
+Evidence `evidence:c10pyright32-green-ci-after-pytest-remediation` records the successful pushed `Tests`, `lint`, and `Labeler` workflows on `origin/main` head `fada0d68500a811335004c7b705436b35d35b59c` after the pytest remediation.
+
+Evidence disposition: sufficient for the scoped developer-tooling gate, local pytest remediation, and remote GitHub Actions confirmation.
 
 # Critique Disposition
 
@@ -130,11 +133,10 @@ Rationale: The pre-commit configuration is the accepted operator surface for thi
 
 # Acceptance Decision
 
-Current gate status: complete pending GitHub Actions acceptance.
-Prior accepted by: OpenCode parent acceptance gate.
-Prior accepted at: 2026-05-04T17:19:12Z.
-Basis: `evidence:c10pyright32-basedpyright-precommit-validation`, `evidence:c10pyright32-ci-basedpyright-remediation`, `evidence:c10pyright32-ci-pytest-profiles-remediation`, and linked critiques support the local remediation state. The committed hook reported `0 errors` through pre-commit, the Linux CI reproduction reported `errorCount: 0` for dbt 1.8 and 1.11 dependency sets, and the missing-home-profiles CLI failure reproduced locally before passing after commit `e151e760cce2bdeda8dcb9e4c269b1786be9a676`.
-Residual risks: Hook runtime adds full-project basedpyright latency and depends on `bash`, `uv`, and `python` on PATH. Full GitHub Actions confirmation for commit `e151e760cce2bdeda8dcb9e4c269b1786be9a676` remains pending until re-push and workflow completion.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-04T18:15:28Z.
+Basis: `evidence:c10pyright32-basedpyright-precommit-validation`, `evidence:c10pyright32-ci-basedpyright-remediation`, `evidence:c10pyright32-ci-pytest-profiles-remediation`, `evidence:c10pyright32-green-ci-after-pytest-remediation`, and linked critiques support the final remediated state. The committed hook reported `0 errors` through pre-commit, the Linux CI reproduction reported `errorCount: 0` for dbt 1.8 and 1.11 dependency sets, the missing-home-profiles CLI failure reproduced locally before passing after commit `e151e760cce2bdeda8dcb9e4c269b1786be9a676`, and GitHub Actions `Tests`, `lint`, and `Labeler` completed successfully on `origin/main` head `fada0d68500a811335004c7b705436b35d35b59c`.
+Residual risks: Hook runtime adds full-project basedpyright latency and depends on `bash`, `uv`, and `python` on PATH. The successful `Tests` workflow emitted a non-blocking Node.js 20 action deprecation annotation.
 
 # Dependencies
 
@@ -146,3 +148,4 @@ None.
 - 2026-05-04T17:19:12Z: Added basedpyright pre-commit gate in commit `7716997dfbbf0d0ec9a465aba48a7ff981369fc3`, validated hook output with `0 errors`, recorded evidence/critique, and closed ticket.
 - 2026-05-04T17:34:36Z: GitHub Actions Tests run `25333133362` exposed one Linux basedpyright error after closure. Reproduced the diagnostic, fixed the optional OpenAI rate-limit error type boundary in commit `1d120731b5cdd36d78a394dd42be63a84c186501`, recorded remediation evidence/critique, and kept ticket closed with updated acceptance basis.
 - 2026-05-04T18:01:26Z: GitHub Actions Tests run `25333721046` passed basedpyright but exposed a pytest matrix failure where Click rejected the discovered default `--profiles-dir` `/home/runner/.dbt` before command logic ran. Reproduced the missing-home-profiles failure locally, fixed the premature Click existence check in commit `e151e760cce2bdeda8dcb9e4c269b1786be9a676`, recorded evidence/critique, and reopened the ticket to `complete_pending_acceptance` pending a green remote workflow.
+- 2026-05-04T18:15:28Z: Guard-pushed commit `fada0d68500a811335004c7b705436b35d35b59c` to `origin/main`, observed GitHub Actions `Tests` run `25334910408`, `lint` run `25334910369`, and `Labeler` run `25334910419` complete successfully, recorded green CI evidence, and closed the ticket.
