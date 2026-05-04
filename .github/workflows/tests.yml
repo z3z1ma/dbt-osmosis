@@ -3,11 +3,13 @@ name: Tests
 on:
   push:
   pull_request:
+  workflow_dispatch:
   schedule:
     - cron: "17 8 * * 1"
 
 env:
   DBT_ADAPTERS_CONSTRAINT: "dbt-adapters>=1.16.3,<2.0"
+  PYTHONWARNINGS: "default::DeprecationWarning:dbt,default::DeprecationWarning:dbt_osmosis"
 
 jobs:
   lockfile:
@@ -286,6 +288,84 @@ jobs:
           from tests.support import create_temp_project_copy
 
           print(create_temp_project_copy(Path("demo_duckdb"), Path(mkdtemp(prefix="dbt-osmosis-parse-"))))
+          PY
+          )
+          dbt parse --project-dir "$DEMO_PROJECT" --profiles-dir "$DEMO_PROJECT" --target test
+          dbt-osmosis --help
+          python -c "import dbt_osmosis; import dbt_osmosis.cli.main"
+          pytest -q
+          test ! -e test.db
+          test ! -e demo_duckdb/target
+
+  future-dbt-canary:
+    name: Canary latest dbt Core compatibility
+    runs-on: ubuntu-latest
+    needs: lockfile
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    env:
+      UV_NO_PROGRESS: "1"
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Upgrade pip
+        run: |
+          pip install --constraint=.github/workflows/constraints.txt pip
+          pip --version
+
+      - name: Install uv
+        run: |
+          pip install --constraint=.github/workflows/constraints.txt uv
+          uv --version
+
+      - name: Validate unpinned latest dbt Core canary
+        run: |
+          CANARY_ENV="${RUNNER_TEMP}/dbt-osmosis-future-dbt-canary"
+          uv venv --python "3.13" "$CANARY_ENV"
+          uv --no-config pip install --python "$CANARY_ENV/bin/python" -e ".[dev,openai,duckdb]" dbt-core dbt-duckdb "$DBT_ADAPTERS_CONSTRAINT"
+          export VIRTUAL_ENV="$CANARY_ENV"
+          export PATH="$CANARY_ENV/bin:$PATH"
+          uv --version
+          python - <<'PY'
+          import importlib.metadata as metadata
+          import platform
+          import sys
+          from packaging.version import Version
+
+          print(f"python: {sys.version}")
+          print(f"python executable: {sys.executable}")
+          assert platform.python_version().startswith("3.13."), platform.python_version()
+
+          minimum = {
+              "dbt-core": "1.8",
+              "dbt-adapters": "1.16.3",
+          }
+          for package in ("dbt-core", "dbt-duckdb", "dbt-adapters", "dbt-osmosis"):
+              version = metadata.version(package)
+              print(f"{package}: {version}")
+              if package in minimum:
+                  assert Version(version) >= Version(minimum[package]), f"{package} {version} is below {minimum[package]}"
+          PY
+          uv --no-config pip check --python "$CANARY_ENV/bin/python"
+          test ! -e test.db
+          test ! -e demo_duckdb/target
+          basedpyright --outputjson > /tmp/dbt-osmosis-future-dbt-basedpyright.json || true
+          python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-future-dbt-basedpyright.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
+          dbt --version
+          DEMO_PROJECT=$(python - <<'PY'
+          from pathlib import Path
+          from tempfile import mkdtemp
+
+          from tests.support import create_temp_project_copy
+
+          print(create_temp_project_copy(Path("demo_duckdb"), Path(mkdtemp(prefix="dbt-osmosis-future-dbt-parse-"))))
           PY
           )
           dbt parse --project-dir "$DEMO_PROJECT" --profiles-dir "$DEMO_PROJECT" --target test

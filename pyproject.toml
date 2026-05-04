@@ -119,7 +119,8 @@ addopts = [
     "-ra",
 ]
 filterwarnings = [
-    "ignore::DeprecationWarning",
+    "default::DeprecationWarning:dbt",
+    "default::DeprecationWarning:dbt_osmosis",
 ]
 
 [tool.coverage.run]

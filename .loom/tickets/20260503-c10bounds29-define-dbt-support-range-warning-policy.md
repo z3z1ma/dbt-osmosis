@@ -1,11 +1,11 @@
 ---
 id: ticket:c10bounds29
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T23:45:07Z
 scope:
   kind: repository
   repositories:
@@ -17,6 +17,9 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10bounds29-support-policy-validation
+  critique:
+    - critique:c10bounds29-support-policy-review
 depends_on: []
 ---
 
@@ -69,20 +72,25 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10bounds29#ACC-001 | evidence:oracle-backlog-scan, research:dbt-110-111-api-surfaces | None | open |
-| ticket:c10bounds29#ACC-004 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10bounds29#ACC-001 | evidence:c10bounds29-support-policy-validation; evidence:oracle-backlog-scan; research:dbt-110-111-api-surfaces | critique:c10bounds29-support-policy-review | supported |
+| ticket:c10bounds29#ACC-002 | evidence:c10bounds29-support-policy-validation | critique:c10bounds29-support-policy-review#FIND-002 accepted_risk | supported with accepted low risk |
+| ticket:c10bounds29#ACC-003 | evidence:c10bounds29-support-policy-validation | critique:c10bounds29-support-policy-review#FIND-001 accepted_risk | supported with accepted low risk |
+| ticket:c10bounds29#ACC-004 | evidence:c10bounds29-support-policy-validation; evidence:oracle-backlog-scan | critique:c10bounds29-support-policy-review | supported |
+| ticket:c10bounds29#ACC-005 | evidence:c10bounds29-support-policy-validation | critique:c10bounds29-support-policy-review | supported |
 
 # Execution Notes
 
-This is partly a policy decision. If adding an upper bound is considered breaking or too restrictive, route to the user before changing package metadata.
+This is partly a policy decision. The operator selected the keep-open-plus-canary policy on 2026-05-04: keep `dbt-core>=1.8` package metadata open, add explicit future-dbt canary coverage, and document future minors as canary-only until audited.
 
 # Blockers
 
-Potential human decision on whether to constrain `dbt-core` upper bound or keep open with canaries.
+None. The support-range decision was resolved as keep open plus canary.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan and research:dbt-110-111-api-surfaces. Missing evidence: CI/docs/package diff and warning output.
+Existing evidence: evidence:oracle-backlog-scan, research:dbt-110-111-api-surfaces, and evidence:c10bounds29-support-policy-validation.
+
+Evidence status: local test-first validation, full pre-commit, focused package metadata tests, uv lock check, and mandatory critique support ACC-001 through ACC-005 for the current source state. Missing evidence: remote CI after commit/push.
 
 # Critique Disposition
 
@@ -94,9 +102,16 @@ Policy rationale: Package constraints and warning policy directly shape user com
 
 Required critique profiles: release-packaging, operator-clarity, dbt-compatibility
 
-Findings: None - no critique yet.
+Findings:
 
-Disposition status: pending
+- critique:c10bounds29-support-policy-review#FIND-001: accepted_risk. The canary is an unpinned resolver visibility signal, not proof that every future dbt minor is exercised once released. Adapter constraints may keep the resolver on an audited line until a compatible adapter exists; the docs state adapter compatibility remains the user's responsibility. No pre-acceptance code change required.
+- critique:c10bounds29-support-policy-review#FIND-002: accepted_risk. Docs state audited support across the dbt Core support range, but do not enumerate every Python/dbt matrix exclusion. The current CI explicitly excludes Python 3.13 for dbt 1.8/1.9, and the residual ambiguity is low enough to accept for this ticket.
+
+Disposition status: completed
+
+Review: critique:c10bounds29-support-policy-review
+
+Acceptance recommendation: risk-disposition-needed; low findings dispositioned as accepted risk.
 
 Deferral / not-required rationale: None.
 
@@ -126,3 +141,7 @@ Coordinate with ticket:c10ci06 and ticket:c10lock07.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility and CI/build oracle findings.
+- 2026-05-04T23:32:10Z: Operator chose the keep-open-plus-canary policy for package metadata; started Ralph iteration 01 to add future-dbt canary coverage, warning visibility, docs, and structural tests without adding a `dbt-core` upper bound.
+- 2026-05-04T23:38:36Z: Ralph iteration 01 returned stop. Parent accepted the implementation after diff review, package metadata tests, whitespace validation, and touched-file pre-commit; moved ticket to review_required for mandatory release-packaging/operator-clarity/dbt-compatibility critique.
+- 2026-05-04T23:43:46Z: Mandatory critique returned pass_with_findings with two low findings; parent accepted both low risks in ticket-owned critique disposition and moved ticket to complete_pending_acceptance pending final validation, commit, push, and remote CI evidence.
+- 2026-05-04T23:45:07Z: Full pre-commit, package metadata tests, and uv lock check passed; ticket remains complete_pending_acceptance pending commit, push, and remote CI evidence.

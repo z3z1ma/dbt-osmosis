@@ -12,6 +12,11 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
 ROOT = Path(__file__).resolve().parents[1]
 RUFF_VERSION = "0.8.6"
 SUPPORTED_EXTRA_INSTALLS = (".[openai]", ".[azure]", ".[workbench]", ".[duckdb]", ".[proxy]")
+SUPPORT_POLICY_DOCS = (
+    ROOT / "README.md",
+    ROOT / "docs/docs/intro.md",
+    ROOT / "docs/docs/tutorial-basics/installation.md",
+)
 
 
 def _pyproject() -> dict[str, object]:
@@ -22,6 +27,71 @@ def _package_names(requirements: list[str]) -> set[str]:
     return {
         re.split(r"[<>=!~;\[]", requirement, maxsplit=1)[0].lower() for requirement in requirements
     }
+
+
+def _workflow_job(workflow: str, job_id: str) -> str:
+    match = re.search(
+        rf"(?ms)^  {re.escape(job_id)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)", workflow
+    )
+    assert match is not None, f"missing workflow job: {job_id}"
+    return match.group("body")
+
+
+def test_dbt_core_dependency_remains_open_for_future_canaries() -> None:
+    dependencies = _pyproject()["project"]["dependencies"]
+    dbt_core_requirements = [
+        dep
+        for dep in dependencies
+        if re.split(r"[<>=!~;\[]", dep, maxsplit=1)[0].lower() == "dbt-core"
+    ]
+
+    assert dbt_core_requirements == ["dbt-core>=1.8"]
+    assert all("<" not in requirement for requirement in dbt_core_requirements)
+    assert all("~=" not in requirement for requirement in dbt_core_requirements)
+
+
+def test_docs_state_audited_support_and_future_canary_policy() -> None:
+    required_policy_phrases = (
+        "Audited blocking support covers dbt Core 1.8.x through 1.11.x",
+        "package metadata intentionally remains `dbt-core>=1.8` without an upper bound",
+        "Future dbt Core minors are canary-only until explicitly audited",
+        "Install a dbt adapter version that is compatible with the dbt Core runtime",
+    )
+
+    for path in SUPPORT_POLICY_DOCS:
+        docs = path.read_text()
+        for phrase in required_policy_phrases:
+            assert phrase in docs, f"{path.relative_to(ROOT)} does not state: {phrase}"
+
+
+def test_workflow_has_non_blocking_unpinned_future_dbt_canary() -> None:
+    workflow = (ROOT / ".github/workflows/tests.yml").read_text()
+    canary = _workflow_job(workflow, "future-dbt-canary")
+
+    assert "workflow_dispatch:" in workflow
+    assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in canary
+    assert "continue-on-error: true" in canary
+    assert "Canary latest dbt Core compatibility" in canary
+    assert "dbt-core dbt-duckdb" in canary
+    assert "dbt-core~=" not in canary
+    assert "dbt-duckdb~=" not in canary
+    assert "uv --no-config pip check" in canary
+    assert "dbt parse" in canary
+    assert "pytest -q" in canary
+    assert "dbt-osmosis --help" in canary
+
+
+def test_pytest_and_ci_surface_dbt_deprecation_warnings() -> None:
+    pyproject = _pyproject()
+    filterwarnings = pyproject["tool"]["pytest"]["ini_options"]["filterwarnings"]
+    workflow = (ROOT / ".github/workflows/tests.yml").read_text()
+
+    assert "ignore::DeprecationWarning" not in filterwarnings
+    assert "default::DeprecationWarning:dbt" in filterwarnings
+    assert "default::DeprecationWarning:dbt_osmosis" in filterwarnings
+    assert "PYTHONWARNINGS" in workflow
+    assert "default::DeprecationWarning:dbt" in workflow
+    assert "default::DeprecationWarning:dbt_osmosis" in workflow
 
 
 def test_base_dependencies_and_optional_extras_are_intentional() -> None:

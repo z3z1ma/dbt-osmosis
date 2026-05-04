@@ -8,7 +8,7 @@ Pick the installation approach that matches your workflow. All examples assume y
 
 dbt-osmosis keeps its package support open for dbt Core 1.8+.
 
-The repository's DuckDB-backed fixture matrix is still explicitly exercised through the currently published DuckDB-compatible lines in CI, and a separate latest-core compatibility job runs basedpyright, `dbt parse`, and the full pytest suite under `dbt-core` 1.11 with the latest published `dbt-duckdb` adapter (currently 1.10.1). The package metadata and install path are not capped at dbt Core 1.10. Install an adapter version that is compatible with the dbt Core runtime in that environment.
+Audited blocking support covers dbt Core 1.8.x through 1.11.x in CI. The package metadata intentionally remains `dbt-core>=1.8` without an upper bound so installers can resolve newer dbt releases. Future dbt Core minors are canary-only until explicitly audited; scheduled/manual canary CI uses unpinned latest `dbt-core` and `dbt-duckdb` to make upstream breakage visible without redefining audited support. Install a dbt adapter version that is compatible with the dbt Core runtime in your environment; adapter compatibility is owned by the adapter and dbt Core pairing, not by dbt-osmosis extras.
 
 ## Install with `uv` (recommended)
 
