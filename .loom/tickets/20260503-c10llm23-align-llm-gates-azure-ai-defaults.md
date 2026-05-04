@@ -1,11 +1,11 @@
 ---
 id: ticket:c10llm23
 kind: ticket
-status: active
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T14:49:51Z
+updated_at: 2026-05-04T15:16:22Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,9 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10llm23-llm-gate-validation
+  critique:
+    - critique:c10llm23-llm-gate-review
   packets:
     - packet:ralph-ticket-c10llm23-20260504T144951Z
 depends_on: []
@@ -72,8 +75,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10llm23#ACC-004 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10llm23#ACC-006 | None - optional dependency tests not written yet | None | open |
+| ticket:c10llm23#ACC-001 | evidence:c10llm23-llm-gate-validation | critique:c10llm23-llm-gate-review | accepted |
+| ticket:c10llm23#ACC-002 | evidence:c10llm23-llm-gate-validation | critique:c10llm23-llm-gate-review | accepted |
+| ticket:c10llm23#ACC-003 | evidence:c10llm23-llm-gate-validation | critique:c10llm23-llm-gate-review | accepted |
+| ticket:c10llm23#ACC-004 | evidence:c10llm23-llm-gate-validation | critique:c10llm23-llm-gate-review | accepted |
+| ticket:c10llm23#ACC-005 | evidence:c10llm23-llm-gate-validation | critique:c10llm23-llm-gate-review | accepted |
+| ticket:c10llm23#ACC-006 | evidence:c10llm23-llm-gate-validation | critique:c10llm23-llm-gate-review | accepted |
 
 # Execution Notes
 
@@ -81,11 +88,22 @@ Mock OpenAI/Azure clients rather than making network calls. Keep sensitive env v
 
 # Blockers
 
-Human decision may be needed if changing `test suggest` from AI-by-default to opt-in changes public behavior.
+None. `test suggest` stayed AI-on-by-default and now makes default/fallback behavior explicit, so no human decision was needed for an opt-in behavior change.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: CLI tests and docs diff.
+Existing evidence: `evidence:oracle-backlog-scan`.
+
+Validation evidence: `evidence:c10llm23-llm-gate-validation`.
+
+Implementation commit: `3fbb1e16acab450c7855e806a144e04613670985` (`fix: clarify LLM optional path failures`).
+
+Observed validation:
+
+- `uv run pytest tests/core/test_llm.py tests/core/test_cli.py tests/core/test_test_suggestions.py tests/test_package_metadata.py -q` passed `106 passed, 9 skipped`.
+- `uv run ruff check ... && git diff --check` passed.
+- Targeted `uv run pre-commit run --files ...` passed.
+- `uv run python -c "import importlib.util; print(importlib.util.find_spec('openai') is not None)"` printed `False`, confirming the base worktree `uv` environment validated without OpenAI installed.
 
 # Critique Disposition
 
@@ -97,30 +115,36 @@ Policy rationale: Optional dependency and auth paths are user-facing and can lea
 
 Required critique profiles: code-change, operator-clarity, security
 
-Findings: None - no critique yet.
+Critique record: `critique:c10llm23-llm-gate-review`.
 
-Disposition status: pending
+Verdict: `pass`.
+
+Findings: None - no findings.
+
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
+Promoted: None.
 
-Deferred / not-required rationale: Docs update likely needed.
+Deferred / not-required rationale: The implementation updated the user-facing Docusaurus CLI and installation docs directly. No durable Loom wiki or research promotion was needed for this ticket-local optional LLM error-surface change.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Disposition status: not_required
+
+Rationale: The accepted explanation lives in the CLI and installation docs touched by this ticket; no cross-cutting Loom wiki page was needed.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests and docs.
-Residual risks: Azure SDK behavior may vary by OpenAI package version.
+Accepted by: OpenCode.
+Accepted at: 2026-05-04T15:16:22Z.
+Basis: `evidence:c10llm23-llm-gate-validation` and `critique:c10llm23-llm-gate-review` cover all scoped acceptance criteria with no critique blockers.
+Residual risks: Real OpenAI/Azure service connectivity and long-lived Azure AD token refresh behavior were not tested by scope; final initiative-level CI/GitHub Actions validation remains pending outside this ticket.
 
 # Dependencies
 
@@ -130,3 +154,4 @@ Coordinate with ticket:c10pkg10 for extras.
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench oracle findings.
 - 2026-05-04T14:49:51Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10llm23-20260504T144951Z` for test-first LLM client/default-provider, Azure AD, optional dependency, and AI fallback visibility work with recommended critique before acceptance.
+- 2026-05-04T15:16:22Z: Accepted and closed after implementation commit `3fbb1e16acab450c7855e806a144e04613670985`, parent validation evidence `evidence:c10llm23-llm-gate-validation`, and final critique `critique:c10llm23-llm-gate-review` with no findings.
