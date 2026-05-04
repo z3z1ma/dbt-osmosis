@@ -5,7 +5,7 @@ status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T19:07:42Z
+updated_at: 2026-05-04T19:33:25Z
 scope:
   kind: repository
   repositories:
@@ -16,6 +16,7 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10lint24-lint-diff-cli-validation
+    - evidence:c10lint24-main-ci-success
   critique:
     - critique:c10lint24-lint-diff-cli-review
   packets:
@@ -73,12 +74,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10lint24#ACC-001 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
-| ticket:c10lint24#ACC-002 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
-| ticket:c10lint24#ACC-003 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
-| ticket:c10lint24#ACC-004 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted with red-evidence limitation |
-| ticket:c10lint24#ACC-005 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
-| ticket:c10lint24#ACC-006 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-001 | evidence:c10lint24-lint-diff-cli-validation; evidence:c10lint24-main-ci-success | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-002 | evidence:c10lint24-lint-diff-cli-validation; evidence:c10lint24-main-ci-success | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-003 | evidence:c10lint24-lint-diff-cli-validation; evidence:c10lint24-main-ci-success | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-004 | evidence:c10lint24-lint-diff-cli-validation; evidence:c10lint24-main-ci-success | critique:c10lint24-lint-diff-cli-review | accepted with red-evidence limitation |
+| ticket:c10lint24#ACC-005 | evidence:c10lint24-lint-diff-cli-validation; evidence:c10lint24-main-ci-success | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-006 | evidence:c10lint24-lint-diff-cli-validation; evidence:c10lint24-main-ci-success | critique:c10lint24-lint-diff-cli-review | accepted |
 
 # Execution Notes
 
@@ -90,7 +91,7 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Validation evidence: evidence:c10lint24-lint-diff-cli-validation. Missing evidence: remote CI for the eventual commit; deferred to normal post-push monitoring.
+Existing evidence: evidence:oracle-backlog-scan. Validation evidence: evidence:c10lint24-lint-diff-cli-validation and evidence:c10lint24-main-ci-success. Missing evidence: none for this ticket's closure gate.
 
 # Critique Disposition
 
@@ -124,8 +125,8 @@ Not required - CLI reference docs are the accepted explanation surface for this 
 
 Accepted by: OpenCode
 Accepted at: 2026-05-04T19:07:42Z.
-Basis: `evidence:c10lint24-lint-diff-cli-validation` records child red evidence, parent green `113 passed` focused tests, Ruff/whitespace checks, changed-source basedpyright `errorCount: 0`, docs updates, and final critique `critique:c10lint24-lint-diff-cli-review` with no blocking findings.
-Residual risks: Remote CI is not yet observed for the eventual commit; `ticket:c10lint24#ACC-004` has green behavior evidence but not distinct strict red evidence; schema diff tests use fixture/mocked comparison rather than a live warehouse diff; lint selection intentionally adopts project-owned, non-ephemeral, segment-FQN semantics instead of prior substring/external/ephemeral behavior.
+Basis: `evidence:c10lint24-lint-diff-cli-validation` records child red evidence, parent green `113 passed` focused tests, Ruff/whitespace checks, changed-source basedpyright `errorCount: 0`, docs updates, and final critique `critique:c10lint24-lint-diff-cli-review` with no blocking findings. `evidence:c10lint24-main-ci-success` records successful main-branch lint, Tests, Labeler, and Release validation for commit `b9dc86279d5074397306663631b7d47f3e824be0` and closure of GitHub issue #375.
+Residual risks: `ticket:c10lint24#ACC-004` has green behavior evidence but not distinct strict red evidence; schema diff tests use fixture/mocked comparison rather than a live warehouse diff; lint selection intentionally adopts project-owned, non-ephemeral, segment-FQN semantics instead of prior substring/external/ephemeral behavior.
 
 # Dependencies
 
@@ -136,3 +137,4 @@ None.
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench and core architecture oracle findings.
 - 2026-05-04T18:46:08Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10lint24-20260504T184608Z` for test-first lint/diff selector, disabled-rule, rule-precedence, output grouping, and lint model-selection fixes.
 - 2026-05-04T19:07:42Z: Consumed Ralph output, addressed critique-driven docs and test-strength refinements, recorded validation evidence `evidence:c10lint24-lint-diff-cli-validation`, completed recommended critique `critique:c10lint24-lint-diff-cli-review`, accepted all scoped claims with an explicit low red-evidence limitation for ACC-004, and closed ticket.
+- 2026-05-04T19:33:25Z: Pushed commit `b9dc86279d5074397306663631b7d47f3e824be0` to `origin/main`, observed successful lint `25338008487`, Tests `25338008545`, Labeler `25338008503`, and Release `25338519017` workflows, recorded `evidence:c10lint24-main-ci-success`, commented on GitHub issue #375, and closed the issue.
