@@ -1,11 +1,11 @@
 ---
 id: ticket:c10cfg12
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T03:29:15Z
+updated_at: 2026-05-04T06:49:30Z
 scope:
   kind: repository
   repositories:
@@ -17,6 +17,11 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10cfg12-real-config-shape-fixtures
+  critique:
+    - critique:c10cfg12-real-config-shape-fixtures
+  packets:
+    - packet:ralph-ticket-c10cfg12-20260504T063203Z
   related_tickets:
     - ticket:c10col01
     - ticket:c10meta02
@@ -78,9 +83,14 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10cfg12#ACC-001 | research:dbt-110-111-api-surfaces | None | open |
-| ticket:c10cfg12#ACC-002 | None - fixture tests not written yet | None | open |
-| ticket:c10cfg12#ACC-006 | ticket:c10col01; ticket:c10meta02 | None | open; converted follow-up intake acknowledged |
+| ticket:c10cfg12#ACC-001 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures | locally supported; post-commit CI pending |
+| ticket:c10cfg12#ACC-002 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures#FIND-001 pending | local dbt 1.10 supported; dbt 1.11 CI pending |
+| ticket:c10cfg12#ACC-003 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures | locally supported; post-commit CI pending |
+| ticket:c10cfg12#ACC-004 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures | locally supported; post-commit CI pending |
+| ticket:c10cfg12#ACC-005 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures | locally supported; post-commit CI pending |
+| ticket:c10cfg12#ACC-006 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures#FIND-001 pending | local dbt 1.10 supported; dbt 1.11 CI pending |
+| ticket:c10col01#ACC-005 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures#FIND-001 pending and #FIND-002 resolved | local dbt 1.10 supported; dbt 1.11 CI pending |
+| ticket:c10meta02#ACC-005 | evidence:c10cfg12-real-config-shape-fixtures | critique:c10cfg12-real-config-shape-fixtures#FIND-001 pending | local dbt 1.10 supported; dbt 1.11 CI pending |
 
 # Execution Notes
 
@@ -92,7 +102,11 @@ Potential blocker: if the current supported dbt floor cannot parse the desired f
 
 # Evidence
 
-Existing evidence: research:dbt-110-111-api-surfaces and evidence:oracle-backlog-scan. Missing evidence: failing/passing pytest output under dbt 1.10/1.11, including disposition of the converted c10col01/c10meta02 fixture gaps.
+Existing evidence: research:dbt-110-111-api-surfaces, evidence:oracle-backlog-scan, and evidence:c10cfg12-real-config-shape-fixtures.
+
+Local implementation evidence: evidence:c10cfg12-real-config-shape-fixtures records test-first red state, local dbt-core `1.10.20` / dbt-duckdb `1.10.0`, focused real parsed-fixture pytest, broader config/property/transform pytest, artifact guards, targeted hooks, and `git diff --check`.
+
+Missing evidence: post-commit `Tests` matrix evidence for dbt 1.11 before accepting the converted 1.11 fixture gaps.
 
 # Critique Disposition
 
@@ -104,9 +118,12 @@ Policy rationale: Compatibility tests define the support claim and can easily be
 
 Required critique profiles: test-coverage, dbt-compatibility
 
-Findings: None - no critique yet.
+Findings:
 
-Disposition status: pending
+- critique:c10cfg12-real-config-shape-fixtures#FIND-001 - pending. Local evidence is dbt-core `1.10.20`; dbt 1.11 converted claims require post-commit matrix CI or equivalent evidence before closure.
+- critique:c10cfg12-real-config-shape-fixtures#FIND-002 - resolved. Missing-column injection test now asserts `warehouse_only_col` is absent before `inject_missing_columns()` runs.
+
+Disposition status: pending post-commit CI
 
 Deferral / not-required rationale: None.
 
@@ -126,8 +143,8 @@ N/A - no wiki promotion selected yet.
 
 Accepted by: Not accepted yet.
 Accepted at: N/A.
-Basis: Pending test evidence.
-Residual risks: dbt patch releases may alter manifest serialization.
+Basis: Pending post-commit dbt 1.11 CI and retrospective / promotion follow-through. Local dbt 1.10 evidence and mandatory critique are complete enough for implementation commit.
+Residual risks: dbt patch releases may alter manifest serialization; dbt-core `<1.10` intentionally skips the new config-shape assertions.
 
 # Dependencies
 
@@ -137,3 +154,5 @@ Coordinate with ticket:c10fix11, ticket:c10col01, ticket:c10meta02, and ticket:c
 
 - 2026-05-03T21:10:43Z: Created from tests/fixtures and dbt compatibility oracle findings.
 - 2026-05-04T03:29:15Z: Recorded ownership of converted fixture evidence gaps from ticket:c10col01#ACC-005 and ticket:c10meta02#ACC-005 so those accepted tickets do not leave their exact dbt 1.11 parsed-fixture gaps only in closure prose.
+- 2026-05-04T06:32:03Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10cfg12-20260504T063203Z` for test-first real parsed fixture coverage.
+- 2026-05-04T06:49:30Z: Consumed Ralph output, recorded local fixture evidence `evidence:c10cfg12-real-config-shape-fixtures`, completed mandatory critique `critique:c10cfg12-real-config-shape-fixtures`, resolved the missing-column precondition finding, and moved ticket to `complete_pending_acceptance` pending post-commit dbt 1.11 CI evidence and retrospective / promotion follow-through.
