@@ -282,7 +282,7 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @click.option(
         "--fusion-compat/--no-fusion-compat",
         default=None,
-        help="Output Fusion-compatible YAML with meta/tags nested inside config blocks. Auto-detects from Fusion manifest evidence or dbt >= 1.9.6 if not specified.",
+        help="Output Fusion-compatible YAML with meta/tags nested inside config blocks. Auto-detects from known Fusion manifest evidence or dbt >= 1.9.6 if not specified.",
     )
     @click.option(
         "--formatter",

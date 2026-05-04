@@ -84,8 +84,8 @@ class YamlRefactorSettings:
     fusion_compat: bool | None = None
     """When True, output Fusion-compatible YAML with meta/tags nested inside config blocks.
     When False, output classic format with meta/tags at top level.
-    When None (default), auto-detect from Fusion manifest evidence or installed dbt version:
-    True if the project has a Fusion manifest or dbt >= 1.9.6."""
+    When None (default), auto-detect from known Fusion manifest evidence or installed dbt version:
+    True if the project has a known Fusion manifest or dbt >= 1.9.6."""
 
 
 @dataclass
@@ -295,7 +295,7 @@ class YamlRefactorContext:
 
         Resolution order:
         1. Explicit setting from YamlRefactorSettings.fusion_compat (True/False)
-        2. Fusion manifest detected in target directory (schema version > v12)
+        2. Known Fusion manifest detected in target directory
         3. Auto-detect from dbt version: True if dbt >= 1.9.6
 
         The 1.9.6 threshold is used because column-level config support was
@@ -304,7 +304,8 @@ class YamlRefactorContext:
 
         Fusion manifest detection (step 2) handles teams running both dbt Fusion
         and dbt-core side by side: even if the installed dbt-core is older than
-        1.9.6, a Fusion manifest signals that Fusion-compatible output is needed.
+        1.9.6, known Fusion manifest evidence signals that Fusion-compatible
+        output is needed.
         """
         if self.settings.fusion_compat is not None:
             return self.settings.fusion_compat

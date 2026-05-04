@@ -32,7 +32,7 @@ If you set options inside a SQL `config(...)` block, use Python identifiers such
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `fusion-compat` | `null` (auto) | Output Fusion-compatible YAML (`meta` and `tags` nested inside `config`). When `null`, dbt-osmosis auto-detects from Fusion manifest evidence first, then falls back to dbt Core version detection (`>= 1.9.6`). |
+| `fusion-compat` | `null` (auto) | Output Fusion-compatible YAML (`meta` and `tags` nested inside `config`). When `null`, dbt-osmosis auto-detects from known Fusion manifest evidence first, then falls back to dbt Core version detection (`>= 1.9.6`). |
 
 ## Core behavior
 

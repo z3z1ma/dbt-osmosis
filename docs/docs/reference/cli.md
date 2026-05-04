@@ -77,7 +77,7 @@ Common behavior flags:
 
 Fusion compatibility:
 
-- `--fusion-compat/--no-fusion-compat` outputs Fusion-compatible YAML with `meta` and `tags` nested under `config`. If unspecified, dbt-osmosis auto-detects from Fusion manifest evidence or dbt Core >= 1.9.6.
+- `--fusion-compat/--no-fusion-compat` outputs Fusion-compatible YAML with `meta` and `tags` nested under `config`. If unspecified, dbt-osmosis auto-detects from known Fusion manifest evidence or dbt Core >= 1.9.6.
 
 External formatting:
 

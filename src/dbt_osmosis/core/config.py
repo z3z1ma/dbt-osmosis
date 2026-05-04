@@ -50,6 +50,7 @@ except (ImportError, AttributeError):
 # Regex to extract version number from manifest schema URL
 # Matches "/v12.json" at the end of "https://schemas.getdbt.com/dbt/manifest/v12.json"
 _SCHEMA_VERSION_RE = re.compile(r"/v(\d+)(?:\.json)?$")
+_KNOWN_FUSION_MANIFEST_SCHEMA_VERSIONS = {20}
 
 
 def _cleanup_stale_adapter(registered_adapter: object, adapter_type: str) -> None:
@@ -78,10 +79,10 @@ def _cleanup_stale_adapter(registered_adapter: object, adapter_type: str) -> Non
 def _detect_fusion_manifest(project_dir: str) -> bool:
     """Check if the target directory contains a manifest produced by dbt Fusion.
 
-    dbt Fusion is a standalone Rust-based engine that produces manifests with a
-    schema version higher than dbt-core's (currently v20 vs v12). When teams run
-    both dbt-core and Fusion side by side, this detection ensures dbt-osmosis
-    outputs Fusion-compatible YAML even if the installed dbt-core is older.
+    dbt Fusion is a standalone Rust-based engine with known manifest evidence
+    distinct from dbt-core's manifest schema history. When teams run both
+    dbt-core and Fusion side by side, this detection ensures dbt-osmosis outputs
+    Fusion-compatible YAML even if the installed dbt-core is older.
 
     The check reads the existing manifest.json before osmosis re-parses the
     project, since parsing via dbt-core would overwrite it with a v12 manifest.
@@ -108,15 +109,20 @@ def _detect_fusion_manifest(project_dir: str) -> bool:
         match = _SCHEMA_VERSION_RE.search(schema_version)
         if match:
             version_num = int(match.group(1))
-            # dbt-core currently produces v12 manifests; higher versions indicate
-            # a different engine such as dbt Fusion (which produces v20+).
-            if version_num > 12:
+            if version_num in _KNOWN_FUSION_MANIFEST_SCHEMA_VERSIONS:
                 logger.info(
                     ":rocket: Fusion manifest detected (schema v%d) at %s",
                     version_num,
                     manifest_path,
                 )
                 return True
+            if version_num > 12:
+                logger.debug(
+                    ":information_source: Manifest schema v%d at %s is not known Fusion evidence; %s",
+                    version_num,
+                    manifest_path,
+                    "leaving fusion_compat auto-detection to dbt version or explicit override",
+                )
     except Exception as e:
         logger.debug(":information_source: Could not check manifest for Fusion: %s", e)
 
@@ -311,8 +317,8 @@ class DbtProjectContext:
     is_fusion_manifest: bool = field(init=False, repr=False)
     """Whether a dbt Fusion manifest was detected in the target directory.
 
-    dbt Fusion is a standalone Rust-based engine that produces manifests with
-    schema version > 12 (e.g., v20). When True, fusion_compat should be enabled
+    dbt Fusion is a standalone Rust-based engine with known manifest evidence
+    (for example schema v20). When True, fusion_compat should be enabled
     regardless of the installed dbt-core version, since the project is being
     actively built with Fusion.
     """

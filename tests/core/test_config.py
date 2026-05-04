@@ -315,16 +315,17 @@ class TestDetectFusionManifest:
         assert _detect_fusion_manifest(str(tmp_path)) is True
 
     def test_future_manifest_v13(self, tmp_path):
-        """Any manifest version > 12 triggers Fusion detection."""
+        """Synthetic future dbt-core manifest versions do not prove Fusion."""
         target = tmp_path / "target"
         target.mkdir()
         manifest = {
             "metadata": {
                 "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v13.json",
+                "dbt_version": "1.12.0",
             },
         }
         (target / "manifest.json").write_text(json.dumps(manifest))
-        assert _detect_fusion_manifest(str(tmp_path)) is True
+        assert _detect_fusion_manifest(str(tmp_path)) is False
 
     def test_malformed_manifest(self, tmp_path):
         """Malformed manifest.json → returns False gracefully."""

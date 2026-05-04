@@ -1,11 +1,11 @@
 ---
 id: ticket:c10detect
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T20:13:20Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,9 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10detect-fusion-manifest-detection-validation
+  critique:
+    - critique:c10detect-fusion-manifest-detection-review
 depends_on: []
 ---
 
@@ -65,7 +68,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10detect#ACC-002 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10detect#ACC-001 | evidence:c10detect-fusion-manifest-detection-validation | critique:c10detect-fusion-manifest-detection-review | covered |
+| ticket:c10detect#ACC-002 | evidence:oracle-backlog-scan, evidence:c10detect-fusion-manifest-detection-validation | critique:c10detect-fusion-manifest-detection-review | covered |
+| ticket:c10detect#ACC-003 | evidence:c10detect-fusion-manifest-detection-validation | critique:c10detect-fusion-manifest-detection-review | covered |
+| ticket:c10detect#ACC-004 | evidence:c10detect-fusion-manifest-detection-validation | critique:c10detect-fusion-manifest-detection-review | covered |
+| ticket:c10detect#ACC-005 | evidence:c10detect-fusion-manifest-detection-validation | critique:c10detect-fusion-manifest-detection-review | covered |
 
 # Execution Notes
 
@@ -77,7 +84,7 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: updated synthetic manifest tests.
+Existing evidence: evidence:oracle-backlog-scan and evidence:c10detect-fusion-manifest-detection-validation. Missing evidence: remote CI after commit/push before final closure.
 
 # Critique Disposition
 
@@ -89,11 +96,11 @@ Policy rationale: Output-mode detection affects YAML shape and future dbt compat
 
 Required critique profiles: code-change, test-coverage
 
-Findings: None - no critique yet.
+Findings: critique:c10detect-fusion-manifest-detection-review reported pass with no findings.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: N/A - critique completed.
 
 # Retrospective / Promotion Disposition
 
@@ -121,3 +128,6 @@ None.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from compatibility and core architecture oracle findings.
+- 2026-05-04T20:03:16Z: Started Ralph iteration 01 to make manifest detection fail closed for generic future dbt-core schema versions while preserving known Fusion evidence and user override clarity.
+- 2026-05-04T20:08:59Z: Ralph iteration 01 returned stop. Parent recorded evidence:c10detect-fusion-manifest-detection-validation and moved ticket to review_required for recommended critique.
+- 2026-05-04T20:13:20Z: Critique passed with no findings in critique:c10detect-fusion-manifest-detection-review. Local pre-commit passed; ticket moved to complete_pending_acceptance pending remote CI and final acceptance.

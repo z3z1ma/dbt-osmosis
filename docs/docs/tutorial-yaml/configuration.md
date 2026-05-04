@@ -67,9 +67,8 @@ dbt-osmosis can produce **Fusion-compatible YAML** where `meta` and `tags` are n
 
 By default (`--fusion-compat` not specified), dbt-osmosis auto-detects whether to produce Fusion-compatible output:
 
-1. **Fusion manifest** — if `target/manifest.json` has a schema version > v12 (Fusion produces v20), fusion-compat is enabled. This check reads the manifest before osmosis re-parses the project, since parsing via dbt-core overwrites it with a v12 manifest.
-2. **Fusion binary on PATH** — if no manifest exists but `dbt-fusion` or `dbtf` is found on `PATH`, fusion-compat is enabled.
-3. **dbt-core version** — if dbt-core >= 1.9.6 is installed, fusion-compat is enabled (these versions natively support the `config` block format).
+1. **Known Fusion manifest** — if `target/manifest.json` contains known Fusion manifest evidence (for example schema v20), fusion-compat is enabled. This check reads the manifest before osmosis re-parses the project, since parsing via dbt-core overwrites it with a dbt-core manifest.
+2. **dbt-core version** — if dbt-core >= 1.9.6 is installed, fusion-compat is enabled (these versions natively support the `config` block format).
 
 ### Explicit override
 
@@ -87,7 +86,7 @@ If your team is testing dbt Fusion alongside dbt-core:
 
 1. Maintain **two virtual environments** — one with `dbt-core` + `dbt-osmosis`, another with `dbt-fusion`.
 2. Run dbt Fusion for compilation and execution in your normal workflow.
-3. Run dbt-osmosis from the dbt-core environment to manage YAML schema files. Osmosis will detect the Fusion manifest and automatically produce compatible output.
+3. Run dbt-osmosis from the dbt-core environment to manage YAML schema files. Osmosis will detect known Fusion manifest evidence and automatically produce compatible output.
 4. Both environments can share the same `dbt_project.yml` and model files.
 
 ## Behavior settings
