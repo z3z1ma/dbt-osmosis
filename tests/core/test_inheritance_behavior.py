@@ -31,16 +31,6 @@ from dbt_osmosis.core.sync_operations import sync_node_to_yaml
 from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
 
 
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
-        yield
-
-
 def _set_column_progenitor_override(
     yaml_context,
     node_id: str,
@@ -501,6 +491,7 @@ def test_column_default_progenitor_override_applies_without_progenitor_tracking(
     customers.columns["first_name"].description = ""
 
     yaml_context.settings.fusion_compat = False
+    yaml_context.settings.dry_run = False
     yaml_context.settings.force_inherit_descriptions = True
     yaml_context.settings.add_progenitor_to_meta = False
     _set_column_progenitor_override(

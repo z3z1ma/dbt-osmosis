@@ -1,6 +1,5 @@
 # pyright: reportAny=false, reportUnknownMemberType=false, reportPrivateUsage=false
 import typing as t
-from unittest import mock
 
 import dbt.version
 import pytest
@@ -198,6 +197,7 @@ def test_build_node_ancestor_tree(
 )
 def test_inherit_upstream_column_knowledge_with_various_settings(
     yaml_context: YamlRefactorContext,
+    fresh_caches,
     settings: dict[str, t.Any],
     upstream_mutations: dict[str, t.Any],
     downstream_metadata: dict[str, t.Any],
@@ -212,6 +212,7 @@ def test_inherit_upstream_column_knowledge_with_various_settings(
 
     # Apply settings; disable fusion_compat to test classic YAML output format
     yaml_context.settings.fusion_compat = False
+    yaml_context.settings.dry_run = False
     for key, value in settings.items():
         setattr(yaml_context.settings, key, value)
 
@@ -231,13 +232,9 @@ def test_inherit_upstream_column_knowledge_with_various_settings(
             setattr(upstream_col, attr, attr_value)
 
     # Perform inheritance
-    with (
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-    ):
-        _ = inherit_upstream_column_knowledge(yaml_context, target_node)
-        sync_node_to_yaml(yaml_context, target_node, commit=False)
-        yaml_slice = _get_node_yaml(yaml_context, target_node)
+    _ = inherit_upstream_column_knowledge(yaml_context, target_node)
+    sync_node_to_yaml(yaml_context, target_node, commit=False)
+    yaml_slice = _get_node_yaml(yaml_context, target_node)
 
     # Assert metadata, description, and tags
     cid = target_node.columns["customer_id"]
@@ -262,6 +259,7 @@ def test_inherit_upstream_column_knowledge_with_various_settings(
 )
 def test_use_unrendered_descriptions(
     yaml_context: YamlRefactorContext,
+    fresh_caches,
     use_unrendered_descriptions: bool,
     expected_start: str,
 ):
@@ -271,17 +269,13 @@ def test_use_unrendered_descriptions(
     yaml_context.settings.use_unrendered_descriptions = use_unrendered_descriptions
     yaml_context.settings.force_inherit_descriptions = True
 
-    with (
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-    ):
-        _ = inherit_upstream_column_knowledge(yaml_context, target_node)
-        sync_node_to_yaml(yaml_context, target_node, commit=False)
+    _ = inherit_upstream_column_knowledge(yaml_context, target_node)
+    sync_node_to_yaml(yaml_context, target_node, commit=False)
 
     assert target_node.columns["status"].description.startswith(expected_start)
 
 
-def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
+def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext, fresh_caches):
     manifest = yaml_context.project.manifest
     manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"].columns[
         "customer_id"
@@ -374,11 +368,7 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
     yaml_context.settings.use_unrendered_descriptions = False
 
     # Perform inheritance on the node
-    with (
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-    ):
-        _ = inherit_upstream_column_knowledge(yaml_context, target_node)
+    _ = inherit_upstream_column_knowledge(yaml_context, target_node)
 
     # Filter out 'config' field for comparison (dbt-core 1.9+ includes it)
     actual = {k: _filter_config_field(v.to_dict()) for k, v in target_node.columns.items()}

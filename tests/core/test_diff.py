@@ -17,16 +17,6 @@ from dbt_osmosis.core.diff import (
 from dbt_osmosis.core.settings import YamlRefactorContext
 
 
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
-        yield
-
-
 def test_schema_diff_initialization(yaml_context: YamlRefactorContext, fresh_caches):
     """Test that SchemaDiff can be initialized with a context."""
     differ = SchemaDiff(yaml_context)

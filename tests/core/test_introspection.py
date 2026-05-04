@@ -97,15 +97,6 @@ def _make_introspection_context(
     )
 
 
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-    ):
-        yield
-
-
 def test_get_columns_simple(yaml_context: YamlRefactorContext):
     """Tests the get_columns flow on a known table, e.g., 'customers'."""
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]

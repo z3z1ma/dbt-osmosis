@@ -1,7 +1,5 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
-from unittest import mock
-
 import pytest
 
 from dbt_osmosis.core.diff import (
@@ -18,16 +16,6 @@ from dbt_osmosis.core.migration import (
     MigrationStep,
 )
 from dbt_osmosis.core.settings import YamlRefactorContext
-
-
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
-        yield
 
 
 def test_migration_planner_initialization(yaml_context: YamlRefactorContext, fresh_caches):

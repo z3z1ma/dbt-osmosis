@@ -5,6 +5,7 @@ from pathlib import Path
 
 from dbt_osmosis.core.schema.parser import create_yaml_instance
 from dbt_osmosis.core.schema.reader import (
+    LRUCache,
     _mark_yaml_caches_dirty,
     _read_yaml,
     _YAML_BUFFER_CACHE,
@@ -377,6 +378,183 @@ def _clear_cache(cache, key):
     """Helper to safely clear a key from an LRUCache or dict."""
     if key in cache:
         del cache[key]
+
+
+def test_fresh_caches_preserves_production_cache_instances(fresh_caches):
+    """The central cache fixture must clear production cache objects, not replace them."""
+    from dbt_osmosis.core import introspection
+    from dbt_osmosis.core.schema import reader
+
+    assert isinstance(reader._YAML_BUFFER_CACHE, LRUCache)
+    assert isinstance(reader._YAML_ORIGINAL_CACHE, LRUCache)
+    assert isinstance(introspection._COLUMN_LIST_CACHE, dict)
+
+
+def test_write_yaml_dry_run_discards_dirty_buffer_before_fresh_read():
+    """A dry-run _write_yaml must not leave mutated YAML visible to later reads."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+    mutations: list[int] = []
+
+    _YAML_BUFFER_CACHE.clear()
+    _YAML_ORIGINAL_CACHE.clear()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "schema.yml"
+            path.write_text(
+                "version: 2\nmodels:\n  - name: customers\n    description: original\n",
+                encoding="utf-8",
+            )
+
+            data = _read_yaml(yaml_handler, lock, path)
+            data["models"][0]["description"] = "dry-run mutation"
+
+            _write_yaml(
+                yaml_handler,
+                lock,
+                path,
+                data,
+                dry_run=True,
+                mutation_tracker=mutations.append,
+            )
+
+            reloaded = _read_yaml(yaml_handler, lock, path)
+
+            assert mutations == [1]
+            assert reloaded["models"][0]["description"] == "original"
+    finally:
+        _YAML_BUFFER_CACHE.clear()
+        _YAML_ORIGINAL_CACHE.clear()
+
+
+def test_write_yaml_dry_run_discards_buffer_even_without_mutation():
+    """A no-op dry-run write should not keep stale YAML cached afterward."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+    mutations: list[int] = []
+
+    _YAML_BUFFER_CACHE.clear()
+    _YAML_ORIGINAL_CACHE.clear()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "schema.yml"
+            path.write_text(
+                "version: 2\nmodels:\n  - name: customers\n    description: original\n",
+                encoding="utf-8",
+            )
+
+            data = _read_yaml(yaml_handler, lock, path)
+            _mark_yaml_caches_dirty(path)
+
+            _write_yaml(
+                yaml_handler,
+                lock,
+                path,
+                data,
+                dry_run=True,
+                mutation_tracker=mutations.append,
+            )
+
+            path.write_text(
+                "version: 2\nmodels:\n  - name: customers\n    description: changed on disk\n",
+                encoding="utf-8",
+            )
+            reloaded = _read_yaml(yaml_handler, lock, path)
+
+            assert mutations == []
+            assert reloaded["models"][0]["description"] == "changed on disk"
+    finally:
+        _YAML_BUFFER_CACHE.clear()
+        _YAML_ORIGINAL_CACHE.clear()
+
+
+def test_commit_yamls_dry_run_discards_buffer_after_tracking_mutation():
+    """Dry-run commit_yamls should count changes, then restore disk-backed reads."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+    mutations: list[int] = []
+
+    _YAML_BUFFER_CACHE.clear()
+    _YAML_ORIGINAL_CACHE.clear()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "schema.yml"
+            path.write_text(
+                "version: 2\nmodels:\n  - name: customers\n    description: original\n",
+                encoding="utf-8",
+            )
+
+            data = _read_yaml(yaml_handler, lock, path)
+            data["models"][0]["description"] = "buffered dry-run mutation"
+            _mark_yaml_caches_dirty(path)
+
+            commit_yamls(yaml_handler, lock, dry_run=True, mutation_tracker=mutations.append)
+
+            reloaded = _read_yaml(yaml_handler, lock, path)
+
+            assert mutations == [1]
+            assert reloaded["models"][0]["description"] == "original"
+    finally:
+        _YAML_BUFFER_CACHE.clear()
+        _YAML_ORIGINAL_CACHE.clear()
+
+
+def test_dry_run_write_does_not_leak_original_preserved_sections():
+    """Original-cache state from a dry run must not restore stale preserved sections later."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+
+    _YAML_BUFFER_CACHE.clear()
+    _YAML_ORIGINAL_CACHE.clear()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "schema.yml"
+            path.write_text(
+                "version: 2\n"
+                "models:\n"
+                "  - name: customers\n"
+                "semantic_models:\n"
+                "  - name: stale_metricflow_model\n",
+                encoding="utf-8",
+            )
+
+            data = _read_yaml(yaml_handler, lock, path)
+            data["models"][0]["description"] = "dry-run mutation"
+
+            _write_yaml(yaml_handler, lock, path, data, dry_run=True)
+
+            path.write_text(
+                "version: 2\nmodels:\n  - name: customers\n",
+                encoding="utf-8",
+            )
+
+            _write_yaml(
+                yaml_handler,
+                lock,
+                path,
+                {"version": 2, "models": [{"name": "orders"}]},
+                dry_run=False,
+            )
+
+            written = path.read_text(encoding="utf-8")
+
+            assert "stale_metricflow_model" not in written
+            assert "semantic_models" not in written
+    finally:
+        _YAML_BUFFER_CACHE.clear()
+        _YAML_ORIGINAL_CACHE.clear()
 
 
 def test_commit_yamls_keeps_dirty_buffer_entries_until_write():

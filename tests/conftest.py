@@ -274,11 +274,23 @@ def yaml_context(built_duckdb_template: Path) -> Iterator[YamlRefactorContext]:
 # Function-scoped fixture for tests that need fresh caches
 @pytest.fixture(scope="function")
 def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    from unittest import mock
+    """Clear production cache instances so each test starts with a fresh state."""
+    from dbt_osmosis.core.introspection import _COLUMN_LIST_CACHE, _COLUMN_LIST_CACHE_LOCK
+    from dbt_osmosis.core.schema.reader import (
+        _YAML_BUFFER_CACHE,
+        _YAML_BUFFER_CACHE_LOCK,
+        _YAML_ORIGINAL_CACHE,
+    )
 
-    with (
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
+    def clear_caches() -> None:
+        with _COLUMN_LIST_CACHE_LOCK:
+            _COLUMN_LIST_CACHE.clear()
+        with _YAML_BUFFER_CACHE_LOCK:
+            _YAML_BUFFER_CACHE.clear()
+            _YAML_ORIGINAL_CACHE.clear()
+
+    clear_caches()
+    try:
         yield
+    finally:
+        clear_caches()

@@ -17,16 +17,6 @@ from dbt_osmosis.core.transforms import (
 )
 
 
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
-        yield
-
-
 def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext, fresh_caches):
     """Minimal test that runs the inheritance logic on all matched nodes in the real project."""
     inherit_upstream_column_knowledge(yaml_context)

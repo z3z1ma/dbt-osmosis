@@ -191,12 +191,16 @@ def _write_yaml(
                 # Track mutation regardless of dry_run (enables --check with --dry-run)
                 if mutation_tracker:
                     mutation_tracker(1)
+
             else:
                 logger.debug(":white_check_mark: Skipping write => %s (no changes)", path)
-                # Clear cache entry even when no changes (to keep cache consistent)
-                if not dry_run:
-                    with _YAML_BUFFER_CACHE_LOCK:
-                        _discard_yaml_caches(path)
+
+            # Clear cache entries after truthful disk outcomes. Dry-run writes
+            # always compare against disk but must not pin process-global YAML
+            # state for later reads in the same process.
+            if dry_run or modified == original:
+                with _YAML_BUFFER_CACHE_LOCK:
+                    _discard_yaml_caches(path)
 
 
 def _replace_atomically(temp_path: Path, target_path: Path) -> None:
@@ -298,3 +302,9 @@ def commit_yamls(
                     if not dry_run:
                         with _YAML_BUFFER_CACHE_LOCK:
                             _discard_yaml_caches(path)
+
+                # After dry-run mutation reporting, discard every processed
+                # buffered path so follow-up reads reflect disk-backed state.
+                if dry_run:
+                    with _YAML_BUFFER_CACHE_LOCK:
+                        _discard_yaml_caches(path)

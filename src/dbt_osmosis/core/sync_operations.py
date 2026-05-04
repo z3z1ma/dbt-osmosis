@@ -341,13 +341,20 @@ def _finalize_synced_document(
     """Persist or pin a synchronized YAML document after in-memory updates."""
     _cleanup_empty_sections(doc)
 
-    from dbt_osmosis.core.schema.reader import _mark_yaml_caches_dirty
+    from dbt_osmosis.core.schema.reader import (
+        _YAML_BUFFER_CACHE_LOCK,
+        _discard_yaml_caches,
+        _mark_yaml_caches_dirty,
+    )
 
     # sync_node_to_yaml(commit=False) mutates the shared buffer in place, so pin it
     # until a real disk outcome clears the cache entry.
     _mark_yaml_caches_dirty(target_path)
 
     if not commit:
+        if getattr(context.settings, "dry_run", False):
+            with _YAML_BUFFER_CACHE_LOCK:
+                _discard_yaml_caches(target_path)
         return
 
     logger.info(":inbox_tray: Committing YAML doc changes for => %s", target_path)

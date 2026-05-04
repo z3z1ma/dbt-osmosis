@@ -22,16 +22,6 @@ import pytest
 from dbt_osmosis.core.introspection import PropertyAccessor
 
 
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
-        yield
-
-
 class MockColumnConfig:
     """Mock column config for dbt 1.10+ column properties."""
 

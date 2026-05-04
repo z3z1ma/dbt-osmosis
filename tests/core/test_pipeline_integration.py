@@ -16,10 +16,6 @@ These tests verify:
 
 from __future__ import annotations
 
-from unittest import mock
-
-import pytest
-
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.transforms import (
     inherit_upstream_column_knowledge,
@@ -30,16 +26,6 @@ from dbt_osmosis.core.transforms import (
     sort_columns_as_in_database,
     synchronize_data_types,
 )
-
-
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
-        yield
 
 
 def test_full_pipeline_execution(yaml_context: YamlRefactorContext, fresh_caches):

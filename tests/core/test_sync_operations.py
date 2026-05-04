@@ -17,6 +17,7 @@ from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.schema.writer import _write_yaml, commit_yamls
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sync_operations import (
+    _finalize_synced_document,
     _get_or_create_model,
     _get_or_create_version,
     _get_or_create_source,
@@ -24,15 +25,6 @@ from dbt_osmosis.core.sync_operations import (
     _sync_doc_section,
     sync_node_to_yaml,
 )
-
-
-@pytest.fixture(scope="function")
-def fresh_caches():
-    """Patches the internal caches so each test starts with a fresh state."""
-    with (
-        mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-    ):
-        yield
 
 
 def test_sync_node_to_yaml(yaml_context: YamlRefactorContext, fresh_caches):
@@ -86,11 +78,42 @@ def test_sync_node_to_yaml_versioned(yaml_context: YamlRefactorContext, fresh_ca
     sync_node_to_yaml(yaml_context, node, commit=False)
 
 
+def test_finalize_synced_document_dry_run_commit_false_discards_cache(tmp_path: Path) -> None:
+    """Dry-run sync commit=False must not leave mutated YAML in later fresh reads."""
+    from dbt_osmosis.core.schema.parser import create_yaml_instance
+    from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE, _YAML_ORIGINAL_CACHE
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+    path = tmp_path / "schema.yml"
+    path.write_text(
+        "version: 2\nmodels:\n  - name: customers\n    description: original\n",
+        encoding="utf-8",
+    )
+
+    _YAML_BUFFER_CACHE.clear()
+    _YAML_ORIGINAL_CACHE.clear()
+    try:
+        doc = _read_yaml(yaml_handler, lock, path)
+        doc["models"][0]["description"] = "dry-run sync mutation"
+        context = SimpleNamespace(settings=SimpleNamespace(dry_run=True))
+
+        _finalize_synced_document(context, path, doc, commit=False)
+
+        reloaded = _read_yaml(yaml_handler, lock, path)
+
+        assert reloaded["models"][0]["description"] == "original"
+    finally:
+        _YAML_BUFFER_CACHE.clear()
+        _YAML_ORIGINAL_CACHE.clear()
+
+
 def test_sync_node_to_yaml_versioned_preserves_column_selector(
     yaml_context: YamlRefactorContext,
     fresh_caches,
 ):
     """Versioned sync should preserve dbt include/exclude selector entries."""
+    yaml_context.settings.dry_run = False
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]
     project_dir = Path(yaml_context.project.runtime_cfg.project_root)
     path = project_dir.joinpath(node.patch_path.split("://")[-1])
@@ -222,6 +245,7 @@ def test_sync_node_to_yaml_all_versions_share_one_truthful_write(
 
     version_one.columns["customer_id"].description = "v1 synced description"
     version_two.columns["id"].description = "v2 synced description"
+    yaml_context.settings.dry_run = False
 
     project_root = Path(str(yaml_context.project.runtime_cfg.project_root))
     yaml_context.settings.models = [project_root / "models" / "staging" / "jaffle_shop" / "main"]
@@ -362,6 +386,7 @@ def test_sync_node_to_yaml_repeated_threads_same_target_preserves_model_sections
     orders = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.orders"]
     shared_target = tmp_path / "shared_schema.yml"
     shared_target.write_text("version: 2\nmodels: []\n", encoding="utf-8")
+    yaml_context.settings.dry_run = False
 
     def iter_same_target_nodes(context: YamlRefactorContext):
         yield customers.unique_id, customers
@@ -548,15 +573,12 @@ def test_preserve_unrendered_descriptions(yaml_context: YamlRefactorContext, fre
         original_description = status_col["description"]
 
         # Enable use_unrendered_descriptions
+        yaml_context.settings.dry_run = False
         yaml_context.settings.use_unrendered_descriptions = True
         yaml_context.settings.force_inherit_descriptions = True
 
         # Sync the node
-        with (
-            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        ):
-            sync_node_to_yaml(yaml_context, node, commit=False)
+        sync_node_to_yaml(yaml_context, node, commit=False)
 
         # Get the updated YAML
         updated_yaml = _get_node_yaml(yaml_context, node)
@@ -609,13 +631,10 @@ def test_prefer_yaml_values_preserves_var_jinja(yaml_context: YamlRefactorContex
     yaml_context.yaml_handler.dump(original_yaml, buffer)
     with mock.patch("builtins.open", mock.mock_open(read_data=buffer.getvalue())):
         # Enable prefer_yaml_values
+        yaml_context.settings.dry_run = False
         yaml_context.settings.prefer_yaml_values = True
 
-        with (
-            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        ):
-            sync_node_to_yaml(yaml_context, node, commit=False)
+        sync_node_to_yaml(yaml_context, node, commit=False)
 
         # Get the updated YAML
         updated_yaml = _get_node_yaml(yaml_context, node)
@@ -669,14 +688,11 @@ def test_prefer_yaml_values_preserves_env_var_jinja(
     yaml_context.yaml_handler.dump(original_yaml, buffer)
     with mock.patch("builtins.open", mock.mock_open(read_data=buffer.getvalue())):
         # Enable prefer_yaml_values; disable fusion_compat to test classic format
+        yaml_context.settings.dry_run = False
         yaml_context.settings.prefer_yaml_values = True
         yaml_context.settings.fusion_compat = False
 
-        with (
-            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        ):
-            sync_node_to_yaml(yaml_context, node, commit=False)
+        sync_node_to_yaml(yaml_context, node, commit=False)
 
         # Get the updated YAML
         updated_yaml = _get_node_yaml(yaml_context, node)
@@ -738,14 +754,11 @@ def test_prefer_yaml_values_preserves_all_jinja_patterns(
     yaml_context.yaml_handler.dump(original_yaml, buffer)
     with mock.patch("builtins.open", mock.mock_open(read_data=buffer.getvalue())):
         # Enable prefer_yaml_values; disable fusion_compat to test classic format
+        yaml_context.settings.dry_run = False
         yaml_context.settings.prefer_yaml_values = True
         yaml_context.settings.fusion_compat = False
 
-        with (
-            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        ):
-            sync_node_to_yaml(yaml_context, node, commit=False)
+        sync_node_to_yaml(yaml_context, node, commit=False)
 
         # Get the updated YAML
         updated_yaml = _get_node_yaml(yaml_context, node)
@@ -807,11 +820,8 @@ def test_add_inheritance_for_specified_keys_still_works(
     buffer = io.StringIO()
     yaml_context.yaml_handler.dump(original_yaml, buffer)
     with mock.patch("builtins.open", mock.mock_open(read_data=buffer.getvalue())):
-        with (
-            mock.patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
-            mock.patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
-        ):
-            sync_node_to_yaml(yaml_context, node, commit=False)
+        yaml_context.settings.dry_run = False
+        sync_node_to_yaml(yaml_context, node, commit=False)
 
         # Get the updated YAML
         updated_yaml = _get_node_yaml(yaml_context, node)
@@ -897,6 +907,7 @@ def test_fusion_compat_pushes_meta_into_config(
     col.tags = ["pii", "important"]
 
     yaml_context.settings.fusion_compat = True
+    yaml_context.settings.dry_run = False
 
     # fresh_caches provides a clean buffer cache for the entire test scope
     sync_node_to_yaml(yaml_context, node, commit=False)
@@ -936,6 +947,7 @@ def test_classic_mode_strips_config(
     col.tags = ["pii"]
 
     yaml_context.settings.fusion_compat = False
+    yaml_context.settings.dry_run = False
 
     # fresh_caches provides a clean buffer cache for the entire test scope
     sync_node_to_yaml(yaml_context, node, commit=False)
