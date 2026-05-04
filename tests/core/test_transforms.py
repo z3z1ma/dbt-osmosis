@@ -1,5 +1,6 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
+from collections import OrderedDict
 from unittest import mock
 
 import pytest
@@ -36,6 +37,93 @@ def test_inject_missing_columns(yaml_context: YamlRefactorContext, fresh_caches)
     We run on all matched nodes to ensure no errors.
     """
     inject_missing_columns(yaml_context)
+
+
+def test_inject_missing_columns_honors_supplementary_file_skip(
+    tmp_path,
+    fresh_caches,
+):
+    """Supplementary dbt-osmosis.yml should affect the real inject transform."""
+    (tmp_path / "dbt-osmosis.yml").write_text("skip-add-columns: true\n")
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.resource_type = "model"
+    mock_node.meta = {}
+    mock_node.config.extra = {}
+    mock_node.config.meta = {}
+    mock_node.unrendered_config = {}
+    mock_node.columns = OrderedDict()
+
+    context = mock.MagicMock()
+    context.settings.skip_add_columns = False
+    context.settings.skip_add_source_columns = False
+    context.settings.skip_add_data_types = False
+    context.settings.output_to_lower = False
+    context.settings.output_to_upper = False
+    context.project.runtime_cfg.project_root = tmp_path
+    context.project.runtime_cfg.vars = {}
+    context.project.runtime_cfg.credentials.type = "postgres"
+
+    incoming_col = mock.MagicMock()
+    incoming_col.type = "text"
+    incoming_col.comment = "from database"
+
+    with mock.patch(
+        "dbt_osmosis.core.introspection.get_columns",
+        return_value=OrderedDict([("new_col", incoming_col)]),
+    ) as get_columns:
+        inject_missing_columns(context, mock_node)
+
+    get_columns.assert_not_called()
+    assert mock_node.columns == OrderedDict()
+
+
+def test_inject_missing_columns_all_nodes_allows_node_false_override(
+    tmp_path,
+    fresh_caches,
+):
+    """Project-level skip should not bypass higher-precedence node false overrides."""
+    (tmp_path / "dbt-osmosis.yml").write_text("skip-add-columns: true\n")
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.resource_type = "model"
+    mock_node.meta = {"dbt-osmosis-skip-add-columns": False}
+    mock_node.config.extra = {}
+    mock_node.config.meta = {}
+    mock_node.unrendered_config = {}
+    mock_node.columns = OrderedDict()
+
+    context = mock.MagicMock()
+    context.settings.skip_add_columns = False
+    context.settings.skip_add_source_columns = False
+    context.settings.skip_add_data_types = False
+    context.settings.output_to_lower = False
+    context.settings.output_to_upper = False
+    context.project.runtime_cfg.project_root = tmp_path
+    context.project.runtime_cfg.vars = {}
+    context.project.runtime_cfg.credentials.type = "postgres"
+    context.pool.map.side_effect = lambda func, items: [func(item) for item in items]
+
+    incoming_col = mock.MagicMock()
+    incoming_col.type = "text"
+    incoming_col.comment = "from database"
+
+    with (
+        mock.patch(
+            "dbt_osmosis.core.node_filters._iter_candidate_nodes",
+            return_value=iter([("model.test.test_model", mock_node)]),
+        ),
+        mock.patch(
+            "dbt_osmosis.core.introspection.get_columns",
+            return_value=OrderedDict([("new_col", incoming_col)]),
+        ) as get_columns,
+    ):
+        inject_missing_columns(context)
+
+    get_columns.assert_called_once_with(context, mock_node)
+    assert list(mock_node.columns) == ["new_col"]
 
 
 def test_remove_columns_not_in_database(yaml_context: YamlRefactorContext, fresh_caches):
@@ -213,7 +301,7 @@ def test_inject_missing_columns_idempotent_with_output_to_upper_on_postgres(fres
             return_value=incoming,
         ),
         mock.patch(
-            "dbt_osmosis.core.introspection._get_setting_for_node",
+            "dbt_osmosis.core.introspection.resolve_setting",
             side_effect=lambda *args, fallback=None, **kw: fallback,
         ),
     ):
@@ -265,7 +353,7 @@ def test_inject_missing_columns_preserves_column_config_for_sync(fresh_caches, f
             return_value=incoming,
         ),
         mock.patch(
-            "dbt_osmosis.core.introspection._get_setting_for_node",
+            "dbt_osmosis.core.introspection.resolve_setting",
             side_effect=lambda *args, fallback=None, **kw: fallback,
         ),
     ):
@@ -323,7 +411,7 @@ def test_remove_columns_not_in_database_with_output_to_upper_on_postgres(fresh_c
             return_value=incoming,
         ),
         mock.patch(
-            "dbt_osmosis.core.introspection._get_setting_for_node",
+            "dbt_osmosis.core.introspection.resolve_setting",
             side_effect=lambda *args, fallback=None, **kw: fallback,
         ),
     ):
@@ -364,7 +452,7 @@ def test_remove_columns_not_in_database_removes_truly_extra_columns(fresh_caches
             return_value=incoming,
         ),
         mock.patch(
-            "dbt_osmosis.core.introspection._get_setting_for_node",
+            "dbt_osmosis.core.introspection.resolve_setting",
             side_effect=lambda *args, fallback=None, **kw: fallback,
         ),
     ):
@@ -411,7 +499,7 @@ def test_synchronize_data_types_with_output_to_upper_on_postgres(fresh_caches):
             return_value=incoming,
         ),
         mock.patch(
-            "dbt_osmosis.core.introspection._get_setting_for_node",
+            "dbt_osmosis.core.introspection.resolve_setting",
             side_effect=lambda *args, fallback=None, **kw: fallback,
         ),
     ):
@@ -467,7 +555,7 @@ def test_inject_missing_columns_applies_output_to_lower(fresh_caches):
             return_value=incoming,
         ),
         mock.patch(
-            "dbt_osmosis.core.introspection._get_setting_for_node",
+            "dbt_osmosis.core.introspection.resolve_setting",
             side_effect=lambda *args, fallback=None, **kw: fallback,
         ),
     ):
@@ -517,7 +605,7 @@ def test_inject_missing_columns_with_lower_then_sort_alphabetically(fresh_caches
             return_value=incoming,
         ),
         mock.patch(
-            "dbt_osmosis.core.introspection._get_setting_for_node",
+            "dbt_osmosis.core.introspection.resolve_setting",
             side_effect=lambda *args, fallback=None, **kw: fallback,
         ),
     ):

@@ -249,7 +249,7 @@ def _collect_column_variants(
     node_column_variants: dict[str, list[str]] = {}
     for column_name, _ in node.columns.items():
         variants = node_column_variants.setdefault(column_name, [column_name])
-        for v in pm.hook.get_candidates(name=column_name, node=node, context=context.project):
+        for v in pm.hook.get_candidates(name=column_name, node=node, context=context):
             variants.extend(t.cast("list[str]", v))
 
     return node_column_variants
@@ -290,10 +290,11 @@ def _build_graph_edge(
     graph_edge = _column_to_dict(incoming, omit_none=True)
     _apply_effective_column_metadata(graph_edge)
 
-    from dbt_osmosis.core.introspection import _get_setting_for_node
+    from dbt_osmosis.core.introspection import resolve_setting
 
     # Add progenitor to meta if configured
-    if _get_setting_for_node(
+    if resolve_setting(
+        context,
         "add-progenitor-to-meta",
         node,
         name,
@@ -302,7 +303,8 @@ def _build_graph_edge(
         graph_edge.setdefault("meta", {})["osmosis_progenitor"] = ancestor.unique_id
 
     # Use unrendered descriptions if configured
-    if _get_setting_for_node(
+    if resolve_setting(
+        context,
         "use-unrendered-descriptions",
         node,
         name,
@@ -318,7 +320,8 @@ def _build_graph_edge(
             graph_edge["description"] = unrendered_description
 
     # Handle inheritance for specified keys
-    for inheritable in _get_setting_for_node(
+    for inheritable in resolve_setting(
+        context,
         "add-inheritance-for-specified-keys",
         node,
         name,
@@ -347,13 +350,14 @@ def _clean_graph_edge(
     name: str,
 ) -> None:
     """Clean up empty values and placeholder descriptions from graph edge."""
-    from dbt_osmosis.core.introspection import _get_setting_for_node
+    from dbt_osmosis.core.introspection import resolve_setting
     from dbt_osmosis.core.settings import EMPTY_STRING
 
     # Remove placeholder descriptions or force inherit if direct ancestor
     if graph_edge.get("description", EMPTY_STRING) in context.placeholders or (
         generation == "generation_0"
-        and _get_setting_for_node(
+        and resolve_setting(
+            context,
             "force_inherit_descriptions",
             node,
             name,
@@ -668,9 +672,10 @@ def _build_column_knowledge_graph(
                     if not any(name in cols for cols in processed_columns_in_generation.values()):
                         # For columns originating in the target node, set it as the progenitor
                         # This provides useful information for tracking column lineage
-                        from dbt_osmosis.core.introspection import _get_setting_for_node
+                        from dbt_osmosis.core.introspection import resolve_setting
 
-                        if _get_setting_for_node(
+                        if resolve_setting(
+                            context,
                             "add-progenitor-to-meta",
                             node,
                             name,

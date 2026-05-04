@@ -18,6 +18,7 @@ settings with proper precedence handling across dbt versions 1.8-1.11+.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -262,11 +263,21 @@ class TestConfigResolver:
             return_value={
                 "dbt-osmosis": {
                     "skip-add-tags": True,
+                    "dbt-osmosis-skip-add-columns": False,
+                    "dbt-osmosis-options": {
+                        "string-length": True,
+                    },
                     "yaml-settings": {"map_indent": 2},
                 },
                 "dbt_osmosis": {
                     "output-to-lower": False,
+                    "dbt_osmosis_output_to_upper": True,
+                    "dbt_osmosis_options": {
+                        "numeric_precision_and_scale": False,
+                    },
                 },
+                "dbt-osmosis-force-inherit-descriptions": True,
+                "prefer-yaml-values": False,
             },
         )
 
@@ -274,8 +285,16 @@ class TestConfigResolver:
 
         # Test dbt-osmosis kebab-case prefix
         assert source.get("skip-add-tags") is True
+        # Test prefixed and nested variants inside project vars namespaces
+        assert source.get("skip-add-columns") is False
+        assert source.get("string-length") is True
         # Test dbt_osmosis snake_case prefix
         assert source.get("output-to-lower") is False
+        assert source.get("output-to-upper") is True
+        assert source.get("numeric-precision-and-scale") is False
+        # Test documented top-level project var variants
+        assert source.get("force-inherit-descriptions") is True
+        assert source.get("prefer-yaml-values") is False
         # Test nested yaml-settings
         assert source.get("yaml-settings") == {"map_indent": 2}
         # Test missing key
@@ -332,6 +351,60 @@ dbt-osmosis-options:
         assert source.get("output-to-lower") is False
         # Test missing key
         assert source.get("nonexistent") is None
+
+    def test_nested_options_support_snake_case_inner_keys(self, tmp_path: Path) -> None:
+        """Nested dbt_osmosis_options should accept Python-friendly inner keys."""
+        mock_node = Mock()
+        mock_node.meta = {"dbt_osmosis_options": {"string_length": True}}
+        mock_node.config = Mock()
+        mock_node.config.extra = {"dbt_osmosis_options": {"output_to_lower": False}}
+        mock_node.config.meta = {"dbt_osmosis_options": {"skip_add_tags": True}}
+        mock_node.unrendered_config = {
+            "dbt_osmosis_options": {"numeric_precision_and_scale": True},
+        }
+        mock_node.columns = {}
+
+        assert ConfigMetaSource(mock_node).get("skip-add-tags") is True
+        assert UnrenderedConfigSource(mock_node).get("numeric-precision-and-scale") is True
+
+        resolver = SettingsResolver()
+        assert resolver.resolve("string-length", mock_node, fallback=False) is True
+        assert resolver.resolve("output-to-lower", mock_node, fallback=True) is False
+
+        (tmp_path / "dbt-osmosis.yml").write_text(
+            "dbt_osmosis_options:\n  force_inherit_descriptions: true\n",
+        )
+        mock_context = SimpleNamespace(
+            project=SimpleNamespace(runtime_cfg=SimpleNamespace(project_root=tmp_path)),
+        )
+        assert SupplementaryFileSource(mock_context).get("force-inherit-descriptions") is True
+
+    def test_supplementary_file_source_reuses_shared_cache(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Repeated supplementary source instances should not reparse unchanged YAML."""
+        import ruamel.yaml
+
+        (tmp_path / "dbt-osmosis.yml").write_text("skip-add-tags: true\n")
+        mock_context = SimpleNamespace(
+            project=SimpleNamespace(runtime_cfg=SimpleNamespace(project_root=tmp_path)),
+        )
+
+        load_count = 0
+        original_load = ruamel.yaml.YAML.load
+
+        def counting_load(self, stream):
+            nonlocal load_count
+            load_count += 1
+            return original_load(self, stream)
+
+        monkeypatch.setattr(ruamel.yaml.YAML, "load", counting_load)
+
+        assert SupplementaryFileSource(mock_context).get("skip-add-tags") is True
+        assert SupplementaryFileSource(mock_context).get("skip-add-tags") is True
+        assert load_count == 1
 
     def test_supplementary_file_source_missing_file(self, tmp_path: Path) -> None:
         """T023: Test SupplementaryFileSource handles missing file gracefully."""
@@ -1183,16 +1256,137 @@ test-setting: "supplementary-file"
         # Node meta should win (highest precedence among existing sources)
         assert result == "node-meta"
 
-        # Note: Current SettingsResolver doesn't yet integrate supplementary file or
-        # project vars - those will be added in a future user story (US4).
-        # When integrated, the full precedence will be:
-        #   1. Column-level meta
-        #   2. Node-level config.meta (dbt 1.10+)
-        #   3. Node-level meta
-        #   4. Node-level config.extra
-        #   5. Supplementary file (dbt-osmosis.yml) - TODO: US4
-        #   6. Project vars (dbt_project.yml) - TODO: US4
-        #   7. Fallback defaults
+        # Context-backed resolver should consult supplementary file before vars
+        # when no higher-precedence node setting exists.
+        mock_node.meta = {}
+        result = resolver.resolve("test-setting", mock_node, context=mock_context)
+        assert result == "supplementary-file"
+
+    def test_context_backed_resolver_uses_project_vars_before_fallback(self) -> None:
+        """Project vars participate in SettingsResolver precedence with context."""
+        mock_context = Mock()
+        mock_context.project = Mock()
+        mock_context.project.runtime_cfg = Mock()
+        mock_context.project.runtime_cfg.vars = {"dbt-osmosis": {"skip-add-tags": True}}
+
+        mock_node = Mock()
+        mock_node.meta = {}
+        mock_node.config = Mock()
+        mock_node.config.extra = {}
+        mock_node.config.meta = {}
+        mock_node.unrendered_config = {}
+        mock_node.columns = {}
+
+        resolver = SettingsResolver()
+        assert (
+            resolver.resolve("skip-add-tags", mock_node, context=mock_context, fallback=False)
+            is True
+        )
+
+    def test_context_backed_resolver_preserves_explicit_falsey_values(self, tmp_path: Path) -> None:
+        """False, 0, and empty string settings must not fall through as missing."""
+        (tmp_path / "dbt-osmosis.yml").write_text(
+            """
+empty-string: ""
+zero-value: 0
+dbt-osmosis-options:
+  skip-add-tags: false
+""",
+        )
+
+        mock_context = Mock()
+        mock_context.project = Mock()
+        mock_context.project.runtime_cfg = Mock()
+        mock_context.project.runtime_cfg.project_root = tmp_path
+        mock_context.project.runtime_cfg.vars = {
+            "dbt-osmosis": {
+                "empty-string": "from-vars",
+                "zero-value": 99,
+                "skip-add-tags": True,
+            },
+        }
+
+        mock_node = Mock()
+        mock_node.meta = {}
+        mock_node.config = Mock()
+        mock_node.config.extra = {}
+        mock_node.config.meta = {}
+        mock_node.unrendered_config = {}
+        mock_node.columns = {}
+
+        resolver = SettingsResolver()
+
+        assert (
+            resolver.resolve("skip-add-tags", mock_node, context=mock_context, fallback=True)
+            is False
+        )
+        assert resolver.resolve("zero-value", mock_node, context=mock_context, fallback=42) == 0
+        assert (
+            resolver.resolve("empty-string", mock_node, context=mock_context, fallback="fallback")
+            == ""
+        )
+
+    def test_context_settings_tuple_default_does_not_shadow_project_config(self) -> None:
+        """Click's empty tuple default should match the dataclass empty list default."""
+        mock_context = SimpleNamespace(
+            project=SimpleNamespace(
+                runtime_cfg=SimpleNamespace(
+                    vars={
+                        "dbt-osmosis": {
+                            "add-inheritance-for-specified-keys": ["policy_tags"],
+                        },
+                    },
+                ),
+            ),
+            settings=SimpleNamespace(add_inheritance_for_specified_keys=()),
+        )
+        mock_node = Mock()
+        mock_node.meta = {}
+        mock_node.config = Mock()
+        mock_node.config.extra = {}
+        mock_node.config.meta = {}
+        mock_node.unrendered_config = {}
+        mock_node.columns = {}
+
+        resolver = SettingsResolver()
+
+        assert resolver.resolve(
+            "add-inheritance-for-specified-keys",
+            mock_node,
+            context=mock_context,
+            fallback=(),
+        ) == ["policy_tags"]
+
+    def test_context_backed_has_and_precedence_chain_without_node(self, tmp_path: Path) -> None:
+        """Debug helpers should expose context-backed project settings."""
+        (tmp_path / "dbt-osmosis.yml").write_text("test-setting: supplementary\n")
+        mock_context = SimpleNamespace(
+            project=SimpleNamespace(
+                runtime_cfg=SimpleNamespace(
+                    project_root=tmp_path,
+                    vars={"dbt-osmosis": {"vars-only": "project-vars"}},
+                ),
+            ),
+        )
+
+        resolver = SettingsResolver()
+
+        assert resolver.has("vars-only", context=mock_context) is True
+        chain = resolver.get_precedence_chain("test-setting", context=mock_context)
+        assert chain == [
+            (ConfigSourceName.CONTEXT_SETTINGS, None),
+            (ConfigSourceName.SUPPLEMENTARY_FILE, "supplementary"),
+            (ConfigSourceName.PROJECT_VARS, None),
+            (ConfigSourceName.FALLBACK, None),
+        ]
+
+        settings_context = SimpleNamespace(
+            project=mock_context.project,
+            settings=SimpleNamespace(skip_add_tags=True),
+        )
+        assert resolver.has("skip-add-tags", context=settings_context) is True
+        settings_chain = resolver.get_precedence_chain("skip-add-tags", context=settings_context)
+        assert settings_chain[0] == (ConfigSourceName.CONTEXT_SETTINGS, True)
 
 
 class TestBackwardCompatibility:

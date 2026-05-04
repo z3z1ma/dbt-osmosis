@@ -30,6 +30,7 @@ __all__ = [
     "_maybe_use_precise_dtype",
     "get_columns",
     "SettingsResolver",
+    "resolve_setting",
     "_load_catalog",
     "_generate_catalog",
     "_COLUMN_LIST_CACHE",
@@ -50,6 +51,7 @@ __all__ = [
 ]
 
 T = t.TypeVar("T")
+_MISSING = object()
 
 
 class _CatalogArtifactProtocol(t.Protocol):
@@ -184,6 +186,7 @@ class ConfigSourceName(Enum):
         CONFIG_EXTRA: Node config.extra dictionary
         CONFIG_META: Node config.meta dictionary (dbt 1.10+)
         UNRENDERED_CONFIG: Node unrendered_config dictionary (dbt 1.10+)
+        CONTEXT_SETTINGS: Explicit runtime context settings
         PROJECT_VARS: Project-level vars from dbt_project.yml
         SUPPLEMENTARY_FILE: Supplementary dbt-osmosis.yml file
         FALLBACK: Default fallback value (lowest priority)
@@ -194,6 +197,7 @@ class ConfigSourceName(Enum):
     CONFIG_EXTRA = "config_extra"
     CONFIG_META = "config_meta"
     UNRENDERED_CONFIG = "unrendered_config"
+    CONTEXT_SETTINGS = "context_settings"
     PROJECT_VARS = "project_vars"
     SUPPLEMENTARY_FILE = "supplementary_file"
     FALLBACK = "fallback"
@@ -227,6 +231,52 @@ def _get_mapping_value(source: t.Any, key: str) -> t.Any | None:
     if isinstance(source, t.Mapping):
         return source.get(key)
     return getattr(source, key, None)
+
+
+def _get_options_value(
+    options: t.Any,
+    kebab_key: str,
+    snake_key: str,
+) -> t.Any:
+    """Read a setting from an options object while preserving falsey values."""
+    if not isinstance(options, t.Mapping):
+        return _MISSING
+    if kebab_key in options:
+        return options[kebab_key]
+    if snake_key in options:
+        return options[snake_key]
+    return _MISSING
+
+
+def _same_setting_value(left: t.Any, right: t.Any) -> bool:
+    """Compare settings values with Click tuple defaults matching dataclass lists."""
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return list(left) == list(right)
+    return left == right
+
+
+def _get_explicit_context_setting_value(context: t.Any, setting_name: str) -> t.Any:
+    """Return a non-default runtime setting value, or _MISSING when not explicit."""
+    if context is None or not hasattr(context, "settings"):
+        return _MISSING
+
+    attr_name = setting_name.replace("-", "_")
+    settings_obj = context.settings
+    if not hasattr(settings_obj, attr_name):
+        return _MISSING
+
+    current_value = getattr(settings_obj, attr_name)
+
+    try:
+        from dbt_osmosis.core.settings import YamlRefactorSettings
+
+        default_value = getattr(YamlRefactorSettings(), attr_name)
+    except Exception:
+        return _MISSING
+
+    if not _same_setting_value(current_value, default_value):
+        return current_value
+    return _MISSING
 
 
 def _merge_column_meta(
@@ -407,10 +457,12 @@ class ConfigMetaSource(ConfigurationSource):
         options_kebab = config_meta.get("dbt-osmosis-options", {})
         options_snake = config_meta.get("dbt_osmosis_options", {})
 
-        if isinstance(options_kebab, dict) and kebab_key in options_kebab:
-            return options_kebab[kebab_key]
-        if isinstance(options_snake, dict) and kebab_key in options_snake:
-            return options_snake[kebab_key]
+        value = _get_options_value(options_kebab, kebab_key, snake_key)
+        if value is not _MISSING:
+            return value
+        value = _get_options_value(options_snake, kebab_key, snake_key)
+        if value is not _MISSING:
+            return value
 
         return None
 
@@ -482,10 +534,12 @@ class UnrenderedConfigSource(ConfigurationSource):
         options_kebab = unrendered_config.get("dbt-osmosis-options", {})
         options_snake = unrendered_config.get("dbt_osmosis_options", {})
 
-        if isinstance(options_kebab, dict) and kebab_key in options_kebab:
-            return options_kebab[kebab_key]
-        if isinstance(options_snake, dict) and kebab_key in options_snake:
-            return options_snake[kebab_key]
+        value = _get_options_value(options_kebab, kebab_key, snake_key)
+        if value is not _MISSING:
+            return value
+        value = _get_options_value(options_snake, kebab_key, snake_key)
+        if value is not _MISSING:
+            return value
 
         return None
 
@@ -499,7 +553,8 @@ class ProjectVarsSource(ConfigurationSource):
     Supported key variants:
     - dbt-osmosis.<key> (under dbt-osmosis top-level key)
     - dbt_osmosis.<key> (under dbt_osmosis top-level key)
-    - <key> (direct key, if at top level of vars)
+    - dbt-osmosis-options.<key> / dbt_osmosis_options.<key> nested in those sections
+    - dbt-osmosis-<key> / dbt_osmosis_<key> and <key> direct top-level vars
 
     Example:
         >>> source = ProjectVarsSource(context)
@@ -546,22 +601,41 @@ class ProjectVarsSource(ConfigurationSource):
         kebab_key = key.replace("_", "-")
         snake_key = key.replace("-", "_")
 
+        def mapping_value(source: t.Any) -> t.Any:
+            if not isinstance(source, t.Mapping):
+                return _MISSING
+
+            for prefixed_name in (f"dbt-osmosis-{kebab_key}", f"dbt_osmosis_{snake_key}"):
+                if prefixed_name in source:
+                    return source[prefixed_name]
+
+            if kebab_key in source:
+                return source[kebab_key]
+            if snake_key in source:
+                return source[snake_key]
+
+            for options_name in ("dbt-osmosis-options", "dbt_osmosis_options"):
+                value = _get_options_value(source.get(options_name, {}), kebab_key, snake_key)
+                if value is not _MISSING:
+                    return value
+
+            return _MISSING
+
         # Check dbt-osmosis top-level key
         dbt_osmosis_vars = vars_dict.get("dbt-osmosis", {})
-        if isinstance(dbt_osmosis_vars, dict):
-            # Check both kebab and snake variants
-            if kebab_key in dbt_osmosis_vars:
-                return dbt_osmosis_vars[kebab_key]
-            if snake_key in dbt_osmosis_vars:
-                return dbt_osmosis_vars[snake_key]
+        value = mapping_value(dbt_osmosis_vars)
+        if value is not _MISSING:
+            return value
 
         # Check dbt_osmosis top-level key (snake_case variant)
         dbt_osmosis_vars_snake = vars_dict.get("dbt_osmosis", {})
-        if isinstance(dbt_osmosis_vars_snake, dict):
-            if kebab_key in dbt_osmosis_vars_snake:
-                return dbt_osmosis_vars_snake[kebab_key]
-            if snake_key in dbt_osmosis_vars_snake:
-                return dbt_osmosis_vars_snake[snake_key]
+        value = mapping_value(dbt_osmosis_vars_snake)
+        if value is not _MISSING:
+            return value
+
+        value = mapping_value(vars_dict)
+        if value is not _MISSING:
+            return value
 
         return None
 
@@ -587,6 +661,9 @@ class SupplementaryFileSource(ConfigurationSource):
         >>> value = source.get("skip-add-tags")
 
     """
+
+    _SHARED_CONFIG_CACHE: t.ClassVar[dict[tuple[Path, int, int], dict[str, t.Any]]] = {}
+    _SHARED_CONFIG_CACHE_LOCK: t.ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self, context: t.Any) -> None:
         """Initialize SupplementaryFileSource.
@@ -620,12 +697,30 @@ class SupplementaryFileSource(ConfigurationSource):
         if not hasattr(self._context.project.runtime_cfg, "project_root"):
             return {}
 
-        project_root = Path(self._context.project.runtime_cfg.project_root)
+        try:
+            project_root = Path(self._context.project.runtime_cfg.project_root)
+        except TypeError:
+            return {}
         config_file = project_root / "dbt-osmosis.yml"
 
         # Check if file exists first
         if not config_file.is_file():
             return {}
+
+        try:
+            stat_result = config_file.stat()
+        except OSError as e:
+            raise ConfigurationError(
+                f"Error reading {config_file.name}: {e}",
+                file_path=str(config_file),
+            ) from e
+
+        cache_key = (config_file, stat_result.st_mtime_ns, stat_result.st_size)
+        with self._SHARED_CONFIG_CACHE_LOCK:
+            cached_config = self._SHARED_CONFIG_CACHE.get(cache_key)
+        if cached_config is not None:
+            self._config_cache = cached_config
+            return self._config_cache
 
         # Use standard ruamel.yaml (not OsmosisYAML) to avoid filtering
         # dbt-osmosis.yml contains arbitrary config keys, not dbt structures
@@ -666,6 +761,9 @@ class SupplementaryFileSource(ConfigurationSource):
                 file_path=str(config_file),
             ) from e
 
+        with self._SHARED_CONFIG_CACHE_LOCK:
+            self._SHARED_CONFIG_CACHE[cache_key] = self._config_cache
+
         return self._config_cache
 
     def get(self, key: str) -> t.Any | None:
@@ -705,10 +803,12 @@ class SupplementaryFileSource(ConfigurationSource):
         options_kebab = config.get("dbt-osmosis-options", {})
         options_snake = config.get("dbt_osmosis_options", {})
 
-        if isinstance(options_kebab, dict) and kebab_key in options_kebab:
-            return options_kebab[kebab_key]
-        if isinstance(options_snake, dict) and kebab_key in options_snake:
-            return options_snake[kebab_key]
+        value = _get_options_value(options_kebab, kebab_key, snake_key)
+        if value is not _MISSING:
+            return value
+        value = _get_options_value(options_snake, kebab_key, snake_key)
+        if value is not _MISSING:
+            return value
 
         return None
 
@@ -747,8 +847,18 @@ class SettingsResolver:
        - Node config extra: <key> (direct key)
        - Node config extra: <identifier> (python identifier variant)
 
-    3. Fallback value
+    3. dbt 1.10+ node config sources
+       - Node config.meta
+       - Node unrendered_config
+
+    4. Context-backed project sources (when context is provided)
+       - Supplementary dbt-osmosis.yml
+       - Project vars
+
+    5. Fallback value
     """
+
+    context: t.Any | None = None
 
     def resolve(
         self,
@@ -756,6 +866,7 @@ class SettingsResolver:
         node: ResultNode | None = None,
         column_name: str | None = None,
         *,
+        context: t.Any | None = None,
         fallback: t.Any | None = None,
     ) -> t.Any:
         """Resolve a setting value from the configured sources.
@@ -764,99 +875,124 @@ class SettingsResolver:
             setting_name: The name of the setting to resolve (supports both kebab-case and snake_case)
             node: The dbt node to resolve settings for
             column_name: Optional column name to check column-level settings
+            context: Optional dbt-osmosis context for supplementary file and project vars
             fallback: Default value if setting not found in any source
 
         Returns:
             The resolved setting value or fallback if not found
 
         """
-        if node is None:
-            return fallback
+        active_context = context if context is not None else self.context
 
-        # Convert between kebab-case and snake_case for different naming conventions
-        kebab_name = setting_name.replace("_", "-")
-        snake_name = setting_name.replace("-", "_")
+        def dict_value(source: t.Any, *, direct_keys: bool) -> t.Any:
+            if not isinstance(source, t.Mapping):
+                return _MISSING
 
-        # Build list of sources in precedence order
-        sources = []
+            kebab_name = setting_name.replace("_", "-")
+            snake_name = setting_name.replace("-", "_")
 
-        # Column-level sources (if column specified) - HIGHEST precedence
-        if column_name and (column := node.columns.get(column_name)):
-            column_meta = _get_effective_column_meta(column)
-            sources = [
-                column_meta,
-                column_meta.get("dbt-osmosis-options", {}),
-                column_meta.get("dbt_osmosis_options", {}),
-            ]
-            # Add node-level sources after column sources
-            sources.extend([
-                node.meta,
-                node.meta.get("dbt-osmosis-options", {}),
-                node.meta.get("dbt_osmosis_options", {}),
-                node.config.extra,
-                node.config.extra.get("dbt-osmosis-options", {}),
-                node.config.extra.get("dbt_osmosis_options", {}),
-            ])
-        else:
-            # Only node-level sources
-            sources = [
-                node.meta,
-                node.meta.get("dbt-osmosis-options", {}),
-                node.meta.get("dbt_osmosis_options", {}),
-                node.config.extra,
-                node.config.extra.get("dbt-osmosis-options", {}),
-                node.config.extra.get("dbt_osmosis_options", {}),
-            ]
-
-        # Check each source for the setting (in order - highest precedence first)
-        for source in sources:
-            # Check prefixed variants first
             for prefixed_name in (f"dbt-osmosis-{kebab_name}", f"dbt_osmosis_{snake_name}"):
                 if prefixed_name in source:
-                    logger.debug(
-                        ":gear: Resolved setting '%s' from source (prefixed variant)",
-                        setting_name,
-                    )
                     return source[prefixed_name]
 
-            # For non-config.extra sources, check direct key variants
-            if source is not node.config.extra:
+            if direct_keys:
                 if kebab_name in source:
-                    logger.debug(
-                        ":gear: Resolved setting '%s' from source (direct kebab variant)",
-                        setting_name,
-                    )
                     return source[kebab_name]
                 if snake_name in source:
+                    return source[snake_name]
+
+            options_kebab = source.get("dbt-osmosis-options", {})
+            options_snake = source.get("dbt_osmosis_options", {})
+            value = _get_options_value(options_kebab, kebab_name, snake_name)
+            if value is not _MISSING:
+                return value
+            value = _get_options_value(options_snake, kebab_name, snake_name)
+            if value is not _MISSING:
+                return value
+            return _MISSING
+
+        def source_value(source: ConfigurationSource) -> t.Any:
+            value = source.get(setting_name)
+            if value is None:
+                return _MISSING
+            return value
+
+        def explicit_context_setting_value() -> t.Any:
+            current_value = _get_explicit_context_setting_value(active_context, setting_name)
+            if current_value is _MISSING:
+                return _MISSING
+            if not _same_setting_value(current_value, fallback):
+                return _MISSING
+            return current_value
+
+        if node is not None:
+            node_sources: list[tuple[str, t.Any, bool]] = []
+
+            # Column-level sources (if column specified) - HIGHEST precedence
+            if column_name and (column := node.columns.get(column_name)):
+                column_meta = _get_effective_column_meta(column)
+                node_sources.append(("column_meta", column_meta, True))
+
+            node_sources.extend([
+                ("node_meta", getattr(node, "meta", {}), True),
+                ("config_extra", getattr(getattr(node, "config", None), "extra", {}), False),
+            ])
+
+            # Check each source for the setting (in order - highest precedence first)
+            for source_name, source, direct_keys in node_sources:
+                value = dict_value(source, direct_keys=direct_keys)
+                if value is not _MISSING:
                     logger.debug(
-                        ":gear: Resolved setting '%s' from source (direct snake variant)",
+                        ":gear: Resolved setting '%s' from %s",
+                        setting_name,
+                        source_name,
+                    )
+                    return value
+
+            # Check dbt 1.10+ sources AFTER existing sources (lower precedence)
+            # Check config.meta (dbt 1.10+)
+            if hasattr(node, "config") and hasattr(node.config, "meta"):
+                config_meta_source = ConfigMetaSource(node)
+                value = source_value(config_meta_source)
+                if value is not _MISSING:
+                    logger.debug(
+                        ":gear: Resolved setting '%s' from config.meta (dbt 1.10+)",
                         setting_name,
                     )
-                    return source[snake_name]
-            # config.extra only checks prefixed variants, not direct keys
+                    return value
 
-        # Check dbt 1.10+ sources AFTER existing sources (lower precedence)
-        # Check config.meta (dbt 1.10+)
-        if hasattr(node, "config") and hasattr(node.config, "meta"):
-            config_meta_source = ConfigMetaSource(node)
-            value = config_meta_source.get(setting_name)
-            if value is not None:
-                logger.debug(
-                    ":gear: Resolved setting '%s' from config.meta (dbt 1.10+)",
-                    setting_name,
-                )
-                return value
+            # Check unrendered_config (dbt 1.10+)
+            if hasattr(node, "unrendered_config"):
+                unrendered_source = UnrenderedConfigSource(node)
+                value = source_value(unrendered_source)
+                if value is not _MISSING:
+                    logger.debug(
+                        ":gear: Resolved setting '%s' from unrendered_config (dbt 1.10+)",
+                        setting_name,
+                    )
+                    return value
 
-        # Check unrendered_config (dbt 1.10+)
-        if hasattr(node, "unrendered_config"):
-            unrendered_source = UnrenderedConfigSource(node)
-            value = unrendered_source.get(setting_name)
-            if value is not None:
-                logger.debug(
-                    ":gear: Resolved setting '%s' from unrendered_config (dbt 1.10+)",
-                    setting_name,
-                )
-                return value
+        explicit_context_value = explicit_context_setting_value()
+        if explicit_context_value is not _MISSING:
+            logger.debug(
+                ":gear: Resolved setting '%s' from explicit context settings",
+                setting_name,
+            )
+            return explicit_context_value
+
+        if active_context is not None:
+            for context_source in (
+                SupplementaryFileSource(active_context),
+                ProjectVarsSource(active_context),
+            ):
+                value = source_value(context_source)
+                if value is not _MISSING:
+                    logger.debug(
+                        ":gear: Resolved setting '%s' from %s",
+                        setting_name,
+                        context_source.name.value,
+                    )
+                    return value
 
         logger.debug(
             ":gear: Setting '%s' not found, using fallback: %s",
@@ -870,6 +1006,8 @@ class SettingsResolver:
         setting_name: str,
         node: ResultNode | None = None,
         column_name: str | None = None,
+        *,
+        context: t.Any | None = None,
     ) -> bool:
         """Check if a setting exists in any source.
 
@@ -877,17 +1015,19 @@ class SettingsResolver:
             setting_name: The name of the setting to check
             node: The dbt node to check for settings
             column_name: Optional column name to check column-level settings
+            context: Optional dbt-osmosis context for supplementary file and project vars
 
         Returns:
             True if the setting exists in any source, False otherwise
 
         """
-        if node is None:
-            return False
+        active_context = context if context is not None else self.context
+        if _get_explicit_context_setting_value(active_context, setting_name) is not _MISSING:
+            return True
 
         # Use resolve with a sentinel value to check if setting exists
         sentinel = object()
-        result = self.resolve(setting_name, node, column_name, fallback=sentinel)
+        result = self.resolve(setting_name, node, column_name, context=context, fallback=sentinel)
         return result is not sentinel
 
     def get_precedence_chain(
@@ -895,6 +1035,8 @@ class SettingsResolver:
         setting_name: str,
         node: ResultNode | None = None,
         column_name: str | None = None,
+        *,
+        context: t.Any | None = None,
     ) -> list[tuple[ConfigSourceName, t.Any | None]]:
         """Get the full precedence chain for a setting with values from each source.
 
@@ -911,60 +1053,79 @@ class SettingsResolver:
             Values are None if the source doesn't have the setting.
 
         """
+        active_context = context if context is not None else self.context
         chain = []
 
-        if node is None:
-            chain.append((ConfigSourceName.FALLBACK, None))
-            return chain
-
-        # Convert between kebab-case and snake_case
         kebab_name = setting_name.replace("_", "-")
         snake_name = setting_name.replace("-", "_")
 
         # Helper to extract value from a dict source
-        def extract_value(source: dict[str, t.Any]) -> t.Any | None:
+        def extract_value(source: t.Any, *, direct_keys: bool) -> t.Any | None:
+            if not isinstance(source, t.Mapping):
+                return None
             # Check prefixed variants
             for prefixed_name in (f"dbt-osmosis-{kebab_name}", f"dbt_osmosis_{snake_name}"):
                 if prefixed_name in source:
                     return source[prefixed_name]
             # Check direct variants
-            if kebab_name in source:
-                return source[kebab_name]
-            if snake_name in source:
-                return source[snake_name]
+            if direct_keys:
+                if kebab_name in source:
+                    return source[kebab_name]
+                if snake_name in source:
+                    return source[snake_name]
+            for options_name in ("dbt-osmosis-options", "dbt_osmosis_options"):
+                value = _get_options_value(source.get(options_name, {}), kebab_name, snake_name)
+                if value is not _MISSING:
+                    return value
             return None
 
-        # Column-level sources
-        if column_name and (column := node.columns.get(column_name)):
-            value = extract_value(_get_effective_column_meta(column))
-            chain.append((ConfigSourceName.COLUMN_META, value))
+        if node is not None:
+            # Column-level sources
+            if column_name and (column := node.columns.get(column_name)):
+                value = extract_value(_get_effective_column_meta(column), direct_keys=True)
+                chain.append((ConfigSourceName.COLUMN_META, value))
 
-        # Node meta sources
-        value = extract_value(node.meta)
-        chain.append((ConfigSourceName.NODE_META, value))
+            # Node meta sources
+            value = extract_value(node.meta, direct_keys=True)
+            chain.append((ConfigSourceName.NODE_META, value))
 
-        # Node config.extra
-        value = extract_value(node.config.extra)
-        chain.append((ConfigSourceName.CONFIG_EXTRA, value))
+            # Node config.extra
+            value = extract_value(node.config.extra, direct_keys=False)
+            chain.append((ConfigSourceName.CONFIG_EXTRA, value))
 
-        # Config.meta (dbt 1.10+)
-        if hasattr(node, "config") and hasattr(node.config, "meta"):
-            config_meta_source = ConfigMetaSource(node)
-            value = config_meta_source.get(setting_name)
-            chain.append((ConfigSourceName.CONFIG_META, value))
-        else:
-            chain.append((ConfigSourceName.CONFIG_META, None))
+            # Config.meta (dbt 1.10+)
+            if hasattr(node, "config") and hasattr(node.config, "meta"):
+                config_meta_source = ConfigMetaSource(node)
+                value = config_meta_source.get(setting_name)
+                chain.append((ConfigSourceName.CONFIG_META, value))
+            else:
+                chain.append((ConfigSourceName.CONFIG_META, None))
 
-        # Unrendered config (dbt 1.10+)
-        if hasattr(node, "unrendered_config"):
-            unrendered_source = UnrenderedConfigSource(node)
-            value = unrendered_source.get(setting_name)
-            chain.append((ConfigSourceName.UNRENDERED_CONFIG, value))
-        else:
-            chain.append((ConfigSourceName.UNRENDERED_CONFIG, None))
+            # Unrendered config (dbt 1.10+)
+            if hasattr(node, "unrendered_config"):
+                unrendered_source = UnrenderedConfigSource(node)
+                value = unrendered_source.get(setting_name)
+                chain.append((ConfigSourceName.UNRENDERED_CONFIG, value))
+            else:
+                chain.append((ConfigSourceName.UNRENDERED_CONFIG, None))
 
-        # Note: Project vars and supplementary file require context,
-        # which isn't available in this stateless resolver
+        if active_context is not None:
+            context_settings_value = _get_explicit_context_setting_value(
+                active_context,
+                setting_name,
+            )
+            if context_settings_value is _MISSING:
+                context_settings_value = None
+            chain.append((ConfigSourceName.CONTEXT_SETTINGS, context_settings_value))
+
+            supplementary_source = SupplementaryFileSource(active_context)
+            supplementary_value = supplementary_source.get(setting_name)
+            chain.append((ConfigSourceName.SUPPLEMENTARY_FILE, supplementary_value))
+            project_vars_source = ProjectVarsSource(active_context)
+            project_vars_value = project_vars_source.get(setting_name)
+            chain.append((ConfigSourceName.PROJECT_VARS, project_vars_value))
+
+        chain.append((ConfigSourceName.FALLBACK, None))
 
         return chain
 
@@ -1094,18 +1255,22 @@ def _maybe_use_precise_dtype(
     col: BaseColumn | ColumnMetadata,
     settings: t.Any,
     node: ResultNode | None = None,
+    *,
+    context: t.Any | None = None,
 ) -> str:
     """Use precise data type if enabled in settings."""
-    use_num_prec = _get_setting_for_node(
+    use_num_prec = _SETTINGS_RESOLVER.resolve(
         "numeric-precision-and-scale",
         node,
-        col.name,
+        column_name=col.name,
+        context=context,
         fallback=settings.numeric_precision_and_scale,
     )
-    use_chr_prec = _get_setting_for_node(
+    use_chr_prec = _SETTINGS_RESOLVER.resolve(
         "string-length",
         node,
-        col.name,
+        column_name=col.name,
+        context=context,
         fallback=settings.string_length,
     )
     # Handle BaseColumn from introspection (has is_numeric/is_string methods)
@@ -1178,6 +1343,25 @@ def _get_setting_for_node(
     )
 
 
+def resolve_setting(
+    context: t.Any,
+    setting_name: str,
+    /,
+    node: ResultNode | None = None,
+    col: str | None = None,
+    *,
+    fallback: t.Any | None = None,
+) -> t.Any:
+    """Resolve a dbt-osmosis setting using node sources plus context-backed project sources."""
+    return _SETTINGS_RESOLVER.resolve(
+        setting_name,
+        node,
+        column_name=col,
+        context=context,
+        fallback=fallback,
+    )
+
+
 def get_columns(
     context: t.Any,
     relation: BaseRelation | ResultNode | None,
@@ -1241,7 +1425,12 @@ def get_columns(
                 context.project.runtime_cfg.credentials.type,
             )
             if not isinstance(column, ColumnMetadata):
-                dtype = _maybe_use_precise_dtype(column, context.settings, result_node)
+                dtype = _maybe_use_precise_dtype(
+                    column,
+                    context.settings,
+                    result_node,
+                    context=context,
+                )
                 # BigQuery uses "description" attribute, other adapters use "comment"
                 col_comment = getattr(column, "description", None) or getattr(
                     column,

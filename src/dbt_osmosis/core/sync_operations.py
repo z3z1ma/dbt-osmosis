@@ -87,7 +87,7 @@ def _sync_doc_section(
         else:
             cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
         cdict["name"] = name
-        from dbt_osmosis.core.introspection import _get_setting_for_node, normalize_column_name
+        from dbt_osmosis.core.introspection import normalize_column_name, resolve_setting
 
         norm_name = normalize_column_name(name, context.project.runtime_cfg.credentials.type)
 
@@ -98,13 +98,15 @@ def _sync_doc_section(
         current_yaml = t.cast("dict[str, t.Any]", current_map.get(norm_name, {}))
         merged = dict(current_yaml)
 
-        skip_add_types = _get_setting_for_node(
+        skip_add_types = resolve_setting(
+            context,
             "skip-add-data-types",
             node,
             name,
             fallback=context.settings.skip_add_data_types,
         )
-        skip_merge_meta = _get_setting_for_node(
+        skip_merge_meta = resolve_setting(
+            context,
             "skip-merge-meta",
             node,
             name,
@@ -116,13 +118,15 @@ def _sync_doc_section(
         # doc blocks (e.g., {{ doc(...) }} or {% docs %}{% enddocs %}), we should
         # preserve the unrendered version instead of using the rendered version from manifest
         current_description = current_yaml.get("description")
-        use_unrendered = _get_setting_for_node(
+        use_unrendered = resolve_setting(
+            context,
             "use-unrendered-descriptions",
             node,
             name,
             fallback=context.settings.use_unrendered_descriptions,
         )
-        prefer_yaml = _get_setting_for_node(
+        prefer_yaml = resolve_setting(
+            context,
             "prefer-yaml-values",
             node,
             name,
@@ -252,14 +256,16 @@ def _sync_doc_section(
             if merged.get("config", {}) == {}:
                 merged.pop("config", None)
 
-        if _get_setting_for_node(
+        if resolve_setting(
+            context,
             "output-to-upper",
             node,
             name,
             fallback=context.settings.output_to_upper,
         ):
             merged["name"] = merged["name"].upper()
-        elif _get_setting_for_node(
+        elif resolve_setting(
+            context,
             "output-to-lower",
             node,
             name,

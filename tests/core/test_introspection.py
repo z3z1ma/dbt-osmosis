@@ -133,6 +133,22 @@ def test_get_columns_reprocesses_cached_columns_when_settings_change(fresh_cache
     assert calls == [("dev", relation.render())]
 
 
+def test_get_columns_honors_context_project_vars_for_precise_dtype(fresh_caches):
+    """Project config should affect dtype precision during real column introspection."""
+    relation = _FakeRelation("db.schema.orders")
+    calls = []
+    columns_by_target = {
+        ("dev", relation.render()): [Column.from_description("description", "varchar(256)")],
+    }
+    context = _make_introspection_context(columns_by_target, calls, string_length=False)
+    context.project.runtime_cfg.vars = {"dbt-osmosis": {"string-length": True}}
+
+    columns = get_columns(context, relation)
+
+    assert columns["description"].type == "character varying(256)"
+    assert calls == [("dev", relation.render())]
+
+
 def test_get_columns_scopes_cache_by_target(fresh_caches):
     """Switching targets must not reuse warehouse metadata from another target."""
     relation = _FakeRelation("db.schema.orders")

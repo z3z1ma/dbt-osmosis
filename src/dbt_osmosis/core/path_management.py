@@ -70,7 +70,7 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
         return None
 
     # Use SettingsResolver to get the path template from config sources
-    resolver = SettingsResolver()
+    resolver = SettingsResolver(context=context)
     raw_path_template = resolver.get_yaml_path_template(node)
     path_template = raw_path_template if isinstance(raw_path_template, str) else None
 

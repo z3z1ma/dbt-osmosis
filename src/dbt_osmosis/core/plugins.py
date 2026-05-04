@@ -47,11 +47,10 @@ class FuzzyPrefixMatching:
     @hookimpl
     def get_candidates(self, name: str, node: ResultNode, context: t.Any) -> list[str]:
         """Get a list of candidate names for a column excluding a prefix."""
-        _ = context
         variants = []
-        from dbt_osmosis.core.introspection import _get_setting_for_node
+        from dbt_osmosis.core.introspection import resolve_setting
 
-        p = _get_setting_for_node("prefix", node, name)
+        p = resolve_setting(context, "prefix", node, name)
         if p:
             mut_name = name.removeprefix(p)
             logger.debug(

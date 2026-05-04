@@ -16,11 +16,12 @@ Key scenarios tested:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
 
-from dbt_osmosis.core.inheritance import _get_node_yaml
+from dbt_osmosis.core.inheritance import _collect_column_variants, _get_node_yaml
 from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.sync_operations import sync_node_to_yaml
 from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
@@ -70,6 +71,31 @@ def _ensure_column_config(column):
     if not hasattr(config, "meta"):
         config.meta = {}
     return config
+
+
+def test_collect_column_variants_honors_project_level_prefix(tmp_path, fresh_caches):
+    """Inheritance plugins should receive full context for project-level prefix settings."""
+    (tmp_path / "dbt-osmosis.yml").write_text("prefix: raw_\n")
+
+    node = mock.MagicMock()
+    node.meta = {}
+    node.config.extra = {}
+    node.config.meta = {}
+    node.unrendered_config = {}
+    node.columns = {"raw_customer_id": mock.MagicMock(meta={})}
+
+    context = SimpleNamespace(
+        project=SimpleNamespace(
+            runtime_cfg=SimpleNamespace(
+                project_root=tmp_path,
+                vars={},
+            ),
+        ),
+    )
+
+    variants = _collect_column_variants(context, node)
+
+    assert "customer_id" in variants["raw_customer_id"]
 
 
 def test_multi_generation_inheritance_chain(yaml_context, fresh_caches):

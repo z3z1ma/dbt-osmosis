@@ -39,6 +39,43 @@ def test_sync_node_to_yaml(yaml_context: YamlRefactorContext, fresh_caches):
     sync_node_to_yaml(yaml_context, node, commit=False)
 
 
+def test_sync_doc_section_honors_project_vars_output_to_lower() -> None:
+    """Project vars should affect real sync casing behavior."""
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    context = mock.MagicMock()
+    context.settings.scaffold_empty_configs = False
+    context.settings.skip_add_data_types = False
+    context.settings.skip_merge_meta = False
+    context.settings.use_unrendered_descriptions = False
+    context.settings.prefer_yaml_values = False
+    context.settings.output_to_upper = False
+    context.settings.output_to_lower = False
+    context.fusion_compat = False
+    context.placeholders = set()
+    context.read_catalog.return_value = None
+    context.project.runtime_cfg.credentials.type = "postgres"
+    context.project.runtime_cfg.vars = {"dbt-osmosis": {"output-to-lower": True}}
+
+    node = mock.MagicMock()
+    node.unique_id = "model.test.test_model"
+    node.description = ""
+    node.meta = {}
+    node.config.extra = {}
+    node.config.meta = {}
+    node.unrendered_config = {}
+    node.columns = OrderedDict({
+        "MIXED_CASE": ColumnInfo.from_dict({"name": "MIXED_CASE", "description": ""}),
+    })
+
+    doc_section: dict[str, object] = {"name": "test_model"}
+    _sync_doc_section(context, node, doc_section)
+
+    assert doc_section["columns"] == [{"name": "mixed_case"}]
+
+
 def test_sync_node_to_yaml_versioned(yaml_context: YamlRefactorContext, fresh_caches):
     """Test syncing a versioned node to YAML."""
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]
