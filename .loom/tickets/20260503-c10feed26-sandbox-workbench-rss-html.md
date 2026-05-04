@@ -1,11 +1,11 @@
 ---
 id: ticket:c10feed26
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: security-sensitive
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T22:35:45Z
+updated_at: 2026-05-04T23:01:41Z
 scope:
   kind: repository
   repositories:
@@ -16,9 +16,12 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10feed26-workbench-feed-hardening-validation
+    - evidence:c10feed26-main-ci-success
   critique:
     - critique:c10feed26-workbench-feed-hardening-review
     - critique:c10feed26-workbench-feed-hardening-final-review
+external_refs:
+  github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/377
 depends_on: []
 ---
 
@@ -72,12 +75,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10feed26#ACC-001 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
-| ticket:c10feed26#ACC-002 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
-| ticket:c10feed26#ACC-003 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
-| ticket:c10feed26#ACC-004 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review; critique:c10feed26-workbench-feed-hardening-review#FIND-001 resolved; critique:c10feed26-workbench-feed-hardening-review#FIND-002 resolved | supported |
-| ticket:c10feed26#ACC-005 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
-| ticket:c10feed26#ACC-006 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-001 | evidence:c10feed26-workbench-feed-hardening-validation; evidence:c10feed26-main-ci-success | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-002 | evidence:c10feed26-workbench-feed-hardening-validation; evidence:c10feed26-main-ci-success | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-003 | evidence:c10feed26-workbench-feed-hardening-validation; evidence:c10feed26-main-ci-success | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-004 | evidence:c10feed26-workbench-feed-hardening-validation; evidence:c10feed26-main-ci-success | critique:c10feed26-workbench-feed-hardening-final-review; critique:c10feed26-workbench-feed-hardening-review#FIND-001 resolved; critique:c10feed26-workbench-feed-hardening-review#FIND-002 resolved | supported |
+| ticket:c10feed26#ACC-005 | evidence:c10feed26-workbench-feed-hardening-validation; evidence:c10feed26-main-ci-success | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-006 | evidence:c10feed26-workbench-feed-hardening-validation; evidence:c10feed26-main-ci-success | critique:c10feed26-workbench-feed-hardening-final-review | supported |
 
 # Execution Notes
 
@@ -89,9 +92,9 @@ Potential human/product decision if removing the widget changes desired workbenc
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan and evidence:c10feed26-workbench-feed-hardening-validation.
+Existing evidence: evidence:oracle-backlog-scan, evidence:c10feed26-workbench-feed-hardening-validation, and evidence:c10feed26-main-ci-success.
 
-Evidence status: local red/green, parent validation, full pre-commit, and final critique support ACC-001 through ACC-006 for the current source state. Missing evidence: remote CI after commit/push.
+Evidence status: local red/green, parent validation, full pre-commit, final critique, and green remote CI support ACC-001 through ACC-006 for commit `1d3a0cc6bb1f4ec1255b632e97057af4f8808d7c`. Missing evidence: none for this ticket's acceptance scope.
 
 # Critique Disposition
 
@@ -118,11 +121,11 @@ Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
+Promoted: None.
 
-Deferred / not-required rationale: Not decided.
+Deferred / not-required rationale: The durable user-facing behavior is documented in `docs/docs/reference/cli.md`, covered by tests, and captured in ticket/evidence/critique records. No separate reusable wiki, research, spec, plan, initiative, or constitution update is needed for this bounded workbench hardening change.
 
 # Wiki Disposition
 
@@ -130,10 +133,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests and security review.
-Residual risks: Streamlit component rendering behavior may change.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-04T23:01:41Z.
+Basis: Implementation commit `1d3a0cc6bb1f4ec1255b632e97057af4f8808d7c`, evidence:c10feed26-workbench-feed-hardening-validation, critique:c10feed26-workbench-feed-hardening-review, critique:c10feed26-workbench-feed-hardening-final-review, and evidence:c10feed26-main-ci-success.
+Residual risks: No browser-level Streamlit rendering test was run, no real Hacker News RSS fetch was exercised, enabled fetch timeout is socket-operation bounded, and Streamlit component rendering behavior may change later.
 
 # Dependencies
 
@@ -149,3 +152,4 @@ Coordinate with ticket:c10wb22 if workbench tests are added there.
 - 2026-05-04T22:31:06Z: Ralph iteration 02 returned stop. Parent accepted the follow-up implementation after focused tests, Ruff, and basedpyright zero-error validation; moved ticket back to review_required for final mandatory critique verification.
 - 2026-05-04T22:34:20Z: Final mandatory critique passed with no new findings and verified prior findings resolved; moved ticket to complete_pending_acceptance pending full pre-commit, commit, push, and remote CI evidence.
 - 2026-05-04T22:35:45Z: Full pre-commit and focused workbench/CLI tests passed after formatting; ticket remains complete_pending_acceptance pending commit, push, and remote CI evidence.
+- 2026-05-04T23:01:41Z: Commit `1d3a0cc6bb1f4ec1255b632e97057af4f8808d7c` reached green Labeler, lint, Tests, and Release workflows on `origin/main`; accepted residual risks and closed ticket.
