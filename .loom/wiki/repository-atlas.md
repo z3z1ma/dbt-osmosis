@@ -4,7 +4,7 @@ kind: wiki
 page_type: atlas
 status: active
 created_at: 2026-05-03T20:46:40Z
-updated_at: 2026-05-03T23:36:45Z
+updated_at: 2026-05-04T06:21:20Z
 scope:
   kind: repository
   repositories:
@@ -12,8 +12,13 @@ scope:
 links:
   constitution:
     - constitution:main
+  tickets:
+    - ticket:c10fix11
   evidence:
     - evidence:repository-structure-scan
+    - evidence:c10fix11-main-ci-release-success
+  critique:
+    - critique:c10fix11-fixture-isolation-review
 ---
 
 # Summary
@@ -55,9 +60,9 @@ This atlas maps the `dbt-osmosis` repository at `repo:root`. The project is a Py
 - `tests/core/` is the main unit-test mirror for `src/dbt_osmosis/core/` and CLI behavior.
 - Root tests such as `tests/test_yaml_inheritance.py`, `tests/test_yaml_knowledge_graph.py`, and `tests/test_yaml_context.py` exercise YAML behavior against dbt fixture context.
 - `tests/conftest.py` builds shared dbt fixture context and temporary DuckDB-backed projects.
-- `tests/core/conftest.py` ensures `demo_duckdb/target/manifest.json` exists before core tests that need it.
+- `tests/core/conftest.py` parses an isolated temp copy of `demo_duckdb` for core tests that need a real manifest.
 - `tests/workbench/test_ai_assistant.py` provides current workbench-specific test coverage.
-- `demo_duckdb/integration_tests.sh` is an integration smoke script, but it performs destructive fixture cleanup and should not be run casually on a dirty tree.
+- `demo_duckdb/integration_tests.sh` is an integration smoke script. In its post-`ticket:c10fix11` shape, it runs against a temp copy, invokes installed `dbt-osmosis` directly, and avoids destructive source fixture cleanup.
 
 # Build / Validation Commands
 
@@ -65,8 +70,8 @@ Treat these commands as operational references, not blind instructions.
 
 - `task format` runs Ruff import fixing and formatting.
 - `task lint` runs Ruff checks.
-- `task test` runs basedpyright, dbt parse, and pytest across the supported Python/dbt matrix.
-- `uv run dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test` refreshes the DuckDB fixture manifest for focused tests.
+- `task test` runs basedpyright, isolated demo parse, and pytest across the supported Python/dbt matrix.
+- `task parse-demo` parses an isolated temp copy of `demo_duckdb` for local fixture manifest checks without writing source `demo_duckdb/target`.
 - `uv run pytest` runs the pytest suite.
 - `uv run pytest tests/core/test_cli.py` is a focused CLI test example.
 - `npm --prefix docs run build` validates the Docusaurus docs site.
@@ -77,7 +82,7 @@ Treat these commands as operational references, not blind instructions.
 - YAML routing and project-root safety checks belong in `src/dbt_osmosis/core/path_management.py`.
 - Configuration resolution should flow through `SettingsResolver.resolve()` and `PropertyAccessor` rather than ad hoc source lookups.
 - Shared caches include `_COLUMN_LIST_CACHE` in `introspection.py` and `_YAML_BUFFER_CACHE` in `schema/reader.py`; do not bypass cache locking expectations.
-- Generated dbt artifacts live under paths such as `demo_duckdb/target/`, root `target/`, and `logs/` and should be treated as disposable unless a task explicitly targets generated output.
+- Generated dbt artifacts live under paths such as `demo_duckdb/target/`, root `target/`, and `logs/` and should be treated as disposable unless a task explicitly targets generated output. Tests and CI should prefer temp demo copies over source-tree `demo_duckdb/target`.
 - DuckDB database files such as `demo_duckdb/jaffle_shop.duckdb`, `demo_duckdb/test.db`, `catalog.sqlite`, and root `test.db` are runtime artifacts, not source-of-truth code.
 
 # Risky Areas
@@ -88,17 +93,18 @@ Treat these commands as operational references, not blind instructions.
 - Caches are shared and lock-sensitive. Tests that mutate cwd, manifests, or caches need isolation.
 - Workbench behavior has less test coverage than core YAML paths and includes optional dependencies.
 - LLM paths are optional and should fail clearly when extras or credentials are absent.
-- `demo_duckdb/integration_tests.sh` resets fixture paths with Git commands and can destroy local fixture edits.
+- Reintroducing source-tree `demo_duckdb/target`, repo-root `test.db`, `uv run dbt-osmosis`, or destructive Git cleanup into fixture smoke paths can hide compatibility failures or mutate user fixture edits.
 
 # Source Records
 
 - evidence:repository-structure-scan
+- evidence:c10fix11-main-ci-release-success
 - constitution:main
 - Inspected source/context files: `README.md`, `AGENTS.md`, `src/dbt_osmosis/core/AGENTS.md`, `pyproject.toml`, `Taskfile.yml`, `docs/package.json`, `demo_duckdb/dbt_project.yml`, `demo_duckdb/dbt-osmosis.yml`, `specs/001-unified-config-resolution/plan.md`, and `specs/001-unified-config-resolution/spec.md`.
 
 # Last Verified
 
-2026-05-03 at commit `f1fe50c`, grounded by evidence:repository-structure-scan.
+2026-05-04 at commit `9484b98`, grounded by evidence:repository-structure-scan and evidence:c10fix11-main-ci-release-success.
 
 # Related Pages
 

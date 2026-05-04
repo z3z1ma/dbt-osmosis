@@ -1,11 +1,11 @@
 ---
 id: ticket:c10fix11
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T05:29:21Z
+updated_at: 2026-05-04T06:23:40Z
 scope:
   kind: repository
   repositories:
@@ -16,8 +16,12 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10fix11-fixture-isolation-verification
+    - evidence:c10fix11-main-ci-release-success
   critique:
     - critique:c10fix11-fixture-isolation-review
+  wiki:
+    - wiki:ci-compatibility-matrix
+    - wiki:repository-atlas
   packets:
     - packet:ralph-ticket-c10fix11-20260504T050248Z
 depends_on: []
@@ -74,12 +78,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10fix11#ACC-001 | evidence:c10fix11-fixture-isolation-verification | critique:c10fix11-fixture-isolation-review | locally supported; post-commit CI pending |
-| ticket:c10fix11#ACC-002 | evidence:c10fix11-fixture-isolation-verification | critique:c10fix11-fixture-isolation-review#FIND-002 resolved | locally supported; post-commit CI pending |
-| ticket:c10fix11#ACC-003 | evidence:c10fix11-fixture-isolation-verification | critique:c10fix11-fixture-isolation-review | locally supported; post-commit CI pending |
-| ticket:c10fix11#ACC-004 | evidence:c10fix11-fixture-isolation-verification | critique:c10fix11-fixture-isolation-review | locally supported; post-commit CI pending |
-| ticket:c10fix11#ACC-005 | evidence:c10fix11-fixture-isolation-verification | critique:c10fix11-fixture-isolation-review#FIND-001 resolved | locally supported; post-commit CI pending |
-| ticket:c10fix11#ACC-006 | evidence:c10fix11-fixture-isolation-verification | critique:c10fix11-fixture-isolation-review#FIND-002 resolved | locally supported; post-commit CI pending |
+| ticket:c10fix11#ACC-001 | evidence:c10fix11-fixture-isolation-verification; evidence:c10fix11-main-ci-release-success | critique:c10fix11-fixture-isolation-review | accepted |
+| ticket:c10fix11#ACC-002 | evidence:c10fix11-fixture-isolation-verification; evidence:c10fix11-main-ci-release-success | critique:c10fix11-fixture-isolation-review#FIND-002 resolved | accepted |
+| ticket:c10fix11#ACC-003 | evidence:c10fix11-fixture-isolation-verification; evidence:c10fix11-main-ci-release-success | critique:c10fix11-fixture-isolation-review | accepted |
+| ticket:c10fix11#ACC-004 | evidence:c10fix11-fixture-isolation-verification; evidence:c10fix11-main-ci-release-success | critique:c10fix11-fixture-isolation-review | accepted |
+| ticket:c10fix11#ACC-005 | evidence:c10fix11-fixture-isolation-verification; evidence:c10fix11-main-ci-release-success | critique:c10fix11-fixture-isolation-review#FIND-001 resolved | accepted |
+| ticket:c10fix11#ACC-006 | evidence:c10fix11-fixture-isolation-verification; evidence:c10fix11-main-ci-release-success | critique:c10fix11-fixture-isolation-review#FIND-002 resolved | accepted |
 
 # Execution Notes
 
@@ -91,11 +95,13 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan.
+Existing evidence:
 
-Local implementation evidence: evidence:c10fix11-fixture-isolation-verification records red/green fixture isolation tests, focused pytest, safe integration smoke, `task parse-demo`, source artifact guards, targeted hooks, and `git diff --check`.
+- evidence:oracle-backlog-scan
+- evidence:c10fix11-fixture-isolation-verification
+- evidence:c10fix11-main-ci-release-success
 
-Missing evidence: post-commit/main CI evidence after implementation push.
+Evidence disposition: sufficient. Local red/green fixture-isolation checks, safe integration smoke, isolated parse helper, source-artifact guards, targeted hooks, and `git diff --check` were supplemented by main `Tests`, `lint`, and Release validation for commit `9484b98d62eead35d8ed3dec1eb913fe6fe9de5e`.
 
 # Critique Disposition
 
@@ -118,21 +124,24 @@ Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None yet - retrospective pending.
+Promoted:
 
-Deferred / not-required rationale: A wiki/testing note may be warranted after acceptance.
+- `wiki:ci-compatibility-matrix` now explains temp demo parse copies, source-artifact guards, and the post-c10fix11 safe integration smoke shape.
+- `wiki:repository-atlas` now maps isolated core manifest parsing, `task parse-demo`, and the safe integration smoke boundary.
+
+Deferred / not-required rationale: No additional research, spec, plan, initiative, constitution, or memory promotion needed. Fully `.gitignore`-aware fixture copying remains an accepted residual risk unless future ignored artifact classes require it.
 
 # Wiki Disposition
 
-Pending retrospective review. Existing wiki/operator guidance still contains stale descriptions of the old unsafe integration script and source-tree manifest workflow.
+Completed. Updated `wiki:ci-compatibility-matrix` and `wiki:repository-atlas` with the accepted fixture isolation, source-artifact guard, and safe integration smoke behavior.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending post-commit CI and retrospective / promotion follow-through. Local evidence and mandatory critique are complete.
+Accepted by: OpenCode
+Accepted at: 2026-05-04T06:23:40Z
+Basis: Implementation commit `9484b98d62eead35d8ed3dec1eb913fe6fe9de5e`; local evidence:c10fix11-fixture-isolation-verification; mandatory critique:c10fix11-fixture-isolation-review; main CI/release evidence:c10fix11-main-ci-release-success; retrospective promotions completed.
 Residual risks: Fixture performance cost may increase; fixture exclusions are denylist-based rather than fully `.gitignore`-aware; `task parse-demo` temp copies are left to operating-system temp cleanup.
 
 # Dependencies
@@ -144,3 +153,4 @@ Coordinate with ticket:c10ci06 and ticket:c10cfg12.
 - 2026-05-03T21:10:43Z: Created from tests/fixtures oracle findings.
 - 2026-05-04T05:02:48Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10fix11-20260504T050248Z` for test-first fixture isolation implementation.
 - 2026-05-04T05:29:21Z: Consumed Ralph output, recorded `evidence:c10fix11-fixture-isolation-verification`, completed mandatory critique `critique:c10fix11-fixture-isolation-review`, resolved critique findings, and moved ticket to `complete_pending_acceptance` pending implementation commit, post-commit CI, and retrospective / promotion follow-through.
+- 2026-05-04T06:23:40Z: Recorded main CI/release evidence `evidence:c10fix11-main-ci-release-success`, promoted fixture-isolation lessons to `wiki:ci-compatibility-matrix` and `wiki:repository-atlas`, accepted all scoped claims, and closed ticket.
