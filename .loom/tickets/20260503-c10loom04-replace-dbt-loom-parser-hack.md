@@ -1,11 +1,11 @@
 ---
 id: ticket:c10loom04
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T21:22:06Z
+updated_at: 2026-05-04T21:47:54Z
 scope:
   kind: repository
   repositories:
@@ -18,9 +18,11 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10loom04-dbt-loom-parser-validation
+    - evidence:c10loom04-main-ci-success
   critique:
     - critique:c10loom04-dbt-loom-parser-review
 external_refs:
+  github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/355
   dbt_core_110_model_parser: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.10.0/core/dbt/parser/models.py
   dbt_core_111_model_parser: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.11.0/core/dbt/parser/models.py
 depends_on: []
@@ -93,7 +95,7 @@ None.
 
 Existing evidence: research:dbt-110-111-api-surfaces, evidence:oracle-backlog-scan, and evidence:c10loom04-dbt-loom-parser-validation.
 
-Evidence status: local red/green, parent validation, full pre-commit, and final critique support ACC-001 through ACC-005 for the current source state. Missing evidence: remote CI after commit/push.
+Evidence status: local red/green, parent validation, full pre-commit, final critique, and green remote CI support ACC-001 through ACC-005 for commit `8d47587d5485dadab67bc39008aea8f73c159241`.
 
 # Critique Disposition
 
@@ -117,11 +119,11 @@ Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
+Promoted: None.
 
-Deferred / not-required rationale: Consider documenting private dbt API shims if the fix creates one.
+Deferred / not-required rationale: The durable lesson is local to the c10loom04 compatibility boundary and is documented directly in `_set_project_manifest()` plus the ticket, evidence, and critique records. No reusable wiki, research, spec, plan, initiative, or constitution update is needed.
 
 # Wiki Disposition
 
@@ -129,10 +131,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending implementation and tests.
-Residual risks: dbt-loom itself may change its manifest shape.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-04T21:47:54Z.
+Basis: Implementation commit `8d47587d5485dadab67bc39008aea8f73c159241`, evidence:c10loom04-dbt-loom-parser-validation, critique:c10loom04-dbt-loom-parser-review, and evidence:c10loom04-main-ci-success.
+Residual risks: Real dbt-loom package integration was not run; dbt-loom may change manifest shape; `_set_project_manifest()` remains a narrow private compatibility shim when no public setter is available.
 
 # Dependencies
 
@@ -145,3 +147,4 @@ None.
 - 2026-05-04T21:14:22Z: Ralph iteration 01 returned stop. Parent accepted the implementation iteration after focused tests, Ruff, and basedpyright zero-error validation; moved ticket to review_required for recommended critique.
 - 2026-05-04T21:20:35Z: Recommended critique completed with pass/no findings. Moved ticket to complete_pending_acceptance pending final validation, commit, push, and remote CI evidence.
 - 2026-05-04T21:22:06Z: Full pre-commit and focused config tests passed after formatting; ticket remains complete_pending_acceptance pending commit, push, and remote CI evidence.
+- 2026-05-04T21:47:54Z: Commit `8d47587d5485dadab67bc39008aea8f73c159241` reached green Labeler, lint, Tests, and Release workflows on `origin/main`; accepted and closed ticket.
