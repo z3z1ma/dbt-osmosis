@@ -1,11 +1,11 @@
 ---
 id: ticket:c10lint24
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T19:07:42Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10lint24-lint-diff-cli-validation
+  critique:
+    - critique:c10lint24-lint-diff-cli-review
+  packets:
+    - packet:ralph-ticket-c10lint24-20260504T184608Z
 depends_on: []
 ---
 
@@ -68,8 +73,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10lint24#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10lint24#ACC-003 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10lint24#ACC-001 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-002 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-003 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-004 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted with red-evidence limitation |
+| ticket:c10lint24#ACC-005 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
+| ticket:c10lint24#ACC-006 | evidence:c10lint24-lint-diff-cli-validation | critique:c10lint24-lint-diff-cli-review | accepted |
 
 # Execution Notes
 
@@ -81,7 +90,7 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: CLI tests.
+Existing evidence: evidence:oracle-backlog-scan. Validation evidence: evidence:c10lint24-lint-diff-cli-validation. Missing evidence: remote CI for the eventual commit; deferred to normal post-push monitoring.
 
 # Critique Disposition
 
@@ -93,30 +102,30 @@ Policy rationale: User-facing command semantics and selection behavior need revi
 
 Required critique profiles: code-change, operator-clarity, test-coverage
 
-Findings: None - no critique yet.
+Findings: critique:c10lint24-lint-diff-cli-review#FIND-001 is low severity and accepted as a non-blocking evidence-discipline limitation for `ticket:c10lint24#ACC-004`. No medium/high findings.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: No critique follow-up blocks acceptance; parent resolved the initial docs/test-strength review concerns before recording the final critique, and the remaining low red-evidence limitation is explicit in the claim matrix and acceptance basis.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: CLI reference docs now record lint rule precedence and `lint model`/`lint project` selection defaults.
 
-Deferred / not-required rationale: Docs update likely enough; wiki probably not needed.
+Deferred / not-required rationale: No separate wiki/research/spec promotion is needed; the durable user-facing explanation belongs in `docs/docs/reference/cli.md`, and the residual evidence limitation is recorded in evidence and critique.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Not required - CLI reference docs are the accepted explanation surface for this command-level behavior.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests and docs.
-Residual risks: Shared node selection behavior may not be intended for lint.
+Accepted by: OpenCode
+Accepted at: 2026-05-04T19:07:42Z.
+Basis: `evidence:c10lint24-lint-diff-cli-validation` records child red evidence, parent green `113 passed` focused tests, Ruff/whitespace checks, changed-source basedpyright `errorCount: 0`, docs updates, and final critique `critique:c10lint24-lint-diff-cli-review` with no blocking findings.
+Residual risks: Remote CI is not yet observed for the eventual commit; `ticket:c10lint24#ACC-004` has green behavior evidence but not distinct strict red evidence; schema diff tests use fixture/mocked comparison rather than a live warehouse diff; lint selection intentionally adopts project-owned, non-ephemeral, segment-FQN semantics instead of prior substring/external/ephemeral behavior.
 
 # Dependencies
 
@@ -125,3 +134,5 @@ None.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench and core architecture oracle findings.
+- 2026-05-04T18:46:08Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10lint24-20260504T184608Z` for test-first lint/diff selector, disabled-rule, rule-precedence, output grouping, and lint model-selection fixes.
+- 2026-05-04T19:07:42Z: Consumed Ralph output, addressed critique-driven docs and test-strength refinements, recorded validation evidence `evidence:c10lint24-lint-diff-cli-validation`, completed recommended critique `critique:c10lint24-lint-diff-cli-review`, accepted all scoped claims with an explicit low red-evidence limitation for ACC-004, and closed ticket.

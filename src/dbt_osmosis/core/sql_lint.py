@@ -11,12 +11,14 @@ import re
 import typing as t
 from dataclasses import dataclass, field
 from enum import Enum
+from types import SimpleNamespace
 
 from dbt.artifacts.resources.types import NodeType
 from sqlglot import exp, parse
 from sqlglot.dialects import Dialect
 
 from dbt_osmosis.core import logger
+from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.config import DbtProjectContext
@@ -513,11 +515,12 @@ class SQLLinter:
         disabled_rules: list[str] | None,
     ) -> list[LintRule]:
         """Filter the list of rules based on enabled/disabled lists."""
+        rules = self._all_rules
         if enabled_rules is not None:
-            return [r for r in self._all_rules if r.rule_id in enabled_rules]
+            rules = [r for r in rules if r.rule_id in enabled_rules]
         if disabled_rules is not None:
-            return [r for r in self._all_rules if r.rule_id not in disabled_rules]
-        return self._all_rules
+            rules = [r for r in rules if r.rule_id not in disabled_rules]
+        return rules
 
     def add_rule(self, rule: LintRule) -> None:
         """Add a custom rule to the linter."""
@@ -606,15 +609,17 @@ class SQLLinter:
         fqn_filter: list[str] | None = None,
     ) -> t.Iterator[t.Any]:
         """Yield only project model nodes that should participate in model/project linting."""
-        for node in context.manifest.nodes.values():
+        selector_context = SimpleNamespace(
+            project=context,
+            settings=SimpleNamespace(
+                include_external=False,
+                models=[],
+                fqn=fqn_filter or [],
+            ),
+        )
+        for _, node in _iter_candidate_nodes(selector_context):
             if getattr(node, "resource_type", None) != NodeType.Model:
                 continue
-
-            if fqn_filter:
-                node_fqn = ".".join(getattr(node, "fqn", []))
-                if not any(pattern in node_fqn for pattern in fqn_filter):
-                    continue
-
             yield node
 
     def lint_model(
@@ -695,6 +700,7 @@ def lint_sql_code(
     raw_sql: str,
     dialect: str | None = None,
     rules: list[str] | None = None,
+    disabled_rules: list[str] | None = None,
 ) -> LintResult:
     """Convenience function to lint SQL code.
 
@@ -703,6 +709,7 @@ def lint_sql_code(
         raw_sql: Raw SQL code to lint
         dialect: Optional SQL dialect
         rules: Optional list of rule IDs to enable
+        disabled_rules: Optional list of rule IDs to disable after enabling rules
 
     Returns:
         LintResult containing all violations
@@ -712,6 +719,6 @@ def lint_sql_code(
         dialect = context.adapter.type()
 
     # Create linter with dialect
-    linter = SQLLinter(dialect=dialect, enabled_rules=rules)
+    linter = SQLLinter(dialect=dialect, enabled_rules=rules, disabled_rules=disabled_rules)
 
     return linter._lint_dbt_sql(context, raw_sql)

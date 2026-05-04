@@ -214,4 +214,10 @@ Important options across lint commands:
 - `--dialect`
 - `-f, --fqn` on `lint project`
 
+When both `--rules` and `--disable-rules` are supplied, linting starts from the
+enabled rule set and then removes disabled rules; disabled rules win on overlap.
+`lint model` and `lint project` use the same project-owned, non-ephemeral FQN
+matching semantics as YAML selection and exclude external package models by
+default.
+
 These commands exit non-zero when errors or warnings are reported.

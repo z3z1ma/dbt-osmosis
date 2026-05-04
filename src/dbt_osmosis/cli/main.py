@@ -37,7 +37,13 @@ from dbt_osmosis.core.schema.parser import create_yaml_instance
 from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.schema.writer import _write_yaml
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
-from dbt_osmosis.core.sql_lint import SQLLinter, lint_sql_code
+from dbt_osmosis.core.sql_lint import (
+    LintLevel,
+    LintResult,
+    LintViolation,
+    SQLLinter,
+    lint_sql_code,
+)
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 from dbt_osmosis.core.test_suggestions import suggest_tests_for_model, suggest_tests_for_project
 from dbt_osmosis.core.transforms import (
@@ -1719,6 +1725,8 @@ def schema(
                 if v is not None and k not in {"check", "dry_run", "models"}
             },
             create_catalog_if_not_exists=False,
+            fqn=list(fqn),
+            models=list(models),
             include_external=include_external,
         ),
     ) as context:
@@ -1731,21 +1739,7 @@ def schema(
             detect_column_renames=detect_column_renames,
         )
 
-        # Filter nodes if FQN filter is provided
-        if fqn:
-            from dbt_osmosis.core.node_filters import _iter_candidate_nodes
-
-            nodes = [
-                node
-                for _, node in _iter_candidate_nodes(typed_context)
-                if any(
-                    ".".join(str(part) for part in node.fqn[: len(fqn_part.split("."))]) == fqn_part
-                    for fqn_part in fqn
-                )
-            ]
-            results = differ.compare_all(nodes=nodes)
-        else:
-            results = differ.compare_all()
+        results = differ.compare_all()
 
         # Output the results
         if output_format == "json":
@@ -2198,6 +2192,20 @@ def lint():
     """Lint SQL code for style and anti-patterns"""
 
 
+def _lint_violation_groups(
+    result: LintResult,
+) -> tuple[list[LintViolation], list[LintViolation], list[LintViolation]]:
+    """Return lint violations grouped by error, warning, and other levels."""
+    errors = result.errors
+    warnings = result.warnings
+    other = [
+        violation
+        for violation in result.violations
+        if violation.level not in (LintLevel.ERROR, LintLevel.WARNING)
+    ]
+    return errors, warnings, other
+
+
 @lint.command(context_settings=_CONTEXT, name="file")
 @dbt_opts
 @logging_opts
@@ -2252,6 +2260,7 @@ def lint_file(
 
     # Prepare rules list
     enabled_rules = list(rules) if rules else None
+    disabled_rules = list(disable_rules) if disable_rules else None
 
     # Lint the SQL
     result = lint_sql_code(
@@ -2259,6 +2268,7 @@ def lint_file(
         raw_sql=sql,
         dialect=sql_dialect,
         rules=enabled_rules,
+        disabled_rules=disabled_rules,
     )
 
     # Display results
@@ -2266,9 +2276,7 @@ def lint_file(
 
     if result.violations:
         # Group by level
-        errors = result.errors
-        warnings = result.warnings
-        other = [v for v in result.violations if v.level not in ("error", "warning")]
+        errors, warnings, other = _lint_violation_groups(result)
 
         if errors:
             click.echo(":no_entry: Errors:")
@@ -2364,9 +2372,7 @@ def lint_model_command(
 
     if result.violations:
         # Group by level
-        errors = result.errors
-        warnings = result.warnings
-        other = [v for v in result.violations if v.level not in ("error", "warning")]
+        errors, warnings, other = _lint_violation_groups(result)
 
         if errors:
             click.echo(":no_entry: Errors:")
@@ -2466,9 +2472,10 @@ def lint_project_command(
     results = linter.lint_project(project, fqn_filter=fqn_filter)
 
     # Display results
-    total_errors = sum(len(r.errors) for r in results.values())
-    total_warnings = sum(len(r.warnings) for r in results.values())
-    total_other = sum(len(r.violations) - len(r.errors) - len(r.warnings) for r in results.values())
+    grouped_results = {name: _lint_violation_groups(result) for name, result in results.items()}
+    total_errors = sum(len(errors) for errors, _, _ in grouped_results.values())
+    total_warnings = sum(len(warnings) for _, warnings, _ in grouped_results.values())
+    total_other = sum(len(other) for _, _, other in grouped_results.values())
 
     click.echo(f"\n:sparkles: Lint Results for {len(results)} models\n")
     click.echo(
@@ -2481,16 +2488,16 @@ def lint_project_command(
     if models_with_issues:
         for model_name, result in models_with_issues.items():
             click.echo(f"\n:page_facing_up: {model_name} ({result.summary()})")
+            errors, warnings, other = grouped_results[model_name]
 
-            if result.errors:
-                for violation in result.errors:
+            if errors:
+                for violation in errors:
                     click.echo(f"  :no_entry: {violation}")
 
-            if result.warnings:
-                for violation in result.warnings:
+            if warnings:
+                for violation in warnings:
                     click.echo(f"  :warning: {violation}")
 
-            other = [v for v in result.violations if v.level not in ("error", "warning")]
             if other:
                 for violation in other:
                     click.echo(f"  :information_source: {violation}")

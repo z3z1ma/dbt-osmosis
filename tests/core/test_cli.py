@@ -7,8 +7,10 @@ import pytest
 from click.testing import CliRunner
 
 from dbt_osmosis.cli.main import cli
+from dbt_osmosis.core.diff import SchemaDiffResult
 from dbt_osmosis.core.exceptions import LLMConfigurationError
 from dbt_osmosis.core.settings import YamlRefactorContext
+from dbt_osmosis.core.sql_lint import LintLevel, LintResult, LintViolation
 
 
 @pytest.fixture(scope="module")
@@ -144,6 +146,204 @@ def test_sql_compile_plain_sql_outputs_sql(
 
     assert result.exit_code == 0
     assert result.output.strip().splitlines()[-1] == "select 1"
+
+
+def test_diff_schema_passes_positional_selectors_to_refactor_settings(
+    runner: CliRunner,
+    yaml_context: YamlRefactorContext,
+) -> None:
+    """diff schema positional selectors should scope the compared node set."""
+    compared_nodes = []
+
+    def compare_node(_self, node):
+        compared_nodes.append(node.name)
+        return SchemaDiffResult(
+            node=node,
+            yaml_columns={},
+            database_columns={},
+            changes=[],
+        )
+
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context",
+            return_value=yaml_context.project,
+        ),
+        mock.patch("dbt_osmosis.core.diff.SchemaDiff.compare_node", compare_node),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "diff",
+                "schema",
+                "--project-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "--profiles-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "customers",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert compared_nodes == ["customers"]
+
+
+def test_diff_schema_preserves_unknown_positional_selector_for_empty_selection(
+    runner: CliRunner,
+    yaml_context: YamlRefactorContext,
+) -> None:
+    """Unknown positional selectors should not be broadened to all nodes."""
+    compared_nodes = []
+
+    def compare_node(_self, node):
+        compared_nodes.append(node.name)
+        return SchemaDiffResult(
+            node=node,
+            yaml_columns={},
+            database_columns={},
+            changes=[],
+        )
+
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context",
+            return_value=yaml_context.project,
+        ),
+        mock.patch("dbt_osmosis.core.diff.SchemaDiff.compare_node", compare_node),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "diff",
+                "schema",
+                "--project-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "--profiles-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "missing_model",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert compared_nodes == []
+
+
+def test_lint_file_passes_disabled_rules_and_does_not_duplicate_warning_output(
+    runner: CliRunner,
+    yaml_context: YamlRefactorContext,
+) -> None:
+    """lint file should honor disabled rules and avoid repeating warnings under Other."""
+    lint_result = LintResult(
+        violations=[
+            LintViolation("warn-rule", "warning", LintLevel.WARNING),
+            LintViolation("info-rule", "info", LintLevel.INFO),
+        ]
+    )
+
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context",
+            return_value=yaml_context.project,
+        ),
+        mock.patch("dbt_osmosis.cli.main.lint_sql_code", return_value=lint_result) as lint_sql,
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "lint",
+                "file",
+                "--project-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "--profiles-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "--disable-rules",
+                "select-star",
+                "select * from users",
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert lint_sql.call_args.kwargs["disabled_rules"] == ["select-star"]
+    assert result.output.count("warn-rule") == 1
+    assert result.output.count("info-rule") == 1
+    assert ":information_source: Other:" in result.output
+
+
+def test_lint_model_does_not_duplicate_warning_output(
+    runner: CliRunner,
+    yaml_context: YamlRefactorContext,
+) -> None:
+    """lint model should not repeat error/warning violations under Other."""
+    lint_result = LintResult(
+        violations=[
+            LintViolation("warn-rule", "warning", LintLevel.WARNING),
+            LintViolation("info-rule", "info", LintLevel.INFO),
+        ]
+    )
+    linter = mock.Mock()
+    linter.lint_model.return_value = lint_result
+
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context",
+            return_value=yaml_context.project,
+        ),
+        mock.patch("dbt_osmosis.cli.main.SQLLinter", return_value=linter),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "lint",
+                "model",
+                "--project-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "--profiles-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "customers",
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert result.output.count("warn-rule") == 1
+    assert result.output.count("info-rule") == 1
+
+
+def test_lint_project_does_not_duplicate_warning_output(
+    runner: CliRunner,
+    yaml_context: YamlRefactorContext,
+) -> None:
+    """lint project should not repeat error/warning violations as information."""
+    lint_result = LintResult(
+        violations=[
+            LintViolation("warn-rule", "warning", LintLevel.WARNING),
+            LintViolation("info-rule", "info", LintLevel.INFO),
+        ]
+    )
+    linter = mock.Mock()
+    linter.lint_project.return_value = {"customers": lint_result}
+
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context",
+            return_value=yaml_context.project,
+        ),
+        mock.patch("dbt_osmosis.cli.main.SQLLinter", return_value=linter),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "lint",
+                "project",
+                "--project-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+                "--profiles-dir",
+                str(yaml_context.project.runtime_cfg.project_root),
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert result.output.count("warn-rule") == 1
+    assert result.output.count("info-rule") == 1
 
 
 def test_workbench_help(runner: CliRunner) -> None:

@@ -10,10 +10,13 @@ This module contains tests for the sql_lint module, which provides:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from dbt.artifacts.resources.types import NodeType
 from sqlglot import parse
 
+from dbt_osmosis.core.node_filters import _is_fqn_match
 from dbt_osmosis.core.sql_lint import (
     KeywordCapitalizationRule,
     LintLevel,
@@ -25,6 +28,7 @@ from dbt_osmosis.core.sql_lint import (
     SelectStarRule,
     SQLLinter,
     TableAliasRule,
+    lint_sql_code,
 )
 
 
@@ -585,6 +589,24 @@ class TestSQLLinter:
 
         assert not any(r.rule_id == "select-star" for r in linter.rules)
 
+    def test_disabled_rules_win_over_enabled_rules(self):
+        """Disabled rules should be removed after any enabled-rule selection."""
+        linter = SQLLinter(enabled_rules=["select-star"], disabled_rules=["select-star"])
+
+        assert not any(r.rule_id == "select-star" for r in linter.rules)
+
+    def test_lint_sql_code_accepts_disabled_rules(self, yaml_context):
+        """lint_sql_code should expose the same disabled-rule behavior used by the CLI."""
+        result = lint_sql_code(
+            yaml_context.project,
+            "select * from users",
+            dialect="duckdb",
+            rules=["select-star"],
+            disabled_rules=["select-star"],
+        )
+
+        assert not any(v.rule_id == "select-star" for v in result.violations)
+
     def test_add_custom_rule(self):
         """Test adding a custom rule."""
         linter = SQLLinter()
@@ -653,7 +675,7 @@ class TestSQLLinter:
             node.name
             for node in yaml_context.project.manifest.nodes.values()
             if getattr(node, "resource_type", None) == NodeType.Model
-            and any(pattern in ".".join(getattr(node, "fqn", [])) for pattern in ["customers"])
+            and _is_fqn_match(node, ["customers"])
             and (getattr(node, "raw_code", "") or getattr(node, "raw_sql", ""))
         }
 
@@ -662,6 +684,72 @@ class TestSQLLinter:
             not any(violation.rule_id == "compile-error" for violation in result.violations)
             for result in results.values()
         )
+
+    def test_iter_model_nodes_excludes_external_and_ephemeral_models_by_default(self):
+        """Lint model selection should match project-owned non-ephemeral model defaults."""
+        linter = SQLLinter(enabled_rules=["select-star"])
+        local_model = SimpleNamespace(
+            name="customers",
+            unique_id="model.my_project.customers",
+            resource_type=NodeType.Model,
+            package_name="my_project",
+            fqn=["my_project", "marts", "customers"],
+            config=SimpleNamespace(materialized="table"),
+            depends_on_nodes=[],
+        )
+        external_model = SimpleNamespace(
+            name="external_customers",
+            unique_id="model.pkg.external_customers",
+            resource_type=NodeType.Model,
+            package_name="pkg",
+            fqn=["pkg", "marts", "external_customers"],
+            config=SimpleNamespace(materialized="table"),
+            depends_on_nodes=[],
+        )
+        ephemeral_model = SimpleNamespace(
+            name="ephemeral_customers",
+            unique_id="model.my_project.ephemeral_customers",
+            resource_type=NodeType.Model,
+            package_name="my_project",
+            fqn=["my_project", "marts", "ephemeral_customers"],
+            config=SimpleNamespace(materialized="ephemeral"),
+            depends_on_nodes=[],
+        )
+        context = SimpleNamespace(
+            manifest=SimpleNamespace(
+                nodes={
+                    local_model.unique_id: local_model,
+                    external_model.unique_id: external_model,
+                    ephemeral_model.unique_id: ephemeral_model,
+                },
+                sources={},
+            ),
+            runtime_cfg=SimpleNamespace(project_name="my_project", project_root="."),
+        )
+
+        nodes = list(linter._iter_model_nodes(context))
+
+        assert nodes == [local_model]
+
+    def test_iter_model_nodes_uses_segment_fqn_matching(self):
+        """FQN filters should use shared segment matching, not raw substring matching."""
+        linter = SQLLinter(enabled_rules=["select-star"])
+        model = SimpleNamespace(
+            name="customers",
+            unique_id="model.my_project.customers",
+            resource_type=NodeType.Model,
+            package_name="my_project",
+            fqn=["my_project", "staging", "customers"],
+            config=SimpleNamespace(materialized="table"),
+            depends_on_nodes=[],
+        )
+        context = SimpleNamespace(
+            manifest=SimpleNamespace(nodes={model.unique_id: model}, sources={}),
+            runtime_cfg=SimpleNamespace(project_name="my_project", project_root="."),
+        )
+
+        assert list(linter._iter_model_nodes(context, fqn_filter=["staging"])) == [model]
+        assert list(linter._iter_model_nodes(context, fqn_filter=["tag"])) == []
 
     def test_lint_parse_error(self):
         """Test handling of parse errors."""
