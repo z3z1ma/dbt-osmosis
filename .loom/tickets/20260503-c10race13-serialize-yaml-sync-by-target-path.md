@@ -1,11 +1,11 @@
 ---
 id: ticket:c10race13
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T07:51:02Z
+updated_at: 2026-05-04T08:19:55Z
 scope:
   kind: repository
   repositories:
@@ -16,8 +16,11 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10race13-yaml-sync-serialization-verification
+    - evidence:c10race13-main-ci-success
   critique:
     - critique:c10race13-yaml-sync-serialization-review
+  wiki:
+    - wiki:yaml-sync-safety
   packets:
     - packet:ralph-ticket-c10race13-20260504T071043Z
 depends_on: []
@@ -73,12 +76,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10race13#ACC-001 | evidence:c10race13-yaml-sync-serialization-verification | critique:c10race13-yaml-sync-serialization-review | locally supported; post-commit CI pending |
-| ticket:c10race13#ACC-002 | evidence:c10race13-yaml-sync-serialization-verification | critique:c10race13-yaml-sync-serialization-review | locally supported; post-commit CI pending |
-| ticket:c10race13#ACC-003 | evidence:c10race13-yaml-sync-serialization-verification | critique:c10race13-yaml-sync-serialization-review | locally supported; post-commit CI pending |
-| ticket:c10race13#ACC-004 | evidence:c10race13-yaml-sync-serialization-verification | critique:c10race13-yaml-sync-serialization-review | locally supported; post-commit CI pending |
-| ticket:c10race13#ACC-005 | evidence:c10race13-yaml-sync-serialization-verification | critique:c10race13-yaml-sync-serialization-review | locally supported; post-commit CI pending |
-| ticket:c10race13#ACC-006 | evidence:c10race13-yaml-sync-serialization-verification | critique:c10race13-yaml-sync-serialization-review | locally supported; post-commit CI pending |
+| ticket:c10race13#ACC-001 | evidence:c10race13-yaml-sync-serialization-verification; evidence:c10race13-main-ci-success | critique:c10race13-yaml-sync-serialization-review | accepted |
+| ticket:c10race13#ACC-002 | evidence:c10race13-yaml-sync-serialization-verification; evidence:c10race13-main-ci-success | critique:c10race13-yaml-sync-serialization-review | accepted |
+| ticket:c10race13#ACC-003 | evidence:c10race13-yaml-sync-serialization-verification; evidence:c10race13-main-ci-success | critique:c10race13-yaml-sync-serialization-review | accepted |
+| ticket:c10race13#ACC-004 | evidence:c10race13-yaml-sync-serialization-verification; evidence:c10race13-main-ci-success | critique:c10race13-yaml-sync-serialization-review | accepted |
+| ticket:c10race13#ACC-005 | evidence:c10race13-yaml-sync-serialization-verification; evidence:c10race13-main-ci-success | critique:c10race13-yaml-sync-serialization-review | accepted |
+| ticket:c10race13#ACC-006 | evidence:c10race13-yaml-sync-serialization-verification; evidence:c10race13-main-ci-success | critique:c10race13-yaml-sync-serialization-review | accepted |
 
 # Execution Notes
 
@@ -94,10 +97,11 @@ Existing evidence:
 
 - evidence:oracle-backlog-scan
 - evidence:c10race13-yaml-sync-serialization-verification
+- evidence:c10race13-main-ci-success
 
-Evidence disposition: locally sufficient for implementation commit. The local evidence records test-first red checks, path-grouped sync scheduling, same-target repeated threaded survival, unique temp-file collision safety, existing file-mode preservation, related sync/schema/path tests, targeted hooks, and final review.
+Evidence disposition: sufficient. Local red/green sync serialization checks, same-target repeated threaded survival, unique temp-file collision safety, existing file-mode preservation, related sync/schema/path tests, targeted hooks, and final review were supplemented by post-commit main `Tests` and `lint` success for implementation commit `6899aabe9f86cbea896ccf5b9240e6967371dd65`.
 
-Missing evidence: post-commit `Tests` and `lint` evidence for the implementation commit before final acceptance/closure.
+Missing evidence: None for this ticket's scoped acceptance. Downstream Release validation is not required for this YAML sync behavior ticket and will be handled at initiative-level final validation instead of per-ticket waiting.
 
 # Critique Disposition
 
@@ -111,28 +115,30 @@ Required critique profiles: code-change, test-coverage, data-preservation
 
 Findings: No open medium/high findings in critique:c10race13-yaml-sync-serialization-review. Low residual risks are recorded in the critique and accepted as non-blocking for implementation commit.
 
-Disposition status: completed locally; post-commit CI still pending before closure
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted:
 
-Deferred / not-required rationale: Consider wiki/YAML pipeline note after accepted fix.
+- `wiki:yaml-sync-safety` now records the accepted target-path grouping and unique temp-file write rules.
+
+Deferred / not-required rationale: No additional research, spec, plan, initiative, constitution, or memory promotion needed.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed. Created `wiki:yaml-sync-safety` for the accepted YAML sync serialization and write-safety rules.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Local implementation evidence and mandatory critique are sufficient for implementation commit. Final acceptance is pending post-commit CI and retrospective / promotion follow-through.
-Residual risks: Direct concurrent single-node calls and cross-process final writes can still race; source same-path coverage is grouping-level with source-shaped nodes because the demo fixture has no parsed sources; release/CI evidence is not recorded yet for this source change.
+Accepted by: OpenCode
+Accepted at: 2026-05-04T08:19:55Z
+Basis: Implementation commit `6899aabe9f86cbea896ccf5b9240e6967371dd65`; local evidence:c10race13-yaml-sync-serialization-verification; post-commit evidence:c10race13-main-ci-success; mandatory critique:c10race13-yaml-sync-serialization-review with no medium/high findings; retrospective promotion to `wiki:yaml-sync-safety` completed.
+Residual risks: Direct concurrent single-node calls and cross-process final writes can still race; source same-path coverage is grouping-level with source-shaped nodes because the demo fixture has no parsed sources; Release validation is deferred to initiative-level final validation rather than per-ticket waiting.
 
 # Dependencies
 
@@ -143,3 +149,4 @@ Coordinate with ticket:c10dry17 if cache behavior changes.
 - 2026-05-03T21:10:43Z: Created from core architecture oracle finding.
 - 2026-05-04T07:10:43Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10race13-20260504T071043Z` for test-first path-grouped YAML sync serialization and temp-file safety.
 - 2026-05-04T07:51:02Z: Consumed Ralph output, applied parent review-driven fixes for source/mixed grouping coverage, repeated threaded survival, file mode preservation, deterministic ordering, and umask-free temp creation, recorded local evidence `evidence:c10race13-yaml-sync-serialization-verification`, completed mandatory critique `critique:c10race13-yaml-sync-serialization-review`, and moved ticket to `complete_pending_acceptance` pending implementation commit, post-commit CI, and retrospective / promotion follow-through.
+- 2026-05-04T08:19:55Z: Recorded post-commit main `Tests`/`lint` evidence `evidence:c10race13-main-ci-success`, promoted the accepted target-path grouping and temp-file safety rule to `wiki:yaml-sync-safety`, accepted all scoped claims, explicitly deferred Release waiting to initiative-level final validation, and closed ticket.
