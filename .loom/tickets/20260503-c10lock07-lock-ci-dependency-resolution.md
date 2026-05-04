@@ -5,7 +5,7 @@ status: complete_pending_acceptance
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T00:47:15Z
+updated_at: 2026-05-04T00:57:09Z
 scope:
   kind: repository
   repositories:
@@ -17,12 +17,14 @@ links:
     - evidence:oracle-backlog-scan
     - evidence:c10lock07-local-dependency-resolution-verification
     - evidence:c10lock07-adapter-bound-verification
+    - evidence:c10lock07-uv-01012-verification
   packets:
     - packet:ralph-ticket-c10lock07-20260503T234103Z
   critique:
     - critique:c10lock07-dependency-resolution
     - critique:c10lock07-integration-path-follow-up
     - critique:c10lock07-adapter-constraint-follow-up
+    - critique:c10lock07-uv-01012-follow-up
 depends_on: []
 ---
 
@@ -75,10 +77,10 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10lock07#ACC-001 | evidence:oracle-backlog-scan; evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up | locally supported; main CI pending |
-| ticket:c10lock07#ACC-002 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up | locally supported after resolved findings; main CI pending |
-| ticket:c10lock07#ACC-003 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up | locally supported after resolved findings; main CI pending |
-| ticket:c10lock07#ACC-004 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up | locally supported after resolved findings; main CI pending |
+| ticket:c10lock07#ACC-001 | evidence:oracle-backlog-scan; evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported; main CI pending |
+| ticket:c10lock07#ACC-002 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported after resolved findings; main CI pending |
+| ticket:c10lock07#ACC-003 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported after resolved findings; main CI pending |
+| ticket:c10lock07#ACC-004 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported after resolved findings; main CI pending |
 | ticket:c10lock07#ACC-005 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification | critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up | locally supported; main CI pending |
 
 # Execution Notes
@@ -96,6 +98,7 @@ Existing evidence:
 - evidence:oracle-backlog-scan - original backlog finding for unreproducible dependency resolution.
 - evidence:c10lock07-local-dependency-resolution-verification - local lock, workflow, Taskfile, pip smoke, and child uv matrix smoke evidence after implementation.
 - evidence:c10lock07-adapter-bound-verification - local pinned-uv dbt 1.8 follow-up evidence after main CI exposed old adapter selection.
+- evidence:c10lock07-uv-01012-verification - local exact uv 0.10.12 follow-up evidence after operator requested a newer CI uv pin.
 
 Missing evidence:
 
@@ -116,6 +119,7 @@ Critique completed:
 - critique:c10lock07-dependency-resolution - mandatory implementation critique returned `changes_required` with one high-severity finding.
 - critique:c10lock07-integration-path-follow-up - follow-up critique reviewed the direct integration-path fix and returned `pass` with no open findings.
 - critique:c10lock07-adapter-constraint-follow-up - follow-up critique reviewed the adapter-bound fix, caught a pre-final env-scope issue, then returned `pass` after parent moved the constraint to workflow-level `env`.
+- critique:c10lock07-uv-01012-follow-up - follow-up critique reviewed the operator-requested uv 0.10.12 CI toolchain update and returned `pass` with no open findings.
 
 Findings:
 
@@ -142,8 +146,8 @@ N/A - no wiki promotion selected yet.
 
 Accepted by: Not accepted yet.
 Accepted at: N/A.
-Basis: Local evidence and mandatory critique support committing and pushing the implementation for CI trial on `main`; local follow-up evidence also supports the explicit adapter floor for the observed dbt 1.8 / uv 0.5.13 failure mode. Final acceptance is pending GitHub Actions evidence from `main` and retrospective disposition.
-Residual risks: Resolver differences between uv and pip may remain for optional extras; the adapter floor is currently a CI stabilizer rather than package metadata cleanup; `demo_duckdb/integration_tests.sh` still uses `uv run` and should not be reintroduced into matrix CI without a sync-safe change; the existing uv-only protobuf override remains for `ticket:c10pkg10`.
+Basis: Local evidence and mandatory critique support committing and pushing the implementation for CI trial on `main`; local follow-up evidence also supports the explicit adapter floor for the observed dbt 1.8 failure mode and the operator-requested `uv==0.10.12` CI toolchain pin. Final acceptance is pending GitHub Actions evidence from `main` and retrospective disposition.
+Residual risks: Resolver differences between uv and pip may remain for optional extras; the adapter floor is currently a CI stabilizer rather than package metadata cleanup; local Taskfile execution still depends on operator-installed uv; `demo_duckdb/integration_tests.sh` still uses `uv run` and should not be reintroduced into matrix CI without a sync-safe change; the existing uv-only protobuf override remains for `ticket:c10pkg10`.
 
 # Dependencies
 
@@ -158,3 +162,4 @@ Coordinate with ticket:c10pkg10 for package metadata and extras cleanup.
 - 2026-05-04T00:19:53Z: Follow-up critique `critique:c10lock07-integration-path-follow-up` passed with no open findings; ticket moved to `complete_pending_acceptance` pending commit/push and final `main` CI evidence.
 - 2026-05-04T00:47:15Z: Main CI for pushed commit `d72c3b8` failed dbt 1.8 pytest rows under CI-pinned `uv==0.5.13`; local reproduction showed adding `dbt-adapters>=1.16.3,<2.0` selected `dbt-adapters==1.16.3` and `mashumaro==3.14`, passed `pip check`, and drove the failing sync-operation test green.
 - 2026-05-04T00:47:15Z: Added explicit adapter floor to workflow/Taskfile uv-resolved matrix/latest installs, fixed reviewer-caught workflow env scoping by moving `DBT_ADAPTERS_CONSTRAINT` to workflow-level `env`, recorded `evidence:c10lock07-adapter-bound-verification`, and finalized `critique:c10lock07-adapter-constraint-follow-up` with no remaining blocker; final `main` CI evidence remains pending after commit/push.
+- 2026-05-04T00:57:09Z: Operator requested CI use `uv==0.10.12` at least; updated `.github/workflows/constraints.txt` to exact `uv==0.10.12`, verified the dbt 1.8 matrix-style path locally with that uv version, recorded `evidence:c10lock07-uv-01012-verification`, and finalized `critique:c10lock07-uv-01012-follow-up` with no open findings; final `main` CI evidence remains pending after commit/push.
