@@ -197,7 +197,7 @@ def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     )
     @click.option(
         "--profiles-dir",
-        type=click.Path(exists=True, dir_okay=True, file_okay=False),
+        type=click.Path(dir_okay=True, file_okay=False),
         default=discover_profiles_dir,
         help="Which directory to look in for the profiles.yml file. Defaults to DBT_PROFILES_DIR, the current directory, the discovered project root, or ~/.dbt.",
     )
@@ -1509,7 +1509,7 @@ def query(
 @click.option(
     "--profiles-dir",
     default=discover_profiles_dir,
-    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    type=click.Path(dir_okay=True, file_okay=False),
     help="Which directory to look in for the profiles.yml file. Defaults to DBT_PROFILES_DIR, the current directory, the discovered project root, or ~/.dbt.",
 )
 @click.option(
