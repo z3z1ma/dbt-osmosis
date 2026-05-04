@@ -353,6 +353,7 @@ def test_workbench_help(runner: CliRunner) -> None:
     assert "discovered project root" in result.output
     assert "--host" in result.output
     assert "--port" in result.output
+    assert "--enable-external-feed" in result.output
 
 
 def test_workbench_uses_streamlit_server_bind_flags_and_preserves_passthrough(
@@ -388,6 +389,26 @@ def test_workbench_uses_streamlit_server_bind_flags_and_preserves_passthrough(
         "--server.headless=true",
         "--theme.base=dark",
     ]
+
+
+def test_workbench_enable_external_feed_passes_app_opt_in(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External RSS feed should require an explicit app-level opt-in."""
+    completed = subprocess.CompletedProcess(args=[], returncode=0)
+    monkeypatch.setattr("shutil.which", lambda name: "streamlit")
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
+    with mock.patch("subprocess.run", return_value=completed) as run:
+        result = runner.invoke(cli, ["workbench", "--enable-external-feed"])
+
+    assert result.exit_code == 0
+    command = run.call_args.args[0]
+    script_path_index = next(i for i, value in enumerate(command) if str(value).endswith("app.py"))
+    assert "--enable-external-feed" not in command[:script_path_index]
+    script_args = command[script_path_index + 1 :]
+    assert script_args[0] == "--"
+    assert "--enable-external-feed" in script_args
 
 
 def test_workbench_preserves_literal_double_dash_passthrough(

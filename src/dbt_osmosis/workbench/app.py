@@ -1,10 +1,13 @@
 # pyright: reportMissingImports=false
 import argparse
 import decimal
+import html
 import os
 import pathlib
 import sys
 import typing as t
+import urllib.parse
+import urllib.request
 from collections import OrderedDict
 from datetime import date, datetime
 from textwrap import dedent
@@ -42,6 +45,21 @@ st.set_page_config(page_title="dbt-osmosis Workbench", page_icon="🌊", layout=
 default_prompt = (
     "-- This is a scratch model\n-- it will not persist if you jump to another model\n-- you can"
     " use this to test your dbt SQL queries\n\nselect 1 as id, 'hello' as name"
+)
+HACKER_NEWS_RSS_URL = "https://news.ycombinator.com/rss"
+FEED_REQUEST_TIMEOUT_SECONDS = 3.0
+# Maximum RSS response bytes read from the external feed before failing closed.
+FEED_RESPONSE_MAX_BYTES = 1_000_000
+_FEED_DISABLED_HTML = (
+    '<div style="padding: 10px 5px; color: #616161;">'
+    "External Hacker News feed disabled. Launch with "
+    "<code>dbt-osmosis workbench --enable-external-feed</code> to opt in."
+    "</div>"
+)
+_FEED_UNAVAILABLE_HTML = (
+    '<div style="padding: 10px 5px; color: #616161;">'
+    "Hacker News feed unavailable. The workbench is still ready to use."
+    "</div>"
 )
 
 
@@ -107,6 +125,95 @@ def _get_demo_query() -> str:
     """)
 
 
+def _is_http_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _safe_url(value: t.Any) -> str | None:
+    url = str(value or "").strip()
+    if not _is_http_url(url):
+        return None
+    return html.escape(url, quote=True)
+
+
+def _entry_value(entry: t.Any, key: str) -> str:
+    if hasattr(entry, "get"):
+        value = entry.get(key, "")
+    else:
+        value = getattr(entry, key, "")
+    return str(value or "")
+
+
+def _fetch_feed_bytes(feed_url: str, timeout_seconds: float) -> bytes:
+    if not _is_http_url(feed_url):
+        raise ValueError("Feed URL must use http or https")
+    with urllib.request.urlopen(feed_url, timeout=timeout_seconds) as response:
+        feed_bytes = response.read(FEED_RESPONSE_MAX_BYTES + 1)
+    if len(feed_bytes) > FEED_RESPONSE_MAX_BYTES:
+        raise ValueError("Feed response exceeds maximum size")
+    return feed_bytes
+
+
+def _entry_html(entry: t.Any) -> str:
+    title = html.escape(_entry_value(entry, "title") or "Untitled", quote=True)
+    published = html.escape(_entry_value(entry, "published"), quote=True)
+    link = _safe_url(_entry_value(entry, "link"))
+    comments = _safe_url(_entry_value(entry, "comments"))
+    title_html = (
+        f'<a href="{link}" target="_blank" rel="noopener noreferrer" '
+        'style="font-size: 16px; font-weight: bold; color: #FF4136; text-decoration: none;">'
+        f"{title}</a>"
+        if link
+        else f'<span style="font-size: 16px; font-weight: bold; color: #FF4136;">{title}</span>'
+    )
+    comments_html = (
+        '<span style="color: #FF4136;">|</span> '
+        f'<a href="{comments}" target="_blank" rel="noopener noreferrer" '
+        'style="color: #FF4136; text-decoration: none;">Comments</a>'
+        if comments
+        else ""
+    )
+    return dedent(
+        f"""
+        <div style="padding: 10px 5px 10px 5px; border-bottom: 1px solid #e0e0e0;">
+            {title_html}
+            <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{published}
+            {comments_html}
+            </div>
+        </div>
+        """
+    )
+
+
+def build_feed_html(
+    *,
+    enable_external_feed: bool,
+    feed_url: str = HACKER_NEWS_RSS_URL,
+    timeout_seconds: float = FEED_REQUEST_TIMEOUT_SECONDS,
+    fetcher: t.Callable[[str, float], bytes] = _fetch_feed_bytes,
+    parser: t.Callable[[bytes], t.Any] | None = None,
+) -> str:
+    if not enable_external_feed:
+        return _FEED_DISABLED_HTML
+
+    try:
+        feed_bytes = fetcher(feed_url, timeout_seconds)
+        parse_feed = parser or feedparser.parse
+        parsed_feed = parse_feed(feed_bytes)
+        if getattr(parsed_feed, "bozo", False):
+            return _FEED_UNAVAILABLE_HTML
+        entries = getattr(parsed_feed, "entries", [])
+        feed_html = [_entry_html(entry) for entry in entries]
+    except Exception:
+        return _FEED_UNAVAILABLE_HTML
+
+    return "".join(feed_html) or _FEED_UNAVAILABLE_HTML
+
+
 def _parse_args() -> dict[str, t.Any]:
     """Parse command line arguments for the dbt-osmosis workbench.
 
@@ -129,6 +236,11 @@ def _parse_args() -> dict[str, t.Any]:
         parser = argparse.ArgumentParser(description="dbt osmosis workbench")
         _ = parser.add_argument("--profiles-dir", help="dbt profile directory")
         _ = parser.add_argument("--project-dir", help="dbt project directory")
+        _ = parser.add_argument(
+            "--enable-external-feed",
+            action="store_true",
+            help="Opt in to fetching the external Hacker News RSS feed",
+        )
         args = vars(parser.parse_args(sys.argv[1:]))
     except Exception:
         args = {}
@@ -422,23 +534,7 @@ def main():
 
         app.editor.update_content("SQL", app.query)
 
-        hackernews_rss = t.cast("t.Any", feedparser.parse("https://news.ycombinator.com/rss"))
-        feed_html = []
-        for entry in hackernews_rss.entries:
-            feed_html.append(
-                dedent(
-                    f"""
-                <div style="padding: 10px 5px 10px 5px; border-bottom: 1px solid #e0e0e0;">
-                    <a href="{entry.link}" target="_blank" style="font-size: 16px; font-weight: bold; color: #FF4136; text-decoration: none;">{entry.title}</a>
-                    <div style="font-size: 12px; color: #9e9e9e; padding-top: 3px;">{entry.published}
-                    <span style="color: #FF4136;">|</span>
-                    <a href="{entry.comments}" target="_blank" style="color: #FF4136; text-decoration: none;">Comments</a>
-                    </div>
-                </div>
-            """,
-                ),
-            )
-        app.feed_html = "".join(t.cast("list[str]", feed_html))
+        app.feed_html = build_feed_html(enable_external_feed=bool(args.get("enable_external_feed")))
     else:
         app = state.app
 

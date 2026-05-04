@@ -1530,6 +1530,11 @@ def query(
     help="The port to serve the server on",
     default=8501,
 )
+@click.option(
+    "--enable-external-feed",
+    is_flag=True,
+    help="Opt in to fetching the external Hacker News RSS feed in the workbench.",
+)
 @click.pass_context
 def workbench(
     ctx: click.Context,
@@ -1537,6 +1542,7 @@ def workbench(
     project_dir: str | None = None,
     host: str = "localhost",
     port: int = 8501,
+    enable_external_feed: bool = False,
 ) -> None:
     """Start the dbt-osmosis workbench
 
@@ -1561,6 +1567,8 @@ def workbench(
     if profiles_dir:
         script_args.append("--profiles-dir")
         script_args.append(profiles_dir)
+    if enable_external_feed:
+        script_args.append("--enable-external-feed")
 
     streamlit_executable = _streamlit_executable()
     _check_workbench_app_dependencies()

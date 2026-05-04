@@ -1,11 +1,11 @@
 ---
 id: ticket:c10feed26
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: security-sensitive
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T22:35:45Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,10 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10feed26-workbench-feed-hardening-validation
+  critique:
+    - critique:c10feed26-workbench-feed-hardening-review
+    - critique:c10feed26-workbench-feed-hardening-final-review
 depends_on: []
 ---
 
@@ -68,8 +72,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10feed26#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10feed26#ACC-002 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10feed26#ACC-001 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-002 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-003 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-004 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review; critique:c10feed26-workbench-feed-hardening-review#FIND-001 resolved; critique:c10feed26-workbench-feed-hardening-review#FIND-002 resolved | supported |
+| ticket:c10feed26#ACC-005 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
+| ticket:c10feed26#ACC-006 | evidence:c10feed26-workbench-feed-hardening-validation | critique:c10feed26-workbench-feed-hardening-final-review | supported |
 
 # Execution Notes
 
@@ -81,7 +89,9 @@ Potential human/product decision if removing the widget changes desired workbenc
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: tests for failure and sanitization.
+Existing evidence: evidence:oracle-backlog-scan and evidence:c10feed26-workbench-feed-hardening-validation.
+
+Evidence status: local red/green, parent validation, full pre-commit, and final critique support ACC-001 through ACC-006 for the current source state. Missing evidence: remote CI after commit/push.
 
 # Critique Disposition
 
@@ -93,9 +103,16 @@ Policy rationale: External HTML/network behavior is security-sensitive even if t
 
 Required critique profiles: security, code-change, test-coverage
 
-Findings: None - no critique yet.
+Findings:
 
-Disposition status: pending
+- critique:c10feed26-workbench-feed-hardening-review#FIND-001: resolved; verified by critique:c10feed26-workbench-feed-hardening-final-review.
+- critique:c10feed26-workbench-feed-hardening-review#FIND-002: resolved; verified by critique:c10feed26-workbench-feed-hardening-final-review.
+
+Disposition status: completed.
+
+Review: critique:c10feed26-workbench-feed-hardening-final-review
+
+Acceptance recommendation: no-critique-blockers.
 
 Deferral / not-required rationale: None.
 
@@ -125,3 +142,10 @@ Coordinate with ticket:c10wb22 if workbench tests are added there.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench oracle finding.
+- 2026-05-04T22:16:07Z: Started Ralph iteration 01 to make the workbench RSS feed disabled by default, timeout-bound when enabled, failure-tolerant, and escaped before rendering.
+- 2026-05-04T22:22:20Z: Ralph iteration 01 returned stop. Parent accepted the implementation iteration after focused tests, Ruff, and basedpyright zero-error validation; moved ticket to review_required for required security/code-change/test-coverage critique.
+- 2026-05-04T22:27:08Z: Required critique returned changes_required with one medium malformed-URL failure-tolerance finding and one low uncapped-response-size finding; moved ticket back to active for follow-up implementation.
+- 2026-05-04T22:27:45Z: Started Ralph iteration 02 to resolve critique findings by failing closed on malformed feed URLs/entry rendering and capping RSS response reads.
+- 2026-05-04T22:31:06Z: Ralph iteration 02 returned stop. Parent accepted the follow-up implementation after focused tests, Ruff, and basedpyright zero-error validation; moved ticket back to review_required for final mandatory critique verification.
+- 2026-05-04T22:34:20Z: Final mandatory critique passed with no new findings and verified prior findings resolved; moved ticket to complete_pending_acceptance pending full pre-commit, commit, push, and remote CI evidence.
+- 2026-05-04T22:35:45Z: Full pre-commit and focused workbench/CLI tests passed after formatting; ticket remains complete_pending_acceptance pending commit, push, and remote CI evidence.

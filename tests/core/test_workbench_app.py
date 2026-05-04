@@ -2,6 +2,8 @@ import importlib
 import sys
 import types
 
+import pytest
+
 from dbt_osmosis.core.settings import YamlRefactorContext
 
 
@@ -243,3 +245,143 @@ def test_workbench_change_target_failure_keeps_old_context_and_reports_error(mon
     assert app.state.app.compiled_query == "old compiled"
     assert old_ctx.close_calls == 0
     assert errors == ["Failed to change dbt target to 'prod': bad target"]
+
+
+def test_workbench_feed_disabled_does_not_parse_external_rss(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+
+    def fail_parse(*_args, **_kwargs):
+        raise AssertionError("external RSS parser should not be called")
+
+    def fail_fetch(*_args, **_kwargs):
+        raise AssertionError("external RSS fetch should not be called")
+
+    monkeypatch.setattr(app.feedparser, "parse", fail_parse, raising=False)
+
+    feed_html = app.build_feed_html(enable_external_feed=False, fetcher=fail_fetch)
+
+    assert "External Hacker News feed disabled" in feed_html
+
+
+def test_workbench_feed_enabled_parser_failure_returns_safe_fallback(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+
+    def fail_parse(*_args, **_kwargs):
+        raise RuntimeError("parser exploded")
+
+    feed_html = app.build_feed_html(
+        enable_external_feed=True,
+        fetcher=lambda _url, _timeout: b"not valid rss",
+        parser=fail_parse,
+    )
+
+    assert "Hacker News feed unavailable" in feed_html
+    assert "parser exploded" not in feed_html
+
+
+def test_workbench_feed_enabled_escapes_entries_and_rejects_unsafe_urls(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+    parsed = types.SimpleNamespace(
+        bozo=False,
+        entries=[
+            types.SimpleNamespace(
+                link='javascript:alert("owned")',
+                title='<script>alert("title")</script>',
+                published="<b>today</b>",
+                comments='data:text/html,<script>alert("comments")</script>',
+            ),
+            types.SimpleNamespace(
+                link="https://news.ycombinator.com/item?id=1&x=<tag>",
+                title="Safe <Title>",
+                published="May <4>",
+                comments="http://news.ycombinator.com/item?id=2&x=<tag>",
+            ),
+        ],
+    )
+    feed_html = app.build_feed_html(
+        enable_external_feed=True,
+        fetcher=lambda _url, _timeout: b"<rss />",
+        parser=lambda _feed: parsed,
+    )
+
+    assert "<script" not in feed_html
+    assert "javascript:" not in feed_html
+    assert "data:text" not in feed_html
+    assert "&lt;script&gt;alert(&quot;title&quot;)&lt;/script&gt;" in feed_html
+    assert "Safe &lt;Title&gt;" in feed_html
+    assert "https://news.ycombinator.com/item?id=1&amp;x=&lt;tag&gt;" in feed_html
+
+
+def test_workbench_feed_malformed_entry_url_renders_without_link(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+    parsed = types.SimpleNamespace(
+        bozo=False,
+        entries=[types.SimpleNamespace(link="https://bad.example", title="Bad", published="")],
+    )
+
+    def fail_urlparse(url):
+        if url == "https://bad.example":
+            raise ValueError("malformed URL")
+        return app.urllib.parse.ParseResult("https", "ok.example", "", "", "", "")
+
+    monkeypatch.setattr(app.urllib.parse, "urlparse", fail_urlparse)
+
+    feed_html = app.build_feed_html(
+        enable_external_feed=True,
+        fetcher=lambda _url, _timeout: b"<rss />",
+        parser=lambda _feed: parsed,
+    )
+
+    assert "Bad" in feed_html
+    assert "href=" not in feed_html
+    assert "malformed URL" not in feed_html
+
+
+def test_workbench_fetch_feed_bytes_rejects_responses_over_size_cap(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+    monkeypatch.setattr(app, "FEED_RESPONSE_MAX_BYTES", 5, raising=False)
+
+    class OversizedResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self, size=-1):
+            assert size in {-1, 6}
+            return b"abcdef"
+
+    def fake_urlopen(url, *, timeout):
+        assert url == "https://news.ycombinator.com/rss"
+        assert timeout == 1.5
+        return OversizedResponse()
+
+    monkeypatch.setattr(app.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(ValueError, match="exceeds maximum"):
+        app._fetch_feed_bytes("https://news.ycombinator.com/rss", 1.5)
+
+
+def test_workbench_parse_args_accepts_external_feed_opt_in(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+    monkeypatch.setattr(
+        app.sys,
+        "argv",
+        [
+            "app.py",
+            "--project-dir",
+            "/project",
+            "--profiles-dir",
+            "/profiles",
+            "--enable-external-feed",
+        ],
+    )
+
+    args = app._parse_args()
+
+    assert args == {
+        "project_dir": "/project",
+        "profiles_dir": "/profiles",
+        "enable_external_feed": True,
+    }

@@ -124,6 +124,7 @@ Core options:
 - `--profiles-dir`
 - `--host` (default `localhost`)
 - `--port` (default `8501`)
+- `--enable-external-feed` opts in to fetching the external Hacker News RSS feed (disabled by default)
 - `--options` passes through to Streamlit help output
 - `--config` prints Streamlit configuration
 
