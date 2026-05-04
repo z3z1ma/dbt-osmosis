@@ -1,11 +1,11 @@
 ---
 id: ticket:c10val27
 kind: ticket
-status: active
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T15:28:17Z
+updated_at: 2026-05-04T16:26:17Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10val27-validation-timeout-verification
+  critique:
+    - critique:c10val27-validation-timeout-review
+  wiki:
+    - wiki:model-validation-timeouts
   packets:
     - packet:ralph-ticket-c10val27-20260504T152817Z
 depends_on: []
@@ -67,7 +72,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10val27#ACC-001 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10val27#ACC-001 | evidence:c10val27-validation-timeout-verification | critique:c10val27-validation-timeout-review | accepted |
+| ticket:c10val27#ACC-002 | evidence:c10val27-validation-timeout-verification | critique:c10val27-validation-timeout-review | accepted |
+| ticket:c10val27#ACC-003 | evidence:c10val27-validation-timeout-verification | critique:c10val27-validation-timeout-review | accepted |
+| ticket:c10val27#ACC-004 | evidence:c10val27-validation-timeout-verification | critique:c10val27-validation-timeout-review | accepted |
+| ticket:c10val27#ACC-005 | evidence:c10val27-validation-timeout-verification | critique:c10val27-validation-timeout-review | accepted |
 
 # Execution Notes
 
@@ -75,11 +84,22 @@ Be honest about adapter limitations. A test-level future timeout may classify ti
 
 # Blockers
 
-Potential blocker: adapter-level cancellation support varies.
+None. Adapter-level cancellation support varies, so accepted behavior is explicitly scoped to best-effort local timeout reporting rather than guaranteed warehouse-side cancellation.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: timeout tests.
+Existing evidence: `evidence:oracle-backlog-scan`.
+
+Validation evidence: `evidence:c10val27-validation-timeout-verification`.
+
+Implementation commit: `1df6090494e8b19c5523267cbd47772fad4df8ec` (`fix: enforce model validation timeouts`).
+
+Observed validation:
+
+- `uv run pytest tests/core/test_model_validation.py tests/core/test_cli.py tests/core/test_llm.py -q` passed `73 passed, 9 skipped`.
+- `uv run ruff check ... && git diff --check` passed.
+- Local basedpyright summary reported `errorCount: 0` after also fixing the main-branch CI type errors observed in GitHub Actions Tests run `25327641090`.
+- Targeted `uv run pre-commit run --files ...` passed.
 
 # Critique Disposition
 
@@ -91,30 +111,34 @@ Policy rationale: Validation runtime behavior can hang CI/user workflows.
 
 Required critique profiles: code-change, test-coverage, operator-clarity
 
-Findings: None - no critique yet.
+Critique record: `critique:c10val27-validation-timeout-review`.
 
-Disposition status: pending
+Verdict: `pass`.
+
+Findings: None - no open findings. Initial critique concerns about daemon-thread leakage, cancellation overclaiming, and missing positive-timeout success/error tests were resolved before final acceptance.
+
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: `wiki:model-validation-timeouts`.
 
-Deferred / not-required rationale: Not decided.
+Deferred / not-required rationale: Retrospective found one durable lesson: validation timeouts are best-effort local wait boundaries, not guaranteed warehouse cancellation. That explanation was promoted to wiki.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed: `wiki:model-validation-timeouts` preserves the accepted timeout semantics, limitations, and future adapter-specific follow-up boundary.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests.
-Residual risks: True query cancellation may remain adapter-specific.
+Accepted by: OpenCode.
+Accepted at: 2026-05-04T16:26:17Z.
+Basis: `evidence:c10val27-validation-timeout-verification`, `critique:c10val27-validation-timeout-review`, and retrospective promotion `wiki:model-validation-timeouts` cover all scoped acceptance criteria with no critique blockers.
+Residual risks: Signal-based timeout is POSIX/main-thread/process-global and best-effort for real adapter/C-extension calls; warehouse-side query cancellation remains adapter-specific and not guaranteed; full GitHub Actions validation after push remains pending outside this ticket's local acceptance.
 
 # Dependencies
 
@@ -124,3 +148,4 @@ Coordinate with ticket:c10sql21 if execution helpers change.
 
 - 2026-05-03T21:10:43Z: Created from core architecture oracle finding.
 - 2026-05-04T15:28:17Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10val27-20260504T152817Z` for test-first timeout semantics work in `core/validation.py` and `tests/core/test_model_validation.py`.
+- 2026-05-04T16:26:17Z: Accepted and closed after implementation commit `1df6090494e8b19c5523267cbd47772fad4df8ec`, evidence `evidence:c10val27-validation-timeout-verification`, critique `critique:c10val27-validation-timeout-review`, and retrospective promotion `wiki:model-validation-timeouts`.
