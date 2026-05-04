@@ -1,15 +1,22 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import stat
+import threading
 from unittest import mock
 
 import pytest
+import ruamel.yaml
+from dbt.artifacts.resources.types import NodeType
 
 from dbt_osmosis.core.inheritance import _get_node_yaml
-from dbt_osmosis.core.schema.writer import commit_yamls
+from dbt_osmosis.core.schema.reader import _read_yaml
+from dbt_osmosis.core.schema.writer import _write_yaml, commit_yamls
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sync_operations import (
     _get_or_create_source,
+    _group_sync_nodes,
     _sync_doc_section,
     sync_node_to_yaml,
 )
@@ -76,6 +83,205 @@ def test_sync_node_to_yaml_all_versions_share_one_truthful_write(
 
     assert version_one_columns["customer_id"]["description"] == "v1 synced description"
     assert version_two_columns["id"]["description"] == "v2 synced description"
+
+
+def test_group_sync_nodes_serializes_unversioned_nodes_sharing_target_path(
+    yaml_context: YamlRefactorContext,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Same-target unversioned nodes must be one scheduled work item."""
+    customers = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    orders = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.orders"]
+    shared_target = tmp_path / "shared_schema.yml"
+
+    def iter_same_target_nodes(context: YamlRefactorContext):
+        yield customers.unique_id, customers
+        yield orders.unique_id, orders
+
+    monkeypatch.setattr(
+        "dbt_osmosis.core.node_filters._iter_candidate_nodes",
+        iter_same_target_nodes,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_current_yaml_path",
+        lambda context, node: None,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_target_yaml_path",
+        lambda context, node: shared_target,
+    )
+
+    groups = _group_sync_nodes(yaml_context)
+
+    assert groups == [[customers, orders]]
+
+
+def test_group_sync_nodes_serializes_mixed_versioned_and_unversioned_models(
+    yaml_context: YamlRefactorContext,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Same-target versioned and unversioned models must be one scheduled work item."""
+    versioned = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    unversioned = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    shared_target = tmp_path / "shared_models.yml"
+
+    def iter_same_target_nodes(context: YamlRefactorContext):
+        yield versioned.unique_id, versioned
+        yield unversioned.unique_id, unversioned
+
+    monkeypatch.setattr(
+        "dbt_osmosis.core.node_filters._iter_candidate_nodes",
+        iter_same_target_nodes,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_current_yaml_path",
+        lambda context, node: None,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_target_yaml_path",
+        lambda context, node: shared_target,
+    )
+
+    groups = _group_sync_nodes(yaml_context)
+
+    assert groups == [[versioned, unversioned]]
+
+
+def test_group_sync_nodes_serializes_sources_sharing_target_path(
+    yaml_context: YamlRefactorContext,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Same-target source tables must be one scheduled work item."""
+    source_nodes = [
+        mock.MagicMock(
+            unique_id="source.jaffle_shop_duckdb.raw.orders",
+            package_name=yaml_context.project.runtime_cfg.project_name,
+            resource_type=NodeType.Source,
+        ),
+        mock.MagicMock(
+            unique_id="source.jaffle_shop_duckdb.raw.customers",
+            package_name=yaml_context.project.runtime_cfg.project_name,
+            resource_type=NodeType.Source,
+        ),
+    ]
+    shared_target = tmp_path / "shared_sources.yml"
+
+    def iter_same_target_sources(context: YamlRefactorContext):
+        for source_node in source_nodes:
+            yield source_node.unique_id, source_node
+
+    monkeypatch.setattr(
+        "dbt_osmosis.core.node_filters._iter_candidate_nodes",
+        iter_same_target_sources,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_current_yaml_path",
+        lambda context, node: None,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_target_yaml_path",
+        lambda context, node: shared_target,
+    )
+
+    groups = _group_sync_nodes(yaml_context)
+
+    assert groups == [source_nodes]
+
+
+def test_sync_node_to_yaml_repeated_threads_same_target_preserves_model_sections(
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Repeated threaded sync for one target must keep every grouped model section."""
+    customers = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    orders = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.orders"]
+    shared_target = tmp_path / "shared_schema.yml"
+    shared_target.write_text("version: 2\nmodels: []\n", encoding="utf-8")
+
+    def iter_same_target_nodes(context: YamlRefactorContext):
+        yield customers.unique_id, customers
+        yield orders.unique_id, orders
+
+    monkeypatch.setattr(
+        "dbt_osmosis.core.node_filters._iter_candidate_nodes",
+        iter_same_target_nodes,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_current_yaml_path",
+        lambda context, node: None,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.path_management.get_target_yaml_path",
+        lambda context, node: shared_target,
+    )
+
+    original_pool = yaml_context.pool
+    yaml_context.pool = ThreadPoolExecutor(max_workers=2)
+    try:
+        for attempt in range(3):
+            customers.description = f"customers synced {attempt}"
+            orders.description = f"orders synced {attempt}"
+
+            sync_node_to_yaml(yaml_context, commit=False)
+
+            doc = _read_yaml(
+                yaml_context.yaml_handler,
+                yaml_context.yaml_handler_lock,
+                shared_target,
+            )
+            models = {model["name"]: model for model in doc["models"]}
+
+            assert set(models) >= {"customers", "orders"}
+    finally:
+        yaml_context.pool.shutdown(wait=True)
+        yaml_context.pool = original_pool
+
+
+def test_write_yaml_uses_unique_temp_path_and_preserves_existing_tmp(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A failed write must not clobber or delete another writer's temp file."""
+    target_path = tmp_path / "schema.yml"
+    existing_tmp = target_path.with_suffix(target_path.suffix + ".tmp")
+    existing_tmp.write_bytes(b"sentinel temp from another writer")
+
+    def fail_replace(temp_path: Path, target_path: Path) -> None:
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr("dbt_osmosis.core.schema.writer._replace_atomically", fail_replace)
+
+    yaml_handler = ruamel.yaml.YAML()
+    with pytest.raises(OSError, match="simulated replace failure"):
+        _write_yaml(
+            yaml_handler,
+            threading.Lock(),
+            target_path,
+            {"version": 2, "models": [{"name": "customers"}]},
+        )
+
+    assert existing_tmp.read_bytes() == b"sentinel temp from another writer"
+
+
+def test_write_yaml_preserves_existing_file_mode(tmp_path: Path) -> None:
+    """Atomic replacement should not make existing shared YAML owner-only."""
+    target_path = tmp_path / "schema.yml"
+    target_path.write_text("version: 2\n", encoding="utf-8")
+    target_path.chmod(0o640)
+
+    _write_yaml(
+        ruamel.yaml.YAML(),
+        threading.Lock(),
+        target_path,
+        {"version": 2, "models": [{"name": "customers"}]},
+    )
+
+    assert stat.S_IMODE(target_path.stat().st_mode) == 0o640
 
 
 def test_commit_yamls_no_write(yaml_context: YamlRefactorContext):

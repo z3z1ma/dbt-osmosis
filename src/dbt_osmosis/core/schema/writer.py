@@ -7,6 +7,8 @@ Thread-safety:
 """
 
 import io
+import secrets
+import stat
 import threading
 import typing as t
 from pathlib import Path
@@ -78,6 +80,34 @@ def _strip_eof_blank_lines(content: bytes) -> bytes:
     return result.encode("utf-8")
 
 
+def _write_unique_temp_file(path: Path, content: bytes) -> tuple[Path, int]:
+    """Write content to a unique temp file in the target directory."""
+    for _ in range(100):
+        temp_path = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+        try:
+            with temp_path.open("xb") as f:
+                bytes_written = f.write(content)
+            if path.exists():
+                temp_path.chmod(stat.S_IMODE(path.stat().st_mode))
+            return temp_path, bytes_written
+        except FileExistsError:
+            continue
+        except Exception:
+            _cleanup_temp_path(temp_path)
+            raise
+
+    raise FileExistsError(f"Unable to create unique temporary file for {path}")
+
+
+def _cleanup_temp_path(temp_path: Path | None) -> None:
+    """Remove a temp file if this write still owns one."""
+    if temp_path and temp_path.exists():
+        try:
+            temp_path.unlink()
+        except Exception:
+            pass
+
+
 def _write_yaml(
     yaml_handler: ruamel.yaml.YAML,
     yaml_handler_lock: threading.Lock,
@@ -95,7 +125,7 @@ def _write_yaml(
     for cache invalidation. Multiple threads can safely write to different files.
 
     Uses a write-validate-replace pattern to prevent data loss:
-    1. Write to temporary file (.yml.tmp)
+    1. Write to a unique temporary file in the target directory
     2. Validate write succeeded (file exists and non-empty)
     3. Replace original file via atomic rename
     4. If any step fails, clean up temp file and preserve original
@@ -127,12 +157,10 @@ def _write_yaml(
                 else:
                     logger.info(":writing_hand: Writing changes to => %s", path)
 
-                    # Write to temporary file first for safety
-                    temp_path = path.with_suffix(path.suffix + ".tmp")
+                    # Write to a unique temporary file first for safety
+                    temp_path: Path | None = None
                     try:
-                        # Write to temp file
-                        with temp_path.open("wb") as f:
-                            bytes_written = f.write(modified)
+                        temp_path, bytes_written = _write_unique_temp_file(path, modified)
 
                         # Validate write succeeded
                         if not temp_path.exists():
@@ -155,12 +183,7 @@ def _write_yaml(
                             written_file_tracker(path)
 
                     except Exception as e:
-                        # Clean up temp file on any error
-                        if temp_path.exists():
-                            try:
-                                temp_path.unlink()
-                            except Exception:
-                                pass
+                        _cleanup_temp_path(temp_path)
                         # Re-raise to signal failure
                         logger.error(":boom: Failed to write YAML to => %s: %s", path, e)
                         raise
@@ -234,12 +257,10 @@ def commit_yamls(
                     else:
                         logger.info(":writing_hand: Writing => %s", path)
 
-                        # Write to temporary file first for safety
-                        temp_path = path.with_suffix(path.suffix + ".tmp")
+                        # Write to a unique temporary file first for safety
+                        temp_path: Path | None = None
                         try:
-                            # Write to temp file
-                            with temp_path.open("wb") as f:
-                                bytes_written = f.write(modified)
+                            temp_path, bytes_written = _write_unique_temp_file(path, modified)
 
                             # Validate write succeeded
                             if not temp_path.exists():
@@ -262,12 +283,7 @@ def commit_yamls(
                                 written_file_tracker(path)
 
                         except Exception as e:
-                            # Clean up temp file on any error
-                            if temp_path.exists():
-                                try:
-                                    temp_path.unlink()
-                                except Exception:
-                                    pass
+                            _cleanup_temp_path(temp_path)
                             # Re-raise to signal failure
                             logger.error(":boom: Failed to commit YAML to => %s: %s", path, e)
                             raise

@@ -591,31 +591,60 @@ def _cleanup_empty_sections(doc: dict[str, t.Any]) -> None:
             _ = doc.pop(k, None)
 
 
-def _sync_versioned_model_group_to_yaml(
+def _resolve_sync_yaml_paths(
     context: YamlRefactorContextProtocol,
-    nodes: list[ModelNode],
+    node: ResultNode,
+) -> tuple[Path | None, Path]:
+    """Resolve the current and effective target YAML paths for a sync node."""
+    from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
+
+    current_path = get_current_yaml_path(context, node)
+    target_path = current_path
+    if not target_path or not target_path.exists():
+        target_path = get_target_yaml_path(context, node)
+    return current_path, target_path
+
+
+def _sync_node_group_to_yaml(
+    context: YamlRefactorContextProtocol,
+    nodes: list[ResultNode],
     *,
     commit: bool = True,
 ) -> None:
-    """Synchronize all versions of one model through a single YAML document update."""
+    """Synchronize all nodes for one YAML path through a single document update."""
+    if not nodes:
+        return
+
     representative = nodes[0]
 
-    from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
-
-    current_path = get_current_yaml_path(context, representative)
-    target_path = current_path
-    if not target_path or not target_path.exists():
-        target_path = get_target_yaml_path(context, representative)
+    current_path, target_path = _resolve_sync_yaml_paths(context, representative)
 
     doc = _prepare_yaml_document(context, representative, current_path)
-    resource_key = _get_resource_type_key(representative)
-    doc_list = doc.setdefault(resource_key, [])
-    doc_model = _get_or_create_model(doc_list, representative.name)
 
-    for versioned_node in sorted(nodes, key=lambda current: str(current.version)):
-        _sync_versioned_model(context, versioned_node, doc_model)
+    for grouped_node in _order_sync_group_nodes(nodes):
+        resource_key = _get_resource_type_key(grouped_node)
+        if grouped_node.resource_type == NodeType.Source:
+            _sync_source_node(context, t.cast("SourceDefinition", grouped_node), doc, resource_key)
+        else:
+            _sync_model_or_seed_node(context, grouped_node, doc, resource_key)
 
     _finalize_synced_document(context, target_path, doc, commit=commit)
+
+
+def _order_sync_group_nodes(nodes: list[ResultNode]) -> list[ResultNode]:
+    """Keep same-path group processing deterministic, especially for versioned models."""
+
+    def sync_order(node: ResultNode) -> tuple[str, str, int, str, str]:
+        version = getattr(node, "version", None)
+        return (
+            str(node.resource_type),
+            node.name,
+            0 if version is not None else 1,
+            str(version or ""),
+            node.unique_id,
+        )
+
+    return sorted(nodes, key=sync_order)
 
 
 def _sync_single_node_to_yaml(
@@ -643,12 +672,7 @@ def _sync_single_node_to_yaml(
         )
         return
 
-    from dbt_osmosis.core.path_management import get_current_yaml_path, get_target_yaml_path
-
-    current_path = get_current_yaml_path(context, node)
-    target_path = current_path
-    if not target_path or not target_path.exists():
-        target_path = get_target_yaml_path(context, node)
+    current_path, target_path = _resolve_sync_yaml_paths(context, node)
 
     doc = _prepare_yaml_document(context, node, current_path)
     resource_key = _get_resource_type_key(node)
@@ -665,27 +689,21 @@ def _group_sync_nodes(context: YamlRefactorContextProtocol) -> list[list[ResultN
     """Group candidate nodes so each YAML document is updated truthfully once per work item."""
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
-    groups: list[list[ResultNode]] = []
-    version_group_index: dict[tuple[str, str, str], int] = {}
+    groups_by_path: dict[Path, list[ResultNode]] = {}
 
     for _, n in _iter_candidate_nodes(context):
-        if isinstance(n, ModelNode) and n.version is not None:
-            group_key = (
+        if n.package_name != context.project.runtime_cfg.project_name:
+            logger.debug(
+                ":package: Skipping package model => %s from package => %s",
+                n.unique_id,
                 n.package_name,
-                n.name,
-                t.cast("str", n.patch_path or n.original_file_path or n.unique_id),
             )
-            group_idx = version_group_index.get(group_key)
-            if group_idx is None:
-                version_group_index[group_key] = len(groups)
-                groups.append([n])
-            else:
-                groups[group_idx].append(n)
             continue
 
-        groups.append([n])
+        _, target_path = _resolve_sync_yaml_paths(context, n)
+        groups_by_path.setdefault(target_path.resolve(), []).append(n)
 
-    return groups
+    return list(groups_by_path.values())
 
 
 def sync_node_to_yaml(
@@ -722,8 +740,7 @@ def sync_node_to_yaml(
                 sync_node_to_yaml(context, group[0], commit=commit)
                 return
 
-            versioned_group = t.cast("list[ModelNode]", group)
-            _sync_versioned_model_group_to_yaml(context, versioned_group, commit=commit)
+            _sync_node_group_to_yaml(context, group, commit=commit)
 
         for _ in context.pool.map(
             _sync_group,
