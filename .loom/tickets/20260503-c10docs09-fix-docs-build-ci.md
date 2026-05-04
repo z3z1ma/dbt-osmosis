@@ -1,11 +1,11 @@
 ---
 id: ticket:c10docs09
 kind: ticket
-status: ready
+status: active
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T03:07:28Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10docs09-local-docs-ci-validation
+  critique:
+    - critique:c10docs09-docs-ci-hardening
+  packets:
+    - packet:ralph-ticket-c10docs09-20260504T025259Z
 depends_on: []
 ---
 
@@ -68,8 +73,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10docs09#ACC-003 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10docs09#ACC-002 | None - docs build not run after fix yet | None | open |
+| ticket:c10docs09#ACC-001 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; Node 18/24 CI pending |
+| ticket:c10docs09#ACC-002 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; Node 18/24 CI pending |
+| ticket:c10docs09#ACC-003 | evidence:oracle-backlog-scan; evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; CI pending |
+| ticket:c10docs09#ACC-004 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported with documented TypeScript lockfile drift; CI pending |
+| ticket:c10docs09#ACC-005 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; CI pending |
+| ticket:c10docs09#ACC-006 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; CI pending |
 
 # Execution Notes
 
@@ -77,11 +86,11 @@ Prefer the smallest config/dependency change that gets Docusaurus building. Do n
 
 # Blockers
 
-None.
+Final GitHub Actions docs job evidence is pending before acceptance.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: successful docs install/build logs.
+Existing evidence: evidence:oracle-backlog-scan; evidence:c10docs09-local-docs-ci-validation. Missing evidence: final GitHub Actions docs job evidence from `main`.
 
 # Critique Disposition
 
@@ -93,11 +102,11 @@ Policy rationale: Docs build failure can block releases and migration guidance; 
 
 Required critique profiles: release-packaging, operator-clarity
 
-Findings: None - no critique yet.
+Findings: Low finding about peer-only TypeScript lockfile drift is documented and accepted as a residual for this ticket. Node 18/24 CI evidence remains pending and blocks acceptance.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: None. Mandatory critique passed for commit/push trial in `critique:c10docs09-docs-ci-hardening`.
 
 # Retrospective / Promotion Disposition
 
@@ -125,3 +134,6 @@ Coordinate with ticket:c10rel08 if docs build becomes a release gate.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CI/build oracle finding.
+- 2026-05-04T02:52:59Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10docs09-20260504T025259Z` for docs config/dependency/CI implementation.
+- 2026-05-04T03:02:26Z: Consumed Ralph implementation after docs config was made consistently CommonJS, React/React-DOM were aligned to 18.3.1, the `Tests` workflow gained a Node 18/24 docs job, Dependabot gained `/docs` npm coverage, and local docs install/dependency/build plus hooks passed. Moved to mandatory critique.
+- 2026-05-04T03:07:28Z: Mandatory critique passed for commit/push trial. Low TypeScript lockfile drift was documented as peer-only and non-blocking; Node 18/24 GitHub Actions docs evidence remains pending before acceptance.

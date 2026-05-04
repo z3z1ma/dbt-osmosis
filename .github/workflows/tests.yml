@@ -162,6 +162,39 @@ jobs:
           git checkout -- models/ seeds/
           git clean -fd models/ seeds/
 
+  docs:
+    name: Build docs (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    needs: lockfile
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18", "24"]
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4.0.4
+        with:
+          node-version: "${{ matrix.node-version }}"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs dependencies
+        run: |
+          npm --prefix docs ci
+
+      - name: Check docs dependencies
+        run: |
+          npm --prefix docs ls
+
+      - name: Build docs
+        run: |
+          npm --prefix docs run build
+
   latest-core-compat:
     name: Validate latest dbt compatibility (${{ matrix.dbt-version }})
     runs-on: ubuntu-latest
