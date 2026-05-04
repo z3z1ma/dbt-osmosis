@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import stat
 import threading
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -11,10 +12,13 @@ import ruamel.yaml
 from dbt.artifacts.resources.types import NodeType
 
 from dbt_osmosis.core.inheritance import _get_node_yaml
+from dbt_osmosis.core.exceptions import YamlValidationError
 from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.schema.writer import _write_yaml, commit_yamls
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sync_operations import (
+    _get_or_create_model,
+    _get_or_create_version,
     _get_or_create_source,
     _group_sync_nodes,
     _sync_doc_section,
@@ -107,6 +111,98 @@ def test_sync_node_to_yaml_versioned_preserves_column_selector(
         "first_name",
         "last_name",
     ]
+
+
+def test_get_or_create_model_rejects_duplicate_entries_without_deleting_user_content() -> None:
+    """Duplicate model entries must fail closed instead of dropping later entries."""
+    doc_list = [
+        {"name": "customers", "description": "first user-authored description"},
+        {"name": "customers", "description": "second user-authored description"},
+    ]
+
+    with pytest.raises(YamlValidationError, match="Duplicate YAML model entries.*customers"):
+        _get_or_create_model(doc_list, "customers")
+
+    assert [model["description"] for model in doc_list] == [
+        "first user-authored description",
+        "second user-authored description",
+    ]
+
+
+def test_get_or_create_version_rejects_duplicate_entries_without_deleting_user_content() -> None:
+    """Duplicate version entries must fail closed instead of dropping user-authored content."""
+    doc_model = {
+        "name": "stg_customers",
+        "versions": [
+            {"v": 2, "description": "first user-authored version"},
+            {"v": 2, "description": "second user-authored version"},
+        ],
+    }
+
+    with pytest.raises(YamlValidationError, match="Duplicate YAML version entries.*stg_customers"):
+        _get_or_create_version(doc_model, 2)
+
+    assert [version["description"] for version in doc_model["versions"]] == [
+        "first user-authored version",
+        "second user-authored version",
+    ]
+
+
+def test_all_node_sync_preflights_duplicates_before_any_write(
+    yaml_context: YamlRefactorContext,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """All-node sync should fail on duplicates before committing unrelated files."""
+    good_node = SimpleNamespace(
+        unique_id="model.jaffle_shop_duckdb.orders",
+        package_name=yaml_context.project.runtime_cfg.project_name,
+        resource_type=NodeType.Model,
+        name="orders",
+        version=None,
+    )
+    bad_node = SimpleNamespace(
+        unique_id="model.jaffle_shop_duckdb.customers",
+        package_name=yaml_context.project.runtime_cfg.project_name,
+        resource_type=NodeType.Model,
+        name="customers",
+        version=None,
+    )
+    good_path = tmp_path / "good.yml"
+    bad_path = tmp_path / "bad.yml"
+    docs = {
+        "orders": {"version": 2, "models": [{"name": "orders", "columns": []}]},
+        "customers": {
+            "version": 2,
+            "models": [
+                {"name": "customers", "description": "first"},
+                {"name": "customers", "description": "second"},
+            ],
+        },
+    }
+    written_paths: list[Path] = []
+
+    monkeypatch.setattr(
+        "dbt_osmosis.core.sync_operations._group_sync_nodes",
+        lambda context: [[good_node], [bad_node]],
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.sync_operations._resolve_sync_yaml_paths",
+        lambda context, node: (None, good_path if node.name == "orders" else bad_path),
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.sync_operations._prepare_yaml_document",
+        lambda context, node, current_path: docs[node.name],
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.sync_operations._finalize_synced_document",
+        lambda context, target_path, doc, *, commit: written_paths.append(target_path),
+    )
+
+    with pytest.raises(YamlValidationError, match="Duplicate YAML models entries.*customers"):
+        sync_node_to_yaml(yaml_context, node=None, commit=True)
+
+    assert written_paths == []
 
 
 def test_sync_node_to_yaml_all_versions_share_one_truthful_write(

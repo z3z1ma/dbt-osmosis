@@ -1,11 +1,11 @@
 ---
 id: ticket:c10loss16
 kind: ticket
-status: ready
+status: active
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T11:23:22Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,8 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+  packets:
+    - packet:ralph-ticket-c10loss16-20260504T112322Z
 depends_on: []
 ---
 
@@ -125,3 +127,4 @@ Coordinate with ticket:c10ver15 and ticket:c10gen20.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from core architecture oracle finding.
+- 2026-05-04T11:23:22Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10loss16-20260504T112322Z` for test-first fail-closed duplicate model/version YAML sync handling with local-only validation.

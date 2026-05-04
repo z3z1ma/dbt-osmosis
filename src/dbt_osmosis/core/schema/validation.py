@@ -949,6 +949,7 @@ class ModelValidator(TestConfigValidator):
         if not models:
             return
 
+        seen_models: dict[str, int] = {}
         for idx, model in enumerate(models):
             if not isinstance(model, dict):
                 result.add_error(
@@ -972,6 +973,19 @@ class ModelValidator(TestConfigValidator):
                     message=f"Model name must be a string, got {type(name).__name__}",
                     file_path=file_path,
                 )
+            elif name in seen_models:
+                result.add_error(
+                    code="DUPLICATE_MODEL_NAME",
+                    message=f"Duplicate model '{name}' at index {idx}",
+                    file_path=file_path,
+                    context={
+                        "model_name": name,
+                        "model_index": idx,
+                        "first_model_index": seen_models[name],
+                    },
+                )
+            else:
+                seen_models[name] = idx
 
             model_name = name if isinstance(name, str) else "<unknown>"
             self._validate_resource_tests(model, result, file_path, "model", model_name)

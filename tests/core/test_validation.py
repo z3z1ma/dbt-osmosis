@@ -206,6 +206,30 @@ class TestModelValidator:
         errors = result.get_errors()
         assert any(e.code == "MISSING_MODEL_NAME" for e in errors)
 
+    def test_validate_duplicate_model_names(self) -> None:
+        """Duplicate top-level model entries should fail before sync can delete content."""
+        validator = ModelValidator()
+        data = {
+            "version": 2,
+            "models": [
+                {"name": "customers", "description": "first user-authored description"},
+                {"name": "customers", "description": "second user-authored description"},
+            ],
+        }
+
+        result = validator.validate(data)
+
+        assert not result.is_valid
+        duplicate_errors = [
+            error for error in result.get_errors() if error.code == "DUPLICATE_MODEL_NAME"
+        ]
+        assert len(duplicate_errors) == 1
+        assert duplicate_errors[0].context == {
+            "model_name": "customers",
+            "model_index": 1,
+            "first_model_index": 0,
+        }
+
     def test_validate_column_missing_name(self) -> None:
         """Test validation fails when column is missing name."""
         validator = ModelValidator()

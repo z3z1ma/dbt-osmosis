@@ -10,6 +10,7 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
 from dbt_osmosis.core import logger
+from dbt_osmosis.core.exceptions import YamlValidationError
 
 __all__ = [
     "_sync_doc_section",
@@ -487,10 +488,9 @@ def _deduplicate_model_entries(
     doc_list: list[dict[str, t.Any]],
     model_name: str,
 ) -> dict[str, t.Any] | None:
-    """Find and deduplicate model entries by name.
+    """Find model entries by name and fail closed on duplicates.
 
     Returns the first model entry if found, or None if not found.
-    Removes duplicate entries if they exist.
     """
     model_indices: list[int] = []
     for i, item in enumerate(doc_list):
@@ -498,12 +498,12 @@ def _deduplicate_model_entries(
             model_indices.append(i)
 
     if len(model_indices) > 1:
-        logger.warning(":warning: Found duplicate entries for model => %s", model_name)
-        doc_model = doc_list[model_indices[0]]
-        # Remove duplicates in reverse order to avoid index shifting
-        for idx in sorted(model_indices[1:], reverse=True):
-            doc_list.pop(idx)
-        return doc_model
+        index_list = ", ".join(str(index) for index in model_indices)
+        raise YamlValidationError(
+            f"Duplicate YAML model entries for '{model_name}' at models indexes {index_list}. "
+            "dbt-osmosis refuses to sync because choosing one entry would delete "
+            "user-authored YAML content. Consolidate duplicate models[] entries before syncing."
+        )
     if model_indices:
         return doc_list[model_indices[0]]
     return None
@@ -519,22 +519,40 @@ def _get_or_create_model(doc_list: list[dict[str, t.Any]], model_name: str) -> d
 
 
 def _deduplicate_versions(doc_model: dict[str, t.Any]) -> dict[str, dict[str, t.Any]]:
-    """Deduplicate version entries by version number.
+    """Index version entries by version number and fail closed on duplicates.
 
     Returns a dict mapping version numbers to version dicts.
     """
-    from dbt_osmosis.core.inheritance import _raw_model_version_value
+    from dbt_osmosis.core.inheritance import _raw_model_version_value, _version_values_match
 
+    model_name = doc_model.get("name", "<unknown>")
+    valid_version_entries: list[tuple[int, int | float | str]] = []
     version_by_v: dict[str, dict[str, t.Any]] = {}
-    for version in doc_model.get("versions", []):
+    for version_idx, version in enumerate(doc_model.get("versions", [])):
         if not isinstance(version, t.Mapping):
             continue
         v_value = version.get("v")
         v_key = _raw_model_version_value(v_value)
         if v_key is not None:
+            duplicate_entry = next(
+                (
+                    (seen_idx, seen_value)
+                    for seen_idx, seen_value in valid_version_entries
+                    if _version_values_match(seen_value, v_value)
+                ),
+                None,
+            )
+            if duplicate_entry is not None:
+                raise YamlValidationError(
+                    f"Duplicate YAML version entries for model '{model_name}' at versions indexes "
+                    f"{duplicate_entry[0]} and {version_idx} identify the same version "
+                    f"({duplicate_entry[1]!r} and {v_value!r}). dbt-osmosis refuses to sync "
+                    "because choosing one entry would delete user-authored YAML content. "
+                    "Consolidate duplicate models[].versions[] entries before syncing."
+                )
+            if not isinstance(v_value, bool) and isinstance(v_value, (int, float, str)):
+                valid_version_entries.append((version_idx, v_value))
             version_by_v[v_key] = t.cast("dict[str, t.Any]", version)
-    # Replace versions list with deduplicated versions
-    doc_model["versions"] = list(version_by_v.values())
     return version_by_v
 
 
@@ -613,6 +631,44 @@ def _sync_model_or_seed_node(
         _sync_versioned_model(context, node, doc_model)
     else:
         _sync_non_versioned_node(context, node, doc_model)
+
+
+def _validate_no_duplicate_sync_entries(doc: dict[str, t.Any], target_path: Path) -> None:
+    """Fail before syncing when one YAML document has duplicate writable entries."""
+    for resource_key in ("models", "seeds"):
+        entries = doc.get(resource_key, [])
+        if not isinstance(entries, list):
+            continue
+
+        seen_names: dict[str, int] = {}
+        for idx, entry in enumerate(entries):
+            if not isinstance(entry, t.Mapping):
+                continue
+            name = entry.get("name")
+            if not isinstance(name, str):
+                continue
+            if name in seen_names:
+                raise YamlValidationError(
+                    f"Duplicate YAML {resource_key} entries for '{name}' in {target_path} at "
+                    f"{resource_key} indexes {seen_names[name]} and {idx}. dbt-osmosis refuses "
+                    "to sync because choosing one entry would delete user-authored YAML content. "
+                    f"Consolidate duplicate {resource_key} entries before syncing."
+                )
+            seen_names[name] = idx
+
+            if resource_key == "models":
+                _deduplicate_versions(t.cast("dict[str, t.Any]", entry))
+
+
+def _preflight_sync_group(context: YamlRefactorContextProtocol, nodes: list[ResultNode]) -> None:
+    """Read one target document and fail on duplicates before any sync writes occur."""
+    if not nodes:
+        return
+
+    representative = nodes[0]
+    current_path, target_path = _resolve_sync_yaml_paths(context, representative)
+    doc = _prepare_yaml_document(context, representative, current_path)
+    _validate_no_duplicate_sync_entries(doc, target_path)
 
 
 def _cleanup_empty_sections(doc: dict[str, t.Any]) -> None:
@@ -765,6 +821,10 @@ def sync_node_to_yaml(
     """
     if node is None:
         logger.info(":wave: No single node specified; synchronizing all matched nodes.")
+        groups = _group_sync_nodes(context)
+
+        for group in groups:
+            _preflight_sync_group(context, group)
 
         def _sync_group(group: list[ResultNode]) -> None:
             if len(group) == 1:
@@ -775,7 +835,7 @@ def sync_node_to_yaml(
 
         for _ in context.pool.map(
             _sync_group,
-            _group_sync_nodes(context),
+            groups,
         ):
             ...
         return
