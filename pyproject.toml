@@ -44,7 +44,7 @@ workbench = [
   "setuptools>=70,<81",
 ]
 
-openai = ["openai~=1.58.1"]
+openai = ["openai>=1.58.1,<2.34.0"]
 
 azure = ["azure-identity>=1.19,<2"]
 
