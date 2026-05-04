@@ -1,11 +1,11 @@
 ---
 id: ticket:c10ord18
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T12:42:05Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10ord18-inheritance-ordering-validation
+  packets:
+    - packet:ralph-ticket-c10ord18-20260504T122819Z
+  critique:
+    - critique:c10ord18-inheritance-ordering-review
 depends_on: []
 ---
 
@@ -65,8 +70,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10ord18#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10ord18#ACC-005 | None - deterministic output test not written yet | None | open |
+| ticket:c10ord18#ACC-001 | evidence:c10ord18-inheritance-ordering-validation | critique:c10ord18-inheritance-ordering-review | accepted |
+| ticket:c10ord18#ACC-002 | evidence:c10ord18-inheritance-ordering-validation | critique:c10ord18-inheritance-ordering-review | accepted |
+| ticket:c10ord18#ACC-003 | evidence:c10ord18-inheritance-ordering-validation | critique:c10ord18-inheritance-ordering-review | accepted |
+| ticket:c10ord18#ACC-004 | evidence:c10ord18-inheritance-ordering-validation | critique:c10ord18-inheritance-ordering-review | accepted |
+| ticket:c10ord18#ACC-005 | evidence:c10ord18-inheritance-ordering-validation | critique:c10ord18-inheritance-ordering-review | accepted |
 
 # Execution Notes
 
@@ -78,7 +86,10 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: targeted tests.
+Evidence recorded:
+
+- evidence:oracle-backlog-scan
+- evidence:c10ord18-inheritance-ordering-validation
 
 # Critique Disposition
 
@@ -90,30 +101,30 @@ Policy rationale: Small code change, but inheritance precedence can affect user 
 
 Required critique profiles: code-change, test-coverage
 
-Findings: None - no critique yet.
+Findings: critique:c10ord18-inheritance-ordering-review reported no findings.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: N/A - critique completed with no blockers.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
+Promoted: None.
 
-Deferred / not-required rationale: Likely not required unless the fix reveals a broader inheritance concept.
+Deferred / not-required rationale: The fix was a localized deterministic ordering correction and did not reveal a broader inheritance concept needing wiki promotion.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+N/A - no wiki promotion selected; localized behavior is covered by the ticket, evidence, critique, and tests.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests.
-Residual risks: Deep DAG precedence may need additional fixture coverage.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-04T12:42:05Z.
+Basis: implementation commit `96a43cbac9947e4a189163329bfd0febadf77ea1`, evidence:c10ord18-inheritance-ordering-validation, and critique:c10ord18-inheritance-ordering-review.
+Residual risks: Full repository suite and GitHub Actions matrix are deferred to final initiative validation; ACC-005 is supported by ordered in-memory assertions and removal of set-based merges rather than a repeated byte-for-byte YAML write fixture; deep DAG duplicate-ancestor precedence remains governed by existing global visited behavior and is out of scope.
 
 # Dependencies
 
@@ -122,3 +133,5 @@ None.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from core architecture oracle finding.
+- 2026-05-04T12:28:19Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10ord18-20260504T122819Z` for test-first inheritance ordering, cycle detection, and deterministic tag merge fixes with local-only validation.
+- 2026-05-04T12:42:05Z: Ralph iteration consumed. Implementation commit `96a43cbac9947e4a189163329bfd0febadf77ea1` fixed full-ID cycle detection, numeric generation processing, and order-preserving tag merges. Local validation passed with `70 passed`; final critique found no blockers. Accepted and closed with final initiative-level CI deferred.
