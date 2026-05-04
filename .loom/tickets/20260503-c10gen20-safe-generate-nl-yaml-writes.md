@@ -1,11 +1,11 @@
 ---
 id: ticket:c10gen20
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T13:41:04Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10gen20-safe-generate-yaml-writes-validation
+  packets:
+    - packet:ralph-ticket-c10gen20-20260504T125850Z
+  critique:
+    - critique:c10gen20-safe-generate-yaml-writes-review
 depends_on: []
 ---
 
@@ -69,8 +74,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10gen20#ACC-002 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10gen20#ACC-006 | None - output parsing tests not written yet | None | open |
+| ticket:c10gen20#ACC-001 | evidence:c10gen20-safe-generate-yaml-writes-validation | critique:c10gen20-safe-generate-yaml-writes-review | accepted |
+| ticket:c10gen20#ACC-002 | evidence:c10gen20-safe-generate-yaml-writes-validation | critique:c10gen20-safe-generate-yaml-writes-review | accepted |
+| ticket:c10gen20#ACC-003 | evidence:c10gen20-safe-generate-yaml-writes-validation | critique:c10gen20-safe-generate-yaml-writes-review | accepted |
+| ticket:c10gen20#ACC-004 | evidence:c10gen20-safe-generate-yaml-writes-validation | critique:c10gen20-safe-generate-yaml-writes-review | accepted |
+| ticket:c10gen20#ACC-005 | evidence:c10gen20-safe-generate-yaml-writes-validation | critique:c10gen20-safe-generate-yaml-writes-review | accepted |
+| ticket:c10gen20#ACC-006 | evidence:c10gen20-safe-generate-yaml-writes-validation | critique:c10gen20-safe-generate-yaml-writes-review | accepted |
 
 # Execution Notes
 
@@ -78,11 +87,14 @@ Use the smallest safe writer abstraction. If SQL model file writes remain direct
 
 # Blockers
 
-Potential behavior decision if existing commands historically overwrite files silently; may need human approval or a deprecation path.
+None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: generated YAML parse tests and dry-run output.
+Evidence recorded:
+
+- evidence:oracle-backlog-scan
+- evidence:c10gen20-safe-generate-yaml-writes-validation
 
 # Critique Disposition
 
@@ -94,30 +106,30 @@ Policy rationale: Direct writes can lose user YAML content and break generated f
 
 Required critique profiles: code-change, data-preservation, operator-clarity, test-coverage
 
-Findings: None - no critique yet.
+Findings: None in final critique. Earlier critique blockers for SQL path validation and writer no-clobber enforcement were resolved before acceptance.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: N/A - mandatory critique completed with no blockers.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: Updated wiki:yaml-sync-safety with generated/NL YAML write-safety rules.
 
-Deferred / not-required rationale: Consider wiki/YAML writer guidance after acceptance.
+Deferred / not-required rationale: Final initiative-level CI remains deferred to initiative closure.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Updated wiki:yaml-sync-safety with accepted guidance for generated YAML writes: use structured ruamel/schema helpers, fail closed on existing YAML without `--overwrite`, validate generated output paths under the project root, and make dry-run planned writes explicit.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests and critique.
-Residual risks: Behavior change for users relying on overwrite behavior.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-04T13:41:04Z.
+Basis: implementation commit `750bff70765850751ea157e21ee4bedc0540d138`, evidence:c10gen20-safe-generate-yaml-writes-validation, and critique:c10gen20-safe-generate-yaml-writes-review.
+Residual risks: SQL file overwrite semantics remain unchanged; legacy docs may not mention the new generated YAML `--overwrite` option yet; full repository suite and GitHub Actions matrix are deferred to final initiative validation.
 
 # Dependencies
 
@@ -126,3 +138,5 @@ Coordinate with ticket:c10loss16 for data-preservation policy.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench and core architecture oracle findings.
+- 2026-05-04T12:58:50Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10gen20-20260504T125850Z` for test-first safe generate/NL schema YAML writes with explicit overwrite safety, project-root path validation, dry-run planned-write reporting, ruamel/schema helper serialization, and local-only validation.
+- 2026-05-04T13:41:04Z: Ralph iteration consumed. Implementation commit `750bff70765850751ea157e21ee4bedc0540d138` routed generated YAML through ruamel/schema helpers, added explicit `--overwrite`, enforced writer no-clobber, validated generated output paths under the project root, listed dry-run planned writes, and serialized AI staging YAML from structured data. Local validation passed with `119 passed, 1 skipped`; final mandatory critique found no blockers. Accepted and closed with final initiative-level CI deferred.
