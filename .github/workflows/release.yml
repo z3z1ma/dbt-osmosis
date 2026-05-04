@@ -144,6 +144,10 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
+      - name: Attach tested commit to main branch
+        run: |
+          git switch -C main "${{ github.event.workflow_run.head_sha }}"
+
       - name: Set up Python
         uses: actions/setup-python@v5.1.0
         with:
