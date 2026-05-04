@@ -1,11 +1,11 @@
 ---
 id: ticket:c10res14
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T09:45:38Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,13 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10res14-context-aware-resolver-validation
+  critique:
+    - critique:c10res14-context-aware-settings-resolver-review
+  wiki:
+    - wiki:config-resolution
+  packets:
+    - packet:ralph-ticket-c10res14-20260504T082226Z
 depends_on: []
 ---
 
@@ -69,20 +76,31 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10res14#ACC-002 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10res14#ACC-004 | None - migration not done yet | None | open |
+| ticket:c10res14#ACC-001 | evidence:c10res14-context-aware-resolver-validation | critique:c10res14-context-aware-settings-resolver-review | accepted |
+| ticket:c10res14#ACC-002 | evidence:c10res14-context-aware-resolver-validation | critique:c10res14-context-aware-settings-resolver-review | accepted |
+| ticket:c10res14#ACC-003 | evidence:c10res14-context-aware-resolver-validation | critique:c10res14-context-aware-settings-resolver-review | accepted |
+| ticket:c10res14#ACC-004 | evidence:c10res14-context-aware-resolver-validation | critique:c10res14-context-aware-settings-resolver-review | accepted |
+| ticket:c10res14#ACC-005 | evidence:c10res14-context-aware-resolver-validation | critique:c10res14-context-aware-settings-resolver-review | accepted |
+| ticket:c10res14#ACC-006 | evidence:c10res14-context-aware-resolver-validation | critique:c10res14-context-aware-settings-resolver-review | accepted |
 
 # Execution Notes
 
-This ticket is larger than the narrow config.meta fixes. Consider breaking implementation into one Ralph packet for resolver context and another for call-site migration if scope grows.
+Ralph iteration `packet:ralph-ticket-c10res14-20260504T082226Z` completed the resolver context and production call-site migration in one bounded pass. Parent reconciliation added critique-driven fixes for precise dtype context, project-vars shape coverage, context debug APIs, supplementary parse caching, all-node fan-out precedence, and inheritance plugin context transport.
 
 # Blockers
 
-Potential blocker: if documented precedence is ambiguous, route to a spec or update this ticket before changing behavior.
+None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: integration tests against real `YamlRefactorContext`.
+Existing evidence:
+
+- evidence:oracle-backlog-scan
+- evidence:c10res14-context-aware-resolver-validation
+
+Evidence disposition: sufficient for scoped local acceptance. Evidence covers the test-first red state, context-backed resolver behavior, supplementary-file transform behavior, project-vars sync and introspection behavior, inherited prefix behavior, falsey preservation, migrated production call sites, focused and broader local pytest, Ruff, `git diff --check`, targeted pre-commit, and mandatory critique.
+
+Missing evidence: Full repository suite and GitHub Actions matrix are deferred to the initiative-level final validation pass per current operator direction not to wait on per-ticket Actions.
 
 # Critique Disposition
 
@@ -94,30 +112,32 @@ Policy rationale: Config precedence affects many commands and can silently chang
 
 Required critique profiles: code-change, test-coverage, regression-risk
 
-Findings: None - no critique yet.
+Findings: No open medium/high findings in critique:c10res14-context-aware-settings-resolver-review. Low residual risks are recorded in the critique and accepted as non-blocking for this ticket.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted:
 
-Deferred / not-required rationale: Wiki promotion likely if resolver behavior becomes the canonical implementation guide.
+- `wiki:config-resolution` now records accepted resolver precedence, context-source rules, falsey handling, plugin context boundary, and debug helper usage.
+
+Deferred / not-required rationale: No additional research, spec, plan, initiative, constitution, or memory promotion needed. Final CI lessons, if any, belong to initiative-level final validation.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed. Created `wiki:config-resolution` for the accepted settings resolver behavior and production call-site guidance.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending implementation evidence and critique.
-Residual risks: Precedence changes may reveal undocumented user dependencies.
+Accepted by: OpenCode
+Accepted at: 2026-05-04T09:45:38Z
+Basis: Implementation commit `e4047ad46529dcecc40a6a68b27e8fcd5716b314`; local evidence:c10res14-context-aware-resolver-validation; mandatory critique:c10res14-context-aware-settings-resolver-review with no medium/high findings; retrospective promotion to `wiki:config-resolution` completed.
+Residual risks: `CONTEXT_SETTINGS` is an API footgun if future direct resolver callers omit matching fallback values; explicit `None` remains treated as missing in class-backed sources; third-party plugins may need to tolerate full `YamlRefactorContext`; final initiative-level CI remains pending and replaces per-ticket Actions waiting.
 
 # Dependencies
 
@@ -126,3 +146,5 @@ Coordinate with ticket:c10meta02, ticket:c10opt03, and ticket:c10cfg12.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from core architecture and dbt compatibility oracle findings.
+- 2026-05-04T08:22:26Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10res14-20260504T082226Z` for test-first context-aware resolver completion and core call-site migration with local-only validation.
+- 2026-05-04T09:45:38Z: Consumed Ralph output, applied parent critique-driven fixes, committed implementation `e4047ad46529dcecc40a6a68b27e8fcd5716b314`, recorded local validation evidence `evidence:c10res14-context-aware-resolver-validation`, completed mandatory critique `critique:c10res14-context-aware-settings-resolver-review`, promoted accepted resolver behavior to `wiki:config-resolution`, accepted all scoped claims, deferred full CI matrix to initiative-level final validation, and closed ticket.
