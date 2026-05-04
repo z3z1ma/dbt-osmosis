@@ -1,11 +1,11 @@
 ---
 id: ticket:c10docs09
 kind: ticket
-status: active
+status: closed
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T03:07:28Z
+updated_at: 2026-05-04T03:24:38Z
 scope:
   kind: repository
   repositories:
@@ -16,10 +16,14 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10docs09-local-docs-ci-validation
+    - evidence:c10docs09-main-docs-ci-success
   critique:
     - critique:c10docs09-docs-ci-hardening
   packets:
     - packet:ralph-ticket-c10docs09-20260504T025259Z
+  wiki:
+    - wiki:ci-compatibility-matrix
+    - wiki:release-publishing-workflow
 depends_on: []
 ---
 
@@ -73,12 +77,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10docs09#ACC-001 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; Node 18/24 CI pending |
-| ticket:c10docs09#ACC-002 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; Node 18/24 CI pending |
-| ticket:c10docs09#ACC-003 | evidence:oracle-backlog-scan; evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; CI pending |
-| ticket:c10docs09#ACC-004 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported with documented TypeScript lockfile drift; CI pending |
-| ticket:c10docs09#ACC-005 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; CI pending |
-| ticket:c10docs09#ACC-006 | evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | locally supported; CI pending |
+| ticket:c10docs09#ACC-001 | evidence:c10docs09-local-docs-ci-validation; evidence:c10docs09-main-docs-ci-success | critique:c10docs09-docs-ci-hardening | supported; local install passed and GitHub Actions Node 18/24 `npm ci` passed |
+| ticket:c10docs09#ACC-002 | evidence:c10docs09-local-docs-ci-validation; evidence:c10docs09-main-docs-ci-success | critique:c10docs09-docs-ci-hardening | supported; local build passed and GitHub Actions Node 18/24 docs builds passed |
+| ticket:c10docs09#ACC-003 | evidence:oracle-backlog-scan; evidence:c10docs09-local-docs-ci-validation | critique:c10docs09-docs-ci-hardening | supported; config is consistently CommonJS |
+| ticket:c10docs09#ACC-004 | evidence:c10docs09-local-docs-ci-validation; evidence:c10docs09-main-docs-ci-success | critique:c10docs09-docs-ci-hardening | supported with documented peer-only TypeScript lockfile drift |
+| ticket:c10docs09#ACC-005 | evidence:c10docs09-local-docs-ci-validation; evidence:c10docs09-main-docs-ci-success | critique:c10docs09-docs-ci-hardening | supported; docs job is in the pull_request-capable `Tests` workflow and passed on push |
+| ticket:c10docs09#ACC-006 | evidence:c10docs09-local-docs-ci-validation; evidence:c10docs09-main-docs-ci-success | critique:c10docs09-docs-ci-hardening | supported; `/docs` npm Dependabot coverage is configured and dynamic run passed |
 
 # Execution Notes
 
@@ -86,11 +90,11 @@ Prefer the smallest config/dependency change that gets Docusaurus building. Do n
 
 # Blockers
 
-Final GitHub Actions docs job evidence is pending before acceptance.
+None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan; evidence:c10docs09-local-docs-ci-validation. Missing evidence: final GitHub Actions docs job evidence from `main`.
+Sufficient evidence: evidence:oracle-backlog-scan; evidence:c10docs09-local-docs-ci-validation; evidence:c10docs09-main-docs-ci-success. Missing evidence: none for this ticket's acceptance criteria.
 
 # Critique Disposition
 
@@ -102,7 +106,7 @@ Policy rationale: Docs build failure can block releases and migration guidance; 
 
 Required critique profiles: release-packaging, operator-clarity
 
-Findings: Low finding about peer-only TypeScript lockfile drift is documented and accepted as a residual for this ticket. Node 18/24 CI evidence remains pending and blocks acceptance.
+Findings: Low finding about peer-only TypeScript lockfile drift is documented and accepted as a residual for this ticket. The Node 18/24 CI evidence gate was resolved by `evidence:c10docs09-main-docs-ci-success`.
 
 Disposition status: completed
 
@@ -110,26 +114,26 @@ Deferral / not-required rationale: None. Mandatory critique passed for commit/pu
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: `wiki:ci-compatibility-matrix` now records the docs build CI job as part of the `Tests` workflow, and `wiki:release-publishing-workflow` now records that Release is indirectly gated by the docs job before release-local validation runs.
 
-Deferred / not-required rationale: Consider updating wiki/release docs if docs CI becomes a release gate.
+Deferred / not-required rationale: Existing docs npm audit findings and broader dependency hygiene remain outside this ticket's scope.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed: updated `wiki:ci-compatibility-matrix` and `wiki:release-publishing-workflow` with the accepted docs CI/release-gate shape.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending CI/build evidence.
-Residual risks: Docusaurus ecosystem peer dependency changes can recur.
+Accepted by: OpenCode.
+Accepted at: 2026-05-04T03:24:38Z.
+Basis: Local docs install/dependency/build evidence, mandatory critique, final GitHub Actions `Tests` success with Node 18/24 docs jobs, and docs npm Dependabot dynamic success.
+Residual risks: Docusaurus ecosystem peer dependency changes can recur; existing docs npm audit findings remain out of scope; peer-only TypeScript lockfile drift is documented as a non-blocking residual.
 
 # Dependencies
 
-Coordinate with ticket:c10rel08 if docs build becomes a release gate.
+Coordinated with ticket:c10rel08 through `wiki:release-publishing-workflow`; docs build now gates Release through the upstream `Tests` workflow and release-local validation.
 
 # Journal
 
@@ -137,3 +141,4 @@ Coordinate with ticket:c10rel08 if docs build becomes a release gate.
 - 2026-05-04T02:52:59Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10docs09-20260504T025259Z` for docs config/dependency/CI implementation.
 - 2026-05-04T03:02:26Z: Consumed Ralph implementation after docs config was made consistently CommonJS, React/React-DOM were aligned to 18.3.1, the `Tests` workflow gained a Node 18/24 docs job, Dependabot gained `/docs` npm coverage, and local docs install/dependency/build plus hooks passed. Moved to mandatory critique.
 - 2026-05-04T03:07:28Z: Mandatory critique passed for commit/push trial. Low TypeScript lockfile drift was documented as peer-only and non-blocking; Node 18/24 GitHub Actions docs evidence remains pending before acceptance.
+- 2026-05-04T03:24:38Z: Final GitHub Actions evidence passed for commit `12e9dfee122db41ddb8f85072e1904ecd079dd00`: full `Tests` workflow succeeded, docs builds passed on Node 18 and Node 24, and the docs npm Dependabot dynamic run succeeded. Retrospective promoted docs CI and release-gate notes into wiki; accepted and closed the ticket.

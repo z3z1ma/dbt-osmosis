@@ -4,7 +4,7 @@ kind: wiki
 page_type: workflow
 status: active
 created_at: 2026-05-04T02:40:27Z
-updated_at: 2026-05-04T02:40:27Z
+updated_at: 2026-05-04T03:24:38Z
 scope:
   kind: repository
   repositories:
@@ -12,11 +12,14 @@ scope:
 links:
   tickets:
     - ticket:c10rel08
+    - ticket:c10docs09
   evidence:
     - evidence:c10rel08-main-release-success
     - evidence:c10rel08-main-release-detached-head-failure
+    - evidence:c10docs09-main-docs-ci-success
   critique:
     - critique:c10rel08-release-workflow-hardening
+    - critique:c10docs09-docs-ci-hardening
 ---
 
 # Summary
@@ -29,7 +32,7 @@ Use this page when changing `.github/workflows/release.yml`, package build or me
 
 # Current Shape
 
-Release is triggered by `workflow_run` for the `Tests` workflow completing on `main`. Both Release jobs additionally guard that the upstream run was successful, came from a same-repository push event, and used `head_branch == 'main'`.
+Release is triggered by `workflow_run` for the `Tests` workflow completing on `main`. Both Release jobs additionally guard that the upstream run was successful, came from a same-repository push event, and used `head_branch == 'main'`. Since `ticket:c10docs09`, the upstream `Tests` workflow includes Node 18 and Node 24 docs builds, so Release is indirectly gated by docs install, dependency-tree validation, and build success before the release workflow starts.
 
 The `validate` job has read-only repository permission and checks out `github.event.workflow_run.head_sha` with `persist-credentials: false`. It runs lock freshness, Python checks, dbt parse, pytest, docs build, package build, metadata validation, and clean wheel install smoke before uploading the validated `dist/*` artifacts.
 
@@ -55,6 +58,9 @@ If a new version tag is detected, the workflow publishes the already validated p
 - `evidence:c10rel08-local-release-workflow-validation`
 - `evidence:c10rel08-main-release-detached-head-failure`
 - `evidence:c10rel08-main-release-success`
+- `ticket:c10docs09`
+- `evidence:c10docs09-main-docs-ci-success`
+- `critique:c10docs09-docs-ci-hardening`
 - `.github/workflows/release.yml`
 
 # Related Pages

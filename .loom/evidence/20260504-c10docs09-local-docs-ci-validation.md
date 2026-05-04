@@ -3,7 +3,7 @@ id: evidence:c10docs09-local-docs-ci-validation
 kind: evidence
 status: recorded
 created_at: 2026-05-04T03:02:26Z
-updated_at: 2026-05-04T03:07:28Z
+updated_at: 2026-05-04T03:24:38Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,8 @@ links:
     - packet:ralph-ticket-c10docs09-20260504T025259Z
   critique:
     - critique:c10docs09-docs-ci-hardening
+  evidence:
+    - evidence:c10docs09-main-docs-ci-success
 external_refs:
   github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/360
 ---
@@ -97,7 +99,7 @@ Recheck when: docs dependencies, Docusaurus config, docs CI matrix, Node support
 
 Invalidated by: failing GitHub Actions docs job on Node 18 or Node 24, hidden peer dependency issue found by critique, or a later docs dependency lockfile change.
 
-Supersedes / superseded by: should be superseded by final `main` GitHub Actions evidence after this change is pushed.
+Supersedes / superseded by: superseded for Node 18/24 GitHub Actions claims by `evidence:c10docs09-main-docs-ci-success`.
 
 # Limitations
 

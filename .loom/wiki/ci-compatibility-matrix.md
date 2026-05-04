@@ -4,7 +4,7 @@ kind: wiki
 page_type: workflow
 status: active
 created_at: 2026-05-03T23:36:45Z
-updated_at: 2026-05-04T01:10:42Z
+updated_at: 2026-05-04T03:24:38Z
 scope:
   kind: repository
   repositories:
@@ -13,6 +13,7 @@ links:
   tickets:
     - ticket:c10ci06
     - ticket:c10lock07
+    - ticket:c10docs09
   evidence:
     - evidence:c10ci06-ci-gate-local-verification
     - evidence:c10ci06-ci-run-no-sync-fix
@@ -22,21 +23,23 @@ links:
     - evidence:c10lock07-adapter-bound-verification
     - evidence:c10lock07-uv-01012-verification
     - evidence:c10lock07-main-ci-success
+    - evidence:c10docs09-main-docs-ci-success
   critique:
     - critique:c10ci06-dbt-111-ci-gate
     - critique:c10lock07-dependency-resolution
     - critique:c10lock07-integration-path-follow-up
     - critique:c10lock07-adapter-constraint-follow-up
     - critique:c10lock07-uv-01012-follow-up
+    - critique:c10docs09-docs-ci-hardening
 ---
 
 # Summary
 
-The dbt compatibility workflow proves the supported dbt/Python matrix without letting the repository lockfile or `uv run` silently override the matrix runtime. The key rule is: each matrix row creates a clean virtual environment, installs its dbt runtime with `uv --no-config pip install`, checks dependency consistency with `uv --no-config pip check`, and invokes installed commands directly from that environment.
+The dbt compatibility workflow proves the supported dbt/Python matrix without letting the repository lockfile or `uv run` silently override the matrix runtime. The key rule is: each matrix row creates a clean virtual environment, installs its dbt runtime with `uv --no-config pip install`, checks dependency consistency with `uv --no-config pip check`, and invokes installed commands directly from that environment. The same `Tests` workflow also validates the Docusaurus docs build on the documented Node floor and current LTS so release and migration documentation cannot silently rot.
 
 # When To Use It
 
-Use this page when changing `.github/workflows/tests.yml`, `Taskfile.yml`, dbt version support, Python version support, adapter mappings, or tests that depend on dbt manifest shape.
+Use this page when changing `.github/workflows/tests.yml`, `Taskfile.yml`, dbt version support, Python version support, adapter mappings, docs build tooling, or tests that depend on dbt manifest shape.
 
 # Inputs
 
@@ -48,6 +51,8 @@ Use this page when changing `.github/workflows/tests.yml`, `Taskfile.yml`, dbt v
 - `evidence:c10ci06-main-ci-success` is the accepted final observation for the dbt 1.11 gate at commit `b3470bff42566dfb475a8a21ec19e45cc7faaf0d`.
 - `ticket:c10lock07` owns the live execution and acceptance history for deterministic dependency resolution and clean matrix environments.
 - `evidence:c10lock07-main-ci-success` is the accepted final observation for clean matrix dependency resolution at commit `19ef3a4bd3d6e6e3f5437e634a51fc11edaa23ba`.
+- `ticket:c10docs09` owns the live execution and acceptance history for adding docs build coverage to the `Tests` workflow.
+- `evidence:c10docs09-main-docs-ci-success` is the accepted final observation for docs build CI at commit `12e9dfee122db41ddb8f85072e1904ecd079dd00`.
 
 # Procedure
 
@@ -73,6 +78,8 @@ The `latest-core-compat` job is also scheduled weekly and checks latest patch dr
 
 The `pip-install-smoke` job intentionally uses plain `pip` instead of uv and does not force the matrix adapter floor. It exists to exercise published package metadata outside uv resolution and should log, but not necessarily constrain, the resolved adapter version.
 
+The `docs-build` job runs on Node 18 and Node 24. Each row installs from `docs/package-lock.json` with `npm --prefix docs ci`, validates the dependency tree with `npm --prefix docs ls`, and builds the site with `npm --prefix docs run build`. Because Release waits for a successful `Tests` workflow on `main`, this docs job is part of the pre-release gate before release-local validation runs.
+
 # Outputs
 
 - GitHub Actions run records showing matrix and canary job status.
@@ -87,6 +94,7 @@ The `pip-install-smoke` job intentionally uses plain `pip` instead of uv and doe
 - Import smoke can expose unrelated optional dependency issues. Rich 15 required importing `Console` from `rich.console` instead of dereferencing `rich.console` from the package namespace.
 - The dbt 1.11 adapter boundary is currently `dbt-duckdb~=1.10.1`. Do not widen that boundary without new evidence.
 - Passing a push-triggered latest compatibility job does not prove the first future cron event has run; treat the cron event as a maintenance recheck, not as a separate policy owner.
+- Docs dependency alignment can pass on a newer local Node while failing the documented support floor. Keep Node 18 plus current LTS coverage unless the docs tooling policy changes with new evidence.
 
 # Sources
 
@@ -104,6 +112,10 @@ The `pip-install-smoke` job intentionally uses plain `pip` instead of uv and doe
 - `critique:c10lock07-integration-path-follow-up`
 - `critique:c10lock07-adapter-constraint-follow-up`
 - `critique:c10lock07-uv-01012-follow-up`
+- `ticket:c10docs09`
+- `evidence:c10docs09-local-docs-ci-validation`
+- `evidence:c10docs09-main-docs-ci-success`
+- `critique:c10docs09-docs-ci-hardening`
 - `.github/workflows/tests.yml`
 - `.github/workflows/constraints.txt`
 - `Taskfile.yml`
