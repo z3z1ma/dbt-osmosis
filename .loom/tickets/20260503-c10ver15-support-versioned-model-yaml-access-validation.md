@@ -1,11 +1,11 @@
 ---
 id: ticket:c10ver15
 kind: ticket
-status: active
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T09:50:44Z
+updated_at: 2026-05-04T11:20:10Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10ver15-versioned-yaml-access-validation
+  critique:
+    - critique:c10ver15-versioned-yaml-access-review
+  wiki:
+    - wiki:versioned-model-yaml
   packets:
     - packet:ralph-ticket-c10ver15-20260504T095044Z
 depends_on: []
@@ -68,12 +73,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10ver15#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10ver15#ACC-004 | None - validation tests not written yet | None | open |
+| ticket:c10ver15#ACC-001 | evidence:c10ver15-versioned-yaml-access-validation | critique:c10ver15-versioned-yaml-access-review | accepted |
+| ticket:c10ver15#ACC-002 | evidence:c10ver15-versioned-yaml-access-validation | critique:c10ver15-versioned-yaml-access-review | accepted |
+| ticket:c10ver15#ACC-003 | evidence:c10ver15-versioned-yaml-access-validation | critique:c10ver15-versioned-yaml-access-review | accepted |
+| ticket:c10ver15#ACC-004 | evidence:c10ver15-versioned-yaml-access-validation | critique:c10ver15-versioned-yaml-access-review | accepted |
+| ticket:c10ver15#ACC-005 | evidence:c10ver15-versioned-yaml-access-validation | critique:c10ver15-versioned-yaml-access-review | accepted |
 
 # Execution Notes
 
-Avoid returning mutable YAML dicts from helpers if callers only need read access. Keep version matching robust to dbt storing versions as int, float, or string-like values.
+Ralph iteration `packet:ralph-ticket-c10ver15-20260504T095044Z` completed versioned YAML access and validation in one bounded pass. Parent reconciliation added critique-driven fixes for dbt selector controls, selector-preserving sync, blank version description fallback, duplicate/latest-version validation, int/string sync lookup skew, and conservative version identity matching for distinct string versions.
 
 # Blockers
 
@@ -81,7 +89,14 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: versioned model test output.
+Existing evidence:
+
+- evidence:oracle-backlog-scan
+- evidence:c10ver15-versioned-yaml-access-validation
+
+Evidence disposition: sufficient for scoped local acceptance. Evidence covers the test-first red state, selected version YAML access, version-level column property access, unrendered inheritance, dbt-compatible version and selector validation, selector-preserving sync/refactor, focused and broader local pytest, Ruff, `git diff --check`, targeted pre-commit, post-commit acceptance validation, and mandatory critique.
+
+Missing evidence: Full repository suite and GitHub Actions matrix are deferred to the initiative-level final validation pass per current operator direction not to wait on per-ticket Actions.
 
 # Critique Disposition
 
@@ -93,30 +108,32 @@ Policy rationale: Versioned model YAML access can affect correctness and data pr
 
 Required critique profiles: code-change, test-coverage, dbt-compatibility
 
-Findings: None - no critique yet.
+Findings: No open medium/high findings in critique:c10ver15-versioned-yaml-access-review. Low residual risks are recorded in the critique and accepted as non-blocking for this ticket.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted:
 
-Deferred / not-required rationale: Consider wiki note if versioned model handling remains subtle.
+- `wiki:versioned-model-yaml` now records accepted versioned model YAML access, version identity, selector validation/preservation, and sync/refactor rules.
+
+Deferred / not-required rationale: No additional research, spec, plan, initiative, constitution, or memory promotion needed. Final CI lessons, if any, belong to initiative-level final validation.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed. Created `wiki:versioned-model-yaml` for accepted versioned model YAML handling and future versioned-sync follow-up context.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending implementation evidence and critique.
-Residual risks: Type coercion for `v` values may be adapter/dbt-version sensitive.
+Accepted by: OpenCode
+Accepted at: 2026-05-04T11:20:10Z
+Basis: Implementation commit `ef1d5409bcceee40c3403c06d75bf5cbe4cc4bb1`; local evidence:c10ver15-versioned-yaml-access-validation; mandatory critique:c10ver15-versioned-yaml-access-review with no medium/high findings; retrospective promotion to `wiki:versioned-model-yaml` completed.
+Residual risks: `ModelValidator` remains focused rather than a full dbt schema validator; `_get_node_yaml()` returns a shallow read-only mapping with mutable nested cache objects; non-finite numeric version values are not explicitly modeled; final initiative-level CI remains pending and replaces per-ticket Actions waiting.
 
 # Dependencies
 
@@ -126,3 +143,4 @@ Coordinate with ticket:c10loss16 if versioned dedupe changes.
 
 - 2026-05-03T21:10:43Z: Created from core architecture oracle finding.
 - 2026-05-04T09:50:44Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10ver15-20260504T095044Z` for test-first versioned model YAML property access and validation support with local-only validation.
+- 2026-05-04T11:20:10Z: Consumed Ralph output, applied parent critique-driven fixes, committed implementation `ef1d5409bcceee40c3403c06d75bf5cbe4cc4bb1`, recorded local validation evidence `evidence:c10ver15-versioned-yaml-access-validation`, completed mandatory critique `critique:c10ver15-versioned-yaml-access-review`, promoted accepted versioned YAML handling to `wiki:versioned-model-yaml`, accepted all scoped claims, deferred full CI matrix to initiative-level final validation, and closed ticket.
