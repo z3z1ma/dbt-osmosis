@@ -1,11 +1,11 @@
 ---
 id: ticket:c10ver15
 kind: ticket
-status: ready
+status: active
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T09:50:44Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,8 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+  packets:
+    - packet:ralph-ticket-c10ver15-20260504T095044Z
 depends_on: []
 ---
 
@@ -123,3 +125,4 @@ Coordinate with ticket:c10loss16 if versioned dedupe changes.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from core architecture oracle finding.
+- 2026-05-04T09:50:44Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10ver15-20260504T095044Z` for test-first versioned model YAML property access and validation support with local-only validation.

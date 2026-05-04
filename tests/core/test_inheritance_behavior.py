@@ -21,7 +21,11 @@ from unittest import mock
 
 import pytest
 
-from dbt_osmosis.core.inheritance import _collect_column_variants, _get_node_yaml
+from dbt_osmosis.core.inheritance import (
+    _collect_column_variants,
+    _get_node_yaml,
+    _versioned_model_yaml_view,
+)
 from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.sync_operations import sync_node_to_yaml
 from dbt_osmosis.core.transforms import inherit_upstream_column_knowledge
@@ -517,3 +521,89 @@ def test_column_default_progenitor_override_applies_without_progenitor_tracking(
     assert (
         yaml_column["meta"]["column_default_progenitor"] == "seed.jaffle_shop_duckdb.raw_customers"
     )
+
+
+def test_get_node_yaml_returns_versioned_block_with_top_level_fallback(
+    yaml_context,
+    fresh_caches,
+):
+    """Versioned models should expose selected versions[].columns plus model fallback metadata."""
+    manifest = yaml_context.project.manifest
+    node = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]
+    project_dir = Path(yaml_context.project.runtime_cfg.project_root)
+    path = project_dir.joinpath(node.patch_path.split("://")[-1])
+    yaml_doc = _read_yaml(yaml_context.yaml_handler, yaml_context.yaml_handler_lock, path)
+    model = next(model for model in yaml_doc["models"] if model["name"] == node.name)
+    model["description"] = "Top-level fallback description"
+    model["tags"] = ["top_level"]
+    model["meta"] = {"domain": "customers"}
+    version = next(version for version in model["versions"] if version["v"] == 2)
+    version["description"] = ""
+    version["columns"].insert(0, {"include": "*"})
+
+    yaml_slice = _get_node_yaml(yaml_context, node)
+
+    assert yaml_slice is not None
+    assert yaml_slice["name"] == "stg_customers"
+    assert yaml_slice["v"] == 2
+    assert yaml_slice["description"] == "Top-level fallback description"
+    assert yaml_slice["tags"] == ["top_level"]
+    assert yaml_slice["meta"] == {"domain": "customers"}
+    assert [column["name"] for column in yaml_slice["columns"] if "name" in column] == [
+        "id",
+        "first_name",
+        "last_name",
+    ]
+
+
+def test_versioned_ancestor_unrendered_description_reads_version_columns(
+    yaml_context,
+    fresh_caches,
+):
+    """Inheritance should preserve unrendered docs from version-level ancestor columns."""
+    manifest = yaml_context.project.manifest
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "Rendered version-level first name"
+    raw_customers = manifest.nodes["seed.jaffle_shop_duckdb.raw_customers"]
+    raw_customers.columns["first_name"].description = ""
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = ""
+
+    project_dir = Path(yaml_context.project.runtime_cfg.project_root)
+    path = project_dir.joinpath(stg_customers.patch_path.split("://")[-1])
+    yaml_doc = _read_yaml(yaml_context.yaml_handler, yaml_context.yaml_handler_lock, path)
+    model = next(model for model in yaml_doc["models"] if model["name"] == stg_customers.name)
+    version = next(version for version in model["versions"] if version["v"] == 1)
+    version["columns"].insert(0, {"include": "*"})
+    first_name = next(column for column in version["columns"] if column.get("name") == "first_name")
+    first_name["description"] = "{{ doc('versioned_first_name') }}"
+
+    yaml_context.settings.force_inherit_descriptions = True
+    yaml_context.settings.use_unrendered_descriptions = True
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["first_name"].description == "{{ doc('versioned_first_name') }}"
+
+
+def test_versioned_model_yaml_view_prefers_exact_string_version_match():
+    """String versions that normalize numerically should remain distinct."""
+    model = {
+        "name": "orders",
+        "versions": [
+            {"v": "1.1", "columns": [{"name": "legacy_id"}]},
+            {"v": "1.10", "columns": [{"name": "current_id"}]},
+        ],
+    }
+    member = SimpleNamespace(version="1.10", unique_id="model.pkg.orders.v1.10")
+
+    yaml_slice = _versioned_model_yaml_view(model, member)
+
+    assert yaml_slice is not None
+    assert yaml_slice["v"] == "1.10"
+    assert yaml_slice["columns"] == [{"name": "current_id"}]
+
+    missing_exact = {"name": "orders", "versions": [{"v": "1.1", "columns": []}]}
+    assert _versioned_model_yaml_view(missing_exact, member) is None
+
+    leading_zero = {"name": "orders", "versions": [{"v": "01", "columns": []}]}
+    assert _versioned_model_yaml_view(leading_zero, SimpleNamespace(version=1)) is None

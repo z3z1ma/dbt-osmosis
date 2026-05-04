@@ -82,6 +82,33 @@ def test_sync_node_to_yaml_versioned(yaml_context: YamlRefactorContext, fresh_ca
     sync_node_to_yaml(yaml_context, node, commit=False)
 
 
+def test_sync_node_to_yaml_versioned_preserves_column_selector(
+    yaml_context: YamlRefactorContext,
+    fresh_caches,
+):
+    """Versioned sync should preserve dbt include/exclude selector entries."""
+    node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]
+    project_dir = Path(yaml_context.project.runtime_cfg.project_root)
+    path = project_dir.joinpath(node.patch_path.split("://")[-1])
+    yaml_doc = _read_yaml(yaml_context.yaml_handler, yaml_context.yaml_handler_lock, path)
+    model = next(model for model in yaml_doc["models"] if model["name"] == node.name)
+    version = next(version for version in model["versions"] if version["v"] == 2)
+    version["v"] = "2"
+    version["columns"].insert(0, {"include": "*", "exclude": ["internal_note"]})
+
+    sync_node_to_yaml(yaml_context, node, commit=False)
+
+    synced_versions = [version for version in model["versions"] if str(version.get("v")) == "2"]
+    assert len(synced_versions) == 1
+    synced_version = synced_versions[0]
+    assert synced_version["columns"][0] == {"include": "*", "exclude": ["internal_note"]}
+    assert [column["name"] for column in synced_version["columns"] if "name" in column] == [
+        "id",
+        "first_name",
+        "last_name",
+    ]
+
+
 def test_sync_node_to_yaml_all_versions_share_one_truthful_write(
     yaml_context: YamlRefactorContext,
     fresh_caches,

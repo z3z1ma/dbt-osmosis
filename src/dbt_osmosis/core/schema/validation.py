@@ -330,6 +330,8 @@ class StructureValidator(Validator):
 class TestConfigValidator(Validator):
     """Shared validation helpers for dbt resource and column test configs."""
 
+    _VERSION_COLUMN_INCLUDE_ALL = frozenset({"all", "*"})
+
     # Valid test names for models
     VALID_TESTS = {
         "unique",
@@ -338,6 +340,100 @@ class TestConfigValidator(Validator):
         "relationships",
         "accepted_values",
     }
+
+    def _is_string_list(self, value: t.Any) -> bool:
+        """Return whether a value is a list containing only strings."""
+        return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+    def _add_version_column_selector_error(
+        self,
+        result: ValidationResult,
+        file_path: Path | None,
+        owner_name: str,
+        message: str,
+        selector: str,
+        selector_value: t.Any,
+    ) -> None:
+        result.add_error(
+            code="INVALID_VERSION_COLUMN_SELECTOR",
+            message=message,
+            file_path=file_path,
+            column_name=owner_name,
+            context={
+                "resource_name": owner_name,
+                "selector": selector,
+                "selector_type": type(selector_value).__name__,
+            },
+        )
+
+    def _validate_version_column_control(
+        self,
+        column: dict[str, t.Any],
+        result: ValidationResult,
+        file_path: Path | None,
+        owner_name: str,
+    ) -> None:
+        """Validate dbt version column include/exclude selector entries."""
+        if "include" not in column:
+            self._add_version_column_selector_error(
+                result,
+                file_path,
+                owner_name,
+                f"Column selector in model version '{owner_name}' must define 'include'",
+                "include",
+                None,
+            )
+            return
+
+        include_value = column["include"]
+        valid_include = False
+        include_all = False
+        if isinstance(include_value, str):
+            include_all = include_value in self._VERSION_COLUMN_INCLUDE_ALL
+            valid_include = include_all
+        elif self._is_string_list(include_value):
+            valid_include = True
+
+        if not valid_include:
+            self._add_version_column_selector_error(
+                result,
+                file_path,
+                owner_name,
+                (
+                    f"Column selector 'include' in model version '{owner_name}' must be "
+                    "'all', '*', or a list of strings"
+                ),
+                "include",
+                include_value,
+            )
+
+        if "exclude" not in column:
+            return
+
+        exclude_value = column["exclude"]
+        if not self._is_string_list(exclude_value):
+            self._add_version_column_selector_error(
+                result,
+                file_path,
+                owner_name,
+                f"Column selector 'exclude' in model version '{owner_name}' must be a list of strings",
+                "exclude",
+                exclude_value,
+            )
+            return
+
+        if exclude_value and not include_all:
+            self._add_version_column_selector_error(
+                result,
+                file_path,
+                owner_name,
+                (
+                    f"Column selector 'exclude' in model version '{owner_name}' can only be "
+                    "specified when include is 'all' or '*'"
+                ),
+                "exclude",
+                exclude_value,
+            )
 
     def _validate_resource_tests(
         self,
@@ -377,6 +473,7 @@ class TestConfigValidator(Validator):
             )
             return
 
+        version_column_selector_seen = False
         for idx, column in enumerate(columns):
             if not isinstance(column, dict):
                 result.add_error(
@@ -389,6 +486,23 @@ class TestConfigValidator(Validator):
 
             # Check column name
             name = column.get("name")
+            if (
+                owner_kind == "model version"
+                and name is None
+                and ("include" in column or "exclude" in column)
+            ):
+                if version_column_selector_seen:
+                    self._add_version_column_selector_error(
+                        result,
+                        file_path,
+                        owner_name,
+                        f"Model version '{owner_name}' can have at most one include/exclude column selector",
+                        "include",
+                        column.get("include"),
+                    )
+                version_column_selector_seen = True
+                self._validate_version_column_control(column, result, file_path, owner_name)
+                continue
             if not name:
                 result.add_error(
                     code="MISSING_COLUMN_NAME",
@@ -669,6 +783,155 @@ class TestConfigValidator(Validator):
 class ModelValidator(TestConfigValidator):
     """Validates model definitions."""
 
+    def _validate_versions(
+        self,
+        model: dict[str, t.Any],
+        model_name: str,
+        result: ValidationResult,
+        file_path: Path | None,
+    ) -> None:
+        """Validate dbt versioned model entries under models[].versions[]."""
+        latest_version = model.get("latest_version")
+        if "versions" not in model:
+            if latest_version is not None:
+                result.add_error(
+                    code="INVALID_LATEST_MODEL_VERSION",
+                    message=(
+                        f"Latest version '{latest_version}' for model '{model_name}' must be one "
+                        "of the declared versions"
+                    ),
+                    file_path=file_path,
+                    context={
+                        "model_name": model_name,
+                        "latest_version": latest_version,
+                        "version_values": [],
+                    },
+                )
+            return
+
+        versions = model.get("versions")
+        if not isinstance(versions, list):
+            result.add_error(
+                code="INVALID_MODEL_VERSIONS_TYPE",
+                message=f"Versions for model '{model_name}' must be a list",
+                file_path=file_path,
+                context={"model_name": model_name, "versions_type": type(versions).__name__},
+            )
+            return
+
+        from dbt_osmosis.core.inheritance import _version_values_match
+
+        valid_version_entries: list[tuple[int, int | float | str]] = []
+        for version_idx, version in enumerate(versions):
+            if not isinstance(version, dict):
+                result.add_error(
+                    code="INVALID_MODEL_VERSION_ENTRY_TYPE",
+                    message=f"Version at index {version_idx} for model '{model_name}' must be a dictionary",
+                    file_path=file_path,
+                    context={"model_name": model_name, "version_index": version_idx},
+                )
+                continue
+
+            version_value = version.get("v")
+            if version_value is None:
+                result.add_error(
+                    code="MISSING_MODEL_VERSION",
+                    message=f"Version at index {version_idx} for model '{model_name}' is missing required 'v' field",
+                    file_path=file_path,
+                    context={"model_name": model_name, "version_index": version_idx},
+                )
+                version_name = f"{model_name}.versions[{version_idx}]"
+            elif isinstance(version_value, bool) or not isinstance(
+                version_value, (int, float, str)
+            ):
+                result.add_error(
+                    code="INVALID_MODEL_VERSION",
+                    message=(
+                        f"Version 'v' for model '{model_name}' must be an int, float, or string, "
+                        f"got {type(version_value).__name__}"
+                    ),
+                    file_path=file_path,
+                    context={
+                        "model_name": model_name,
+                        "version_index": version_idx,
+                        "version_value": version_value,
+                    },
+                )
+                version_name = f"{model_name}.versions[{version_idx}]"
+            else:
+                duplicate_entry = next(
+                    (
+                        (seen_idx, seen_value)
+                        for seen_idx, seen_value in valid_version_entries
+                        if _version_values_match(seen_value, version_value)
+                    ),
+                    None,
+                )
+                if duplicate_entry is not None:
+                    result.add_error(
+                        code="DUPLICATE_MODEL_VERSION",
+                        message=(
+                            f"Duplicate version '{version_value}' for model '{model_name}' "
+                            f"at index {version_idx}"
+                        ),
+                        file_path=file_path,
+                        context={
+                            "model_name": model_name,
+                            "version_index": version_idx,
+                            "first_version_index": duplicate_entry[0],
+                            "version_value": version_value,
+                        },
+                    )
+                valid_version_entries.append((version_idx, version_value))
+                version_name = f"{model_name}.v{version_value}"
+
+            self._validate_resource_tests(
+                version,
+                result,
+                file_path,
+                "model version",
+                version_name,
+            )
+            self._validate_columns(
+                version.get("columns", []),
+                result,
+                file_path,
+                "model version",
+                version_name,
+            )
+
+        if latest_version is None:
+            return
+        if isinstance(latest_version, bool) or not isinstance(latest_version, (int, float, str)):
+            result.add_error(
+                code="INVALID_LATEST_MODEL_VERSION",
+                message=(
+                    f"Latest version for model '{model_name}' must be an int, float, or string, "
+                    f"got {type(latest_version).__name__}"
+                ),
+                file_path=file_path,
+                context={"model_name": model_name, "latest_version": latest_version},
+            )
+            return
+
+        version_values = [version_value for _, version_value in valid_version_entries]
+        if not any(
+            _version_values_match(version_value, latest_version) for version_value in version_values
+        ):
+            result.add_error(
+                code="INVALID_LATEST_MODEL_VERSION",
+                message=(
+                    f"Latest version '{latest_version}' for model '{model_name}' must be one of "
+                    "the declared versions"
+                ),
+                file_path=file_path,
+                context={
+                    "model_name": model_name,
+                    "latest_version": latest_version,
+                    "version_values": version_values,
+                },
+            )
+
     def _validate(
         self,
         data: dict[str, t.Any],
@@ -713,6 +976,7 @@ class ModelValidator(TestConfigValidator):
             model_name = name if isinstance(name, str) else "<unknown>"
             self._validate_resource_tests(model, result, file_path, "model", model_name)
             self._validate_columns(model.get("columns", []), result, file_path, "model", model_name)
+            self._validate_versions(model, model_name, result, file_path)
 
 
 class SourceValidator(TestConfigValidator):

@@ -22,6 +22,16 @@ import pytest
 from dbt_osmosis.core.introspection import PropertyAccessor
 
 
+@pytest.fixture(scope="function")
+def fresh_caches():
+    """Patches the internal caches so each test starts with a fresh state."""
+    with (
+        patch("dbt_osmosis.core.introspection._COLUMN_LIST_CACHE", {}),
+        patch("dbt_osmosis.core.schema.reader._YAML_BUFFER_CACHE", {}),
+    ):
+        yield
+
+
 class MockColumnConfig:
     """Mock column config for dbt 1.10+ column properties."""
 
@@ -424,6 +434,50 @@ class TestPropertyAccessor:
             },
         }
         assert tags_result == ["legacy", "shared", "config"]
+
+    def test_yaml_source_reads_version_level_column_properties(
+        self,
+        yaml_context,
+        fresh_caches,
+    ) -> None:
+        """YAML source should read selected versions[].columns and top-level fallbacks."""
+        from dbt_osmosis.core.schema.reader import _read_yaml
+
+        manifest = yaml_context.project.manifest
+        node = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]
+        project_dir = Path(yaml_context.project.runtime_cfg.project_root)
+        path = project_dir.joinpath(node.patch_path.split("://")[-1])
+        yaml_doc = _read_yaml(yaml_context.yaml_handler, yaml_context.yaml_handler_lock, path)
+        model = next(model for model in yaml_doc["models"] if model["name"] == node.name)
+        model["description"] = "Top-level stg_customers fallback description"
+        model["tags"] = ["top_level_tag"]
+        model["meta"] = {"owner": "analytics"}
+        version = next(version for version in model["versions"] if version["v"] == 2)
+        version["columns"].insert(0, {"include": "*"})
+        id_column = next(column for column in version["columns"] if column.get("name") == "id")
+        id_column["description"] = "Versioned id via {{ doc('versioned_customer_id') }}"
+        id_column["meta"] = {"classification": "versioned"}
+        id_column["tags"] = ["versioned_id"]
+        id_column["tests"] = ["unique", "not_null"]
+
+        accessor = PropertyAccessor(context=yaml_context)
+
+        assert accessor.get_description(node, source="yaml") == (
+            "Top-level stg_customers fallback description"
+        )
+        assert accessor.get("tags", node, source="yaml") == ["top_level_tag"]
+        assert accessor.get_meta(node, source="yaml") == {"owner": "analytics"}
+        assert accessor.get_description(node, column_name="id", source="yaml") == (
+            "Versioned id via {{ doc('versioned_customer_id') }}"
+        )
+        assert accessor.get_meta(node, column_name="id", source="yaml") == {
+            "classification": "versioned"
+        }
+        assert accessor.get("tags", node, column_name="id", source="yaml") == ["versioned_id"]
+        assert accessor.get("tests", node, column_name="id", source="yaml") == [
+            "unique",
+            "not_null",
+        ]
 
     @patch("dbt_osmosis.core.inheritance._get_node_yaml")
     def test_yaml_column_without_meta_or_tags_falls_back_to_manifest(

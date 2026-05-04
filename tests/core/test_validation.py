@@ -355,6 +355,145 @@ class TestModelValidator:
 
         assert result.is_valid
 
+    def test_validate_valid_versioned_model(self) -> None:
+        """Versioned model YAML should validate version-level tests and columns."""
+        validator = ModelValidator()
+        data = {
+            "version": 2,
+            "models": [
+                {
+                    "name": "customers",
+                    "description": "Top-level fallback description",
+                    "latest_version": 1,
+                    "versions": [
+                        {
+                            "v": 1,
+                            "data_tests": [
+                                {
+                                    "unique_combination_of_columns": {
+                                        "arguments": {
+                                            "combination_of_columns": [
+                                                "customer_id",
+                                                "first_name",
+                                            ]
+                                        }
+                                    }
+                                }
+                            ],
+                            "columns": [
+                                {"include": "*", "exclude": ["internal_note"]},
+                                {
+                                    "name": "customer_id",
+                                    "description": "{{ doc('customer_id') }}",
+                                    "tests": ["unique", "not_null"],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = validator.validate(data)
+
+        assert result.is_valid
+
+    def test_validate_versioned_model_versions_and_columns(self) -> None:
+        """Versioned model validation should report useful version-level context."""
+        validator = ModelValidator()
+        data = {
+            "version": 2,
+            "models": [
+                {
+                    "name": "customers",
+                    "latest_version": 3,
+                    "versions": [
+                        {
+                            "columns": [
+                                {"include": {"bad": "shape"}},
+                                {"include": "customer_id"},
+                                {"include": ["customer_id"], "exclude": ["internal_note"]},
+                                {"exclude": ["internal_note"]},
+                                {"include": "*", "exclude": "internal_note"},
+                                {"include": "all"},
+                                {"include": "*"},
+                                {"description": "Missing name"},
+                                {"name": "status", "tests": [{"accepted_values": {}}]},
+                            ]
+                        },
+                        {
+                            "v": 2,
+                            "data_tests": [{"relationships": {"to": "ref('parents')"}}],
+                            "columns": "not-a-list",
+                        },
+                        {"v": 2, "columns": []},
+                    ],
+                }
+            ],
+        }
+
+        result = validator.validate(data)
+
+        assert not result.is_valid
+        errors = result.get_errors()
+        error_codes = {error.code for error in errors}
+        assert {
+            "MISSING_MODEL_VERSION",
+            "MISSING_COLUMN_NAME",
+            "MISSING_ACCEPTED_VALUES",
+            "MISSING_RELATIONSHIP_FIELD",
+            "INVALID_COLUMNS_TYPE",
+            "INVALID_VERSION_COLUMN_SELECTOR",
+            "DUPLICATE_MODEL_VERSION",
+            "INVALID_LATEST_MODEL_VERSION",
+        }.issubset(error_codes)
+        assert any(
+            error.context.get("resource_name") == "customers.v2"
+            for error in errors
+            if error.code == "MISSING_RELATIONSHIP_FIELD"
+        )
+        assert any(
+            error.context.get("model_name") == "customers"
+            and error.context.get("version_index") == 0
+            for error in errors
+            if error.code == "MISSING_MODEL_VERSION"
+        )
+
+    def test_validate_versioned_model_rejects_numeric_duplicate_versions(self) -> None:
+        """Version duplicate validation should use dbt version identity semantics."""
+        validator = ModelValidator()
+        data = {
+            "version": 2,
+            "models": [
+                {
+                    "name": "customers",
+                    "versions": [
+                        {"v": 2, "columns": []},
+                        {"v": 2.0, "columns": []},
+                        {"v": "1.1", "columns": []},
+                        {"v": "1.10", "columns": []},
+                    ],
+                }
+            ],
+        }
+
+        result = validator.validate(data)
+
+        errors = result.get_errors()
+        duplicate_errors = [error for error in errors if error.code == "DUPLICATE_MODEL_VERSION"]
+        assert len(duplicate_errors) == 1
+        assert duplicate_errors[0].context["version_value"] == 2.0
+
+    def test_validate_latest_version_requires_declared_versions(self) -> None:
+        """latest_version without a versions list should fail like dbt parse."""
+        validator = ModelValidator()
+        data = {"version": 2, "models": [{"name": "customers", "latest_version": 1}]}
+
+        result = validator.validate(data)
+
+        assert not result.is_valid
+        assert any(error.code == "INVALID_LATEST_MODEL_VERSION" for error in result.get_errors())
+
 
 class TestSourceValidator:
     """Test SourceValidator class."""

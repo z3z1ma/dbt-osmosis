@@ -36,13 +36,22 @@ def _sync_doc_section(
             doc_section["description"] = node.description
 
     current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
+    preserved_column_entries: list[dict[str, t.Any]] = []
     incoming_columns: list[dict[str, t.Any]] = []
 
     current_map = {}
     for c in current_columns:
         from dbt_osmosis.core.introspection import normalize_column_name
 
-        norm_name = normalize_column_name(c["name"], context.project.runtime_cfg.credentials.type)
+        if not isinstance(c, t.Mapping):
+            continue
+        column_name = c.get("name")
+        if not isinstance(column_name, str):
+            if "v" in doc_section and ("include" in c or "exclude" in c):
+                preserved_column_entries.append(dict(c))
+            continue
+
+        norm_name = normalize_column_name(column_name, context.project.runtime_cfg.credentials.type)
         current_map[norm_name] = c
 
     # Build a map of catalog column types if catalog is available
@@ -275,8 +284,9 @@ def _sync_doc_section(
 
         incoming_columns.append(merged)
 
-    if incoming_columns:
-        doc_section["columns"] = incoming_columns
+    synced_columns = preserved_column_entries + incoming_columns
+    if synced_columns:
+        doc_section["columns"] = synced_columns
     else:
         doc_section.pop("columns", None)
 
@@ -508,18 +518,21 @@ def _get_or_create_model(doc_list: list[dict[str, t.Any]], model_name: str) -> d
     return doc_model
 
 
-def _deduplicate_versions(
-    doc_model: dict[str, t.Any],
-) -> dict[int | str | float, dict[str, t.Any]]:
+def _deduplicate_versions(doc_model: dict[str, t.Any]) -> dict[str, dict[str, t.Any]]:
     """Deduplicate version entries by version number.
 
     Returns a dict mapping version numbers to version dicts.
     """
-    version_by_v: dict[int | str | float, dict[str, t.Any]] = {}
+    from dbt_osmosis.core.inheritance import _raw_model_version_value
+
+    version_by_v: dict[str, dict[str, t.Any]] = {}
     for version in doc_model.get("versions", []):
+        if not isinstance(version, t.Mapping):
+            continue
         v_value = version.get("v")
-        if v_value is not None:
-            version_by_v[v_value] = version
+        v_key = _raw_model_version_value(v_value)
+        if v_key is not None:
+            version_by_v[v_key] = t.cast("dict[str, t.Any]", version)
     # Replace versions list with deduplicated versions
     doc_model["versions"] = list(version_by_v.values())
     return version_by_v
@@ -527,12 +540,24 @@ def _deduplicate_versions(
 
 def _get_or_create_version(
     doc_model: dict[str, t.Any],
-    version: str | float,
+    version: int | float | str,
 ) -> dict[str, t.Any]:
     """Find or create a version entry within a model."""
+    from dbt_osmosis.core.inheritance import _raw_model_version_value, _version_values_match
+
     version_by_v = _deduplicate_versions(doc_model)
-    doc_version = version_by_v.get(version)
-    if not doc_version:
+    version_key = _raw_model_version_value(version)
+    doc_version = version_by_v.get(version_key) if version_key is not None else None
+    if doc_version is None:
+        doc_version = next(
+            (
+                doc_version
+                for doc_version in version_by_v.values()
+                if _version_values_match(doc_version.get("v"), version)
+            ),
+            None,
+        )
+    if doc_version is None:
         doc_version = {"v": version, "columns": []}
         doc_model["versions"].append(doc_version)
     return doc_version
@@ -545,7 +570,7 @@ def _sync_versioned_model(
 ) -> None:
     """Sync a versioned model to its YAML representation."""
     # This function is only called when node.version is not None (see line 418)
-    version: str | float = t.cast("str | float", node.version)
+    version: int | float | str = t.cast("int | float | str", node.version)
 
     if "versions" not in doc_model:
         doc_model["versions"] = []
