@@ -680,7 +680,10 @@ def _get_generated_project_root(project: t.Any, project_dir: str | None) -> Path
         project_root = None
     if project_root is None:
         project_root = project_dir or "."
-    return Path(project_root).resolve()
+    project_root_path = os.fspath(project_root)
+    if isinstance(project_root_path, bytes):
+        project_root_path = project_root_path.decode()
+    return Path(project_root_path).resolve()
 
 
 def _resolve_project_yaml_output_path(path: Path | str, project_root: Path) -> Path:

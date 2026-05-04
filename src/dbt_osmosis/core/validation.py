@@ -7,10 +7,14 @@ Useful for catching errors and estimating query costs before deployment.
 
 from __future__ import annotations
 
+import signal
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from types import FrameType
 
+from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
 from dbt.adapters.contracts.connection import AdapterResponse
 from dbt.contracts.graph.nodes import ManifestNode
 
@@ -120,6 +124,62 @@ class ValidationReport:
         return (self.successful / self.total_models) * 100
 
 
+class _ModelValidationTimeoutError(TimeoutError):
+    """Raised when dbt-osmosis stops waiting for validation execution."""
+
+    def __init__(self, timeout_seconds: float, elapsed_seconds: float, detail: str) -> None:
+        self.timeout_seconds: float = timeout_seconds
+        self.elapsed_seconds: float = elapsed_seconds
+        super().__init__(f"Query exceeded timeout of {timeout_seconds}s; {detail}")
+
+
+def _execute_sql_code_with_timeout(
+    context: DbtProjectContext,
+    compiled_sql: str,
+    timeout_seconds: float | None,
+) -> tuple[AdapterResponse, Table]:
+    """Execute compiled SQL with a best-effort local timeout boundary.
+
+    The timer interrupts this Python process so validation can report TIMEOUT
+    promptly without leaving a worker thread behind. It does not guarantee
+    warehouse-side cancellation after the adapter call has been interrupted.
+    """
+    if timeout_seconds is None or timeout_seconds <= 0:
+        return execute_sql_code(context, compiled_sql)
+
+    start_time = time.monotonic()
+
+    if threading.current_thread() is not threading.main_thread():
+        raise _ModelValidationTimeoutError(
+            timeout_seconds=timeout_seconds,
+            elapsed_seconds=time.monotonic() - start_time,
+            detail="validation timeout enforcement requires the main thread; query was not executed",
+        )
+
+    def timeout_handler(signum: int, frame: FrameType | None) -> None:
+        del signum, frame
+        raise _ModelValidationTimeoutError(
+            timeout_seconds=timeout_seconds,
+            elapsed_seconds=time.monotonic() - start_time,
+            detail=(
+                "dbt-osmosis interrupted validation execution, but warehouse-side "
+                "query cancellation is adapter-specific and not guaranteed"
+            ),
+        )
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        return execute_sql_code(context, compiled_sql)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer != (0.0, 0.0):
+            signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+
+
 def validate_models(
     context: DbtProjectContext,
     models: list[tuple[str, ManifestNode]],
@@ -137,7 +197,9 @@ def validate_models(
     Args:
         context: The dbt project context.
         models: List of (unique_id, node) tuples to validate.
-        timeout_seconds: Optional timeout for each query execution.
+        timeout_seconds: Optional best-effort local timeout for each query execution. The
+            timeout stops dbt-osmosis from waiting indefinitely, but warehouse-side query
+            cancellation remains adapter-specific and is not guaranteed.
         quiet: If True, suppress progress output.
 
     Returns:
@@ -233,7 +295,8 @@ def _validate_single_model(
         context: The dbt project context.
         node: The dbt manifest node to validate.
         unique_id: Unique identifier of the model.
-        timeout_seconds: Optional timeout for query execution.
+        timeout_seconds: Optional best-effort local timeout for query execution. Warehouse-side
+            cancellation remains adapter-specific and is not guaranteed.
 
     Returns:
         A ModelValidationResult with validation details.
@@ -265,7 +328,11 @@ def _validate_single_model(
     try:
         logger.debug(":running: Executing SQL for model => %s", node.name)
         start_time = time.time()
-        response, table = execute_sql_code(context, compiled_sql)
+        response, table = _execute_sql_code_with_timeout(
+            context,
+            compiled_sql,
+            timeout_seconds,
+        )
         execution_time = time.time() - start_time
 
         # Extract row count from table
@@ -287,6 +354,16 @@ def _validate_single_model(
             row_count=row_count,
             bytes_processed=bytes_processed,
             adapter_response=response,
+        )
+
+    except _ModelValidationTimeoutError as e:
+        return ModelValidationResult(
+            model_name=node.name,
+            unique_id=unique_id,
+            status=ModelValidationStatus.TIMEOUT,
+            compiled_sql=compiled_sql,
+            error_message=str(e),
+            execution_time_seconds=e.elapsed_seconds,
         )
 
     except Exception as e:

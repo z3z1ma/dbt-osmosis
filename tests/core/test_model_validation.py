@@ -1,5 +1,6 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
+import time
 from unittest import mock
 
 import pytest
@@ -199,6 +200,40 @@ class TestValidateModels:
         assert report.successful == 1
         assert report.failed == 0
 
+    def test_validate_single_model_success_with_timeout(self, yaml_context):
+        """Positive timeout should preserve fast successful execution behavior."""
+        mock_node = mock.Mock()
+        mock_node.name = "test_model"
+        mock_node.raw_code = "SELECT 1 AS col"
+        mock_node.raw_sql = "SELECT 1 AS col"
+
+        with (
+            mock.patch("dbt_osmosis.core.validation.compile_sql_code") as mock_compile,
+            mock.patch("dbt_osmosis.core.validation.execute_sql_code") as mock_execute,
+        ):
+            compiled_node = mock.Mock()
+            compiled_node.compiled_code = "SELECT 1 AS col"
+            compiled_node.raw_code = "SELECT 1 AS col"
+            mock_compile.return_value = compiled_node
+
+            mock_adapter_response = mock.Mock()
+            mock_table = mock.Mock()
+            mock_table.rows = [(1,), (2,)]
+            mock_execute.return_value = (mock_adapter_response, mock_table)
+
+            report = validate_models(
+                yaml_context.project,
+                [("model.project.test_model", mock_node)],
+                timeout_seconds=1.0,
+                quiet=True,
+            )
+
+        assert report.total_models == 1
+        assert report.successful == 1
+        assert report.failed == 0
+        assert report.results[0].status == ModelValidationStatus.SUCCESS
+        assert report.results[0].row_count == 2
+
     def test_validate_model_compile_error(self, yaml_context):
         """Validate a model that fails to compile."""
         mock_node = mock.Mock()
@@ -248,3 +283,74 @@ class TestValidateModels:
         assert report.successful == 0
         assert report.failed == 1
         assert report.results[0].status == ModelValidationStatus.EXECUTION_ERROR
+
+    def test_validate_model_execution_error_with_timeout(self, yaml_context):
+        """Positive timeout should preserve fast execution error classification."""
+        mock_node = mock.Mock()
+        mock_node.name = "test_model"
+        mock_node.raw_code = "SELECT * FROM nonexistent_table"
+        mock_node.raw_sql = "SELECT * FROM nonexistent_table"
+
+        with (
+            mock.patch("dbt_osmosis.core.validation.compile_sql_code") as mock_compile,
+            mock.patch("dbt_osmosis.core.validation.execute_sql_code") as mock_execute,
+        ):
+            compiled_node = mock.Mock()
+            compiled_node.compiled_code = "SELECT * FROM nonexistent_table"
+            compiled_node.raw_code = "SELECT * FROM nonexistent_table"
+            mock_compile.return_value = compiled_node
+
+            mock_execute.side_effect = Exception("Table not found")
+
+            report = validate_models(
+                yaml_context.project,
+                [("model.project.test_model", mock_node)],
+                timeout_seconds=1.0,
+                quiet=True,
+            )
+
+        assert report.total_models == 1
+        assert report.successful == 0
+        assert report.failed == 1
+        assert report.results[0].status == ModelValidationStatus.EXECUTION_ERROR
+        assert report.results[0].error_message == "Table not found"
+
+    def test_validate_model_execution_timeout_returns_promptly(self, yaml_context):
+        """Return TIMEOUT promptly when execution exceeds timeout_seconds."""
+        mock_node = mock.Mock()
+        mock_node.name = "test_model"
+        mock_node.raw_code = "SELECT * FROM slow_table"
+        mock_node.raw_sql = "SELECT * FROM slow_table"
+
+        with (
+            mock.patch("dbt_osmosis.core.validation.compile_sql_code") as mock_compile,
+            mock.patch("dbt_osmosis.core.validation.execute_sql_code") as mock_execute,
+        ):
+            compiled_node = mock.Mock()
+            compiled_node.compiled_code = "SELECT * FROM slow_table"
+            compiled_node.raw_code = "SELECT * FROM slow_table"
+            mock_compile.return_value = compiled_node
+
+            def slow_execute(*args, **kwargs):
+                time.sleep(0.2)
+                return mock.Mock(), mock.Mock(rows=[])
+
+            mock_execute.side_effect = slow_execute
+
+            start_time = time.monotonic()
+            report = validate_models(
+                yaml_context.project,
+                [("model.project.test_model", mock_node)],
+                timeout_seconds=0.01,
+                quiet=True,
+            )
+            elapsed = time.monotonic() - start_time
+
+        assert elapsed < 0.1
+        assert report.total_models == 1
+        assert report.successful == 0
+        assert report.failed == 1
+        assert report.results[0].status == ModelValidationStatus.TIMEOUT
+        assert report.results[0].compiled_sql == "SELECT * FROM slow_table"
+        assert report.results[0].execution_time_seconds < 0.1
+        assert "exceeded timeout" in (report.results[0].error_message or "").lower()

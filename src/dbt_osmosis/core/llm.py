@@ -88,8 +88,9 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
                 raise
 
             wait_time = delay
-            if hasattr(e, "response") and e.response:
-                retry_after = e.response.headers.get("retry-after")
+            response = getattr(e, "response", None)
+            if response:
+                retry_after = response.headers.get("retry-after")
                 if retry_after:
                     try:
                         wait_time = float(retry_after)

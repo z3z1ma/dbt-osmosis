@@ -1,11 +1,11 @@
 ---
 id: ticket:c10val27
 kind: ticket
-status: ready
+status: active
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T15:28:17Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,8 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+  packets:
+    - packet:ralph-ticket-c10val27-20260504T152817Z
 depends_on: []
 ---
 
@@ -121,3 +123,4 @@ Coordinate with ticket:c10sql21 if execution helpers change.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from core architecture oracle finding.
+- 2026-05-04T15:28:17Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10val27-20260504T152817Z` for test-first timeout semantics work in `core/validation.py` and `tests/core/test_model_validation.py`.
