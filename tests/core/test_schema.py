@@ -3,6 +3,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from dbt_osmosis.core.schema.parser import create_yaml_instance
 from dbt_osmosis.core.schema.reader import (
     LRUCache,
@@ -472,6 +474,56 @@ def test_write_yaml_dry_run_discards_buffer_even_without_mutation():
     finally:
         _YAML_BUFFER_CACHE.clear()
         _YAML_ORIGINAL_CACHE.clear()
+
+
+def test_write_yaml_allow_overwrite_false_refuses_existing_file():
+    """No-clobber writes should fail even when the caller reaches the writer."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "schema.yml"
+        path.write_text("version: 2\nmodels: []\n", encoding="utf-8")
+
+        with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+            _write_yaml(
+                yaml_handler,
+                lock,
+                path,
+                {"version": 2, "models": [{"name": "customers"}]},
+                allow_overwrite=False,
+            )
+
+        assert path.read_text(encoding="utf-8") == "version: 2\nmodels: []\n"
+
+
+def test_write_yaml_preserves_positional_optional_arguments():
+    """Adding no-clobber support must not break existing positional callers."""
+    import threading
+
+    yaml_handler = create_yaml_instance()
+    lock = threading.Lock()
+    mutations: list[int] = []
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "schema.yml"
+        path.write_text("version: 2\nmodels: []\n\n", encoding="utf-8")
+
+        _write_yaml(
+            yaml_handler,
+            lock,
+            path,
+            {"version": 2, "models": [{"name": "customers"}]},
+            False,
+            mutations.append,
+            True,
+        )
+
+        assert mutations == [1]
+        assert path.read_text(encoding="utf-8").endswith("\n")
+        assert not path.read_text(encoding="utf-8").endswith("\n\n")
 
 
 def test_commit_yamls_dry_run_discards_buffer_after_tracking_mutation():

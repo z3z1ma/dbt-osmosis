@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+import ruamel.yaml
 
 from dbt_osmosis.core.generators import (
     DocumentationCheckResult,
@@ -327,6 +328,46 @@ class TestGenerateStagingFromSource:
                         table_name="users",
                         use_ai=True,
                     )
+
+    def test_generate_staging_ai_yaml_escapes_special_descriptions(self, yaml_context):
+        """AI staging YAML should parse when descriptions contain YAML-sensitive text."""
+        mock_source = mock.MagicMock()
+        mock_source.source_name = "raw"
+        mock_source.name = "users"
+
+        with mock.patch(
+            "dbt_osmosis.core.generators._get_source_definition", return_value=mock_source
+        ):
+            mock_spec = mock.MagicMock()
+            mock_spec.staging_name = "stg_users"
+            mock_spec.description = (
+                "Model: includes \"quotes\" and {{ doc('model:users') }}\nsecond line"
+            )
+            mock_spec.columns = [
+                mock.Mock(
+                    new_name="user_id",
+                    description="Column: has \"quotes\" and {{ doc('column:user_id') }}\nnext line",
+                )
+            ]
+            mock_spec.to_sql.return_value = "select 1 as user_id"
+
+            mock_result = mock.MagicMock()
+            mock_result.spec = mock_spec
+            mock_result.error = None
+
+            with mock.patch(
+                "dbt_osmosis.core.generators.generate_staging_for_source", return_value=mock_result
+            ):
+                result = generate_staging_from_source(
+                    context=yaml_context.project,
+                    source_name="raw",
+                    table_name="users",
+                    use_ai=True,
+                )
+
+        parsed = ruamel.yaml.YAML().load(result.yaml_content)
+        assert parsed["models"][0]["description"] == mock_spec.description
+        assert parsed["models"][0]["columns"][0]["description"] == mock_spec.columns[0].description
 
 
 class TestCheckDocumentation:

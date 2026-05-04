@@ -7,15 +7,16 @@ use in dbt-osmosis.
 
 from __future__ import annotations
 
+import io
 import typing as t
 from dataclasses import dataclass
 from pathlib import Path
-from textwrap import dedent
 
 from dbt.contracts.graph.nodes import SourceDefinition
 
 import dbt_osmosis.core.logger as logger
 from dbt_osmosis.core.config import DbtProjectContext
+from dbt_osmosis.core.schema.parser import create_yaml_instance
 from dbt_osmosis.core.settings import YamlRefactorSettings
 from dbt_osmosis.core.staging import (
     StagingGenerationResult,
@@ -82,6 +83,14 @@ def _resolve_staging_output_paths(
         staging_path = project_root / "models" / "staging"
 
     return staging_path / f"{staging_name}.sql", staging_path / f"{staging_name}.yml"
+
+
+def _dump_generated_yaml(data: dict[str, t.Any]) -> str:
+    """Serialize generated YAML data with the shared ruamel configuration."""
+    yaml_handler = create_yaml_instance()
+    with io.BytesIO() as buffer:
+        yaml_handler.dump(data, buffer)
+        return buffer.getvalue().decode("utf-8")
 
 
 def generate_sources_from_database(
@@ -248,20 +257,19 @@ def generate_staging_from_source(
                 context, spec.staging_name, staging_path
             )
 
-            columns_yaml = "\n".join(
-                f"  - name: {col.new_name}\n    description: {col.description}"
-                for col in spec.columns
-            )
-
-            yaml_content = dedent(f"""\
-            version: 2
-
-            models:
-              - name: {spec.staging_name}
-                description: {spec.description}
-                columns:
-            {columns_yaml}
-            """)
+            yaml_content = _dump_generated_yaml({
+                "version": 2,
+                "models": [
+                    {
+                        "name": spec.staging_name,
+                        "description": spec.description,
+                        "columns": [
+                            {"name": col.new_name, "description": col.description}
+                            for col in spec.columns
+                        ],
+                    }
+                ],
+            })
 
             result = StagingGenerationResult(
                 source_name=f"{source_name}.{table_name}",

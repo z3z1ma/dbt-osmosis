@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import functools
+import os
 import subprocess
 import sys
+import threading
 import typing as t
 from pathlib import Path
 
@@ -29,6 +31,9 @@ from dbt_osmosis.core.restructuring import (
     apply_restructure_plan,
     draft_restructure_delta_plan,
 )
+from dbt_osmosis.core.schema.parser import create_yaml_instance
+from dbt_osmosis.core.schema.reader import _read_yaml
+from dbt_osmosis.core.schema.writer import _write_yaml
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 from dbt_osmosis.core.sql_lint import SQLLinter, lint_sql_code
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
@@ -610,6 +615,132 @@ def generate():
     """Generate dbt artifacts: sources, staging models, and more"""
 
 
+_GENERATED_YAML_HANDLER_LOCK = threading.Lock()
+
+
+def _get_generated_project_root(project: t.Any, project_dir: str | None) -> Path:
+    runtime_cfg = getattr(project, "runtime_cfg", None)
+    project_root = getattr(runtime_cfg, "project_root", None)
+    if not isinstance(project_root, (str, os.PathLike)):
+        project_root = None
+    if project_root is None:
+        config = getattr(project, "config", None)
+        project_root = getattr(config, "project_dir", None)
+    if not isinstance(project_root, (str, os.PathLike)):
+        project_root = None
+    if project_root is None:
+        project_root = project_dir or "."
+    return Path(project_root).resolve()
+
+
+def _resolve_project_yaml_output_path(path: Path | str, project_root: Path) -> Path:
+    output_path = Path(path)
+    if not output_path.is_absolute():
+        output_path = project_root / output_path
+    resolved = output_path.resolve()
+    try:
+        resolved.relative_to(project_root)
+    except ValueError as e:
+        raise click.ClickException(
+            f"Refusing to write YAML outside the dbt project root: {resolved} "
+            f"(project root: {project_root})"
+        ) from e
+    return resolved
+
+
+def _resolve_generated_file_path(path: Path | str, project_root: Path) -> Path:
+    output_path = Path(path)
+    if not output_path.is_absolute():
+        output_path = project_root / output_path
+    resolved = output_path.resolve()
+    try:
+        resolved.relative_to(project_root)
+    except ValueError as e:
+        raise click.ClickException(
+            f"Refusing to write generated output outside the dbt project root: {resolved} "
+            f"(project root: {project_root})"
+        ) from e
+    return resolved
+
+
+def _model_schema_data(model_spec: dict[str, t.Any]) -> dict[str, t.Any]:
+    return {
+        "version": 2,
+        "models": [
+            {
+                "name": model_spec["model_name"],
+                "description": model_spec["description"],
+                "columns": [
+                    {"name": col["name"], "description": col["description"]}
+                    for col in model_spec["columns"]
+                ],
+            }
+        ],
+    }
+
+
+def _load_generated_yaml_data(yaml_content: str) -> dict[str, t.Any]:
+    yaml_handler = create_yaml_instance()
+    data = yaml_handler.load(yaml_content) or {}
+    if not isinstance(data, dict):
+        raise click.ClickException("Generated YAML root must be a mapping.")
+    return t.cast("dict[str, t.Any]", data)
+
+
+def _prepare_generated_yaml_write(
+    *,
+    project: t.Any,
+    project_dir: str | None,
+    yaml_path: Path | str,
+    yaml_data: dict[str, t.Any] | None = None,
+    yaml_content: str | None = None,
+    overwrite: bool = False,
+    dry_run: bool = False,
+) -> tuple[Path, dict[str, t.Any]]:
+    project_root = _get_generated_project_root(project, project_dir)
+    resolved_path = _resolve_project_yaml_output_path(yaml_path, project_root)
+
+    if resolved_path.exists() and not overwrite:
+        raise click.ClickException(
+            f"Refusing to overwrite existing schema YAML at {resolved_path}. "
+            "Pass --overwrite to replace it."
+        )
+
+    data = yaml_data if yaml_data is not None else _load_generated_yaml_data(yaml_content or "")
+    if resolved_path.is_file():
+        yaml_handler = create_yaml_instance()
+        _read_yaml(yaml_handler, _GENERATED_YAML_HANDLER_LOCK, resolved_path)
+
+    return resolved_path, data
+
+
+def _write_prepared_generated_yaml(
+    prepared_write: tuple[Path, dict[str, t.Any]],
+    *,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> None:
+    yaml_handler = create_yaml_instance()
+    path, data = prepared_write
+    _write_yaml(
+        yaml_handler=yaml_handler,
+        yaml_handler_lock=_GENERATED_YAML_HANDLER_LOCK,
+        path=path,
+        data=data,
+        dry_run=dry_run,
+        allow_overwrite=overwrite,
+    )
+
+
+def _echo_planned_writes(paths: t.Iterable[Path | None]) -> None:
+    planned_paths = [path for path in paths if path is not None]
+    if not planned_paths:
+        return
+    click.echo("\nPlanned writes:")
+    for path in planned_paths:
+        click.echo(f"  - {path}")
+
+
 @generate.command(context_settings=_CONTEXT)
 @dbt_opts
 @logging_opts
@@ -634,12 +765,18 @@ def generate():
     is_flag=True,
     help="Print the generated model without writing to disk",
 )
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    help="Allow generated schema YAML to replace an existing file.",
+)
 def model(
     query: str = "",
     model_name: str | None = None,
     output_path: str | None = None,
     schema_yml: str | None = None,
     dry_run: bool = False,
+    overwrite: bool = False,
     project_dir: str | None = None,
     profiles_dir: str | None = None,
     target: str | None = None,
@@ -704,6 +841,24 @@ def model(
     sql_content += f"-- Materialized: {model_spec['materialized']}\n\n"
     sql_content += model_spec["sql"]
 
+    project_root = _get_generated_project_root(project, project_dir)
+    if output_path is None:
+        output_path_obj = _resolve_generated_file_path(
+            project_root / "models" / f"{model_spec['model_name']}.sql",
+            project_root,
+        )
+    else:
+        output_path_obj = _resolve_generated_file_path(output_path, project_root)
+    schema_path = schema_yml or output_path_obj.parent / f"{model_spec['model_name']}.yml"
+    schema_write = _prepare_generated_yaml_write(
+        project=project,
+        project_dir=project_dir,
+        yaml_path=schema_path,
+        yaml_data=_model_schema_data(model_spec),
+        overwrite=overwrite,
+        dry_run=dry_run,
+    )
+
     if dry_run:
         click.echo("\n" + "=" * 80)
         click.echo("SQL:")
@@ -714,41 +869,15 @@ def model(
         click.echo("=" * 80)
         for col in model_spec["columns"]:
             click.echo(f"  - {col['name']}: {col['description']}")
+        _write_prepared_generated_yaml(schema_write, dry_run=True, overwrite=overwrite)
+        _echo_planned_writes([output_path_obj, schema_write[0]])
         return
 
-    if output_path is None:
-        models_dir = Path(project_dir or ".") / "models"
-        output_path = str(models_dir / f"{model_spec['model_name']}.sql")
-
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(output_path).write_text(sql_content)
-    click.echo(f"\n:white_check_mark: Wrote SQL to: {output_path}")
-
-    if schema_yml or output_path:
-        schema_path = schema_yml or str(
-            Path(output_path).parent / f"{model_spec['model_name']}.yml"
-        )
-
-        import yaml
-
-        schema_content = {
-            "version": 2,
-            "models": [
-                {
-                    "name": model_spec["model_name"],
-                    "description": model_spec["description"],
-                    "columns": [
-                        {"name": col["name"], "description": col["description"]}
-                        for col in model_spec["columns"]
-                    ],
-                }
-            ],
-        }
-
-        Path(schema_path).write_text(
-            yaml.dump(schema_content, default_flow_style=False, sort_keys=False)
-        )
-        click.echo(f":white_check_mark: Wrote schema.yml to: {schema_path}")
+    _write_prepared_generated_yaml(schema_write, overwrite=overwrite)
+    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+    output_path_obj.write_text(sql_content)
+    click.echo(f"\n:white_check_mark: Wrote SQL to: {output_path_obj}")
+    click.echo(f":white_check_mark: Wrote schema.yml to: {schema_write[0]}")
 
 
 @generate.command(context_settings=_CONTEXT)
@@ -793,6 +922,11 @@ def model(
     is_flag=True,
     help="Print the generated YAML without writing to disk",
 )
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    help="Allow generated source YAML to replace an existing file.",
+)
 def sources(
     source_name: str = "raw",
     schema_name: str | None = None,
@@ -801,6 +935,7 @@ def sources(
     quote_identifiers: bool = False,
     output_path: str | None = None,
     dry_run: bool = False,
+    overwrite: bool = False,
     project_dir: str | None = None,
     profiles_dir: str | None = None,
     target: str | None = None,
@@ -833,17 +968,30 @@ def sources(
         output_path=Path(output_path) if output_path else None,
     )
 
+    yaml_write = None
+    if result.yaml_content:
+        yaml_write = _prepare_generated_yaml_write(
+            project=project,
+            project_dir=project_dir,
+            yaml_path=result.yaml_path,
+            yaml_content=result.yaml_content,
+            overwrite=overwrite,
+            dry_run=dry_run,
+        )
+
     if dry_run:
         click.echo("\n" + "=" * 80)
         click.echo("Generated YAML:")
         click.echo("=" * 80)
         click.echo(result.yaml_content)
+        if yaml_write is not None:
+            _write_prepared_generated_yaml(yaml_write, dry_run=True, overwrite=overwrite)
+            _echo_planned_writes([yaml_write[0]])
         return
 
-    if result.yaml_content:
-        result.yaml_path.parent.mkdir(parents=True, exist_ok=True)
-        result.yaml_path.write_text(result.yaml_content, encoding="utf-8")
-        click.echo(f":white_check_mark: Wrote source YAML to: {result.yaml_path}")
+    if result.yaml_content and yaml_write is not None:
+        _write_prepared_generated_yaml(yaml_write, overwrite=overwrite)
+        click.echo(f":white_check_mark: Wrote source YAML to: {yaml_write[0]}")
     else:
         click.echo(":warning: No sources found with given configuration")
 
@@ -868,12 +1016,18 @@ def sources(
     is_flag=True,
     help="Print the generated files without writing to disk",
 )
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    help="Allow generated staging YAML to replace an existing file.",
+)
 def staging(
     source_name: str = "",
     table_name: str = "",
     ai: bool = False,
     staging_path: str | None = None,
     dry_run: bool = False,
+    overwrite: bool = False,
     project_dir: str | None = None,
     profiles_dir: str | None = None,
     target: str | None = None,
@@ -908,6 +1062,24 @@ def staging(
             staging_path=Path(staging_path) if staging_path else None,
         )
 
+        yaml_write = None
+        if result.yaml_content and result.yaml_path:
+            yaml_write = _prepare_generated_yaml_write(
+                project=project,
+                project_dir=project_dir,
+                yaml_path=result.yaml_path,
+                yaml_content=result.yaml_content,
+                overwrite=overwrite,
+                dry_run=dry_run,
+            )
+        resolved_sql_path = (
+            _resolve_generated_file_path(
+                result.sql_path, _get_generated_project_root(project, project_dir)
+            )
+            if result.sql_content and result.sql_path
+            else None
+        )
+
         if dry_run:
             click.echo("\n" + "=" * 80)
             click.echo("Generated SQL:")
@@ -917,21 +1089,26 @@ def staging(
             click.echo("Generated YAML:")
             click.echo("=" * 80)
             click.echo(result.yaml_content)
+            if yaml_write is not None:
+                _write_prepared_generated_yaml(yaml_write, dry_run=True)
+            _echo_planned_writes([
+                resolved_sql_path,
+                yaml_write[0] if yaml_write is not None else None,
+            ])
             return
 
         click.echo(f"\n:sparkles: Generated staging model: {result.staging_name}")
 
-        if result.sql_content and result.sql_path:
-            result.sql_path.parent.mkdir(parents=True, exist_ok=True)
-            result.sql_path.write_text(result.sql_content, encoding="utf-8")
-            click.echo(f":white_check_mark: Wrote SQL to: {result.sql_path}")
+        if result.sql_content and resolved_sql_path:
+            resolved_sql_path.parent.mkdir(parents=True, exist_ok=True)
+            resolved_sql_path.write_text(result.sql_content, encoding="utf-8")
+            click.echo(f":white_check_mark: Wrote SQL to: {resolved_sql_path}")
         elif result.sql_content:
             raise click.ClickException("Generated SQL content is missing a target path.")
 
-        if result.yaml_content and result.yaml_path:
-            result.yaml_path.parent.mkdir(parents=True, exist_ok=True)
-            result.yaml_path.write_text(result.yaml_content, encoding="utf-8")
-            click.echo(f":white_check_mark: Wrote YAML to: {result.yaml_path}")
+        if result.yaml_content and yaml_write is not None:
+            _write_prepared_generated_yaml(yaml_write, overwrite=overwrite)
+            click.echo(f":white_check_mark: Wrote YAML to: {yaml_write[0]}")
         elif result.yaml_content:
             raise click.ClickException("Generated YAML content is missing a target path.")
 
@@ -1049,12 +1226,18 @@ def generate_query(
     is_flag=True,
     help="Print the generated model without writing to disk",
 )
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    help="Allow generated schema YAML to replace an existing file.",
+)
 def nl_generate_deprecated(
     query: str = "",
     model_name: str | None = None,
     output_path: str | None = None,
     schema_yml: str | None = None,
     dry_run: bool = False,
+    overwrite: bool = False,
     project_dir: str | None = None,
     profiles_dir: str | None = None,
     target: str | None = None,
@@ -1131,6 +1314,24 @@ def nl_generate_deprecated(
     sql_content += f"-- Materialized: {model_spec['materialized']}\n\n"
     sql_content += model_spec["sql"]
 
+    project_root = _get_generated_project_root(project, project_dir)
+    if output_path is None:
+        output_path_obj = _resolve_generated_file_path(
+            project_root / "models" / f"{model_spec['model_name']}.sql",
+            project_root,
+        )
+    else:
+        output_path_obj = _resolve_generated_file_path(output_path, project_root)
+    schema_path = schema_yml or output_path_obj.parent / f"{model_spec['model_name']}.yml"
+    schema_write = _prepare_generated_yaml_write(
+        project=project,
+        project_dir=project_dir,
+        yaml_path=schema_path,
+        yaml_data=_model_schema_data(model_spec),
+        overwrite=overwrite,
+        dry_run=dry_run,
+    )
+
     if dry_run:
         click.echo("\n" + "=" * 80)
         click.echo("SQL:")
@@ -1141,43 +1342,15 @@ def nl_generate_deprecated(
         click.echo("=" * 80)
         for col in model_spec["columns"]:
             click.echo(f"  - {col['name']}: {col['description']}")
+        _write_prepared_generated_yaml(schema_write, dry_run=True, overwrite=overwrite)
+        _echo_planned_writes([output_path_obj, schema_write[0]])
         return
 
-    # Write SQL file
-    if output_path is None:
-        models_dir = Path(project_dir or ".") / "models"
-        output_path = str(models_dir / f"{model_spec['model_name']}.sql")
-
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(output_path).write_text(sql_content)
-    click.echo(f"\n:white_check_mark: Wrote SQL to: {output_path}")
-
-    # Write schema.yml if requested
-    if schema_yml or output_path:
-        schema_path = schema_yml or str(
-            Path(output_path).parent / f"{model_spec['model_name']}.yml"
-        )
-
-        import yaml
-
-        schema_content = {
-            "version": 2,
-            "models": [
-                {
-                    "name": model_spec["model_name"],
-                    "description": model_spec["description"],
-                    "columns": [
-                        {"name": col["name"], "description": col["description"]}
-                        for col in model_spec["columns"]
-                    ],
-                }
-            ],
-        }
-
-        Path(schema_path).write_text(
-            yaml.dump(schema_content, default_flow_style=False, sort_keys=False)
-        )
-        click.echo(f":white_check_mark: Wrote schema.yml to: {schema_path}")
+    _write_prepared_generated_yaml(schema_write, overwrite=overwrite)
+    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+    output_path_obj.write_text(sql_content)
+    click.echo(f"\n:white_check_mark: Wrote SQL to: {output_path_obj}")
+    click.echo(f":white_check_mark: Wrote schema.yml to: {schema_write[0]}")
 
 
 @nl.command(context_settings=_CONTEXT)

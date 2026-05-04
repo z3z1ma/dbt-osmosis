@@ -7,6 +7,7 @@ Thread-safety:
 """
 
 import io
+import os
 import secrets
 import stat
 import threading
@@ -117,6 +118,7 @@ def _write_yaml(
     mutation_tracker: t.Callable[[int], None] | None = None,
     strip_eof_blank_lines: bool = False,
     written_file_tracker: t.Callable[[Path], None] | None = None,
+    allow_overwrite: bool = True,
 ) -> None:
     """Write a yaml file to disk and register a mutation with the context. Clears the path from the buffer cache.
 
@@ -142,6 +144,8 @@ def _write_yaml(
                 data = _merge_preserved_sections(data, original_content)
 
         if not dry_run:
+            if not allow_overwrite and path.exists():
+                raise FileExistsError(f"Refusing to overwrite existing YAML file: {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
 
         original = path.read_bytes() if path.is_file() else b""
@@ -173,7 +177,18 @@ def _write_yaml(
                             )
 
                         # Atomic replace: only delete original after successful temp write
-                        _replace_atomically(temp_path, path)
+                        if allow_overwrite:
+                            _replace_atomically(temp_path, path)
+                        else:
+                            try:
+                                os.link(temp_path, path)
+                            except FileExistsError:
+                                raise FileExistsError(
+                                    f"Refusing to overwrite existing YAML file: {path}"
+                                ) from None
+                            finally:
+                                _cleanup_temp_path(temp_path)
+                            temp_path = None
 
                         # Clear cache entry only after successful write
                         with _YAML_BUFFER_CACHE_LOCK:
