@@ -1,11 +1,11 @@
 ---
 id: ticket:c10pkg10
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: release-packaging
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T04:18:06Z
+updated_at: 2026-05-04T04:58:20Z
 scope:
   kind: repository
   repositories:
@@ -16,6 +16,7 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10pkg10-package-metadata-smoke
+    - evidence:c10pkg10-main-ci-release-success
   critique:
     - critique:c10pkg10-release-packaging-review
   packets:
@@ -76,12 +77,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10pkg10#ACC-001 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-006 resolved | supported |
-| ticket:c10pkg10#ACC-002 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-002 and #FIND-006 resolved | supported |
-| ticket:c10pkg10#ACC-003 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-003 resolved | supported |
-| ticket:c10pkg10#ACC-004 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-001 and #FIND-005 resolved | supported |
-| ticket:c10pkg10#ACC-005 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review | supported |
-| ticket:c10pkg10#ACC-006 | evidence:c10pkg10-package-metadata-smoke | critique:c10pkg10-release-packaging-review#FIND-003 and #FIND-004 resolved | supported |
+| ticket:c10pkg10#ACC-001 | evidence:c10pkg10-package-metadata-smoke; evidence:c10pkg10-main-ci-release-success | critique:c10pkg10-release-packaging-review#FIND-006 resolved | accepted |
+| ticket:c10pkg10#ACC-002 | evidence:c10pkg10-package-metadata-smoke; evidence:c10pkg10-main-ci-release-success | critique:c10pkg10-release-packaging-review#FIND-002 and critique:c10pkg10-release-packaging-review#FIND-006 resolved | accepted |
+| ticket:c10pkg10#ACC-003 | evidence:c10pkg10-package-metadata-smoke; evidence:c10pkg10-main-ci-release-success | critique:c10pkg10-release-packaging-review#FIND-003 resolved | accepted |
+| ticket:c10pkg10#ACC-004 | evidence:c10pkg10-package-metadata-smoke; evidence:c10pkg10-main-ci-release-success | critique:c10pkg10-release-packaging-review#FIND-001 and critique:c10pkg10-release-packaging-review#FIND-005 resolved | accepted |
+| ticket:c10pkg10#ACC-005 | evidence:c10pkg10-package-metadata-smoke; evidence:c10pkg10-main-ci-release-success | critique:c10pkg10-release-packaging-review | accepted |
+| ticket:c10pkg10#ACC-006 | evidence:c10pkg10-package-metadata-smoke; evidence:c10pkg10-main-ci-release-success | critique:c10pkg10-release-packaging-review#FIND-003 and critique:c10pkg10-release-packaging-review#FIND-004 resolved | accepted |
 
 # Execution Notes
 
@@ -89,7 +90,7 @@ Ralph implementation completed the package metadata cleanup and stopped without 
 
 # Blockers
 
-None currently. Acceptance remains pending post-commit CI evidence and retrospective / promotion disposition.
+None.
 
 # Evidence
 
@@ -97,8 +98,9 @@ Existing evidence:
 
 - evidence:oracle-backlog-scan
 - evidence:c10pkg10-package-metadata-smoke
+- evidence:c10pkg10-main-ci-release-success
 
-Evidence disposition: locally sufficient for package metadata, dependency routing, dev dependency canonicalization, and independent pip install smoke claims. Final closure should also cite post-commit/main CI evidence if the implementation commit changes the observed source state.
+Evidence disposition: sufficient. Local red/green metadata and independent pip-smoke evidence was supplemented by main `Tests`, `lint`, and Release validation for commit `f4e475314bbb412fea927577f99f8e78a7258f80`.
 
 # Critique Disposition
 
@@ -112,12 +114,12 @@ Required critique profiles: release-packaging, operator-clarity
 
 Findings:
 
-- critique:c10pkg10-release-packaging-review#FIND-001 — `resolved` by adding Python 3.10 `tomli` fallback and canonical dev dependency coverage; supported by evidence:c10pkg10-package-metadata-smoke.
-- critique:c10pkg10-release-packaging-review#FIND-002 — `resolved` by adding direct `PyYAML>=6.0` and base import smoke; supported by evidence:c10pkg10-package-metadata-smoke.
-- critique:c10pkg10-release-packaging-review#FIND-003 — `resolved` by strengthening workbench import smoke and bounding `setuptools>=70,<81`; supported by evidence:c10pkg10-package-metadata-smoke.
-- critique:c10pkg10-release-packaging-review#FIND-004 — `resolved` by making DuckDB smoke rely on `.[duckdb]` without an explicit adapter install argument; supported by evidence:c10pkg10-package-metadata-smoke.
-- critique:c10pkg10-release-packaging-review#FIND-005 — `resolved` by pinning Taskfile pre-commit tool installation to `pre-commit>3.0.0,<5`; supported by evidence:c10pkg10-package-metadata-smoke.
-- critique:c10pkg10-release-packaging-review#FIND-006 — `resolved` by documenting `dbt-osmosis[proxy]` as dependency-only and leaving support semantics to ticket:c10proxy25; supported by evidence:c10pkg10-package-metadata-smoke.
+- critique:c10pkg10-release-packaging-review#FIND-001 - `resolved` by adding Python 3.10 `tomli` fallback and canonical dev dependency coverage; supported by evidence:c10pkg10-package-metadata-smoke and evidence:c10pkg10-main-ci-release-success.
+- critique:c10pkg10-release-packaging-review#FIND-002 - `resolved` by adding direct `PyYAML>=6.0` and base import smoke; supported by evidence:c10pkg10-package-metadata-smoke and evidence:c10pkg10-main-ci-release-success.
+- critique:c10pkg10-release-packaging-review#FIND-003 - `resolved` by strengthening workbench import smoke and bounding `setuptools>=70,<81`; supported by evidence:c10pkg10-package-metadata-smoke and evidence:c10pkg10-main-ci-release-success.
+- critique:c10pkg10-release-packaging-review#FIND-004 - `resolved` by making DuckDB smoke rely on `.[duckdb]` without an explicit adapter install argument; supported by evidence:c10pkg10-package-metadata-smoke and evidence:c10pkg10-main-ci-release-success.
+- critique:c10pkg10-release-packaging-review#FIND-005 - `resolved` by pinning Taskfile pre-commit tool installation to `pre-commit>3.0.0,<5`; supported by evidence:c10pkg10-package-metadata-smoke and evidence:c10pkg10-main-ci-release-success.
+- critique:c10pkg10-release-packaging-review#FIND-006 - `resolved` by documenting `dbt-osmosis[proxy]` as dependency-only and leaving support semantics to ticket:c10proxy25; supported by evidence:c10pkg10-package-metadata-smoke and evidence:c10pkg10-main-ci-release-success.
 
 Disposition status: completed
 
@@ -125,22 +127,25 @@ Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None yet - implementation is complete locally, but acceptance is waiting for post-commit CI and retrospective review.
+Promoted:
 
-Deferred / not-required rationale: Retrospective should decide whether install-extra explanation belongs only in updated docs or also in wiki after CI acceptance.
+- `wiki:ci-compatibility-matrix` now explains independent pip install smokes for base and supported optional extras and the masking failure mode for explicit packages outside the tested extra.
+- `wiki:release-publishing-workflow` now records that Release validation is packaging evidence for built package metadata/wheel smoke after Tests pip smokes pass.
+
+Deferred / not-required rationale: No additional research, spec, plan, initiative, constitution, or memory promotion needed. Proxy support semantics remain deferred to ticket:c10proxy25 by scope.
 
 # Wiki Disposition
 
-Pending retrospective. Source docs were updated for install extras; no wiki promotion has been selected yet.
+Completed. Updated `wiki:ci-compatibility-matrix` and `wiki:release-publishing-workflow` with the accepted CI/release packaging-smoke behavior. User-facing install docs were updated in source documentation as part of the implementation.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending implementation commit, post-commit/main CI evidence, and retrospective / promotion disposition.
-Residual risks: Workbench was import-smoked but not interactively launched; proxy remains dependency-only and experimental; package index resolution can drift.
+Accepted by: OpenCode
+Accepted at: 2026-05-04T04:58:20Z
+Basis: Implementation commit `f4e475314bbb412fea927577f99f8e78a7258f80`; local evidence:c10pkg10-package-metadata-smoke; final critique:c10pkg10-release-packaging-review; main CI/release evidence:c10pkg10-main-ci-release-success; retrospective promotions completed.
+Residual risks: Workbench was import-smoked but not interactively launched; proxy remains dependency-only and experimental under ticket:c10proxy25; package index resolution can drift and should be rechecked when metadata or dependency constraints change.
 
 # Dependencies
 
@@ -151,3 +156,4 @@ Coordinate with ticket:c10wb22, ticket:c10llm23, and ticket:c10proxy25.
 - 2026-05-03T21:10:43Z: Created from CI/build and CLI/workbench oracle findings.
 - 2026-05-04T03:34:10Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10pkg10-20260504T033410Z` for package extras/dev tooling/install-smoke implementation.
 - 2026-05-04T04:18:06Z: Reconciled Ralph output, recorded release-packaging critique `critique:c10pkg10-release-packaging-review`, recorded install evidence `evidence:c10pkg10-package-metadata-smoke`, and moved ticket to `complete_pending_acceptance` pending post-commit CI and retrospective disposition.
+- 2026-05-04T04:58:20Z: Recorded main CI/release evidence `evidence:c10pkg10-main-ci-release-success`, promoted packaging-smoke lessons to `wiki:ci-compatibility-matrix` and `wiki:release-publishing-workflow`, accepted all scoped claims, and closed ticket.
