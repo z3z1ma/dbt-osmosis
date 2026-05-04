@@ -1,11 +1,11 @@
 ---
 id: ticket:c10lock07
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T00:19:53Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,12 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10lock07-local-dependency-resolution-verification
+  packets:
+    - packet:ralph-ticket-c10lock07-20260503T234103Z
+  critique:
+    - critique:c10lock07-dependency-resolution
+    - critique:c10lock07-integration-path-follow-up
 depends_on: []
 ---
 
@@ -67,8 +73,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10lock07#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10lock07#ACC-005 | None - install smoke not added yet | None | open |
+| ticket:c10lock07#ACC-001 | evidence:oracle-backlog-scan; evidence:c10lock07-local-dependency-resolution-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up | locally supported; main CI pending |
+| ticket:c10lock07#ACC-002 | evidence:c10lock07-local-dependency-resolution-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up | locally supported after resolved finding; main CI pending |
+| ticket:c10lock07#ACC-003 | evidence:c10lock07-local-dependency-resolution-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up | locally supported after resolved finding; main CI pending |
+| ticket:c10lock07#ACC-004 | evidence:c10lock07-local-dependency-resolution-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up | locally supported after resolved finding; main CI pending |
+| ticket:c10lock07#ACC-005 | evidence:c10lock07-local-dependency-resolution-verification | critique:c10lock07-integration-path-follow-up | locally supported; main CI pending |
 
 # Execution Notes
 
@@ -76,11 +85,18 @@ Be careful with `UV_FROZEN` and `UV_NO_SYNC` in `Taskfile.yml`; verify the local
 
 # Blockers
 
-None.
+Final GitHub Actions evidence is pending after commit/push.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: CI/local command output after changes.
+Existing evidence:
+
+- evidence:oracle-backlog-scan - original backlog finding for unreproducible dependency resolution.
+- evidence:c10lock07-local-dependency-resolution-verification - local lock, workflow, Taskfile, pip smoke, and child uv matrix smoke evidence after implementation.
+
+Missing evidence:
+
+- GitHub Actions run logs from `main` after implementation commit/push.
 
 # Critique Disposition
 
@@ -92,11 +108,18 @@ Policy rationale: Dependency resolution determines compatibility evidence trustw
 
 Required critique profiles: release-packaging, test-coverage
 
-Findings: None - no critique yet.
+Critique completed:
 
-Disposition status: pending
+- critique:c10lock07-dependency-resolution - mandatory implementation critique returned `changes_required` with one high-severity finding.
+- critique:c10lock07-integration-path-follow-up - follow-up critique reviewed the direct integration-path fix and returned `pass` with no open findings.
 
-Deferral / not-required rationale: None.
+Findings:
+
+- critique:c10lock07-dependency-resolution#FIND-001 - resolved. The workflow integration step now runs `dbt-osmosis` directly from the matrix environment instead of invoking `demo_duckdb/integration_tests.sh`, and follow-up critique confirmed the prior challenge is resolved.
+
+Disposition status: completed
+
+Deferral / not-required rationale: None. Mandatory critique is complete; final `main` CI evidence remains an acceptance evidence gap, not a critique blocker.
 
 # Retrospective / Promotion Disposition
 
@@ -114,8 +137,8 @@ N/A - no wiki promotion selected yet.
 
 Accepted by: Not accepted yet.
 Accepted at: N/A.
-Basis: Pending CI evidence.
-Residual risks: Resolver differences between uv and pip may remain for optional extras.
+Basis: Local evidence and mandatory critique support committing and pushing the implementation for CI trial on `main`; final acceptance is pending GitHub Actions evidence from `main` and retrospective disposition.
+Residual risks: Resolver differences between uv and pip may remain for optional extras; `demo_duckdb/integration_tests.sh` still uses `uv run` and should not be reintroduced into matrix CI without a sync-safe change; the existing uv-only protobuf override remains for `ticket:c10pkg10`.
 
 # Dependencies
 
@@ -124,3 +147,7 @@ Coordinate with ticket:c10pkg10 for package metadata and extras cleanup.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CI/build oracle finding.
+- 2026-05-03T23:41:03Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10lock07-20260503T234103Z` for deterministic CI dependency resolution and pip install smoke implementation.
+- 2026-05-03T23:50:14Z: Consumed Ralph packet after implementation changed `.github/workflows/tests.yml` and `Taskfile.yml`; recorded `evidence:c10lock07-local-dependency-resolution-verification`; moved to mandatory critique before commit/push acceptance.
+- 2026-05-04T00:19:53Z: Mandatory critique `critique:c10lock07-dependency-resolution` found high-severity integration path risk because CI still reached `uv run` through `demo_duckdb/integration_tests.sh`; parent fixed workflow integration coverage to run direct `dbt-osmosis` commands from the matrix environment.
+- 2026-05-04T00:19:53Z: Follow-up critique `critique:c10lock07-integration-path-follow-up` passed with no open findings; ticket moved to `complete_pending_acceptance` pending commit/push and final `main` CI evidence.
