@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import functools
+import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -56,6 +58,53 @@ else:
     P = te.ParamSpec("P")
 
 _CONTEXT = {"max_content_width": 800}
+_WORKBENCH_EXTRA_HINT = "pip install dbt-osmosis[workbench]"
+_WORKBENCH_APP_MODULES = (
+    "feedparser",
+    "pandas",
+    "streamlit",
+    "streamlit_elements_fluence",
+    "ydata_profiling",
+)
+
+
+def _missing_streamlit_error() -> click.ClickException:
+    return click.ClickException(
+        "Streamlit is required to run dbt-osmosis workbench. "
+        f"Install the optional workbench extra with `{_WORKBENCH_EXTRA_HINT}`."
+    )
+
+
+def _streamlit_executable() -> str:
+    executable = shutil.which("streamlit")
+    if executable is None:
+        raise _missing_streamlit_error()
+    return executable
+
+
+def _check_workbench_app_dependencies() -> None:
+    missing = [
+        module for module in _WORKBENCH_APP_MODULES if importlib.util.find_spec(module) is None
+    ]
+    if missing:
+        missing_modules = ", ".join(missing)
+        raise click.ClickException(
+            "Workbench optional dependencies are missing: "
+            f"{missing_modules}. Install them with `{_WORKBENCH_EXTRA_HINT}`."
+        )
+
+
+def _run_streamlit_command(
+    args: list[t.Any], executable: str | None = None
+) -> subprocess.CompletedProcess[t.Any]:
+    try:
+        return subprocess.run(
+            [executable or _streamlit_executable(), *args],
+            env=os.environ,
+            cwd=Path.cwd(),
+        )
+    except FileNotFoundError as e:
+        raise _missing_streamlit_error() from e
 
 
 @click.group()
@@ -1488,17 +1537,11 @@ def workbench(
     logger.info(":water_wave: Executing dbt-osmosis\n")
 
     if "--options" in ctx.args:
-        proc = subprocess.run(["streamlit", "run", "--help"])
+        proc = _run_streamlit_command(["run", "--help"])
         ctx.exit(proc.returncode)
 
-    import os
-
     if "--config" in ctx.args:
-        proc = subprocess.run(
-            ["streamlit", "config", "show"],
-            env=os.environ,
-            cwd=Path.cwd(),
-        )
+        proc = _run_streamlit_command(["config", "show"])
         ctx.exit(proc.returncode)
 
     script_args = ["--"]
@@ -1509,19 +1552,19 @@ def workbench(
         script_args.append("--profiles-dir")
         script_args.append(profiles_dir)
 
-    proc = subprocess.run(
+    streamlit_executable = _streamlit_executable()
+    _check_workbench_app_dependencies()
+    proc = _run_streamlit_command(
         [
-            "streamlit",
             "run",
             "--runner.magicEnabled=false",
-            f"--browser.serverAddress={host}",
-            f"--browser.serverPort={port}",
-            Path(__file__).parent.parent / "workbench" / "app.py",
+            f"--server.address={host}",
+            f"--server.port={port}",
             *ctx.args,
+            Path(__file__).parent.parent / "workbench" / "app.py",
             *script_args,
         ],
-        env=os.environ,
-        cwd=Path.cwd(),
+        executable=streamlit_executable,
     )
 
     ctx.exit(proc.returncode)

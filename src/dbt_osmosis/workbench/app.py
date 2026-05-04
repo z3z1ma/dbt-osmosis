@@ -23,7 +23,6 @@ from streamlit_elements_fluence import elements, event, sync
 from dbt_osmosis.core.config import (
     DbtConfiguration,
     DbtProjectContext as DbtProject,
-    _reload_manifest,  # pyright: ignore[reportPrivateUsage]
     create_dbt_project_context,
     discover_profiles_dir,
     discover_project_dir,
@@ -136,15 +135,100 @@ def _parse_args() -> dict[str, t.Any]:
     return args
 
 
+def _project_config_for_target(ctx: DbtProject, target_name: str) -> DbtConfiguration:
+    base_config = getattr(ctx, "config", None)
+    runtime_cfg = getattr(ctx, "runtime_cfg", None)
+
+    project_dir = getattr(base_config, "project_dir", None) or getattr(
+        runtime_cfg, "project_root", None
+    )
+    if not project_dir:
+        project_dir = discover_project_dir()
+
+    profiles_dir = getattr(base_config, "profiles_dir", None) or discover_profiles_dir(project_dir)
+    vars_value = getattr(base_config, "vars", {})
+
+    return DbtConfiguration(
+        project_dir=str(project_dir),
+        profiles_dir=str(profiles_dir),
+        target=target_name,
+        profile=getattr(base_config, "profile", None) or getattr(runtime_cfg, "profile_name", None),
+        threads=getattr(base_config, "threads", None),
+        vars=vars_value if isinstance(vars_value, dict) else {},
+        quiet=getattr(base_config, "quiet", True),
+        disable_introspection=getattr(base_config, "disable_introspection", False),
+    )
+
+
+def _model_nodes_for_context(ctx: DbtProject) -> list[t.Any]:
+    model_nodes: list[t.Any] = []
+    for node in ctx.manifest.nodes.values():
+        if node.resource_type == "model" and node.package_name == ctx.runtime_cfg.project_name:
+            model_nodes.append(node)
+    return model_nodes
+
+
+def _call_connection_cleanup(target: t.Any, method_name: str) -> None:
+    method = getattr(target, method_name, None)
+    if callable(method):
+        try:
+            method()
+        except Exception as e:
+            print(f"Could not run adapter cleanup method {method_name}: {e}")
+
+
+def _close_context_connections(ctx: DbtProject) -> None:
+    close = getattr(ctx, "close", None)
+    if callable(close):
+        try:
+            close()
+            return
+        except Exception as e:
+            print(f"Could not close previous dbt context: {e}")
+
+    adapter = getattr(ctx, "adapter", None)
+    connections = getattr(adapter, "connections", None)
+    if connections is None:
+        return
+    for method_name in (
+        "release",
+        "cleanup_all",
+        "close_all_connections",
+        "clear_thread_connection",
+    ):
+        _call_connection_cleanup(connections, method_name)
+
+
 def change_target() -> None:
     """Change the target profile"""
     set_invocation_context(get_env())
     ctx: DbtProject = state.app.ctx
-    if ctx.runtime_cfg.target_name != state.app.target_name:
-        print(f"Changing target to {state.app.target_name}")
-        ctx.runtime_cfg.target_name = state.app.target_name
-        _reload_manifest(ctx)
-        state.app.compiled_query = compile(state.app.query)
+    current_target = ctx.runtime_cfg.target_name
+    requested_target = getattr(state, "target_name", state.app.target_name)
+    if current_target == requested_target:
+        state.app.target_name = current_target
+        return
+
+    print(f"Changing target to {requested_target}")
+    try:
+        new_ctx = create_dbt_project_context(
+            config=_project_config_for_target(ctx, requested_target),
+        )
+    except Exception as e:
+        state.app.ctx = ctx
+        state.app.target_name = current_target
+        state.target_name = current_target
+        message = f"Failed to change dbt target to {requested_target!r}: {e}"
+        st.error(message)
+        print(message)
+        return
+
+    state.app.ctx = new_ctx
+    state.app.target_name = new_ctx.runtime_cfg.target_name
+    state.target_name = state.app.target_name
+    state.app.model_nodes = _model_nodes_for_context(new_ctx)
+    state.app.compiled_query = compile(state.app.query)
+    _close_context_connections(ctx)
 
 
 def inject_model() -> None:
@@ -334,14 +418,7 @@ def main():
         app.editor.tabs[EditorTab.SQL]["content"] = app.query
         app.compiled_query = compile(app.query) if app.query else ""
 
-        model_nodes: list[t.Any] = []
-        for node in app.ctx.manifest.nodes.values():
-            if (
-                node.resource_type == "model"
-                and node.package_name == app.ctx.runtime_cfg.project_name
-            ):
-                model_nodes.append(node)
-        app.model_nodes = model_nodes
+        app.model_nodes = _model_nodes_for_context(app.ctx)
 
         app.editor.update_content("SQL", app.query)
 

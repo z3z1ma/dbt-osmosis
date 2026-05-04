@@ -1,5 +1,6 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
+import subprocess
 from unittest import mock
 
 import pytest
@@ -151,6 +152,103 @@ def test_workbench_help(runner: CliRunner) -> None:
     assert "discovered project root" in result.output
     assert "--host" in result.output
     assert "--port" in result.output
+
+
+def test_workbench_uses_streamlit_server_bind_flags_and_preserves_passthrough(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workbench host/port should bind Streamlit's server, not browser defaults."""
+    completed = subprocess.CompletedProcess(args=[], returncode=0)
+    monkeypatch.setattr("shutil.which", lambda name: "streamlit")
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
+    with mock.patch("subprocess.run", return_value=completed) as run:
+        result = runner.invoke(
+            cli,
+            [
+                "workbench",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8502",
+                "--server.headless=true",
+                "--theme.base=dark",
+            ],
+        )
+
+    assert result.exit_code == 0
+    command = run.call_args.args[0]
+    assert "--server.address=0.0.0.0" in command
+    assert "--server.port=8502" in command
+    assert "--browser.serverAddress=0.0.0.0" not in command
+    assert "--browser.serverPort=8502" not in command
+    script_path_index = next(i for i, value in enumerate(command) if str(value).endswith("app.py"))
+    assert command[script_path_index - 2 : script_path_index] == [
+        "--server.headless=true",
+        "--theme.base=dark",
+    ]
+
+
+def test_workbench_preserves_literal_double_dash_passthrough(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Click's literal -- pass-through should still become Streamlit args."""
+    completed = subprocess.CompletedProcess(args=[], returncode=0)
+    monkeypatch.setattr("shutil.which", lambda name: "streamlit")
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
+    with mock.patch("subprocess.run", return_value=completed) as run:
+        result = runner.invoke(
+            cli,
+            ["workbench", "--", "--server.headless=true"],
+        )
+
+    assert result.exit_code == 0
+    command = run.call_args.args[0]
+    script_path_index = next(i for i, value in enumerate(command) if str(value).endswith("app.py"))
+    assert command[script_path_index - 1] == "--server.headless=true"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["workbench"],
+        ["workbench", "--options"],
+        ["workbench", "--config"],
+    ],
+)
+def test_workbench_missing_streamlit_has_workbench_extra_hint(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    args: list[str],
+) -> None:
+    """All workbench launch paths should fail clearly when Streamlit is absent."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    with mock.patch("subprocess.run", side_effect=FileNotFoundError("streamlit")):
+        result = runner.invoke(cli, args)
+
+    assert result.exit_code != 0
+    assert "Streamlit is required" in result.output
+    assert "pip install dbt-osmosis[workbench]" in result.output
+
+
+def test_workbench_missing_extra_dependency_has_workbench_extra_hint(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Normal launch should preflight app imports, not defer raw app tracebacks."""
+    monkeypatch.setattr("shutil.which", lambda name: "streamlit")
+    monkeypatch.setattr(
+        "importlib.util.find_spec",
+        lambda name: None if name == "feedparser" else object(),
+    )
+    with mock.patch("subprocess.run") as run:
+        result = runner.invoke(cli, ["workbench"])
+
+    assert result.exit_code != 0
+    assert "Workbench optional dependencies are missing: feedparser" in result.output
+    assert "pip install dbt-osmosis[workbench]" in result.output
+    run.assert_not_called()
 
 
 def test_test_llm_command(runner: CliRunner) -> None:
