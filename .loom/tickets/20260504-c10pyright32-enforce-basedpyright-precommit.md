@@ -1,11 +1,11 @@
 ---
 id: ticket:c10pyright32
 kind: ticket
-status: active
+status: closed
 change_class: developer-tooling
 risk_class: medium
 created_at: 2026-05-04T17:16:38Z
-updated_at: 2026-05-04T17:16:38Z
+updated_at: 2026-05-04T17:19:12Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,9 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10pyright32-basedpyright-precommit-validation
+  critique:
+    - critique:c10pyright32-basedpyright-precommit-review
 depends_on: []
 ---
 
@@ -68,8 +71,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10pyright32#ACC-001 | None - implementation pending | None | open |
-| ticket:c10pyright32#ACC-004 | None - validation pending | None | open |
+| ticket:c10pyright32#ACC-001 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
+| ticket:c10pyright32#ACC-002 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
+| ticket:c10pyright32#ACC-003 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
+| ticket:c10pyright32#ACC-004 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
+| ticket:c10pyright32#ACC-005 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
 
 # Execution Notes
 
@@ -81,7 +87,9 @@ None.
 
 # Evidence
 
-Existing evidence: local basedpyright checks on recent commits reported `errorCount=0`. Missing evidence: hook-level validation after configuration change.
+Evidence `evidence:c10pyright32-basedpyright-precommit-validation` records hook-level validation after commit `7716997dfbbf0d0ec9a465aba48a7ff981369fc3`. `uv run pre-commit run basedpyright --all-files --verbose` passed and printed `basedpyright summary: 0 errors, 1869 warnings`.
+
+Evidence disposition: sufficient for the scoped developer-tooling gate.
 
 # Critique Disposition
 
@@ -93,29 +101,31 @@ Policy rationale: This changes developer/CI gating behavior, but the implementat
 
 Required critique profiles: developer-tooling, operator-clarity
 
-Findings: None - no critique yet.
+Findings: `critique:c10pyright32-basedpyright-precommit-review` records no open findings. Initial recordkeeping finding `C10PYRIGHT32-EVID-001` was resolved by creating and linking the evidence/critique records and updating this acceptance dossier.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
-Deferred / not-required rationale: Likely not wiki-worthy; pre-commit config is the accepted surface.
+Promoted: None.
+Deferred / not-required rationale: No durable explanation beyond `.pre-commit-config.yaml` is needed. The accepted project practice is already to run `pre-commit run --all-files`; this ticket adds the missing hook.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Disposition status: not_required
+
+Rationale: The pre-commit configuration is the accepted operator surface for this local gate.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending hook implementation and validation.
-Residual risks: Hook runtime may add commit latency because basedpyright checks the full configured project surface.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-04T17:19:12Z.
+Basis: `evidence:c10pyright32-basedpyright-precommit-validation` and `critique:c10pyright32-basedpyright-precommit-review` support all ticket-local acceptance criteria. The committed hook reported `0 errors` through pre-commit.
+Residual risks: Hook runtime adds full-project basedpyright latency and depends on `bash`, `uv`, and `python` on PATH. The nonzero-error path was verified by command inspection rather than an induced failing run.
 
 # Dependencies
 
@@ -124,3 +134,4 @@ None.
 # Journal
 
 - 2026-05-04T17:16:38Z: Created from operator request to keep basedpyright errors at zero on each commit and add a pre-commit check.
+- 2026-05-04T17:19:12Z: Added basedpyright pre-commit gate in commit `7716997dfbbf0d0ec9a465aba48a7ff981369fc3`, validated hook output with `0 errors`, recorded evidence/critique, and closed ticket.
