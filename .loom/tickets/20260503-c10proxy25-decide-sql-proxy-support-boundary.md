@@ -1,11 +1,11 @@
 ---
 id: ticket:c10proxy25
 kind: ticket
-status: active
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T16:31:03Z
+updated_at: 2026-05-04T16:50:00Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,11 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10proxy25-sql-proxy-boundary-validation
+  critique:
+    - critique:c10proxy25-sql-proxy-boundary-review
+  wiki:
+    - wiki:sql-proxy-boundary
   packets:
     - packet:ralph-ticket-c10proxy25-20260504T163103Z
 depends_on: []
@@ -72,20 +77,35 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10proxy25#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10proxy25#ACC-004 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10proxy25#ACC-001 | evidence:c10proxy25-sql-proxy-boundary-validation | critique:c10proxy25-sql-proxy-boundary-review | accepted |
+| ticket:c10proxy25#ACC-002 | evidence:c10proxy25-sql-proxy-boundary-validation | critique:c10proxy25-sql-proxy-boundary-review | accepted |
+| ticket:c10proxy25#ACC-003 | evidence:c10proxy25-sql-proxy-boundary-validation | critique:c10proxy25-sql-proxy-boundary-review | accepted |
+| ticket:c10proxy25#ACC-004 | evidence:c10proxy25-sql-proxy-boundary-validation | critique:c10proxy25-sql-proxy-boundary-review | accepted |
+| ticket:c10proxy25#ACC-005 | evidence:c10proxy25-sql-proxy-boundary-validation | critique:c10proxy25-sql-proxy-boundary-review | accepted |
+| ticket:c10proxy25#ACC-006 | evidence:c10proxy25-sql-proxy-boundary-validation | critique:c10proxy25-sql-proxy-boundary-review | accepted |
 
 # Execution Notes
 
-This may need a human support decision before implementation. If no decision exists, prefer isolating the proxy behind an extra and marking it experimental rather than polishing it into a supported feature by accident.
+Support decision: keep the proxy as an experimental opt-in local runtime. Do not remove it, promote it to production-supported, add auth/listen/TLS hardening, or implement durable comment writeback in this ticket.
 
 # Blockers
 
-Potential human decision on support/removal boundary.
+None. The support boundary was resolved as experimental opt-in local runtime for this ticket.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: dependency/install and proxy behavior tests.
+Existing evidence: `evidence:oracle-backlog-scan`.
+
+Validation evidence: `evidence:c10proxy25-sql-proxy-boundary-validation`.
+
+Implementation commit: `99f0ff6d29141cb3c6201da2bae5c81d553f8579` (`fix: harden experimental SQL proxy boundary`).
+
+Observed validation:
+
+- `uv run pytest tests/core/test_sql_proxy.py tests/test_package_metadata.py tests/core/test_sql_operations.py tests/core/test_model_validation.py -q` passed `28 passed`.
+- `uv run ruff check ... && git diff --check` passed.
+- Targeted `uv run pre-commit run --files ...` passed.
+- Local basedpyright summary reported `errorCount: 0`, `warningCount: 1869`.
 
 # Critique Disposition
 
@@ -97,30 +117,34 @@ Policy rationale: Proxy support has dependency and security implications.
 
 Required critique profiles: code-change, security, operator-clarity
 
-Findings: None - no critique yet.
+Critique record: `critique:c10proxy25-sql-proxy-boundary-review`.
 
-Disposition status: pending
+Verdict: `pass`.
+
+Findings: None - no open findings. Initial critique found an ACC-006 documentation gap for the runnable module entrypoint security/listen boundary; the implementation was amended before commit and final re-review passed.
+
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: `wiki:sql-proxy-boundary`.
 
-Deferred / not-required rationale: Wiki/docs likely required if proxy stays supported or experimental.
+Deferred / not-required rationale: Retrospective found one durable lesson: the SQL proxy is an experimental opt-in local runtime with no dbt-osmosis auth, TLS, bind/listen hardening, or durable comment writeback. That accepted explanation was promoted to wiki and mirrored in README/Docusaurus docs.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed: `wiki:sql-proxy-boundary` preserves the accepted SQL proxy support, dependency, security/listen, SQL preservation, and comment middleware boundaries.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending support decision and tests.
-Residual risks: SQL proxy can expose security and dialect correctness issues.
+Accepted by: OpenCode.
+Accepted at: 2026-05-04T16:50:00Z.
+Basis: `evidence:c10proxy25-sql-proxy-boundary-validation`, `critique:c10proxy25-sql-proxy-boundary-review`, and retrospective promotion `wiki:sql-proxy-boundary` cover all scoped acceptance criteria with no critique blockers.
+Residual risks: The proxy remains experimental and real `mysql-mimic` runtime defaults are not exercised by tests; no auth, TLS, bind/listen hardening, production support, or durable comment writeback was added; full GitHub Actions validation after push remains pending outside this ticket's local acceptance.
 
 # Dependencies
 
@@ -130,3 +154,4 @@ Coordinate with ticket:c10pkg10 and ticket:c10sql21.
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench oracle finding.
 - 2026-05-04T16:31:03Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10proxy25-20260504T163103Z` for experimental opt-in proxy boundary, dependency, SQL preservation, docs, and in-memory comment middleware tests.
+- 2026-05-04T16:50:00Z: Accepted and closed after implementation commit `99f0ff6d29141cb3c6201da2bae5c81d553f8579`, evidence `evidence:c10proxy25-sql-proxy-boundary-validation`, critique `critique:c10proxy25-sql-proxy-boundary-review`, and retrospective promotion `wiki:sql-proxy-boundary`.
