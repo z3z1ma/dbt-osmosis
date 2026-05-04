@@ -5,7 +5,7 @@ status: closed
 change_class: developer-tooling
 risk_class: medium
 created_at: 2026-05-04T17:16:38Z
-updated_at: 2026-05-04T17:19:12Z
+updated_at: 2026-05-04T17:34:36Z
 scope:
   kind: repository
   repositories:
@@ -16,8 +16,10 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10pyright32-basedpyright-precommit-validation
+    - evidence:c10pyright32-ci-basedpyright-remediation
   critique:
     - critique:c10pyright32-basedpyright-precommit-review
+    - critique:c10pyright32-ci-basedpyright-remediation-review
 depends_on: []
 ---
 
@@ -72,9 +74,9 @@ Covers:
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
 | ticket:c10pyright32#ACC-001 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
-| ticket:c10pyright32#ACC-002 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
+| ticket:c10pyright32#ACC-002 | evidence:c10pyright32-ci-basedpyright-remediation | critique:c10pyright32-ci-basedpyright-remediation-review | supported |
 | ticket:c10pyright32#ACC-003 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
-| ticket:c10pyright32#ACC-004 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
+| ticket:c10pyright32#ACC-004 | evidence:c10pyright32-ci-basedpyright-remediation | critique:c10pyright32-ci-basedpyright-remediation-review | supported |
 | ticket:c10pyright32#ACC-005 | evidence:c10pyright32-basedpyright-precommit-validation | critique:c10pyright32-basedpyright-precommit-review | supported |
 
 # Execution Notes
@@ -89,7 +91,9 @@ None.
 
 Evidence `evidence:c10pyright32-basedpyright-precommit-validation` records hook-level validation after commit `7716997dfbbf0d0ec9a465aba48a7ff981369fc3`. `uv run pre-commit run basedpyright --all-files --verbose` passed and printed `basedpyright summary: 0 errors, 1869 warnings`.
 
-Evidence disposition: sufficient for the scoped developer-tooling gate.
+Evidence `evidence:c10pyright32-ci-basedpyright-remediation` records the post-push GitHub Actions failure, Linux reproduction of the CI-only optional OpenAI typing error, and the remediation commit `1d120731b5cdd36d78a394dd42be63a84c186501` that returns the Linux basedpyright reproduction to `errorCount: 0` for dbt 1.8 and 1.11 dependency sets.
+
+Evidence disposition: sufficient for the scoped developer-tooling gate and CI basedpyright remediation before re-push.
 
 # Critique Disposition
 
@@ -101,7 +105,7 @@ Policy rationale: This changes developer/CI gating behavior, but the implementat
 
 Required critique profiles: developer-tooling, operator-clarity
 
-Findings: `critique:c10pyright32-basedpyright-precommit-review` records no open findings. Initial recordkeeping finding `C10PYRIGHT32-EVID-001` was resolved by creating and linking the evidence/critique records and updating this acceptance dossier.
+Findings: `critique:c10pyright32-basedpyright-precommit-review` and `critique:c10pyright32-ci-basedpyright-remediation-review` record no open findings. Initial recordkeeping finding `C10PYRIGHT32-EVID-001` was resolved by creating and linking the evidence/critique records and updating this acceptance dossier.
 
 Disposition status: completed
 
@@ -124,8 +128,8 @@ Rationale: The pre-commit configuration is the accepted operator surface for thi
 
 Accepted by: OpenCode parent acceptance gate.
 Accepted at: 2026-05-04T17:19:12Z.
-Basis: `evidence:c10pyright32-basedpyright-precommit-validation` and `critique:c10pyright32-basedpyright-precommit-review` support all ticket-local acceptance criteria. The committed hook reported `0 errors` through pre-commit.
-Residual risks: Hook runtime adds full-project basedpyright latency and depends on `bash`, `uv`, and `python` on PATH. The nonzero-error path was verified by command inspection rather than an induced failing run.
+Basis: `evidence:c10pyright32-basedpyright-precommit-validation`, `evidence:c10pyright32-ci-basedpyright-remediation`, and linked critiques support all ticket-local acceptance criteria. The committed hook reported `0 errors` through pre-commit, and the remediated Linux CI reproduction reported `errorCount: 0` for dbt 1.8 and 1.11 dependency sets.
+Residual risks: Hook runtime adds full-project basedpyright latency and depends on `bash`, `uv`, and `python` on PATH. Full GitHub Actions confirmation for commit `1d120731b5cdd36d78a394dd42be63a84c186501` remains pending until re-push.
 
 # Dependencies
 
@@ -135,3 +139,4 @@ None.
 
 - 2026-05-04T17:16:38Z: Created from operator request to keep basedpyright errors at zero on each commit and add a pre-commit check.
 - 2026-05-04T17:19:12Z: Added basedpyright pre-commit gate in commit `7716997dfbbf0d0ec9a465aba48a7ff981369fc3`, validated hook output with `0 errors`, recorded evidence/critique, and closed ticket.
+- 2026-05-04T17:34:36Z: GitHub Actions Tests run `25333133362` exposed one Linux basedpyright error after closure. Reproduced the diagnostic, fixed the optional OpenAI rate-limit error type boundary in commit `1d120731b5cdd36d78a394dd42be63a84c186501`, recorded remediation evidence/critique, and kept ticket closed with updated acceptance basis.
