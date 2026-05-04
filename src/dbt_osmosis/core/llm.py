@@ -12,6 +12,10 @@ from dataclasses import dataclass
 from textwrap import dedent
 from urllib.parse import urlparse
 
+from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
+
+_OpenAIRateLimitError: type[Exception]
+
 try:
     import openai
     from openai import AzureOpenAI, OpenAI
@@ -23,9 +27,10 @@ except ImportError:
     OpenAI = None  # type: ignore[assignment,misc]
     AzureOpenAI = None  # type: ignore[assignment,misc]
 
-    class _OpenAIRateLimitError(Exception):  # type: ignore[no-redef]
+    class _FallbackOpenAIRateLimitError(Exception):
         """Fallback sentinel used when the optional OpenAI SDK is unavailable."""
 
+    _OpenAIRateLimitError = _FallbackOpenAIRateLimitError
     _OPENAI_AVAILABLE = False
 
 
@@ -37,8 +42,6 @@ except ImportError:
     DefaultAzureCredential = None  # type: ignore[assignment,misc]
     EnvironmentCredential = None  # type: ignore[assignment,misc]
     _AZURE_IDENTITY_AVAILABLE = False
-
-from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 
 
 _LLM_PROVIDER_REQUIRED_ENV_VARS: dict[str, list[str]] = {
