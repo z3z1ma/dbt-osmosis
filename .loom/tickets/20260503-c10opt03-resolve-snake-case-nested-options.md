@@ -1,11 +1,11 @@
 ---
 id: ticket:c10opt03
 kind: ticket
-status: active
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T16:54:20Z
+updated_at: 2026-05-04T17:10:34Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,9 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10opt03-nested-options-validation
+  critique:
+    - critique:c10opt03-nested-options-review
   packets:
     - packet:ralph-ticket-c10opt03-20260504T165420Z
 depends_on: []
@@ -66,8 +69,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10opt03#ACC-001 | evidence:oracle-backlog-scan | None | open |
-| ticket:c10opt03#ACC-003 | None - tests not written yet | None | open |
+| ticket:c10opt03#ACC-001 | evidence:c10opt03-nested-options-validation | critique:c10opt03-nested-options-review | supported |
+| ticket:c10opt03#ACC-002 | evidence:c10opt03-nested-options-validation | critique:c10opt03-nested-options-review | supported |
+| ticket:c10opt03#ACC-003 | evidence:c10opt03-nested-options-validation | critique:c10opt03-nested-options-review | supported |
+| ticket:c10opt03#ACC-004 | evidence:c10opt03-nested-options-validation | critique:c10opt03-nested-options-review | supported |
+| ticket:c10opt03#ACC-005 | evidence:c10opt03-nested-options-validation | critique:c10opt03-nested-options-review | supported |
 
 # Execution Notes
 
@@ -79,7 +85,9 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: focused tests after implementation.
+Evidence `evidence:c10opt03-nested-options-validation` records focused pytest, Ruff, whitespace, and optional-SDK basedpyright observations from final implementation/coverage commit `3c644601c5812fd1333e3fb1627e252baddfd40a`.
+
+Evidence disposition: sufficient for ticket-local acceptance. The ticket resolved a coverage gap; no resolver source change was needed because the current implementation already satisfied the scoped lookup behavior.
 
 # Critique Disposition
 
@@ -91,30 +99,32 @@ Policy rationale: Config precedence changes can be subtle but this is a bounded 
 
 Required critique profiles: code-change, test-coverage
 
-Findings: None - no critique yet.
+Findings: `critique:c10opt03-nested-options-review` records no open findings. Initial critique findings `C10OPT03-F001` and `C10OPT03-F002` were resolved during review by commit `3c644601c5812fd1333e3fb1627e252baddfd40a` and this ticket/evidence reconciliation.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
+Promoted: None.
 
-Deferred / not-required rationale: Likely not wiki-worthy unless combined with ticket:c10res14.
+Deferred / not-required rationale: No new accepted behavior or workflow needed promotion. Existing `wiki:config-resolution` already states that supported options objects accept kebab-case and snake_case setting names, including nested `dbt-osmosis-options` and `dbt_osmosis_options` inner keys.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Disposition status: not_required
+
+Rationale: `wiki:config-resolution` already covers the accepted nested-key behavior; this ticket only added focused regression coverage and did not change the accepted explanation.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests.
-Residual risks: None known beyond adjacent resolver precedence work.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-04T17:10:34Z.
+Basis: `evidence:c10opt03-nested-options-validation` and `critique:c10opt03-nested-options-review` support all ticket-local acceptance criteria. Final focused validation reported `56 passed`, Ruff and whitespace checks passed, and optional-SDK basedpyright reported `errorCount=0`.
+Residual risks: Validation is focused unit-level coverage rather than a full dbt-version matrix. Broader resolver precedence integration remains out of scope and owned by adjacent config-resolution work.
 
 # Dependencies
 
@@ -124,3 +134,4 @@ Coordinate with ticket:c10res14 if implementing in shared resolver infrastructur
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility oracle finding.
 - 2026-05-04T16:54:20Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10opt03-20260504T165420Z` for focused nested options snake/kebab coverage and any required narrow resolver fix.
+- 2026-05-04T17:10:34Z: Accepted Ralph output after focused tests showed current resolver behavior already satisfied the scoped nested option lookup contract. Added exact ACC-002 unrendered coverage after critique, recorded evidence/critique, consumed packet, and closed ticket.
