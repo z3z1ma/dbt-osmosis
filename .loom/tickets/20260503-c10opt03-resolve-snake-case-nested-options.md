@@ -1,11 +1,11 @@
 ---
 id: ticket:c10opt03
 kind: ticket
-status: ready
+status: active
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T16:54:20Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,8 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+  packets:
+    - packet:ralph-ticket-c10opt03-20260504T165420Z
 depends_on: []
 ---
 
@@ -121,3 +123,4 @@ Coordinate with ticket:c10res14 if implementing in shared resolver infrastructur
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility oracle finding.
+- 2026-05-04T16:54:20Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10opt03-20260504T165420Z` for focused nested options snake/kebab coverage and any required narrow resolver fix.

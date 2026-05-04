@@ -379,6 +379,98 @@ dbt-osmosis-options:
         )
         assert SupplementaryFileSource(mock_context).get("force-inherit-descriptions") is True
 
+    def test_nested_options_support_kebab_case_inner_keys(self, tmp_path: Path) -> None:
+        """Nested dbt-osmosis options keep accepting kebab-case inner keys."""
+        mock_node = Mock()
+        mock_node.config = Mock()
+        mock_node.config.meta = {
+            "dbt-osmosis-options": {"output-to-lower": True},
+        }
+        mock_node.unrendered_config = {
+            "dbt-osmosis-options": {"skip-add-tags": False},
+        }
+
+        assert ConfigMetaSource(mock_node).get("output-to-lower") is True
+        assert UnrenderedConfigSource(mock_node).get("skip-add-tags") is False
+
+        (tmp_path / "dbt-osmosis.yml").write_text(
+            "dbt-osmosis-options:\n  numeric-precision-and-scale: true\n",
+        )
+        mock_context = SimpleNamespace(
+            project=SimpleNamespace(runtime_cfg=SimpleNamespace(project_root=tmp_path)),
+        )
+        assert SupplementaryFileSource(mock_context).get("numeric-precision-and-scale") is True
+
+    def test_dbt110_sources_support_snake_inner_keys_in_snake_namespace(self) -> None:
+        """dbt 1.10+ config containers accept snake_case inner option keys."""
+        mock_node = Mock()
+        mock_node.config = Mock()
+        mock_node.config.meta = {
+            "dbt_osmosis_options": {"output_to_lower": True},
+        }
+        mock_node.unrendered_config = {
+            "dbt_osmosis_options": {"skip_add_tags": False},
+        }
+
+        assert ConfigMetaSource(mock_node).get("output-to-lower") is True
+        assert UnrenderedConfigSource(mock_node).get("skip-add-tags") is False
+
+    def test_supplementary_file_supports_snake_inner_keys_in_both_namespaces(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Supplementary YAML accepts snake_case inner keys in both option namespaces."""
+        (tmp_path / "dbt-osmosis.yml").write_text(
+            """
+dbt-osmosis-options:
+  output_to_lower: false
+dbt_osmosis_options:
+  force_inherit_descriptions: true
+""",
+        )
+        mock_context = SimpleNamespace(
+            project=SimpleNamespace(runtime_cfg=SimpleNamespace(project_root=tmp_path)),
+        )
+
+        source = SupplementaryFileSource(mock_context)
+        assert source.get("output-to-lower") is False
+        assert source.get("force-inherit-descriptions") is True
+
+    def test_nested_options_prefer_kebab_inner_key_over_snake_variant(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """When both inner key spellings exist, kebab-case wins."""
+        mock_node = Mock()
+        mock_node.config = Mock()
+        mock_node.config.meta = {
+            "dbt_osmosis_options": {
+                "output-to-lower": False,
+                "output_to_lower": True,
+            },
+        }
+        mock_node.unrendered_config = {
+            "dbt-osmosis-options": {
+                "output-to-lower": "kebab",
+                "output_to_lower": "snake",
+            },
+        }
+
+        assert ConfigMetaSource(mock_node).get("output-to-lower") is False
+        assert UnrenderedConfigSource(mock_node).get("output-to-lower") == "kebab"
+
+        (tmp_path / "dbt-osmosis.yml").write_text(
+            """
+dbt-osmosis-options:
+  output-to-lower: kebab
+  output_to_lower: snake
+""",
+        )
+        mock_context = SimpleNamespace(
+            project=SimpleNamespace(runtime_cfg=SimpleNamespace(project_root=tmp_path)),
+        )
+        assert SupplementaryFileSource(mock_context).get("output-to-lower") == "kebab"
+
     def test_supplementary_file_source_reuses_shared_cache(
         self,
         tmp_path: Path,
