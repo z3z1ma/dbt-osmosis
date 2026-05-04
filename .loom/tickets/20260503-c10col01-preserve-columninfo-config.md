@@ -1,11 +1,11 @@
 ---
 id: ticket:c10col01
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T22:18:00Z
+updated_at: 2026-05-04T03:29:15Z
 scope:
   kind: repository
   repositories:
@@ -18,6 +18,7 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10col01-columninfo-config-red-green
+    - evidence:c10col01-c10meta02-main-ci-success
   critique:
     - critique:c10col01-columninfo-config
   packet:
@@ -79,11 +80,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10col01#ACC-001 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config | supported |
-| ticket:c10col01#ACC-002 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config | supported |
-| ticket:c10col01#ACC-003 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config#FIND-002 withdrawn after coverage refinement | supported |
-| ticket:c10col01#ACC-004 | evidence:c10col01-columninfo-config-red-green | critique:c10col01-columninfo-config | supported |
-| ticket:c10col01#ACC-005 | None - dbt 1.11 adapter-backed matrix/integration evidence not gathered yet | critique:c10col01-columninfo-config#FIND-001 | converted_to_follow_up: ticket:c10ci06 and ticket:c10cfg12 |
+| ticket:c10col01#ACC-001 | evidence:c10col01-columninfo-config-red-green; evidence:c10col01-c10meta02-main-ci-success | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-002 | evidence:c10col01-columninfo-config-red-green; evidence:c10col01-c10meta02-main-ci-success | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-003 | evidence:c10col01-columninfo-config-red-green; evidence:c10col01-c10meta02-main-ci-success | critique:c10col01-columninfo-config#FIND-002 withdrawn after coverage refinement | supported |
+| ticket:c10col01#ACC-004 | evidence:c10col01-columninfo-config-red-green; evidence:c10col01-c10meta02-main-ci-success | critique:c10col01-columninfo-config | supported |
+| ticket:c10col01#ACC-005 | evidence:c10ci06-main-ci-success covers broad dbt 1.10/1.11 matrix execution; exact fixture evidence remains with ticket:c10cfg12 | critique:c10col01-columninfo-config#FIND-001 | converted_to_follow_up: ticket:c10ci06 closed; ticket:c10cfg12 ready follow-up |
 
 # Execution Notes
 
@@ -102,9 +103,10 @@ Implementation evidence:
 - packet:ralph-ticket-c10col01-20260503T214308Z recorded red/green evidence: focused regression failed before the fix with `AttributeError: 'ColumnInfo' object has no attribute 'config'`, then passed after removing the deletion.
 - packet:ralph-ticket-c10col01-20260503T215123Z recorded coverage refinement for `fusion_compat=False` and `fusion_compat=True`.
 - evidence:c10col01-columninfo-config-red-green preserves the observed red/green and post-commit validation output.
+- evidence:c10col01-c10meta02-main-ci-success records final `main` `Tests` workflow success after the implementation commit landed.
 - Parent verification: `uv run pytest tests/core/test_transforms.py` passed with `18 passed in 9.76s` on Python 3.13.9.
 
-Missing evidence: dbt 1.11 adapter-backed matrix/integration evidence for ACC-005. That evidence is converted to follow-up under ticket:c10ci06 and ticket:c10cfg12 because those tickets own matrix/config-shape coverage across dbt versions.
+Missing evidence: exact dbt 1.11 adapter-backed missing-column fixture evidence for ACC-005. That evidence is converted to follow-up under ticket:c10cfg12; broad dbt 1.10/1.11 matrix execution is covered by closed ticket:c10ci06.
 
 # Critique Disposition
 
@@ -118,12 +120,12 @@ Required critique profiles: code-change, test-coverage, dbt-compatibility
 
 Findings:
 
-- critique:c10col01-columninfo-config#FIND-001 remains open for missing dbt 1.11 adapter-backed evidence; ticket disposition: converted_to_follow_up to ticket:c10ci06 and ticket:c10cfg12.
+- critique:c10col01-columninfo-config#FIND-001 remains open for missing exact dbt 1.11 adapter-backed fixture evidence; ticket disposition: converted_to_follow_up to closed ticket:c10ci06 for broad matrix execution and ready ticket:c10cfg12 for exact parsed-fixture follow-up.
 - critique:c10col01-columninfo-config#FIND-002 was withdrawn after packet:ralph-ticket-c10col01-20260503T215123Z added fusion-compatible output coverage.
 
 Disposition status: completed
 
-Deferral / not-required rationale: Mandatory critique completed. The only open high finding is not ignored; it is converted to follow-up because the dbt 1.11 adapter-backed evidence belongs with the broader CI/config-shape matrix work.
+Deferral / not-required rationale: Mandatory critique completed. The only open high finding is not ignored; it is converted to follow-up because the broad dbt 1.11 matrix evidence belongs with ticket:c10ci06 and the exact parsed-fixture evidence belongs with ticket:c10cfg12.
 
 # Retrospective / Promotion Disposition
 
@@ -139,10 +141,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Implementation evidence and critique exist for ACC-001 through ACC-004. Final acceptance remains pending because ACC-005 was converted to follow-up coverage under ticket:c10ci06 and ticket:c10cfg12.
-Residual risks: dbt 1.11 adapter-backed runtime evidence is not yet available for this exact missing-column scenario.
+Accepted by: OpenCode.
+Accepted at: 2026-05-04T03:29:15Z.
+Basis: Implementation evidence and mandatory critique support ACC-001 through ACC-004; final `main` CI passed after the implementation commit; ACC-005's exact fixture gap is explicitly converted to ticket:c10cfg12 with broad dbt 1.10/1.11 matrix coverage already accepted under ticket:c10ci06.
+Residual risks: Exact dbt 1.11 adapter-backed runtime evidence is not yet available for this missing-column scenario and remains follow-up work under ticket:c10cfg12.
 
 # Dependencies
 
@@ -153,3 +155,4 @@ Coordinate with ticket:c10meta02 if the fix changes shared column serialization 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility and core architecture oracle findings.
 - 2026-05-03T22:08:00Z: Ralph iterations removed the `ColumnInfo.config` deletion and added classic/fusion-compatible sync serialization regression coverage. Mandatory critique completed with dbt 1.11 runtime evidence converted to follow-up under ticket:c10ci06 and ticket:c10cfg12.
 - 2026-05-03T22:18:00Z: Retrospective completed. Promoted red/green and post-commit validation output to evidence:c10col01-columninfo-config-red-green; no wiki promotion required for this narrow fix.
+- 2026-05-04T03:29:15Z: Accepted and closed after final `main` `Tests` workflow success was recorded in `evidence:c10col01-c10meta02-main-ci-success`; exact adapter-backed missing-column fixture evidence remains converted to ticket:c10cfg12.

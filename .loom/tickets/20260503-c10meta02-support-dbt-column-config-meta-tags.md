@@ -1,11 +1,11 @@
 ---
 id: ticket:c10meta02
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T22:45:00Z
+updated_at: 2026-05-04T03:29:15Z
 scope:
   kind: repository
   repositories:
@@ -18,6 +18,7 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10meta02-column-config-meta-tags
+    - evidence:c10col01-c10meta02-main-ci-success
   critique:
     - critique:c10meta02-column-config-meta-tags
   packet:
@@ -82,12 +83,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10meta02#ACC-001 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags | supported |
-| ticket:c10meta02#ACC-002 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags#FIND-002 withdrawn after fix | supported |
-| ticket:c10meta02#ACC-003 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags#FIND-003 withdrawn after fix | supported |
-| ticket:c10meta02#ACC-004 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags | supported |
-| ticket:c10meta02#ACC-005 | None - dbt 1.11 adapter-backed parsed-fixture evidence not gathered yet | critique:c10meta02-column-config-meta-tags#FIND-001 | converted_to_follow_up: ticket:c10cfg12 and ticket:c10ci06 |
-| ticket:c10meta02#ACC-006 | evidence:c10meta02-column-config-meta-tags | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-001 | evidence:c10meta02-column-config-meta-tags; evidence:c10col01-c10meta02-main-ci-success | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-002 | evidence:c10meta02-column-config-meta-tags; evidence:c10col01-c10meta02-main-ci-success | critique:c10meta02-column-config-meta-tags#FIND-002 withdrawn after fix | supported |
+| ticket:c10meta02#ACC-003 | evidence:c10meta02-column-config-meta-tags; evidence:c10col01-c10meta02-main-ci-success | critique:c10meta02-column-config-meta-tags#FIND-003 withdrawn after fix | supported |
+| ticket:c10meta02#ACC-004 | evidence:c10meta02-column-config-meta-tags; evidence:c10col01-c10meta02-main-ci-success | critique:c10meta02-column-config-meta-tags | supported |
+| ticket:c10meta02#ACC-005 | evidence:c10ci06-main-ci-success covers broad dbt 1.10/1.11 matrix execution; exact parsed-fixture evidence remains with ticket:c10cfg12 | critique:c10meta02-column-config-meta-tags#FIND-001 | converted_to_follow_up: ticket:c10ci06 closed; ticket:c10cfg12 ready follow-up |
+| ticket:c10meta02#ACC-006 | evidence:c10meta02-column-config-meta-tags; evidence:c10col01-c10meta02-main-ci-success | critique:c10meta02-column-config-meta-tags | supported |
 
 # Execution Notes
 
@@ -107,11 +108,12 @@ Implementation evidence:
 - packet:ralph-ticket-c10meta02-20260503T220442Z recorded YAML-source property access coverage; strict red state was not observed because the prior uncommitted implementation already satisfied the new test.
 - packet:ralph-ticket-c10meta02-20260503T221219Z recorded red/green fallback regression coverage after critique found the YAML fallback issue.
 - evidence:c10meta02-column-config-meta-tags preserves the observed red/green and post-commit validation output.
+- evidence:c10col01-c10meta02-main-ci-success records final `main` `Tests` workflow success after the implementation commit landed.
 - Parent verification: `uv run pytest tests/core/test_settings_resolver.py tests/core/test_property_accessor.py tests/core/test_inheritance_behavior.py` passed with `50 passed, 3 skipped in 13.05s`.
 - Parent verification: `uv run ruff check ...` passed.
 - Parent verification: `uv run pyright src/dbt_osmosis/core/introspection.py src/dbt_osmosis/core/inheritance.py` reported `0 errors`.
 
-Missing evidence: dbt 1.11 adapter-backed parsed-fixture evidence for ACC-005. That evidence is converted to follow-up under ticket:c10cfg12 and ticket:c10ci06 because those tickets own real config-shape fixtures and CI matrix execution.
+Missing evidence: exact dbt 1.11 adapter-backed parsed-fixture evidence for ACC-005. That evidence is converted to follow-up under ticket:c10cfg12; broad dbt 1.10/1.11 matrix execution is covered by closed ticket:c10ci06.
 
 # Critique Disposition
 
@@ -125,13 +127,13 @@ Required critique profiles: code-change, test-coverage, dbt-compatibility, regre
 
 Findings:
 
-- critique:c10meta02-column-config-meta-tags#FIND-001 remains open for missing dbt 1.11 parsed-fixture evidence; ticket disposition: converted_to_follow_up to ticket:c10cfg12 and ticket:c10ci06.
+- critique:c10meta02-column-config-meta-tags#FIND-001 remains open for missing exact dbt 1.11 parsed-fixture evidence; ticket disposition: converted_to_follow_up to closed ticket:c10ci06 for broad matrix execution and ready ticket:c10cfg12 for exact parsed-fixture follow-up.
 - critique:c10meta02-column-config-meta-tags#FIND-002 was withdrawn after packet:ralph-ticket-c10meta02-20260503T221219Z fixed YAML-source fallback behavior.
 - critique:c10meta02-column-config-meta-tags#FIND-003 was withdrawn after packet:ralph-ticket-c10meta02-20260503T221219Z added older-dbt-safe test config setup.
 
 Disposition status: completed
 
-Deferral / not-required rationale: Mandatory critique completed. The open evidence gap is not ignored; it is converted to follow-up because dbt 1.11 adapter-backed parsed-fixture coverage belongs with ticket:c10cfg12 and ticket:c10ci06.
+Deferral / not-required rationale: Mandatory critique completed. The open evidence gap is not ignored; it is converted to follow-up because broad dbt 1.11 matrix evidence belongs with ticket:c10ci06 and exact parsed-fixture coverage belongs with ticket:c10cfg12.
 
 # Retrospective / Promotion Disposition
 
@@ -147,10 +149,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Implementation evidence and critique support ACC-001 through ACC-004 and ACC-006. Final acceptance remains pending because ACC-005 was converted to follow-up coverage under ticket:c10cfg12 and ticket:c10ci06.
-Residual risks: dbt 1.11 parsed-fixture behavior is not yet verified in this ticket's evidence.
+Accepted by: OpenCode.
+Accepted at: 2026-05-04T03:29:15Z.
+Basis: Implementation evidence and mandatory critique support ACC-001 through ACC-004 and ACC-006; final `main` CI passed after the implementation commit; ACC-005's exact fixture gap is explicitly converted to ticket:c10cfg12 with broad dbt 1.10/1.11 matrix coverage already accepted under ticket:c10ci06.
+Residual risks: Exact dbt 1.11 parsed-fixture behavior is not yet verified in this ticket's evidence and remains follow-up work under ticket:c10cfg12.
 
 # Dependencies
 
@@ -161,3 +163,4 @@ Coordinate with ticket:c10cfg12 for fixture coverage and ticket:c10res14 for bro
 - 2026-05-03T21:10:43Z: Created from dbt compatibility oracle and dbt docs/source research.
 - 2026-05-03T22:36:00Z: Ralph iterations added effective column config metadata/tag helpers, settings/property/inheritance coverage, YAML-source fallback protection, and mandatory critique. dbt 1.11 parsed-fixture evidence converted to follow-up under ticket:c10cfg12 and ticket:c10ci06.
 - 2026-05-03T22:45:00Z: Retrospective completed. Promoted validation output to evidence:c10meta02-column-config-meta-tags; wiki explanation deferred until broader config-resolution tickets settle the full precedence model.
+- 2026-05-04T03:29:15Z: Accepted and closed after final `main` `Tests` workflow success was recorded in `evidence:c10col01-c10meta02-main-ci-success`; exact dbt 1.11 parsed-fixture evidence remains converted to ticket:c10cfg12.
