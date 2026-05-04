@@ -25,7 +25,7 @@ def _has_jinja(code: str) -> bool:
 
 
 def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNode:
-    """Compile jinja SQL using the context's manifest and adapter."""
+    """Compile SQL and return a node whose compiled_code is executable SQL."""
     logger.info(":zap: Compiling SQL code. Possibly with jinja => %s", raw_sql[:75] + "...")
     tmp_id = str(uuid.uuid4())
     key = f"{NodeType.SqlOperation}.{context.runtime_cfg.project_name}.{tmp_id}"
@@ -39,6 +39,7 @@ def compile_sql_code(context: DbtProjectContext, raw_sql: str) -> ManifestSQLNod
             node = context.sql_parser.parse_remote(raw_sql, tmp_id)
             if not _has_jinja(raw_sql):
                 logger.debug(":scroll: No jinja found in the raw SQL, skipping compile steps.")
+                node.compiled_code = node.raw_code
                 result = node
             else:
                 process_node(context.runtime_cfg, context.manifest, node)

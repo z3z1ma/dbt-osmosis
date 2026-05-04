@@ -2,8 +2,22 @@
 
 from unittest import mock
 
+import pytest
+from dbt.artifacts.resources.types import NodeType
+
+import dbt_osmosis.core.sql_operations as sql_operations
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
+
+
+def _sql_operation_keys(yaml_context: YamlRefactorContext) -> set[str]:
+    return {
+        key
+        for key in yaml_context.project.manifest.nodes
+        if key.startswith(
+            f"{NodeType.SqlOperation}.{yaml_context.project.runtime_cfg.project_name}."
+        )
+    }
 
 
 def test_compile_sql_code_no_jinja(yaml_context: YamlRefactorContext):
@@ -18,8 +32,51 @@ def test_compile_sql_code_no_jinja(yaml_context: YamlRefactorContext):
         mock_process.assert_not_called()
     after_node_count = len(yaml_context.project.manifest.nodes)
     assert node.raw_code == raw_sql
-    assert node.compiled_code is None
+    assert node.compiled_code == raw_sql
     assert after_node_count == before_node_count
+
+
+def test_compile_sql_code_with_ref_uses_real_fixture(yaml_context: YamlRefactorContext):
+    """Compile ref-based SQL through dbt's real parser/runner path."""
+    raw_sql = "select * from {{ ref('customers') }} limit 1"
+    before_operation_keys = _sql_operation_keys(yaml_context)
+
+    node = compile_sql_code(yaml_context.project, raw_sql)
+
+    assert node.raw_code == raw_sql
+    assert node.compiled_code is not None
+    assert "{{" not in node.compiled_code
+    assert "customers" in node.compiled_code.lower()
+    assert _sql_operation_keys(yaml_context) == before_operation_keys
+
+
+def test_execute_sql_code_select_1_real_fixture(yaml_context: YamlRefactorContext):
+    """Execute plain SQL against the real DuckDB fixture."""
+    _, table = execute_sql_code(yaml_context.project, "select 1 as value")
+
+    assert table.column_names == ("value",)
+    assert len(table.rows) == 1
+    assert table.rows[0][0] == 1
+
+
+def test_compile_sql_code_cleans_temp_node_after_compile_failure(
+    yaml_context: YamlRefactorContext, monkeypatch: pytest.MonkeyPatch
+):
+    """Temporary manifest SQL operation nodes are cleaned up when compile fails."""
+    tmp_id = "00000000-0000-0000-0000-000000000001"
+    key = f"{NodeType.SqlOperation}.{yaml_context.project.runtime_cfg.project_name}.{tmp_id}"
+
+    def fail_process(runtime_cfg, manifest, node):
+        manifest.nodes[key] = node
+        raise RuntimeError("forced compile failure")
+
+    monkeypatch.setattr(sql_operations.uuid, "uuid4", lambda: tmp_id)
+    monkeypatch.setattr(sql_operations, "process_node", fail_process)
+
+    with pytest.raises(RuntimeError, match="forced compile failure"):
+        compile_sql_code(yaml_context.project, "select {{ 1 }} as value")
+
+    assert key not in yaml_context.project.manifest.nodes
 
 
 def test_compile_sql_code_with_jinja(yaml_context: YamlRefactorContext):

@@ -1,9 +1,12 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
+from unittest import mock
+
 import pytest
 from click.testing import CliRunner
 
 from dbt_osmosis.cli.main import cli
+from dbt_osmosis.core.settings import YamlRefactorContext
 
 
 @pytest.fixture(scope="module")
@@ -112,6 +115,33 @@ def test_sql_compile_help(runner: CliRunner) -> None:
     result = runner.invoke(cli, ["sql", "compile", "--help"])
     assert result.exit_code == 0
     assert "SQL" in result.output
+
+
+def test_sql_compile_plain_sql_outputs_sql(
+    runner: CliRunner, yaml_context: YamlRefactorContext
+) -> None:
+    """Plain SQL compile should print executable SQL, not None."""
+    project_dir = str(yaml_context.project.runtime_cfg.project_root)
+
+    with mock.patch(
+        "dbt_osmosis.cli.main.create_dbt_project_context",
+        return_value=yaml_context.project,
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "sql",
+                "compile",
+                "--project-dir",
+                project_dir,
+                "--profiles-dir",
+                project_dir,
+                "select 1",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert result.output.strip().splitlines()[-1] == "select 1"
 
 
 def test_workbench_help(runner: CliRunner) -> None:
