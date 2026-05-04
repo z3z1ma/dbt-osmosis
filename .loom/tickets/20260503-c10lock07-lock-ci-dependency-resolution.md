@@ -1,11 +1,11 @@
 ---
 id: ticket:c10lock07
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T00:57:09Z
+updated_at: 2026-05-04T01:10:42Z
 scope:
   kind: repository
   repositories:
@@ -18,6 +18,9 @@ links:
     - evidence:c10lock07-local-dependency-resolution-verification
     - evidence:c10lock07-adapter-bound-verification
     - evidence:c10lock07-uv-01012-verification
+    - evidence:c10lock07-main-ci-success
+  wiki:
+    - wiki:ci-compatibility-matrix
   packets:
     - packet:ralph-ticket-c10lock07-20260503T234103Z
   critique:
@@ -77,11 +80,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10lock07#ACC-001 | evidence:oracle-backlog-scan; evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported; main CI pending |
-| ticket:c10lock07#ACC-002 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported after resolved findings; main CI pending |
-| ticket:c10lock07#ACC-003 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported after resolved findings; main CI pending |
-| ticket:c10lock07#ACC-004 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | locally supported after resolved findings; main CI pending |
-| ticket:c10lock07#ACC-005 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification | critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up | locally supported; main CI pending |
+| ticket:c10lock07#ACC-001 | evidence:oracle-backlog-scan; evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification; evidence:c10lock07-main-ci-success | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | accepted - main CI lockfile job passed |
+| ticket:c10lock07#ACC-002 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification; evidence:c10lock07-main-ci-success | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | accepted - clean matrix rows passed |
+| ticket:c10lock07#ACC-003 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification; evidence:c10lock07-main-ci-success | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | accepted - dependency checks passed |
+| ticket:c10lock07#ACC-004 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-uv-01012-verification; evidence:c10lock07-main-ci-success | critique:c10lock07-dependency-resolution; critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up; critique:c10lock07-uv-01012-follow-up | accepted - CI version logs observed |
+| ticket:c10lock07#ACC-005 | evidence:c10lock07-local-dependency-resolution-verification; evidence:c10lock07-adapter-bound-verification; evidence:c10lock07-main-ci-success | critique:c10lock07-integration-path-follow-up; critique:c10lock07-adapter-constraint-follow-up | accepted - pip smoke passed |
 
 # Execution Notes
 
@@ -89,7 +92,7 @@ Be careful with `UV_FROZEN` and `UV_NO_SYNC` in `Taskfile.yml`; verify the local
 
 # Blockers
 
-Final GitHub Actions evidence is pending after commit/push.
+None.
 
 # Evidence
 
@@ -99,10 +102,11 @@ Existing evidence:
 - evidence:c10lock07-local-dependency-resolution-verification - local lock, workflow, Taskfile, pip smoke, and child uv matrix smoke evidence after implementation.
 - evidence:c10lock07-adapter-bound-verification - local pinned-uv dbt 1.8 follow-up evidence after main CI exposed old adapter selection.
 - evidence:c10lock07-uv-01012-verification - local exact uv 0.10.12 follow-up evidence after operator requested a newer CI uv pin.
+- evidence:c10lock07-main-ci-success - final `main` GitHub Actions evidence at commit `19ef3a4bd3d6e6e3f5437e634a51fc11edaa23ba`.
 
 Missing evidence:
 
-- GitHub Actions run logs from `main` after implementation commit/push.
+None - final `main` CI evidence is recorded.
 
 # Critique Disposition
 
@@ -128,25 +132,25 @@ Findings:
 
 Disposition status: completed
 
-Deferral / not-required rationale: None. Mandatory critique is complete; final `main` CI evidence remains an acceptance evidence gap, not a critique blocker.
+Deferral / not-required rationale: None. Mandatory critique is complete and final `main` CI evidence is recorded.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: Updated `wiki:ci-compatibility-matrix` with the accepted clean-environment matrix workflow, shared CI uv tool constraint, adapter floor, plain pip smoke purpose, and failure modes for `uv run` resync and old adapter selection.
 
-Deferred / not-required rationale: Not decided.
+Deferred / not-required rationale: Broader package metadata cleanup remains explicitly deferred to `ticket:c10pkg10`; no spec, plan, constitution, or memory promotion was required for this ticket.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+Completed - `wiki:ci-compatibility-matrix` updated during closure.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Local evidence and mandatory critique support committing and pushing the implementation for CI trial on `main`; local follow-up evidence also supports the explicit adapter floor for the observed dbt 1.8 failure mode and the operator-requested `uv==0.10.12` CI toolchain pin. Final acceptance is pending GitHub Actions evidence from `main` and retrospective disposition.
+Accepted by: OpenCode
+Accepted at: 2026-05-04T01:10:42Z
+Basis: Final `main` GitHub Actions evidence passed for commit `19ef3a4bd3d6e6e3f5437e634a51fc11edaa23ba`; mandatory critique completed with all findings resolved; retrospective promotion updated `wiki:ci-compatibility-matrix`.
 Residual risks: Resolver differences between uv and pip may remain for optional extras; the adapter floor is currently a CI stabilizer rather than package metadata cleanup; local Taskfile execution still depends on operator-installed uv; `demo_duckdb/integration_tests.sh` still uses `uv run` and should not be reintroduced into matrix CI without a sync-safe change; the existing uv-only protobuf override remains for `ticket:c10pkg10`.
 
 # Dependencies
@@ -163,3 +167,4 @@ Coordinate with ticket:c10pkg10 for package metadata and extras cleanup.
 - 2026-05-04T00:47:15Z: Main CI for pushed commit `d72c3b8` failed dbt 1.8 pytest rows under CI-pinned `uv==0.5.13`; local reproduction showed adding `dbt-adapters>=1.16.3,<2.0` selected `dbt-adapters==1.16.3` and `mashumaro==3.14`, passed `pip check`, and drove the failing sync-operation test green.
 - 2026-05-04T00:47:15Z: Added explicit adapter floor to workflow/Taskfile uv-resolved matrix/latest installs, fixed reviewer-caught workflow env scoping by moving `DBT_ADAPTERS_CONSTRAINT` to workflow-level `env`, recorded `evidence:c10lock07-adapter-bound-verification`, and finalized `critique:c10lock07-adapter-constraint-follow-up` with no remaining blocker; final `main` CI evidence remains pending after commit/push.
 - 2026-05-04T00:57:09Z: Operator requested CI use `uv==0.10.12` at least; updated `.github/workflows/constraints.txt` to exact `uv==0.10.12`, verified the dbt 1.8 matrix-style path locally with that uv version, recorded `evidence:c10lock07-uv-01012-verification`, and finalized `critique:c10lock07-uv-01012-follow-up` with no open findings; final `main` CI evidence remains pending after commit/push.
+- 2026-05-04T01:10:42Z: Final `main` CI for commit `19ef3a4bd3d6e6e3f5437e634a51fc11edaa23ba` passed (`Tests` run `25295956433`, `lint` run `25295956438`, `Release` run `25295956432`); recorded `evidence:c10lock07-main-ci-success`, updated `wiki:ci-compatibility-matrix`, accepted the ticket, and closed it.
