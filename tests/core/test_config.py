@@ -4,12 +4,14 @@ import json
 import os
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from dbt_osmosis.core.config import (
     DbtConfiguration,
+    _add_cross_project_references,
     _detect_fusion_manifest,
     _reload_manifest,
     create_dbt_project_context,
@@ -245,6 +247,67 @@ def test_create_dbt_project_context_rebinds_when_stale_adapter_has_no_cleanup_ho
 
     assert result is mock.sentinel.context
     assert factory.adapters["duckdb"] is project_adapter
+
+
+def test_add_cross_project_references_imports_exposed_models_without_parser_hack(
+    yaml_context: YamlRefactorContext,
+):
+    """dbt-loom exposed model nodes should import without ModelParser internals."""
+    base_node = next(
+        node
+        for node in yaml_context.project.manifest.nodes.values()
+        if str(node.resource_type) == "model"
+    )
+    base_node_dict = base_node.to_dict(omit_none=False)
+
+    def loom_model(unique_id: str, *, access: str, resource_type: str = "model"):
+        node_dict = deepcopy(base_node_dict)
+        package_name, model_name = unique_id.split(".")[1:]
+        node_dict.update({
+            "unique_id": unique_id,
+            "package_name": package_name,
+            "name": model_name,
+            "alias": model_name,
+            "access": access,
+            "resource_type": resource_type,
+        })
+        return node_dict
+
+    public_model = loom_model("model.upstream.public_orders", access="public")
+    private_model = loom_model("model.upstream.private_orders", access="private")
+    protected_model = loom_model("model.upstream.protected_orders", access="protected")
+    non_model = loom_model("model.upstream.seed_orders", access="public", resource_type="seed")
+    manifest = SimpleNamespace(nodes={})
+    dbt_loom = SimpleNamespace(
+        dbtLoom=lambda project_name: SimpleNamespace(
+            manifests={
+                "upstream": {
+                    "nodes": {
+                        public_model["unique_id"]: public_model,
+                        private_model["unique_id"]: private_model,
+                        protected_model["unique_id"]: protected_model,
+                        non_model["unique_id"]: non_model,
+                    }
+                }
+            }
+        )
+    )
+
+    with mock.patch(
+        "dbt.parser.models.ModelParser.parse_from_dict",
+        side_effect=AssertionError("ModelParser parser hack should not be called"),
+    ) as parse_from_dict:
+        result = _add_cross_project_references(manifest, dbt_loom, "downstream")
+
+    assert result is manifest
+    assert sorted(manifest.nodes) == [
+        "model.upstream.private_orders",
+        "model.upstream.public_orders",
+    ]
+    assert (
+        manifest.nodes["model.upstream.public_orders"].unique_id == "model.upstream.public_orders"
+    )
+    parse_from_dict.assert_not_called()
 
 
 def test_adapter_ttl_expiration(yaml_context: YamlRefactorContext):

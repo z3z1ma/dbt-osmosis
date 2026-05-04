@@ -1,11 +1,11 @@
 ---
 id: ticket:c10loom04
 kind: ticket
-status: ready
+status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T21:22:06Z
 scope:
   kind: repository
   repositories:
@@ -17,6 +17,9 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10loom04-dbt-loom-parser-validation
+  critique:
+    - critique:c10loom04-dbt-loom-parser-review
 external_refs:
   dbt_core_110_model_parser: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.10.0/core/dbt/parser/models.py
   dbt_core_111_model_parser: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.11.0/core/dbt/parser/models.py
@@ -72,8 +75,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10loom04#ACC-002 | research:dbt-110-111-api-surfaces | None | open |
-| ticket:c10loom04#ACC-004 | None - regression test not written yet | None | open |
+| ticket:c10loom04#ACC-001 | evidence:c10loom04-dbt-loom-parser-validation | critique:c10loom04-dbt-loom-parser-review | supported |
+| ticket:c10loom04#ACC-002 | evidence:c10loom04-dbt-loom-parser-validation; research:dbt-110-111-api-surfaces | critique:c10loom04-dbt-loom-parser-review | supported |
+| ticket:c10loom04#ACC-003 | evidence:c10loom04-dbt-loom-parser-validation | critique:c10loom04-dbt-loom-parser-review | supported |
+| ticket:c10loom04#ACC-004 | evidence:c10loom04-dbt-loom-parser-validation | critique:c10loom04-dbt-loom-parser-review | supported |
+| ticket:c10loom04#ACC-005 | evidence:c10loom04-dbt-loom-parser-validation | critique:c10loom04-dbt-loom-parser-review | supported |
 
 # Execution Notes
 
@@ -85,7 +91,9 @@ None.
 
 # Evidence
 
-Existing evidence: research:dbt-110-111-api-surfaces and evidence:oracle-backlog-scan. Missing evidence: regression test under installed dbt 1.10/1.11.
+Existing evidence: research:dbt-110-111-api-surfaces, evidence:oracle-backlog-scan, and evidence:c10loom04-dbt-loom-parser-validation.
+
+Evidence status: local red/green, parent validation, full pre-commit, and final critique support ACC-001 through ACC-005 for the current source state. Missing evidence: remote CI after commit/push.
 
 # Critique Disposition
 
@@ -97,9 +105,13 @@ Policy rationale: Optional integration path but it touches manifest construction
 
 Required critique profiles: code-change, dbt-compatibility
 
-Findings: None - no critique yet.
+Findings: None.
 
-Disposition status: pending
+Disposition status: completed.
+
+Review: critique:c10loom04-dbt-loom-parser-review
+
+Acceptance recommendation: no-critique-blockers.
 
 Deferral / not-required rationale: None.
 
@@ -129,3 +141,7 @@ None.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from dbt compatibility oracle finding.
+- 2026-05-04T21:08:14Z: Started Ralph iteration 01 to replace the dbt-loom parser hack with a valid node construction path and focused regression coverage.
+- 2026-05-04T21:14:22Z: Ralph iteration 01 returned stop. Parent accepted the implementation iteration after focused tests, Ruff, and basedpyright zero-error validation; moved ticket to review_required for recommended critique.
+- 2026-05-04T21:20:35Z: Recommended critique completed with pass/no findings. Moved ticket to complete_pending_acceptance pending final validation, commit, push, and remote CI evidence.
+- 2026-05-04T21:22:06Z: Full pre-commit and focused config tests passed after formatting; ticket remains complete_pending_acceptance pending commit, push, and remote CI evidence.

@@ -22,7 +22,7 @@ from types import ModuleType
 # Type imports for compatibility
 from dbt.adapters.base.impl import BaseAdapter
 from dbt.contracts.graph.manifest import Manifest
-from dbt.parser.models import ModelParser
+from dbt.contracts.graph.nodes import ModelNode
 
 # Import from dbt-core-interface instead of internal dbt modules
 from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
@@ -51,6 +51,21 @@ except (ImportError, AttributeError):
 # Matches "/v12.json" at the end of "https://schemas.getdbt.com/dbt/manifest/v12.json"
 _SCHEMA_VERSION_RE = re.compile(r"/v(\d+)(?:\.json)?$")
 _KNOWN_FUSION_MANIFEST_SCHEMA_VERSIONS = {20}
+
+
+def _set_project_manifest(project: InterfaceDbtProject, manifest: Manifest) -> None:
+    """Replace a dbt-core-interface project manifest through a narrow shim.
+
+    dbt-core-interface exposes ``DbtProject.manifest`` as read-only in supported
+    versions. Until it provides a public mutation API, isolate the private
+    storage write here so compatibility debt is explicit and easy to audit.
+    """
+    manifest_property = getattr(type(project), "manifest", None)
+    if isinstance(manifest_property, property) and manifest_property.fset is not None:
+        manifest_property.fset(project, manifest)
+        return
+
+    object.__setattr__(project, "_DbtProject__manifest", manifest)
 
 
 def _cleanup_stale_adapter(registered_adapter: object, adapter_type: str) -> None:
@@ -433,9 +448,8 @@ class DbtProjectContext:
 
         This allows manifest reloading while maintaining the same DbtProject instance.
         """
-        # We need to update the internal manifest in DbtProject
-        # DbtProject doesn't expose a setter, so we set it on the object
-        object.__setattr__(self._project, "_DbtProject__manifest", value)
+        assert self._project is not None, "DbtProjectContext not initialized"
+        _set_project_manifest(self._project, value)
 
     @property
     def sql_parser(self):
@@ -532,7 +546,7 @@ def _add_cross_project_references(
                     if node_access != "protected":
                         if node.get("resource_type") == "model":
                             try:
-                                loomnodes.append(ModelParser.parse_from_dict(None, node))  # pyright: ignore[reportArgumentType]
+                                loomnodes.append(ModelNode.from_dict(node))
                             except Exception as e:
                                 logger.warning(
                                     ":warning: Failed to parse node %s from dbt loom: %s",
@@ -634,8 +648,7 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
                 dbt_loom,
                 project.project_name,
             )
-            # Update the manifest in the project
-            project.manifest = manifest
+            _set_project_manifest(project, manifest)
         except Exception as e:
             logger.warning(":warning: Failed to add cross-project references from dbt_loom: %s", e)
 
