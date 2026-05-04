@@ -21,6 +21,17 @@ repos:
         args: ["--preview"]
       - id: ruff
         args: [--fix]
+  - repo: local
+    hooks:
+      - id: basedpyright
+        name: basedpyright
+        entry: >
+          bash -c "uv run --with 'openai~=1.58.1' --with 'azure-identity>=1.19,<2'
+          basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright-precommit.json || true;
+          python -c 'import json, pathlib, sys; summary = json.loads(pathlib.Path(\"/tmp/dbt-osmosis-basedpyright-precommit.json\").read_text())[\"summary\"]; print(\"basedpyright summary:\", summary[\"errorCount\"], \"errors,\", summary[\"warningCount\"], \"warnings\"); sys.exit(1 if summary[\"errorCount\"] else 0)'"
+        language: system
+        pass_filenames: false
+        always_run: true
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:
