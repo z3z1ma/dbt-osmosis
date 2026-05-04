@@ -6,7 +6,6 @@ This module provides DuckDB-backed fixtures for exercising dbt-osmosis tests.
 from __future__ import annotations
 
 import gc
-import os
 import shutil
 import tempfile
 import time
@@ -17,7 +16,7 @@ import pytest
 
 from dbt_osmosis.core.config import DbtConfiguration, create_dbt_project_context
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
-from tests.support import run_dbt_command
+from tests.support import create_temp_project_copy, run_dbt_command
 
 
 def _run_dbt_commands(project_dir: str, profiles_dir: str, target: str = "test") -> None:
@@ -65,33 +64,32 @@ def _run_dbt_commands(project_dir: str, profiles_dir: str, target: str = "test")
 def _create_temp_project_copy(
     source_dir: Path,
     temp_dir: Path,
-    exclude_target: bool = False,
+    exclude_target: bool | None = None,
+    *,
+    include_generated_artifacts: bool = False,
 ) -> Path:
     """Create a copy of the source project in a temporary directory.
 
     Args:
         source_dir: Source directory to copy
         temp_dir: Temporary directory to copy into
-        exclude_target: If True, exclude the target/ directory to avoid
-            copying cached manifest.json with wrong paths
+        exclude_target: Legacy compatibility switch. If set, generated
+            artifacts are included only when this is False.
+        include_generated_artifacts: If True, intentionally copy generated
+            outputs such as target/ and test.db.
 
     Returns:
         Path: Path to the copied project directory
 
     """
-    project_dir = temp_dir / source_dir.name
+    if exclude_target is not None:
+        include_generated_artifacts = not exclude_target
 
-    # Function to exclude target directory and other build artifacts
-    def _ignore_filter(src: str, names: list[str]) -> list[str]:
-        # Get the relative path from the source directory
-        src_path = Path(src).relative_to(source_dir)
-        # Exclude target directory (contains cached manifest)
-        if exclude_target and "target" in names and src_path == Path():
-            return ["target"]
-        return []
-
-    shutil.copytree(source_dir, project_dir, ignore=_ignore_filter)
-    return project_dir
+    return create_temp_project_copy(
+        source_dir,
+        temp_dir,
+        include_generated_artifacts=include_generated_artifacts,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -131,14 +129,7 @@ def built_duckdb_template() -> Iterator[Path]:
         print("SESSION SETUP: Building dbt project template")
         print("=" * 60)
 
-        # Change to the project directory before running dbt commands
-        # This is necessary because DuckDB uses relative paths based on CWD
-        old_cwd = os.getcwd()
-        os.chdir(str(template_project_dir))
-        try:
-            _run_dbt_commands(str(template_project_dir), str(template_project_dir))
-        finally:
-            os.chdir(old_cwd)
+        _run_dbt_commands(str(template_project_dir), str(template_project_dir))
 
         # Verify the database file was created
         db_file = template_project_dir / "test.db"
@@ -201,7 +192,11 @@ def yaml_context(built_duckdb_template: Path) -> Iterator[YamlRefactorContext]:
     temp_dir = Path(tempfile.mkdtemp(prefix="dbt_osmosis_test_"))
 
     # Copy the ENTIRE template project to preserve isolation
-    project_dir = _create_temp_project_copy(built_duckdb_template, temp_dir)
+    project_dir = _create_temp_project_copy(
+        built_duckdb_template,
+        temp_dir,
+        include_generated_artifacts=True,
+    )
 
     # Verify the database file was copied
     db_file = project_dir / "test.db"

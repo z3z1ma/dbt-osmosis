@@ -55,6 +55,21 @@ tasks:
     status:
       - test -f .git/hooks/pre-commit
 
+  parse-demo:
+    desc: Parse an isolated temp copy of demo_duckdb
+    cmds:
+      - |
+        DEMO_PROJECT=$(python - <<'PY'
+        from pathlib import Path
+        from tempfile import mkdtemp
+
+        from tests.support import create_temp_project_copy
+
+        print(create_temp_project_copy(Path("demo_duckdb"), Path(mkdtemp(prefix="dbt-osmosis-parse-"))))
+        PY
+        )
+        dbt parse --project-dir "$DEMO_PROJECT" --profiles-dir "$DEMO_PROJECT" --target test
+
   test:
     desc: Run basedpyright, dbt parse, and pytest against the explicit supported python/dbt matrix
     env:
@@ -104,7 +119,7 @@ tasks:
           uv --no-config pip check --python "$MATRIX_ENV/bin/python"
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright-{{.ITEM.python_version}}-{{.ITEM.dbt_version}}.json || true
           python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright-{{.ITEM.python_version}}-{{.ITEM.dbt_version}}.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          task parse-demo
           pytest
         silent: true
       - for:
@@ -150,7 +165,7 @@ tasks:
           uv --no-config pip check --python "$MATRIX_ENV/bin/python"
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright-{{.ITEM.python_version}}-{{.ITEM.dbt_version}}.json || true
           python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright-{{.ITEM.python_version}}-{{.ITEM.dbt_version}}.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          task parse-demo
           pytest
         silent: true
       - for:
@@ -197,7 +212,7 @@ tasks:
           uv --no-config pip check --python "$MATRIX_ENV/bin/python"
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright-{{.ITEM.python_version}}-{{.ITEM.dbt_version}}.json || true
           python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright-{{.ITEM.python_version}}-{{.ITEM.dbt_version}}.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          task parse-demo
           pytest
         silent: true
 
@@ -252,7 +267,7 @@ tasks:
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright.json || true
           python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
           dbt --version
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          task parse-demo
           dbt-osmosis --help
           python -c "import dbt_osmosis; import dbt_osmosis.cli.main"
           pytest -q
@@ -301,7 +316,7 @@ tasks:
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright.json || true
           python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
           dbt --version
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          task parse-demo
           dbt-osmosis --help
           python -c "import dbt_osmosis; import dbt_osmosis.cli.main"
           pytest -q

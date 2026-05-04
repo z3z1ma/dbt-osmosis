@@ -11,6 +11,7 @@ import pytest
 import ruamel.yaml
 
 import tests.conftest as test_conftest
+import tests.core.conftest as core_conftest
 
 from tests.conftest import _run_dbt_commands
 from tests.support import manifest_requires_refresh
@@ -151,3 +152,54 @@ def test_manifest_requires_refresh_when_manifest_is_current(tmp_path: Path) -> N
     _ = os.utime(manifest_path, (newer_manifest_time, newer_manifest_time))
 
     assert manifest_requires_refresh(manifest_path, project_dir) is False
+
+
+def test_isolated_demo_manifest_parse_uses_temp_project_not_source_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Core manifest support should parse a copied project and leave source target untouched."""
+    source_dir = tmp_path / "demo_duckdb"
+    source_dir.mkdir()
+    (source_dir / "profiles.yml").write_text(
+        "\n".join([
+            "jaffle_shop:",
+            "  target: test",
+            "  outputs:",
+            "    test:",
+            "      type: duckdb",
+            '      path: "test.db"',
+            "      threads: 1",
+            "",
+        ]),
+    )
+    (source_dir / "dbt_project.yml").write_text("name: jaffle_shop\nprofile: jaffle_shop\n")
+
+    calls: list[list[str]] = []
+
+    def fake_run_dbt_command(args: list[str]) -> None:
+        calls.append(args)
+        project_dir = Path(args[args.index("--project-dir") + 1])
+        assert project_dir != source_dir
+        manifest_path = project_dir / "target" / "manifest.json"
+        manifest_path.parent.mkdir()
+        manifest_path.write_text("{}")
+
+    monkeypatch.setattr(core_conftest, "run_dbt_command", fake_run_dbt_command)
+
+    manifest_path = core_conftest._build_isolated_demo_manifest(tmp_path / "work", source_dir)
+
+    assert manifest_path == tmp_path / "work" / "demo_duckdb" / "target" / "manifest.json"
+    assert manifest_path.is_file()
+    assert not (source_dir / "target" / "manifest.json").exists()
+    assert calls == [
+        [
+            "parse",
+            "--project-dir",
+            str(tmp_path / "work" / "demo_duckdb"),
+            "--profiles-dir",
+            str(tmp_path / "work" / "demo_duckdb"),
+            "--target",
+            "test",
+        ],
+    ]

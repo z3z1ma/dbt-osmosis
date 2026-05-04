@@ -24,19 +24,18 @@ from dbt_osmosis.core.osmosis import (
 dbt_version = Version(dbt.version.get_installed_version().to_version_string(skip_matcher=True))
 
 
-def load_demo_manifest() -> Manifest:
+def load_demo_manifest(manifest_path: Path) -> Manifest:
     """Helper for verifying certain known nodes."""
-    manifest_path = Path("demo_duckdb/target/manifest.json")
-    assert manifest_path.is_file(), "Must have a compiled manifest.json in demo_duckdb/target"
+    assert manifest_path.is_file(), f"Must have a compiled manifest.json at {manifest_path}"
     with manifest_path.open("r") as f:
         return Manifest.from_dict(json.load(f))
 
 
-def test_real_manifest_contains_customers():
+def test_real_manifest_contains_customers(demo_manifest_path: Path):
     """Quick test ensuring your 'demo_duckdb' project manifest includes 'customers' node
     in the expected location (model.jaffle_shop_duckdb.customers).
     """
-    manifest = load_demo_manifest()
+    manifest = load_demo_manifest(demo_manifest_path)
     assert "model.jaffle_shop_duckdb.customers" in manifest.nodes
 
 

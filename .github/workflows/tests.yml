@@ -132,6 +132,11 @@ jobs:
         run: |
           uv --no-config pip check --python "$VIRTUAL_ENV/bin/python"
 
+      - name: Assert source fixture artifacts absent
+        run: |
+          test ! -e test.db
+          test ! -e demo_duckdb/target
+
       - name: Run basedpyright
         run: |
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright.json || true
@@ -139,28 +144,31 @@ jobs:
 
       - name: Parse manifest
         run: |
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          DEMO_PROJECT=$(python - <<'PY'
+          from pathlib import Path
+          from tempfile import mkdtemp
+
+          from tests.support import create_temp_project_copy
+
+          print(create_temp_project_copy(Path("demo_duckdb"), Path(mkdtemp(prefix="dbt-osmosis-parse-"))))
+          PY
+          )
+          dbt parse --project-dir "$DEMO_PROJECT" --profiles-dir "$DEMO_PROJECT" --target test
 
       - name: Run pytest
         run: |
           pytest
 
       - name: Run integration tests
-        working-directory: demo_duckdb
         run: |
           command -v dbt-osmosis
           dbt-osmosis --version
-          common_options=(
-            --project-dir .
-            --profiles-dir .
-            --target test
-          )
-          dbt-osmosis yaml organize --auto-apply "${common_options[@]}"
-          dbt-osmosis yaml document "${common_options[@]}"
-          dbt-osmosis yaml refactor --auto-apply "${common_options[@]}"
-          dbt-osmosis yaml --help >/dev/null
-          git checkout -- models/ seeds/
-          git clean -fd models/ seeds/
+          demo_duckdb/integration_tests.sh
+
+      - name: Assert source fixture artifacts still absent
+        run: |
+          test ! -e test.db
+          test ! -e demo_duckdb/target
 
   docs:
     name: Build docs (Node ${{ matrix.node-version }})
@@ -266,13 +274,26 @@ jobs:
                   assert Version(version) >= Version(minimum[package]), f"{package} {version} is below {minimum[package]}"
           PY
           uv --no-config pip check --python "$SMOKE_ENV/bin/python"
+          test ! -e test.db
+          test ! -e demo_duckdb/target
           basedpyright --outputjson > /tmp/dbt-osmosis-basedpyright.json || true
           python -c "import json, pathlib, sys; summary = json.loads(pathlib.Path('/tmp/dbt-osmosis-basedpyright.json').read_text())['summary']; print('basedpyright summary:', summary['errorCount'], 'errors,', summary['warningCount'], 'warnings'); sys.exit(1 if summary['errorCount'] else 0)"
           dbt --version
-          dbt parse --project-dir demo_duckdb --profiles-dir demo_duckdb -t test
+          DEMO_PROJECT=$(python - <<'PY'
+          from pathlib import Path
+          from tempfile import mkdtemp
+
+          from tests.support import create_temp_project_copy
+
+          print(create_temp_project_copy(Path("demo_duckdb"), Path(mkdtemp(prefix="dbt-osmosis-parse-"))))
+          PY
+          )
+          dbt parse --project-dir "$DEMO_PROJECT" --profiles-dir "$DEMO_PROJECT" --target test
           dbt-osmosis --help
           python -c "import dbt_osmosis; import dbt_osmosis.cli.main"
           pytest -q
+          test ! -e test.db
+          test ! -e demo_duckdb/target
 
   pip-install-smoke:
     name: Pip install smoke
