@@ -1,11 +1,11 @@
 ---
 id: ticket:c10sql21
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-04T14:13:06Z
 scope:
   kind: repository
   repositories:
@@ -17,6 +17,11 @@ links:
     - research:dbt-110-111-api-surfaces
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10sql21-sql-compile-contract-validation
+  packets:
+    - packet:ralph-ticket-c10sql21-20260504T134541Z
+  critique:
+    - critique:c10sql21-sql-compile-contract-review
 external_refs:
   dbt_core_110_sql_parser: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.10.0/core/dbt/parser/sql.py
   dbt_core_111_sql_parser: https://raw.githubusercontent.com/dbt-labs/dbt-core/v1.11.0/core/dbt/parser/sql.py
@@ -76,8 +81,12 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10sql21#ACC-001 | evidence:oracle-backlog-scan, research:dbt-110-111-api-surfaces | None | open |
-| ticket:c10sql21#ACC-004 | None - real integration tests not written yet | None | open |
+| ticket:c10sql21#ACC-001 | evidence:c10sql21-sql-compile-contract-validation | critique:c10sql21-sql-compile-contract-review | accepted |
+| ticket:c10sql21#ACC-002 | evidence:c10sql21-sql-compile-contract-validation | critique:c10sql21-sql-compile-contract-review | accepted |
+| ticket:c10sql21#ACC-003 | evidence:c10sql21-sql-compile-contract-validation | critique:c10sql21-sql-compile-contract-review | accepted |
+| ticket:c10sql21#ACC-004 | evidence:c10sql21-sql-compile-contract-validation | critique:c10sql21-sql-compile-contract-review | accepted with final 1.11 CI observation deferred |
+| ticket:c10sql21#ACC-005 | evidence:c10sql21-sql-compile-contract-validation | critique:c10sql21-sql-compile-contract-review | accepted |
+| ticket:c10sql21#ACC-006 | evidence:c10sql21-sql-compile-contract-validation | critique:c10sql21-sql-compile-contract-review | accepted |
 
 # Execution Notes
 
@@ -89,7 +98,11 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan and research:dbt-110-111-api-surfaces. Missing evidence: real dbt 1.10/1.11 SQL test output.
+Evidence recorded:
+
+- evidence:oracle-backlog-scan
+- research:dbt-110-111-api-surfaces
+- evidence:c10sql21-sql-compile-contract-validation
 
 # Critique Disposition
 
@@ -101,30 +114,30 @@ Policy rationale: User-facing SQL behavior and private dbt API usage both affect
 
 Required critique profiles: code-change, test-coverage, dbt-compatibility
 
-Findings: None - no critique yet.
+Findings: None in final critique. Earlier critique blocker for incomplete workbench run-query coverage was resolved before acceptance.
 
-Disposition status: pending
+Disposition status: completed
 
-Deferral / not-required rationale: None.
+Deferral / not-required rationale: N/A - mandatory critique completed with no blockers.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
+Promoted: None.
 
-Deferred / not-required rationale: Consider wiki note if SQL compatibility shim is introduced.
+Deferred / not-required rationale: No SQL compatibility shim was introduced; the accepted contract is captured in tests, evidence, and critique.
 
 # Wiki Disposition
 
-N/A - no wiki promotion selected yet.
+N/A - no wiki promotion selected; no new reusable SQL compatibility shim or workflow page was introduced.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending tests and critique.
-Residual risks: Private dbt SQL APIs may change after 1.11.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-04T14:13:06Z.
+Basis: implementation commit `098d4d2188706c32b49b2cc0eba16100018e41df`, evidence:c10sql21-sql-compile-contract-validation, and critique:c10sql21-sql-compile-contract-review.
+Residual risks: Local runtime validation used dbt-core 1.10.20 and dbt-duckdb 1.10.0; dbt 1.11 matrix execution is deferred to final initiative validation; workbench coverage uses import-time stubs for optional UI dependencies; private dbt SQL APIs may change after 1.11.
 
 # Dependencies
 
@@ -133,3 +146,5 @@ Coordinate with ticket:c10wb22 and ticket:c10proxy25.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from CLI/SQL/workbench and dbt compatibility oracle findings.
+- 2026-05-04T13:45:41Z: Activated ticket and compiled Ralph packet `packet:ralph-ticket-c10sql21-20260504T134541Z` for test-first SQL compile/run contract coverage with local fixture validation and mandatory critique before acceptance.
+- 2026-05-04T14:13:06Z: Ralph iteration consumed. Implementation commit `098d4d2188706c32b49b2cc0eba16100018e41df` made plain SQL compile return executable `compiled_code`, added CLI/workbench/default query coverage, added real fixture SQL compile/execute and manifest cleanup tests, and documented the return contract. Local validation passed with `39 passed`; final mandatory critique found no blockers. Accepted and closed with dbt 1.11 runtime observation deferred to final initiative CI.
