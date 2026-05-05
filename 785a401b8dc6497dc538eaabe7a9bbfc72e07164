@@ -1,0 +1,69 @@
+.loom/tickets/20260505-gh346white-triage-whitespace-description-stability.md
+  human 1-133
+.loom/evidence/20260505-issue-pr-zero-pr-disposition.md
+  human 1-101
+.loom/initiatives/20260505-issue-pr-zero.md
+  human 6,19-21,102,106
+---
+{
+  "attestations": [
+    {
+      "entries": [
+        {
+          "accepted_lines": 133,
+          "added_lines": 133,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-133",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/tickets/20260505-gh346white-triage-whitespace-description-stability.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 101,
+          "added_lines": 101,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-101",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/evidence/20260505-issue-pr-zero-pr-disposition.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 6,
+          "added_lines": 6,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "6,19-21,102,106",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/initiatives/20260505-issue-pr-zero.md"
+    }
+  ],
+  "base_commit_sha": "f26b41a5ec7aeddfc64e03542ab4f476c353a36f",
+  "branch": "loom/dbt-110-111-hardening",
+  "commit_sha": "785a401b8dc6497dc538eaabe7a9bbfc72e07164",
+  "commit_time": "2026-05-05T01:36:56-07:00",
+  "commit_type": "direct_commit",
+  "git_ai_version": "1.4.2",
+  "prompts": {
+    "human": {
+      "accepted_lines": 240,
+      "agent_id": null,
+      "human_author": "z3z1ma <butler.alex2010@gmail.com>",
+      "messages": [],
+      "overriden_lines": 0,
+      "total_additions": 240,
+      "total_deletions": 0
+    }
+  },
+  "repo": "https://github.com/z3z1ma/dbt-osmosis.git",
+  "schema_version": "authorship/3.0.0"
+}
