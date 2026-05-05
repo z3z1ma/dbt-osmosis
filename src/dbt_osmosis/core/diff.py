@@ -340,8 +340,15 @@ class SchemaDiff:
             )
             db_col = database_columns[col_name]
 
-            if yaml_col and db_col and yaml_col.data_type != db_col.type:
-                severity = self._classify_type_change(yaml_col.data_type or "unknown", db_col.type)
+            if yaml_col and db_col:
+                old_type = yaml_col.data_type or "unknown"
+                new_type = db_col.type
+                if self._normalize_comparable_type(old_type) == self._normalize_comparable_type(
+                    new_type
+                ):
+                    continue
+
+                severity = self._classify_type_change(old_type, new_type)
                 changes.append(
                     ColumnTypeChanged(
                         category=ChangeCategory.TYPE_CHANGED,
@@ -349,8 +356,8 @@ class SchemaDiff:
                         node=node,
                         description="",
                         column_name=col_name,
-                        old_type=yaml_col.data_type or "unknown",
-                        new_type=db_col.type,
+                        old_type=old_type,
+                        new_type=new_type,
                     )
                 )
 
@@ -405,12 +412,13 @@ class SchemaDiff:
             List of ColumnRenamed changes
         """
         renames: list[ColumnRenamed] = []
+        available_added = sorted(added)
 
-        for old_name in removed:
+        for old_name in sorted(removed):
             # Use fuzzy matching to find potential rename
             match = process.extractOne(
                 old_name,
-                added,
+                available_added,
                 scorer=fuzz.WRatio,
                 score_cutoff=int(self._fuzzy_match_threshold),
             )
@@ -433,8 +441,14 @@ class SchemaDiff:
                         data_type=database_columns[new_name].type,
                     )
                 )
+                available_added.remove(new_name)
 
         return renames
+
+    @staticmethod
+    def _normalize_comparable_type(data_type: str) -> str:
+        """Normalize a data type string only for conservative equality checks."""
+        return "".join(data_type.lower().split())
 
     def _classify_type_change(self, old_type: str, new_type: str) -> ChangeSeverity:
         """Classify the severity of a data type change.
@@ -447,8 +461,8 @@ class SchemaDiff:
             ChangeSeverity classification
         """
         # Normalize types for comparison
-        old_norm = old_type.lower().replace(" ", "")
-        new_norm = new_type.lower().replace(" ", "")
+        old_norm = self._normalize_comparable_type(old_type)
+        new_norm = self._normalize_comparable_type(new_type)
 
         # Same type = safe
         if old_norm == new_norm:
