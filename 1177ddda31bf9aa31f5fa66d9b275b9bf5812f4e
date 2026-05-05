@@ -1,0 +1,114 @@
+.loom/tickets/20260505-gh328scaf-honor-scaffold-empty-configs-config.md
+  human 4,8,16-21,77-81,85,93,110,112,118,122,124,132-135,144-145
+.loom/evidence/20260505-gh328scaf-config-resolution-validation.md
+  human 1-111
+src/dbt_osmosis/core/sync_operations.py
+  human 34-35,37-42,44,108,153-159,274
+tests/core/test_sync_operations.py
+  human 76-213
+.loom/critique/20260505-gh328scaf-config-resolution-review.md
+  human 1-60
+.loom/packets/ralph/20260505T065313Z-ticket-gh328scaf-iter-01.md
+  human 1-142
+---
+{
+  "attestations": [
+    {
+      "entries": [
+        {
+          "accepted_lines": 26,
+          "added_lines": 26,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "4,8,16-21,77-81,85,93,110,112,118,122,124,132-135,144-145",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/tickets/20260505-gh328scaf-honor-scaffold-empty-configs-config.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 111,
+          "added_lines": 111,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-111",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/evidence/20260505-gh328scaf-config-resolution-validation.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 18,
+          "added_lines": 18,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "34-35,37-42,44,108,153-159,274",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/core/sync_operations.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 138,
+          "added_lines": 138,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "76-213",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "tests/core/test_sync_operations.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 60,
+          "added_lines": 60,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-60",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/critique/20260505-gh328scaf-config-resolution-review.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 142,
+          "added_lines": 142,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-142",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/packets/ralph/20260505T065313Z-ticket-gh328scaf-iter-01.md"
+    }
+  ],
+  "base_commit_sha": "57ee1b1e7369850644bafbf116068839f156643e",
+  "branch": "loom/dbt-110-111-hardening",
+  "commit_sha": "1177ddda31bf9aa31f5fa66d9b275b9bf5812f4e",
+  "commit_time": "2026-05-05T01:06:43-07:00",
+  "commit_type": "direct_commit",
+  "git_ai_version": "1.4.2",
+  "prompts": {
+    "human": {
+      "accepted_lines": 495,
+      "agent_id": null,
+      "human_author": "z3z1ma <butler.alex2010@gmail.com>",
+      "messages": [],
+      "overriden_lines": 0,
+      "total_additions": 495,
+      "total_deletions": 0
+    }
+  },
+  "repo": "https://github.com/z3z1ma/dbt-osmosis.git",
+  "schema_version": "authorship/3.0.0"
+}
