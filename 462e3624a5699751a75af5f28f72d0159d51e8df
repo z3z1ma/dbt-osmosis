@@ -1,0 +1,69 @@
+pyproject.toml
+  human 7
+uv.lock
+  human 747
+CHANGELOG.md
+  human 10-17,27-28,32,34,37,40
+---
+{
+  "attestations": [
+    {
+      "entries": [
+        {
+          "accepted_lines": 1,
+          "added_lines": 1,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "7",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "pyproject.toml"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 1,
+          "added_lines": 1,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "747",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "uv.lock"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 14,
+          "added_lines": 14,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "10-17,27-28,32,34,37,40",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "CHANGELOG.md"
+    }
+  ],
+  "base_commit_sha": "785a401b8dc6497dc538eaabe7a9bbfc72e07164",
+  "branch": "loom/dbt-110-111-hardening",
+  "commit_sha": "462e3624a5699751a75af5f28f72d0159d51e8df",
+  "commit_time": "2026-05-05T01:53:22-07:00",
+  "commit_type": "direct_commit",
+  "git_ai_version": "1.4.2",
+  "prompts": {
+    "human": {
+      "accepted_lines": 16,
+      "agent_id": null,
+      "human_author": "z3z1ma <butler.alex2010@gmail.com>",
+      "messages": [],
+      "overriden_lines": 0,
+      "total_additions": 16,
+      "total_deletions": 0
+    }
+  },
+  "repo": "https://github.com/z3z1ma/dbt-osmosis.git",
+  "schema_version": "authorship/3.0.0"
+}
