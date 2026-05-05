@@ -3,7 +3,7 @@ id: initiative:issue-pr-zero
 kind: initiative
 status: active
 created_at: 2026-05-05T06:02:19Z
-updated_at: 2026-05-05T06:02:19Z
+updated_at: 2026-05-05T08:33:14Z
 scope:
   kind: repository
   repositories:
@@ -16,6 +16,9 @@ links:
     - ticket:gh326skip
     - ticket:gh311wrap
     - ticket:gh305wb
+    - ticket:gh346white
+  evidence:
+    - evidence:issue-pr-zero-pr-disposition
 external_refs:
   github_issues: https://github.com/z3z1ma/dbt-osmosis/issues
   github_pulls: https://github.com/z3z1ma/dbt-osmosis/pulls
@@ -96,10 +99,11 @@ Tickets:
 - ticket:gh326skip - Add `skip-inherit-descriptions` option for column documentation inheritance.
 - ticket:gh311wrap - Prevent trailing whitespace when wrapping nested column descriptions.
 - ticket:gh305wb - Make workbench extra install and preflight ydata-profiling/IPython cleanly.
+- ticket:gh346white - Reproduce and, if needed, fix residual whitespace-only description and folded-scalar idempotency behavior from PR #346.
 
 # Status Summary
 
-Initial issue triage completed with `gh issue list`, `gh issue view`, code inspection, a focused YAML formatter reproduction, and Oracle review. Six ready tickets now own validated work. Open PRs have been listed but still need deeper per-PR disposition.
+Initial issue triage completed with `gh issue list`, `gh issue view`, code inspection, a focused YAML formatter reproduction, and Oracle review. Six issue tickets were implemented and closed. PR-zero disposition is complete: #391, #390, #389, and #384 were merged; #388, #386, #385, #383, #351, #350, #347, #346, and #344 were closed with rationale; PR #346's residual whitespace/fold-idempotency claims were converted to ticket:gh346white. `gh pr list --state open --limit 20` returned no open PRs. Main CI is still queued/in progress after final merges, so OBJ-004 remains pending.
 
 # Completion Basis
 
