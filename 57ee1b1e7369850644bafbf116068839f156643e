@@ -1,0 +1,129 @@
+.loom/evidence/20260505-gh329loss-restructure-preservation-validation.md
+  human 1-116
+src/dbt_osmosis/core/restructuring.py
+  human 294-350,418-423,426-429,438
+.loom/packets/ralph/20260505T062916Z-ticket-gh329loss-iter-01.md
+  human 1-147
+.loom/critique/20260505-gh329loss-restructure-preservation-review.md
+  human 1-65
+tests/core/test_restructuring.py
+  human 798-1036
+.loom/tickets/20260505-gh329loss-preserve-unmanaged-restructure-files.md
+  human 4,8,16-22,80-84,88,96,113,115,121,125,127,135-138,147-148
+.loom/packets/ralph/20260505T064213Z-ticket-gh329loss-iter-02.md
+  human 1-153
+---
+{
+  "attestations": [
+    {
+      "entries": [
+        {
+          "accepted_lines": 116,
+          "added_lines": 116,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-116",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/evidence/20260505-gh329loss-restructure-preservation-validation.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 68,
+          "added_lines": 68,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "294-350,418-423,426-429,438",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/core/restructuring.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 147,
+          "added_lines": 147,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-147",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/packets/ralph/20260505T062916Z-ticket-gh329loss-iter-01.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 65,
+          "added_lines": 65,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-65",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/critique/20260505-gh329loss-restructure-preservation-review.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 239,
+          "added_lines": 239,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "798-1036",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "tests/core/test_restructuring.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 27,
+          "added_lines": 27,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "4,8,16-22,80-84,88,96,113,115,121,125,127,135-138,147-148",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/tickets/20260505-gh329loss-preserve-unmanaged-restructure-files.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 153,
+          "added_lines": 153,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-153",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/packets/ralph/20260505T064213Z-ticket-gh329loss-iter-02.md"
+    }
+  ],
+  "base_commit_sha": "db73d9e4a6fb2c28939d31aab611ca8d1f2f7021",
+  "branch": "loom/dbt-110-111-hardening",
+  "commit_sha": "57ee1b1e7369850644bafbf116068839f156643e",
+  "commit_time": "2026-05-05T01:01:39-07:00",
+  "commit_type": "direct_commit",
+  "git_ai_version": "1.4.2",
+  "prompts": {
+    "human": {
+      "accepted_lines": 815,
+      "agent_id": null,
+      "human_author": "z3z1ma <butler.alex2010@gmail.com>",
+      "messages": [],
+      "overriden_lines": 0,
+      "total_additions": 815,
+      "total_deletions": 0
+    }
+  },
+  "repo": "https://github.com/z3z1ma/dbt-osmosis.git",
+  "schema_version": "authorship/3.0.0"
+}
