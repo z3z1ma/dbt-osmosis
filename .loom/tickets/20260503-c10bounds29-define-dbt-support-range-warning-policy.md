@@ -1,11 +1,11 @@
 ---
 id: ticket:c10bounds29
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: release-packaging
 risk_class: high
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-04T23:45:07Z
+updated_at: 2026-05-05T00:12:42Z
 scope:
   kind: repository
   repositories:
@@ -18,8 +18,11 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10bounds29-support-policy-validation
+    - evidence:c10bounds29-main-ci-success
   critique:
     - critique:c10bounds29-support-policy-review
+external_refs:
+  github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/380
 depends_on: []
 ---
 
@@ -72,11 +75,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10bounds29#ACC-001 | evidence:c10bounds29-support-policy-validation; evidence:oracle-backlog-scan; research:dbt-110-111-api-surfaces | critique:c10bounds29-support-policy-review | supported |
-| ticket:c10bounds29#ACC-002 | evidence:c10bounds29-support-policy-validation | critique:c10bounds29-support-policy-review#FIND-002 accepted_risk | supported with accepted low risk |
-| ticket:c10bounds29#ACC-003 | evidence:c10bounds29-support-policy-validation | critique:c10bounds29-support-policy-review#FIND-001 accepted_risk | supported with accepted low risk |
-| ticket:c10bounds29#ACC-004 | evidence:c10bounds29-support-policy-validation; evidence:oracle-backlog-scan | critique:c10bounds29-support-policy-review | supported |
-| ticket:c10bounds29#ACC-005 | evidence:c10bounds29-support-policy-validation | critique:c10bounds29-support-policy-review | supported |
+| ticket:c10bounds29#ACC-001 | evidence:c10bounds29-support-policy-validation; evidence:c10bounds29-main-ci-success; evidence:oracle-backlog-scan; research:dbt-110-111-api-surfaces | critique:c10bounds29-support-policy-review | supported |
+| ticket:c10bounds29#ACC-002 | evidence:c10bounds29-support-policy-validation; evidence:c10bounds29-main-ci-success | critique:c10bounds29-support-policy-review#FIND-002 accepted_risk | supported with accepted low risk |
+| ticket:c10bounds29#ACC-003 | evidence:c10bounds29-support-policy-validation; evidence:c10bounds29-main-ci-success | critique:c10bounds29-support-policy-review#FIND-001 accepted_risk | supported with accepted low risk |
+| ticket:c10bounds29#ACC-004 | evidence:c10bounds29-support-policy-validation; evidence:c10bounds29-main-ci-success; evidence:oracle-backlog-scan | critique:c10bounds29-support-policy-review | supported |
+| ticket:c10bounds29#ACC-005 | evidence:c10bounds29-support-policy-validation; evidence:c10bounds29-main-ci-success | critique:c10bounds29-support-policy-review | supported |
 
 # Execution Notes
 
@@ -88,9 +91,9 @@ None. The support-range decision was resolved as keep open plus canary.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan, research:dbt-110-111-api-surfaces, and evidence:c10bounds29-support-policy-validation.
+Existing evidence: evidence:oracle-backlog-scan, research:dbt-110-111-api-surfaces, evidence:c10bounds29-support-policy-validation, and evidence:c10bounds29-main-ci-success.
 
-Evidence status: local test-first validation, full pre-commit, focused package metadata tests, uv lock check, and mandatory critique support ACC-001 through ACC-005 for the current source state. Missing evidence: remote CI after commit/push.
+Evidence status: local test-first validation, full pre-commit, focused package metadata tests, uv lock check, mandatory critique, and green remote CI support ACC-001 through ACC-005 for commit `38d95c22db743f8df3f88059b13f359793ceb057`. Missing evidence: none for this ticket's acceptance scope.
 
 # Critique Disposition
 
@@ -117,11 +120,11 @@ Deferral / not-required rationale: None.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
-Promoted: None - implementation not complete.
+Promoted: README and Docusaurus support-policy documentation were updated in this ticket.
 
-Deferred / not-required rationale: Docs/wiki update likely needed after support policy is accepted.
+Deferred / not-required rationale: No separate wiki, research, spec, plan, initiative, or constitution update is needed beyond the user-facing docs, tests, ticket, evidence, and critique records produced here.
 
 # Wiki Disposition
 
@@ -129,10 +132,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Pending support decision and CI evidence.
-Residual risks: Constraining too tightly can block users; constraining too loosely can admit broken future dbt versions.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-05T00:12:42Z.
+Basis: Implementation commit `38d95c22db743f8df3f88059b13f359793ceb057`, evidence:c10bounds29-support-policy-validation, critique:c10bounds29-support-policy-review, and evidence:c10bounds29-main-ci-success.
+Residual risks: The scheduled/manual future-dbt canary has not run remotely yet; unpinned resolver behavior can remain on audited dbt lines when adapter constraints require it; docs do not enumerate every Python/dbt matrix exclusion; canary failures are non-blocking visibility signals that require monitoring.
 
 # Dependencies
 
@@ -145,3 +148,4 @@ Coordinate with ticket:c10ci06 and ticket:c10lock07.
 - 2026-05-04T23:38:36Z: Ralph iteration 01 returned stop. Parent accepted the implementation after diff review, package metadata tests, whitespace validation, and touched-file pre-commit; moved ticket to review_required for mandatory release-packaging/operator-clarity/dbt-compatibility critique.
 - 2026-05-04T23:43:46Z: Mandatory critique returned pass_with_findings with two low findings; parent accepted both low risks in ticket-owned critique disposition and moved ticket to complete_pending_acceptance pending final validation, commit, push, and remote CI evidence.
 - 2026-05-04T23:45:07Z: Full pre-commit, package metadata tests, and uv lock check passed; ticket remains complete_pending_acceptance pending commit, push, and remote CI evidence.
+- 2026-05-05T00:12:42Z: Commit `38d95c22db743f8df3f88059b13f359793ceb057` reached green Labeler, lint, Tests, and Release workflows on `origin/main`; accepted residual risks and closed ticket.
