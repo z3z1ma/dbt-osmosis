@@ -1,0 +1,159 @@
+uv.lock
+  human 72-80,787,819,887-895,982-990,1227-1248,1267-1278,1735-1746,2160-2168,2190-2201,2340-2351,2366-2383,3318-3331,3540-3548,3679-3687
+tests/test_package_metadata.py
+  human 107,109-111
+tests/core/test_cli.py
+  human 366,401,421,463-469,479-502
+.loom/evidence/20260505-gh305wb-workbench-extra-preflight-validation.md
+  human 1-117
+.loom/packets/ralph/20260505T081714Z-ticket-gh305wb-iter-01.md
+  human 1-153
+src/dbt_osmosis/cli/main.py
+  human 6,92-101
+pyproject.toml
+  human 42
+.loom/critique/20260505-gh305wb-workbench-extra-preflight-review.md
+  human 1-62
+.loom/tickets/20260505-gh305wb-fix-workbench-extra-preflight.md
+  human 4,8,16-21,77-81,85,93,110,112,118,122,124,132-135,144-145
+---
+{
+  "attestations": [
+    {
+      "entries": [
+        {
+          "accepted_lines": 158,
+          "added_lines": 158,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "72-80,787,819,887-895,982-990,1227-1248,1267-1278,1735-1746,2160-2168,2190-2201,2340-2351,2366-2383,3318-3331,3540-3548,3679-3687",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "uv.lock"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 4,
+          "added_lines": 4,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "107,109-111",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "tests/test_package_metadata.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 34,
+          "added_lines": 34,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "366,401,421,463-469,479-502",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "tests/core/test_cli.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 117,
+          "added_lines": 117,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-117",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/evidence/20260505-gh305wb-workbench-extra-preflight-validation.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 153,
+          "added_lines": 153,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-153",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/packets/ralph/20260505T081714Z-ticket-gh305wb-iter-01.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 11,
+          "added_lines": 11,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "6,92-101",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/cli/main.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 1,
+          "added_lines": 1,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "42",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "pyproject.toml"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 62,
+          "added_lines": 62,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-62",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/critique/20260505-gh305wb-workbench-extra-preflight-review.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 26,
+          "added_lines": 26,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "4,8,16-21,77-81,85,93,110,112,118,122,124,132-135,144-145",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/tickets/20260505-gh305wb-fix-workbench-extra-preflight.md"
+    }
+  ],
+  "base_commit_sha": "72301c237cee12fff994747651d76e8d2563e74c",
+  "branch": "loom/dbt-110-111-hardening",
+  "commit_sha": "65782548b40579582142d0d4c0dc6c380f03d1bf",
+  "commit_time": "2026-05-05T01:27:10-07:00",
+  "commit_type": "direct_commit",
+  "git_ai_version": "1.4.2",
+  "prompts": {
+    "human": {
+      "accepted_lines": 566,
+      "agent_id": null,
+      "human_author": "z3z1ma <butler.alex2010@gmail.com>",
+      "messages": [],
+      "overriden_lines": 0,
+      "total_additions": 566,
+      "total_deletions": 0
+    }
+  },
+  "repo": "https://github.com/z3z1ma/dbt-osmosis.git",
+  "schema_version": "authorship/3.0.0"
+}
