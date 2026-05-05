@@ -1,11 +1,11 @@
 ---
 id: ticket:gh328scaf
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-05T06:02:19Z
-updated_at: 2026-05-05T06:02:19Z
+updated_at: 2026-05-05T08:02:39Z
 scope:
   kind: repository
   repositories:
@@ -13,6 +13,12 @@ scope:
 links:
   initiative:
     - initiative:issue-pr-zero
+  evidence:
+    - evidence:gh328scaf-config-resolution-validation
+  critique:
+    - critique:gh328scaf-config-resolution-review
+  packets:
+    - packet:ralph-ticket-gh328scaf-20260505T065313Z
 external_refs:
   github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/328
 depends_on: []
@@ -68,15 +74,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:gh328scaf#ACC-001 | None yet | None yet | open |
-| ticket:gh328scaf#ACC-002 | None yet | None yet | open |
-| ticket:gh328scaf#ACC-003 | None yet | None yet | open |
-| ticket:gh328scaf#ACC-004 | None yet | None yet | open |
-| ticket:gh328scaf#ACC-005 | None yet | None yet | open |
+| ticket:gh328scaf#ACC-001 | evidence:gh328scaf-config-resolution-validation | critique:gh328scaf-config-resolution-review | accepted |
+| ticket:gh328scaf#ACC-002 | evidence:gh328scaf-config-resolution-validation | critique:gh328scaf-config-resolution-review | accepted |
+| ticket:gh328scaf#ACC-003 | evidence:gh328scaf-config-resolution-validation | critique:gh328scaf-config-resolution-review | accepted |
+| ticket:gh328scaf#ACC-004 | evidence:gh328scaf-config-resolution-validation | critique:gh328scaf-config-resolution-review | accepted |
+| ticket:gh328scaf#ACC-005 | evidence:gh328scaf-config-resolution-validation | critique:gh328scaf-config-resolution-review | accepted |
 
 # Execution Notes
 
-Relevant code paths include `src/dbt_osmosis/core/sync_operations.py` checks for `context.settings.scaffold_empty_configs`, `src/dbt_osmosis/core/settings.py` setting declaration, and `src/dbt_osmosis/core/introspection.py` setting resolution.
+Ralph implemented config-aware scaffold resolution in `_sync_doc_section()` using existing `resolve_setting()` paths and preserved CLI/default fallback behavior.
 
 # Blockers
 
@@ -84,7 +90,7 @@ None.
 
 # Evidence
 
-Expected evidence: red/green focused tests for config-driven scaffolding and a targeted settings/sync pytest run. Remote CI evidence is needed before closure.
+Evidence status: local red/green Ralph evidence, parent focused sync pytest, full sync-operation pytest, Ruff, and whitespace checks support ACC-001 through ACC-005 for the uncommitted implementation diff. Remote CI will be checked at the initiative level after the full batch push per operator direction.
 
 # Critique Disposition
 
@@ -101,21 +107,21 @@ Required critique profiles:
 
 Findings:
 
-None - no critique yet.
+None - critique:gh328scaf-config-resolution-review returned `pass` with no findings.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: N/A.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
 Promoted:
 
-None yet.
+None - retrospective found no durable explanation needing wiki/research/spec promotion beyond this ticket, evidence, and critique.
 
-Deferred / not-required rationale: N/A.
+Deferred / not-required rationale: Behavior is a narrow bug fix to existing config-resolution expectations.
 
 # Wiki Disposition
 
@@ -123,10 +129,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending implementation and evidence.
-Accepted at: N/A.
-Basis: N/A.
-Residual risks: N/A.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-05T08:02:39Z.
+Basis: Local implementation evidence, focused validation, and Oracle critique support ACC-001 through ACC-005. The ticket is ready for issue closure with remote CI deferred to the issue-backlog initiative gate per operator direction.
+Residual risks: Remote CI not yet checked; coverage is unit-level rather than a full CLI/dbt-project integration run.
 
 # Dependencies
 
@@ -135,3 +141,5 @@ None.
 # Journal
 
 - 2026-05-05T06:02:19Z: Created from GitHub issue #328 and Oracle triage as a validated settings-resolution bug.
+- 2026-05-05T06:59:39Z: Ralph implemented config-aware scaffold resolution and parent validation passed. Oracle critique accepted with no findings. Retrospective completed with no promotion needed beyond ticket/evidence/critique records. Moved to complete_pending_acceptance pending final implementation commit packaging.
+- 2026-05-05T08:02:39Z: Accepted and closed locally for per-issue packaging. GitHub issue #328 is ready for commit, push, comment, and closure.

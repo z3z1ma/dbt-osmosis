@@ -73,6 +73,144 @@ def test_sync_doc_section_honors_project_vars_output_to_lower() -> None:
     assert doc_section["columns"] == [{"name": "mixed_case"}]
 
 
+def test_sync_doc_section_honors_project_vars_scaffold_empty_configs() -> None:
+    """Project vars should keep empty scaffold fields during sync."""
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    context = SimpleNamespace(
+        settings=SimpleNamespace(
+            scaffold_empty_configs=False,
+            skip_add_data_types=False,
+            skip_merge_meta=False,
+            use_unrendered_descriptions=False,
+            prefer_yaml_values=False,
+            output_to_upper=False,
+            output_to_lower=False,
+        ),
+        fusion_compat=False,
+        placeholders={"Add model description"},
+        read_catalog=lambda: None,
+        project=SimpleNamespace(
+            runtime_cfg=SimpleNamespace(
+                credentials=SimpleNamespace(type="postgres"),
+                vars={"dbt-osmosis": {"scaffold-empty-configs": True}},
+            ),
+        ),
+    )
+    node = SimpleNamespace(
+        unique_id="model.test.test_model",
+        description="Add model description",
+        meta={},
+        config=SimpleNamespace(extra={}, meta={}),
+        unrendered_config={},
+        columns=OrderedDict({
+            "id": ColumnInfo.from_dict({"name": "id", "description": ""}),
+        }),
+    )
+    doc_section: dict[str, object] = {"name": "test_model"}
+
+    _sync_doc_section(context, node, doc_section)
+
+    assert doc_section["description"] == "Add model description"
+    assert doc_section["columns"] == [{"name": "id", "description": ""}]
+
+
+def test_sync_doc_section_honors_node_config_scaffold_empty_configs() -> None:
+    """Node dbt-osmosis options should keep empty scaffold fields during sync."""
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    context = SimpleNamespace(
+        settings=SimpleNamespace(
+            scaffold_empty_configs=False,
+            skip_add_data_types=False,
+            skip_merge_meta=False,
+            use_unrendered_descriptions=False,
+            prefer_yaml_values=False,
+            output_to_upper=False,
+            output_to_lower=False,
+        ),
+        fusion_compat=False,
+        placeholders={"Add model description"},
+        read_catalog=lambda: None,
+        project=SimpleNamespace(
+            runtime_cfg=SimpleNamespace(
+                credentials=SimpleNamespace(type="postgres"),
+                vars={},
+            ),
+        ),
+    )
+    node = SimpleNamespace(
+        unique_id="model.test.test_model",
+        description="Add model description",
+        meta={},
+        config=SimpleNamespace(
+            extra={"dbt-osmosis-options": {"scaffold-empty-configs": True}},
+            meta={},
+        ),
+        unrendered_config={},
+        columns=OrderedDict({
+            "id": ColumnInfo.from_dict({"name": "id", "description": ""}),
+        }),
+    )
+    doc_section: dict[str, object] = {"name": "test_model"}
+
+    _sync_doc_section(context, node, doc_section)
+
+    assert doc_section["description"] == "Add model description"
+    assert doc_section["columns"] == [{"name": "id", "description": ""}]
+
+
+def test_sync_doc_section_scaffold_empty_configs_falls_back_to_cli_setting() -> None:
+    """Without scoped config, sync should preserve existing CLI/default fallback behavior."""
+    from collections import OrderedDict
+
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    def sync_columns(*, cli_scaffold_empty_configs: bool) -> list[dict[str, object]]:
+        context = SimpleNamespace(
+            settings=SimpleNamespace(
+                scaffold_empty_configs=cli_scaffold_empty_configs,
+                skip_add_data_types=False,
+                skip_merge_meta=False,
+                use_unrendered_descriptions=False,
+                prefer_yaml_values=False,
+                output_to_upper=False,
+                output_to_lower=False,
+            ),
+            fusion_compat=False,
+            placeholders=set(),
+            read_catalog=lambda: None,
+            project=SimpleNamespace(
+                runtime_cfg=SimpleNamespace(
+                    credentials=SimpleNamespace(type="postgres"),
+                    vars={},
+                ),
+            ),
+        )
+        node = SimpleNamespace(
+            unique_id="model.test.test_model",
+            description="",
+            meta={},
+            config=SimpleNamespace(extra={}, meta={}),
+            unrendered_config={},
+            columns=OrderedDict({
+                "id": ColumnInfo.from_dict({"name": "id", "description": ""}),
+            }),
+        )
+        doc_section: dict[str, object] = {"name": "test_model"}
+
+        _sync_doc_section(context, node, doc_section)
+
+        return doc_section["columns"]
+
+    assert sync_columns(cli_scaffold_empty_configs=False) == [{"name": "id"}]
+    assert sync_columns(cli_scaffold_empty_configs=True) == [{"name": "id", "description": ""}]
+
+
 def test_sync_node_to_yaml_versioned(yaml_context: YamlRefactorContext, fresh_caches):
     """Test syncing a versioned node to YAML."""
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v2"]

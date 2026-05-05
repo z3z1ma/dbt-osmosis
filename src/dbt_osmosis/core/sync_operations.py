@@ -31,9 +31,17 @@ def _sync_doc_section(
     If a catalog is available (via --catalog-path), data_type from the catalog
     takes precedence over the manifest's data_type.
     """
+    from dbt_osmosis.core.introspection import resolve_setting
+
     logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
+    scaffold_empty_configs = resolve_setting(
+        context,
+        "scaffold-empty-configs",
+        node,
+        fallback=context.settings.scaffold_empty_configs,
+    )
     if node.description and not doc_section.get("description"):
-        if context.settings.scaffold_empty_configs or node.description not in context.placeholders:
+        if scaffold_empty_configs or node.description not in context.placeholders:
             doc_section["description"] = node.description
 
     current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
@@ -97,7 +105,7 @@ def _sync_doc_section(
         else:
             cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
         cdict["name"] = name
-        from dbt_osmosis.core.introspection import normalize_column_name, resolve_setting
+        from dbt_osmosis.core.introspection import normalize_column_name
 
         norm_name = normalize_column_name(name, context.project.runtime_cfg.credentials.type)
 
@@ -141,6 +149,13 @@ def _sync_doc_section(
             node,
             name,
             fallback=context.settings.prefer_yaml_values,
+        )
+        scaffold_column_empty_configs = resolve_setting(
+            context,
+            "scaffold-empty-configs",
+            node,
+            name,
+            fallback=context.settings.scaffold_empty_configs,
         )
         preserve_current_description = False
         if use_unrendered and current_description:
@@ -256,7 +271,7 @@ def _sync_doc_section(
             if merged[k] in (None, [], {}):
                 merged.pop(k)
 
-        if not context.settings.scaffold_empty_configs:
+        if not scaffold_column_empty_configs:
             if merged.get("description") == "":
                 merged.pop("description", None)
             if merged.get("tags", []) == []:
