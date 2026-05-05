@@ -364,7 +364,7 @@ def test_workbench_uses_streamlit_server_bind_flags_and_preserves_passthrough(
     completed = subprocess.CompletedProcess(args=[], returncode=0)
     monkeypatch.setattr("shutil.which", lambda name: "streamlit")
     monkeypatch.setattr("importlib.import_module", lambda name: object())
-    with mock.patch("subprocess.run", return_value=completed) as run:
+    with mock.patch.object(subprocess, "run", return_value=completed) as run:
         result = runner.invoke(
             cli,
             [
@@ -399,7 +399,7 @@ def test_workbench_enable_external_feed_passes_app_opt_in(
     completed = subprocess.CompletedProcess(args=[], returncode=0)
     monkeypatch.setattr("shutil.which", lambda name: "streamlit")
     monkeypatch.setattr("importlib.import_module", lambda name: object())
-    with mock.patch("subprocess.run", return_value=completed) as run:
+    with mock.patch.object(subprocess, "run", return_value=completed) as run:
         result = runner.invoke(cli, ["workbench", "--enable-external-feed"])
 
     assert result.exit_code == 0
@@ -419,7 +419,7 @@ def test_workbench_preserves_literal_double_dash_passthrough(
     completed = subprocess.CompletedProcess(args=[], returncode=0)
     monkeypatch.setattr("shutil.which", lambda name: "streamlit")
     monkeypatch.setattr("importlib.import_module", lambda name: object())
-    with mock.patch("subprocess.run", return_value=completed) as run:
+    with mock.patch.object(subprocess, "run", return_value=completed) as run:
         result = runner.invoke(
             cli,
             ["workbench", "--", "--server.headless=true"],
@@ -467,7 +467,7 @@ def test_workbench_missing_extra_dependency_has_workbench_extra_hint(
         return object()
 
     monkeypatch.setattr("importlib.import_module", import_module)
-    with mock.patch("subprocess.run") as run:
+    with mock.patch.object(subprocess, "run") as run:
         result = runner.invoke(cli, ["workbench"])
 
     assert result.exit_code != 0
@@ -489,7 +489,7 @@ def test_workbench_transitive_import_failure_has_workbench_extra_hint(
         return object()
 
     monkeypatch.setattr("importlib.import_module", import_module)
-    with mock.patch("subprocess.run") as run:
+    with mock.patch.object(subprocess, "run") as run:
         result = runner.invoke(cli, ["workbench"])
 
     assert result.exit_code != 0
