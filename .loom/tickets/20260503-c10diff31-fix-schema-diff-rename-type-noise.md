@@ -1,11 +1,11 @@
 ---
 id: ticket:c10diff31
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-05T00:52:53Z
+updated_at: 2026-05-05T01:19:29Z
 scope:
   kind: repository
   repositories:
@@ -16,6 +16,7 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10diff31-schema-diff-validation
+    - evidence:c10diff31-main-ci-success
   critique:
     - critique:c10diff31-schema-diff-review
 depends_on: []
@@ -68,11 +69,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10diff31#ACC-001 | evidence:c10diff31-schema-diff-validation | critique:c10diff31-schema-diff-review | supported_pending_remote_ci |
-| ticket:c10diff31#ACC-002 | evidence:c10diff31-schema-diff-validation | critique:c10diff31-schema-diff-review#FIND-001 accepted_risk | supported_pending_remote_ci |
-| ticket:c10diff31#ACC-003 | evidence:c10diff31-schema-diff-validation | critique:c10diff31-schema-diff-review | supported_pending_remote_ci |
-| ticket:c10diff31#ACC-004 | evidence:c10diff31-schema-diff-validation | critique:c10diff31-schema-diff-review#FIND-002 accepted_risk | supported_pending_remote_ci |
-| ticket:c10diff31#ACC-005 | evidence:c10diff31-schema-diff-validation | critique:c10diff31-schema-diff-review#FIND-002 accepted_risk | supported_pending_remote_ci |
+| ticket:c10diff31#ACC-001 | evidence:c10diff31-schema-diff-validation; evidence:c10diff31-main-ci-success | critique:c10diff31-schema-diff-review | accepted |
+| ticket:c10diff31#ACC-002 | evidence:c10diff31-schema-diff-validation; evidence:c10diff31-main-ci-success | critique:c10diff31-schema-diff-review#FIND-001 accepted_risk | accepted |
+| ticket:c10diff31#ACC-003 | evidence:c10diff31-schema-diff-validation; evidence:c10diff31-main-ci-success | critique:c10diff31-schema-diff-review | accepted |
+| ticket:c10diff31#ACC-004 | evidence:c10diff31-schema-diff-validation; evidence:c10diff31-main-ci-success | critique:c10diff31-schema-diff-review#FIND-002 accepted_risk | accepted |
+| ticket:c10diff31#ACC-005 | evidence:c10diff31-schema-diff-validation; evidence:c10diff31-main-ci-success | critique:c10diff31-schema-diff-review#FIND-002 accepted_risk | accepted |
 
 # Execution Notes
 
@@ -84,9 +85,9 @@ None.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan; evidence:c10diff31-schema-diff-validation.
+Existing evidence: evidence:oracle-backlog-scan; evidence:c10diff31-schema-diff-validation; evidence:c10diff31-main-ci-success.
 
-Missing evidence: remote CI after commit/push.
+Evidence status: local test-first validation, full pre-commit, focused schema diff tests, recommended critique, and green remote Labeler/lint/Tests/Release workflows support ACC-001 through ACC-005 for commit `d16c266cba288cb6dfb41b45e31be5b3def230f1`. Missing evidence: none for this ticket's acceptance scope.
 
 # Critique Disposition
 
@@ -121,9 +122,9 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
-Accepted at: N/A.
-Basis: Local red/green evidence and recommended critique exist; remote CI is pending.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-05T01:19:29Z.
+Basis: Implementation commit `d16c266cba288cb6dfb41b45e31be5b3def230f1`, evidence:c10diff31-schema-diff-validation, critique:c10diff31-schema-diff-review, and evidence:c10diff31-main-ci-success.
 Residual risks: Adapter type aliases can be broader than simple normalization; rename matching remains greedy deterministic matching rather than globally optimal assignment.
 
 # Dependencies
@@ -136,3 +137,4 @@ Coordinate with ticket:c10lint24 for CLI diff selector behavior if implemented n
 - 2026-05-05T00:39:27Z: Promoted `proposed -> ready -> active` after readiness review. No blockers remain, acceptance is concrete, and `packet:ralph-ticket-c10diff31-20260505T003927Z` was compiled for a bounded test-first implementation iteration.
 - 2026-05-05T00:46:30Z: Ralph iteration returned `stop`; parent diff review and validation passed (`tests/core/test_diff.py`, Ruff format/check, `git diff --check`, basedpyright zero errors). Recorded evidence:c10diff31-schema-diff-validation and moved ticket to `review_required` for recommended medium-risk critique.
 - 2026-05-05T00:52:53Z: Recommended critique completed as critique:c10diff31-schema-diff-review with `pass_with_findings`. Accepted both low findings as scoped risks and moved ticket to `complete_pending_acceptance`; remaining gate is commit/push and remote CI evidence.
+- 2026-05-05T01:19:29Z: Commit `d16c266cba288cb6dfb41b45e31be5b3def230f1` reached green Labeler, lint, Tests, and Release workflows on `origin/main`; accepted residual risks and closed ticket.
