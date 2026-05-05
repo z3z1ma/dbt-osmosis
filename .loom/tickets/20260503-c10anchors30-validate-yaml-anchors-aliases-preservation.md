@@ -1,11 +1,11 @@
 ---
 id: ticket:c10anchors30
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-05T04:11:56Z
+updated_at: 2026-05-05T04:38:22Z
 scope:
   kind: repository
   repositories:
@@ -16,6 +16,7 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10anchors30-yaml-anchor-validation
+    - evidence:c10anchors30-main-ci-success
   critique:
     - critique:c10anchors30-yaml-anchor-review
   packets:
@@ -75,11 +76,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10anchors30#ACC-001 | evidence:c10anchors30-yaml-anchor-validation | critique:c10anchors30-yaml-anchor-review | covered |
-| ticket:c10anchors30#ACC-002 | evidence:c10anchors30-yaml-anchor-validation | critique:c10anchors30-yaml-anchor-review | covered |
-| ticket:c10anchors30#ACC-003 | evidence:c10anchors30-yaml-anchor-validation | critique:c10anchors30-yaml-anchor-review | covered |
+| ticket:c10anchors30#ACC-001 | evidence:c10anchors30-yaml-anchor-validation; evidence:c10anchors30-main-ci-success | critique:c10anchors30-yaml-anchor-review | covered |
+| ticket:c10anchors30#ACC-002 | evidence:c10anchors30-yaml-anchor-validation; evidence:c10anchors30-main-ci-success | critique:c10anchors30-yaml-anchor-review | covered |
+| ticket:c10anchors30#ACC-003 | evidence:c10anchors30-yaml-anchor-validation; evidence:c10anchors30-main-ci-success | critique:c10anchors30-yaml-anchor-review | covered |
 | ticket:c10anchors30#ACC-004 | N/A - supported policy chosen | critique:c10anchors30-yaml-anchor-review | not_applicable |
-| ticket:c10anchors30#ACC-005 | evidence:c10anchors30-yaml-anchor-validation | critique:c10anchors30-yaml-anchor-review | covered_with_accepted_risk |
+| ticket:c10anchors30#ACC-005 | evidence:c10anchors30-yaml-anchor-validation; evidence:c10anchors30-main-ci-success | critique:c10anchors30-yaml-anchor-review | covered_with_accepted_risk |
 
 # Execution Notes
 
@@ -91,7 +92,7 @@ None. Characterization showed current writes stayed parseable but flattened cros
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan; evidence:c10anchors30-yaml-anchor-validation. Missing evidence: remote CI for the eventual commit.
+Evidence status: local red/green schema validation, dbt parse fixture evidence, recommended critique, and green remote Labeler/lint/Tests/Release workflows support ACC-001 through ACC-005 for commit `af229e597fceb7a4a7a2902c6bb508944dc58e4e`. Missing evidence: none for this ticket's acceptance scope.
 
 # Critique Disposition
 
@@ -129,9 +130,9 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending remote CI.
-Accepted at: N/A.
-Basis: Local implementation, red/green evidence, dbt parse fixture, and critique are complete. Final acceptance waits for commit packaging and remote CI.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-05T04:38:22Z.
+Basis: Implementation commit `af229e597fceb7a4a7a2902c6bb508944dc58e4e`, evidence:c10anchors30-yaml-anchor-validation, critique:c10anchors30-yaml-anchor-review, and evidence:c10anchors30-main-ci-success.
 Residual risks: Accepted shared-node mutation behavior for alias-bearing managed subtrees; quoted top-level managed key formatting inconsistency; dbt parse compatibility evidenced for dbt 1.10.20 / duckdb 1.10.0 but not automated across the full dbt matrix; YAML anchor behavior can be subtle across ruamel versions.
 
 # Dependencies
@@ -155,3 +156,4 @@ Coordinate with ticket:c10loss16 and ticket:c10gen20 if writer behavior changes.
 - 2026-05-05T02:48:30Z: Ralph iter-06 returned stop and parent verification passed: schema tests reported 28 passed, Ruff format/check and `git diff --check` passed, basedpyright reported zero errors, and the temporary dbt parse fixture exited 0. Updated evidence:c10anchors30-yaml-anchor-validation and moved back to review_required for final recommended critique.
 - 2026-05-05T04:05:03Z: Operator accepted the residual shared-node mutation behavior as risk rather than adding guards or copy-on-write behavior. Rationale: alias-bearing managed mutations are extremely unlikely, git makes the change observable, and KISS is preferred for this edge case.
 - 2026-05-05T04:11:56Z: Recorded final critique:c10anchors30-yaml-anchor-review with pass_with_findings. Dispositioned low findings and accepted risks, marked retrospective/promotion not required, and moved to complete_pending_acceptance pending packaging/remote CI.
+- 2026-05-05T04:38:22Z: Commit `af229e597fceb7a4a7a2902c6bb508944dc58e4e` reached green Labeler, lint, Tests, and Release workflows on `origin/main`; accepted residual risks and closed ticket.
