@@ -1,0 +1,129 @@
+tests/core/test_schema.py
+  human 249-280
+.loom/tickets/20260505-gh311wrap-prevent-nested-description-trailing-space.md
+  human 4,8,16-21,78-82,86,94,110,112,118,122,124,132-135,144-145
+.loom/evidence/20260505-gh311wrap-nested-description-wrap-validation.md
+  human 1-112
+src/dbt_osmosis/core/schema/parser.py
+  human 25-48,163-171
+.loom/critique/20260505-gh311wrap-nested-description-wrap-review.md
+  human 1-61
+src/dbt_osmosis/core/schema/reader.py
+  human 206,213-214,219-224,250-251,257-262,269-270,272,277-278,294-295,305-306,349
+.loom/packets/ralph/20260505T074418Z-ticket-gh311wrap-iter-01.md
+  human 1-152
+---
+{
+  "attestations": [
+    {
+      "entries": [
+        {
+          "accepted_lines": 32,
+          "added_lines": 32,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "249-280",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "tests/core/test_schema.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 26,
+          "added_lines": 26,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "4,8,16-21,78-82,86,94,110,112,118,122,124,132-135,144-145",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/tickets/20260505-gh311wrap-prevent-nested-description-trailing-space.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 112,
+          "added_lines": 112,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-112",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/evidence/20260505-gh311wrap-nested-description-wrap-validation.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 33,
+          "added_lines": 33,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "25-48,163-171",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/core/schema/parser.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 61,
+          "added_lines": 61,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-61",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/critique/20260505-gh311wrap-nested-description-wrap-review.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 27,
+          "added_lines": 27,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "206,213-214,219-224,250-251,257-262,269-270,272,277-278,294-295,305-306,349",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/core/schema/reader.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 152,
+          "added_lines": 152,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-152",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/packets/ralph/20260505T074418Z-ticket-gh311wrap-iter-01.md"
+    }
+  ],
+  "base_commit_sha": "1d34175606c80e9cec7acf9284ea7c87f5d027b7",
+  "branch": "loom/dbt-110-111-hardening",
+  "commit_sha": "72301c237cee12fff994747651d76e8d2563e74c",
+  "commit_time": "2026-05-05T01:15:39-07:00",
+  "commit_type": "direct_commit",
+  "git_ai_version": "1.4.2",
+  "prompts": {
+    "human": {
+      "accepted_lines": 443,
+      "agent_id": null,
+      "human_author": "z3z1ma <butler.alex2010@gmail.com>",
+      "messages": [],
+      "overriden_lines": 0,
+      "total_additions": 443,
+      "total_deletions": 0
+    }
+  },
+  "repo": "https://github.com/z3z1ma/dbt-osmosis.git",
+  "schema_version": "authorship/3.0.0"
+}
