@@ -39,6 +39,7 @@ workbench = [
   "streamlit>=1.45.0,<2.0",
   "streamlit-ace~=0.1.1",
   "ydata-profiling>=4.17.0",
+  "ipython>=8,<9",
   "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
   "setuptools>=70,<81",

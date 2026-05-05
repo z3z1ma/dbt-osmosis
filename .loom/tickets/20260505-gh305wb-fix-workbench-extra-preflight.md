@@ -1,11 +1,11 @@
 ---
 id: ticket:gh305wb
 kind: ticket
-status: ready
+status: closed
 change_class: release-packaging
 risk_class: medium
 created_at: 2026-05-05T06:02:19Z
-updated_at: 2026-05-05T06:02:19Z
+updated_at: 2026-05-05T08:25:59Z
 scope:
   kind: repository
   repositories:
@@ -13,6 +13,12 @@ scope:
 links:
   initiative:
     - initiative:issue-pr-zero
+  evidence:
+    - evidence:gh305wb-workbench-extra-preflight-validation
+  critique:
+    - critique:gh305wb-workbench-extra-preflight-review
+  packets:
+    - packet:ralph-ticket-gh305wb-20260505T081714Z
 external_refs:
   github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/305
 depends_on: []
@@ -68,15 +74,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:gh305wb#ACC-001 | None yet | None yet | open |
-| ticket:gh305wb#ACC-002 | None yet | None yet | open |
-| ticket:gh305wb#ACC-003 | None yet | None yet | open |
-| ticket:gh305wb#ACC-004 | None yet | None yet | open |
-| ticket:gh305wb#ACC-005 | None yet | None yet | open |
+| ticket:gh305wb#ACC-001 | evidence:gh305wb-workbench-extra-preflight-validation | critique:gh305wb-workbench-extra-preflight-review | accepted |
+| ticket:gh305wb#ACC-002 | evidence:gh305wb-workbench-extra-preflight-validation | critique:gh305wb-workbench-extra-preflight-review | accepted |
+| ticket:gh305wb#ACC-003 | evidence:gh305wb-workbench-extra-preflight-validation | critique:gh305wb-workbench-extra-preflight-review | accepted |
+| ticket:gh305wb#ACC-004 | evidence:gh305wb-workbench-extra-preflight-validation | critique:gh305wb-workbench-extra-preflight-review | accepted |
+| ticket:gh305wb#ACC-005 | evidence:gh305wb-workbench-extra-preflight-validation | critique:gh305wb-workbench-extra-preflight-review | accepted |
 
 # Execution Notes
 
-Coordinate with open Dependabot PRs that touch `pyproject.toml` or `uv.lock`, especially dependency group updates. The implementation should not reintroduce the stale expectation that workbench AI requires OpenAI.
+Ralph added `ipython>=8,<9` to the workbench extra, updated `uv.lock`, and changed workbench preflight to import required modules so transitive `ImportError`s are caught before launching Streamlit. OpenAI remains outside the workbench extra and preflight module list.
 
 # Blockers
 
@@ -84,7 +90,7 @@ None.
 
 # Evidence
 
-Expected evidence: package metadata/preflight tests, relevant CLI tests, `uv lock --check` or updated lock validation if dependency metadata changes, and remote CI before closure.
+Evidence status: local red/green Ralph evidence, parent focused CLI/package pytest, Ruff, format check, `uv lock --check`, and whitespace check support ACC-001 through ACC-005. Remote CI will be checked at the issue-backlog initiative gate per operator direction.
 
 # Critique Disposition
 
@@ -101,21 +107,21 @@ Required critique profiles:
 
 Findings:
 
-None - no critique yet.
+None - critique:gh305wb-workbench-extra-preflight-review returned `pass` with no findings.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: N/A.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
 Promoted:
 
-None yet.
+None - retrospective found no durable explanation needing wiki/research/spec promotion beyond this ticket, evidence, and critique.
 
-Deferred / not-required rationale: N/A.
+Deferred / not-required rationale: Behavior is a narrow optional-extra/preflight fix with focused package and CLI tests.
 
 # Wiki Disposition
 
@@ -123,10 +129,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending implementation and evidence.
-Accepted at: N/A.
-Basis: N/A.
-Residual risks: N/A.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-05T08:25:59Z.
+Basis: Local red/green implementation evidence, focused validation, lock validation, and Oracle critique support ACC-001 through ACC-005. The ticket is ready for issue closure with remote CI deferred to the issue-backlog initiative gate per operator direction.
+Residual risks: Remote CI not yet checked; no isolated fresh `dbt-osmosis[workbench]` install/start smoke was run; preflight catches import failures but not arbitrary workbench runtime failures.
 
 # Dependencies
 
@@ -135,3 +141,5 @@ Coordinate with open dependency PRs that modify `pyproject.toml` or `uv.lock`.
 # Journal
 
 - 2026-05-05T06:02:19Z: Created from GitHub issue #305 and Oracle triage as a validated workbench optional dependency/preflight bug.
+- 2026-05-05T08:17:14Z: Compiled Ralph packet packet:ralph-ticket-gh305wb-20260505T081714Z and moved ticket to active for the workbench extra/preflight implementation iteration.
+- 2026-05-05T08:25:59Z: Ralph implemented the workbench extra/preflight fix. Parent validation passed and Oracle critique accepted with no findings. Retrospective completed with no promotion needed beyond ticket/evidence/critique records. Accepted and closed locally for issue packaging.

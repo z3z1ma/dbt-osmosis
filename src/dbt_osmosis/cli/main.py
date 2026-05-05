@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import functools
-import importlib.util
+import importlib
 import os
 import shutil
 import subprocess
@@ -89,9 +89,16 @@ def _streamlit_executable() -> str:
 
 
 def _check_workbench_app_dependencies() -> None:
-    missing = [
-        module for module in _WORKBENCH_APP_MODULES if importlib.util.find_spec(module) is None
-    ]
+    missing = []
+    for module in _WORKBENCH_APP_MODULES:
+        try:
+            importlib.import_module(module)
+        except ImportError as e:
+            if isinstance(e, ModuleNotFoundError) and e.name == module:
+                missing.append(module)
+            else:
+                missing.append(f"{module} ({e})")
+
     if missing:
         missing_modules = ", ".join(missing)
         raise click.ClickException(

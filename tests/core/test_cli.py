@@ -363,7 +363,7 @@ def test_workbench_uses_streamlit_server_bind_flags_and_preserves_passthrough(
     """Workbench host/port should bind Streamlit's server, not browser defaults."""
     completed = subprocess.CompletedProcess(args=[], returncode=0)
     monkeypatch.setattr("shutil.which", lambda name: "streamlit")
-    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
+    monkeypatch.setattr("importlib.import_module", lambda name: object())
     with mock.patch("subprocess.run", return_value=completed) as run:
         result = runner.invoke(
             cli,
@@ -398,7 +398,7 @@ def test_workbench_enable_external_feed_passes_app_opt_in(
     """External RSS feed should require an explicit app-level opt-in."""
     completed = subprocess.CompletedProcess(args=[], returncode=0)
     monkeypatch.setattr("shutil.which", lambda name: "streamlit")
-    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
+    monkeypatch.setattr("importlib.import_module", lambda name: object())
     with mock.patch("subprocess.run", return_value=completed) as run:
         result = runner.invoke(cli, ["workbench", "--enable-external-feed"])
 
@@ -418,7 +418,7 @@ def test_workbench_preserves_literal_double_dash_passthrough(
     """Click's literal -- pass-through should still become Streamlit args."""
     completed = subprocess.CompletedProcess(args=[], returncode=0)
     monkeypatch.setattr("shutil.which", lambda name: "streamlit")
-    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
+    monkeypatch.setattr("importlib.import_module", lambda name: object())
     with mock.patch("subprocess.run", return_value=completed) as run:
         result = runner.invoke(
             cli,
@@ -460,15 +460,42 @@ def test_workbench_missing_extra_dependency_has_workbench_extra_hint(
 ) -> None:
     """Normal launch should preflight app imports, not defer raw app tracebacks."""
     monkeypatch.setattr("shutil.which", lambda name: "streamlit")
-    monkeypatch.setattr(
-        "importlib.util.find_spec",
-        lambda name: None if name == "feedparser" else object(),
-    )
+
+    def import_module(name: str) -> object:
+        if name == "feedparser":
+            raise ModuleNotFoundError("No module named 'feedparser'", name=name)
+        return object()
+
+    monkeypatch.setattr("importlib.import_module", import_module)
     with mock.patch("subprocess.run") as run:
         result = runner.invoke(cli, ["workbench"])
 
     assert result.exit_code != 0
     assert "Workbench optional dependencies are missing: feedparser" in result.output
+    assert "pip install dbt-osmosis[workbench]" in result.output
+    run.assert_not_called()
+
+
+def test_workbench_transitive_import_failure_has_workbench_extra_hint(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workbench preflight should catch transitive import failures before Streamlit."""
+    monkeypatch.setattr("shutil.which", lambda name: "streamlit")
+
+    def import_module(name: str) -> object:
+        if name == "ydata_profiling":
+            raise ImportError("No module named 'IPython'")
+        return object()
+
+    monkeypatch.setattr("importlib.import_module", import_module)
+    with mock.patch("subprocess.run") as run:
+        result = runner.invoke(cli, ["workbench"])
+
+    assert result.exit_code != 0
+    assert "Workbench optional dependencies are missing" in result.output
+    assert "ydata_profiling" in result.output
+    assert "IPython" in result.output
     assert "pip install dbt-osmosis[workbench]" in result.output
     run.assert_not_called()
 

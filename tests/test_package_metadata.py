@@ -104,7 +104,11 @@ def test_base_dependencies_and_optional_extras_are_intentional() -> None:
     assert "mysql-mimic" not in base_dependencies
 
     assert {"openai", "azure", "workbench", "duckdb", "proxy", "dev"} <= set(extras)
+    workbench_packages = _package_names(extras["workbench"])
     assert "dbt-duckdb" not in _package_names(extras["workbench"])
+    assert "openai" not in workbench_packages
+    assert "ydata-profiling" in workbench_packages
+    assert "ipython" in workbench_packages
     assert "streamlit>=1.45.0,<2.0" in extras["workbench"]
     assert "setuptools>=70,<81" in extras["workbench"]
     assert "dbt-duckdb" in _package_names(extras["duckdb"])
