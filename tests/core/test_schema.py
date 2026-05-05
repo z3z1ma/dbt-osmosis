@@ -376,6 +376,353 @@ exposures:
         temp_path.unlink(missing_ok=True)
 
 
+def test_yaml_read_write_preserves_cross_section_anchor_aliases():
+    """Aliases from managed model sections to unmanaged anchors should survive writes."""
+    import threading
+
+    yaml_content = """version: 2
+
+x-common-tests: &common_tests
+  - not_null
+  - unique
+
+models:
+  - name: test_model
+    columns:
+      - name: id
+        data_tests: *common_tests
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+        data["models"][0]["description"] = "Updated test model"
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert "x-common-tests: &common_tests" in written
+        assert "data_tests: *common_tests" in written
+
+        import ruamel.yaml
+
+        unfiltered_handler = ruamel.yaml.YAML()
+        with temp_path.open("r") as f:
+            written_data = unfiltered_handler.load(f)
+
+        assert written_data["models"][0]["description"] == "Updated test model"
+        assert (
+            written_data["x-common-tests"] is written_data["models"][0]["columns"][0]["data_tests"]
+        )
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
+def test_yaml_read_write_preserves_unmanaged_section_quote_style():
+    """Preserved unmanaged sections should retain explicit scalar quote style."""
+    import threading
+
+    yaml_content = """version: 2
+
+models:
+  - name: test_model
+    description: Test model
+
+x-preserved:
+  owner: "Analytics Team"
+  note: 'single quoted note'
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+        data["models"][0]["description"] = "Updated test model"
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert 'owner: "Analytics Team"' in written
+        assert "note: 'single quoted note'" in written
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
+def test_yaml_read_write_normalizes_managed_quotes_by_default():
+    """Managed sections should honor preserve_quotes=False while preserved sections keep quotes."""
+    import threading
+
+    yaml_content = """version: 2
+
+models:
+  - name: test_model
+    description: "Test model"
+
+x-preserved:
+  owner: "Analytics Team"
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        assert yaml_handler.preserve_quotes is False
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert 'description: "Test model"' not in written
+        assert "description: Test model" in written
+        assert 'owner: "Analytics Team"' in written
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
+def test_yaml_read_write_normalizes_managed_sequence_item_comments_by_default():
+    """Managed sequence quote normalization should keep per-item comments."""
+    import threading
+
+    yaml_content = """version: 2
+
+models:
+  - name: test_model
+    tags:
+      - "one" # one comment
+      - 'two' # two comment
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        assert yaml_handler.preserve_quotes is False
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert '- "one"' not in written
+        assert "- 'two'" not in written
+        assert "# one comment" in written
+        assert "# two comment" in written
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
+def test_yaml_read_write_quotes_managed_boolean_like_scalars_by_default():
+    """Managed quote normalization should keep YAML 1.1 boolean-like strings safe."""
+    import threading
+
+    yaml_content = """version: 2
+
+models:
+  - name: test_model
+    description: "Ordinary quoted value"
+    meta:
+      flag: "on"
+    tags:
+      - 'yes' # yes comment
+      - "safe tag" # safe comment
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        assert yaml_handler.preserve_quotes is False
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert 'description: "Ordinary quoted value"' not in written
+        assert "description: Ordinary quoted value" in written
+        assert 'flag: "on"' in written
+        assert any(quoted_yes in written for quoted_yes in ('- "yes"', "- 'yes'"))
+        assert "- yes" not in written
+        assert '- "safe tag"' not in written
+        assert "- safe tag" in written
+        assert "# yes comment" in written
+        assert "# safe comment" in written
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
+def test_yaml_read_write_preserves_managed_block_scalars_and_normalizes_quoted_keys_by_default():
+    """Managed quote normalization should not flatten folded or literal block scalars."""
+    import threading
+
+    yaml_content = """version: 2
+
+models:
+  - "name": test_model
+    description: >
+      First managed line
+      second managed line
+    columns:
+      - name: id
+        description: |
+          Primary identifier.
+          Stable across loads.
+
+x-preserved:
+  owner: "Analytics Team"
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        assert yaml_handler.preserve_quotes is False
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert "description: >" in written
+        assert "description: |" in written
+        assert '"name": test_model' not in written
+        assert "name: test_model" in written
+        assert 'owner: "Analytics Team"' in written
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
+def test_yaml_read_write_formatter_contract_folds_long_quoted_managed_description():
+    """Long quoted managed strings should still use the formatter's folded style."""
+    import threading
+
+    long_description = (
+        "This managed description starts quoted but is long enough that the schema formatter "
+        "should emit it as a folded block scalar instead of keeping quote-derived scalar style."
+    )
+    yaml_content = f'''version: 2
+
+models:
+  - name: test_model
+    description: "{long_description}"
+'''
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        assert yaml_handler.preserve_quotes is False
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert "description: >" in written
+        assert f'description: "{long_description}"' not in written
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
+def test_yaml_read_write_formatter_contract_literalizes_quoted_multiline_managed_description():
+    """Quoted managed strings containing newlines should still use literal style."""
+    import threading
+
+    yaml_content = r"""version: 2
+
+models:
+  - name: test_model
+    description: "First managed line\nsecond managed line"
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_path = Path(f.name)
+
+    try:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+
+        yaml_handler = create_yaml_instance()
+        assert yaml_handler.preserve_quotes is False
+        lock = threading.Lock()
+
+        data = _read_yaml(yaml_handler, lock, temp_path)
+
+        _write_yaml(yaml_handler, lock, temp_path, data, dry_run=False)
+
+        written = temp_path.read_text(encoding="utf-8")
+        assert "description: |" in written
+        assert "First managed line" in written
+        assert "second managed line" in written
+    finally:
+        _clear_cache(_YAML_BUFFER_CACHE, temp_path)
+        _clear_cache(_YAML_ORIGINAL_CACHE, temp_path)
+        temp_path.unlink(missing_ok=True)
+
+
 def _clear_cache(cache, key):
     """Helper to safely clear a key from an LRUCache or dict."""
     if key in cache:

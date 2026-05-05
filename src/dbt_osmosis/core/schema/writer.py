@@ -50,15 +50,21 @@ def _merge_preserved_sections(
         A merged dictionary containing both processed and preserved sections.
 
     """
-    # Start with the filtered data (processed content)
-    merged = dict(filtered_data)
-
-    # Add back any preserved sections from the original data
+    # Preserve the original top-level order so anchors defined in unmanaged
+    # sections can still precede managed aliases after dbt-osmosis writes.
+    merged: dict[str, t.Any] = {}
     _, preserved_sections = _partition_yaml_top_level_sections(original_data)
-    for key, value in preserved_sections.items():
-        if key in original_data and key not in merged:
+
+    for key, value in original_data.items():
+        if key in filtered_data:
+            merged[key] = filtered_data[key]
+        elif key in preserved_sections:
             merged[key] = value
             logger.debug(f":recycle: Restoring preserved section '{key}' from original YAML")
+
+    for key, value in filtered_data.items():
+        if key not in merged:
+            merged[key] = value
 
     return merged
 

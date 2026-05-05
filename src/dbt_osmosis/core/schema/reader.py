@@ -14,8 +14,15 @@ from pathlib import Path
 
 import ruamel.yaml
 from ruamel.yaml import YAMLError
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.scalarstring import (
+    DoubleQuotedScalarString,
+    PlainScalarString,
+    SingleQuotedScalarString,
+)
 
 from dbt_osmosis.core import logger
+from dbt_osmosis.core.schema.parser import _partition_yaml_top_level_sections
 
 __all__ = [
     "_YAML_BUFFER_CACHE",
@@ -170,6 +177,42 @@ Critical sections: _read_yaml() and _write_yaml() perform cache operations
 under this lock. All access to both caches must be synchronized.
 """
 
+_QUOTED_SCALAR_STRING_TYPES = (DoubleQuotedScalarString, SingleQuotedScalarString)
+_YAML_1_1_BOOLEAN_LIKE_STRINGS = frozenset({
+    "y",
+    "Y",
+    "yes",
+    "Yes",
+    "YES",
+    "n",
+    "N",
+    "no",
+    "No",
+    "NO",
+    "on",
+    "On",
+    "ON",
+    "off",
+    "Off",
+    "OFF",
+})
+
+
+def _normalize_quoted_scalar_style(
+    value: DoubleQuotedScalarString | SingleQuotedScalarString,
+    *,
+    width: int,
+    prefix_colon: str | None,
+) -> str:
+    scalar = str(value)
+    if scalar in _YAML_1_1_BOOLEAN_LIKE_STRINGS:
+        return scalar
+    if len(scalar.splitlines()) > 1:
+        return scalar
+    if len(scalar) > width - len(f"description{prefix_colon or ''}: "):
+        return scalar
+    return PlainScalarString(scalar)
+
 
 def _mark_yaml_caches_dirty(path: Path) -> None:
     """Pin buffered YAML state so later cache churn cannot discard pending edits."""
@@ -184,6 +227,63 @@ def _discard_yaml_caches(path: Path) -> None:
     for cache in (_YAML_BUFFER_CACHE, _YAML_ORIGINAL_CACHE):
         if path in cache:
             del cache[path]
+
+
+def _has_yaml_anchor(value: t.Any) -> bool:
+    anchor = getattr(value, "anchor", None)
+    return bool(getattr(anchor, "value", None))
+
+
+def _normalize_managed_quote_styles(
+    value: t.Any,
+    *,
+    width: int,
+    prefix_colon: str | None,
+) -> t.Any:
+    """Convert unanchored managed quoted scalars to plain strings in place."""
+    if _has_yaml_anchor(value):
+        return value
+    if isinstance(value, _QUOTED_SCALAR_STRING_TYPES):
+        return _normalize_quoted_scalar_style(value, width=width, prefix_colon=prefix_colon)
+    if isinstance(value, dict):
+        for key, item in list(value.items()):
+            normalized_key = _normalize_managed_quote_styles(
+                key,
+                width=width,
+                prefix_colon=prefix_colon,
+            )
+            normalized_item = _normalize_managed_quote_styles(
+                item,
+                width=width,
+                prefix_colon=prefix_colon,
+            )
+            if normalized_key is not key or normalized_item is not item:
+                if isinstance(value, CommentedMap):
+                    index = list(value).index(key)
+                    del value[key]
+                    value.insert(index, normalized_key, normalized_item)
+                else:
+                    del value[key]
+                    value[normalized_key] = normalized_item
+    elif isinstance(value, CommentedSeq):
+        for index, item in enumerate(list(value)):
+            normalized = _normalize_managed_quote_styles(
+                item,
+                width=width,
+                prefix_colon=prefix_colon,
+            )
+            if normalized is not item:
+                value[index] = normalized
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            normalized = _normalize_managed_quote_styles(
+                item,
+                width=width,
+                prefix_colon=prefix_colon,
+            )
+            if normalized is not item:
+                value[index] = normalized
+    return value
 
 
 def _read_yaml(
@@ -208,15 +308,23 @@ def _read_yaml(
                 return _YAML_BUFFER_CACHE.setdefault(path, {})
             logger.debug(":open_file_folder: Reading YAML doc => %s", path)
             try:
-                # Read the file using the filtered YAML handler (OsmosisYAML)
-                # This filters out semantic_models, macros, etc.
-                filtered_content = yaml_handler.load(path)
-
-                # Also read the original unfiltered content to preserve filtered sections
-                # We use a standard YAML parser without filtering
+                # Read the file once without top-level filtering so managed and
+                # preserved sections stay in the same ruamel object graph. This
+                # keeps cross-section anchors and aliases valid when the writer
+                # restores unmanaged sections.
                 unfiltered_handler = ruamel.yaml.YAML()
                 unfiltered_handler.preserve_quotes = True
                 original_content = unfiltered_handler.load(path)
+                if isinstance(original_content, dict):
+                    filtered_content, _ = _partition_yaml_top_level_sections(original_content)
+                    if not yaml_handler.preserve_quotes:
+                        _normalize_managed_quote_styles(
+                            filtered_content,
+                            width=yaml_handler.width,
+                            prefix_colon=yaml_handler.prefix_colon,
+                        )
+                else:
+                    filtered_content = original_content
 
                 # Store both filtered content (for processing) and original (for preservation)
                 _YAML_BUFFER_CACHE[path] = t.cast(
