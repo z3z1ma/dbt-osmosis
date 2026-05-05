@@ -98,6 +98,14 @@ class TestYamlRefactorSettings:
 class TestYamlRefactorContext:
     """Test suite for YamlRefactorContext dataclass."""
 
+    class RecordingThreadPoolExecutor:
+        """Small test double that records construction-time worker count."""
+
+        def __init__(self, *, max_workers):
+            self.constructed_max_workers = max_workers
+            self._max_workers = max_workers
+            self.shutdown = Mock()
+
     @pytest.fixture(scope="function")
     def mock_project_context(self):
         """Create a mock DbtProjectContext for testing."""
@@ -156,6 +164,48 @@ class TestYamlRefactorContext:
 
         # Check catalog
         assert context._catalog is None
+
+    def test_context_constructs_default_pool_with_dbt_threads(
+        self,
+        mock_project_context,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Default pool should be constructed with dbt threads, not mutated after creation."""
+        monkeypatch.setattr(
+            "dbt_osmosis.core.settings.ThreadPoolExecutor",
+            self.RecordingThreadPoolExecutor,
+        )
+
+        context = YamlRefactorContext(project=mock_project_context)
+
+        assert context.pool.constructed_max_workers == 4
+        assert context.pool._max_workers == 4
+
+    def test_context_preserves_custom_pool_worker_count(self, mock_project_context):
+        """A caller-supplied pool should not be resized by YamlRefactorContext."""
+        custom_pool = self.RecordingThreadPoolExecutor(max_workers=2)
+
+        context = YamlRefactorContext(project=mock_project_context, pool=custom_pool)
+
+        assert context.pool is custom_pool
+        assert custom_pool._max_workers == 2
+
+    def test_context_constructs_default_pool_with_cpu_formula_without_dbt_threads(
+        self,
+        mock_project_context,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """When dbt threads are unavailable, use ThreadPoolExecutor's old default formula."""
+        mock_project_context.runtime_cfg.threads = 0
+        monkeypatch.setattr("dbt_osmosis.core.settings.os.cpu_count", lambda: 2)
+        monkeypatch.setattr(
+            "dbt_osmosis.core.settings.ThreadPoolExecutor",
+            self.RecordingThreadPoolExecutor,
+        )
+
+        context = YamlRefactorContext(project=mock_project_context)
+
+        assert context.pool.constructed_max_workers == 6
 
     def test_context_with_custom_settings(self, mock_project_context):
         """Test YamlRefactorContext with custom settings."""

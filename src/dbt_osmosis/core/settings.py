@@ -22,6 +22,10 @@ def _create_yaml_instance() -> ruamel.yaml.YAML:
     return create_yaml_instance()
 
 
+def _default_thread_pool_workers() -> int:
+    return min(32, (os.cpu_count() or 1) + 4)
+
+
 __all__ = [
     "EMPTY_STRING",
     "YamlRefactorContext",
@@ -113,9 +117,7 @@ class YamlRefactorContext:
 
     project: DbtProjectContext  # Forward reference to avoid circular import
     settings: YamlRefactorSettings = field(default_factory=YamlRefactorSettings)
-    pool: ThreadPoolExecutor = field(
-        default_factory=lambda: ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)),
-    )
+    pool: ThreadPoolExecutor | None = None
     yaml_handler: ruamel.yaml.YAML = field(
         init=False,
         default_factory=_create_yaml_instance,
@@ -379,15 +381,28 @@ class YamlRefactorContext:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
         for setting, val in self.yaml_settings.items():
             setattr(self.yaml_handler, setting, val)
-        # Override max_workers with dbt's thread count when available.
-        if hasattr(self.project.runtime_cfg, "threads") and self.project.runtime_cfg.threads:
-            self.pool._max_workers = self.project.runtime_cfg.threads
+
+        dbt_threads = self._dbt_thread_count()
+        if self.pool is None:
+            max_workers = dbt_threads or _default_thread_pool_workers()
+            self.pool = ThreadPoolExecutor(max_workers=max_workers)
+        else:
+            logger.info(":notebook: Osmosis ThreadPoolExecutor using caller-supplied pool")
+            return
+
+        if dbt_threads:
             logger.info(
                 ":notebook: Osmosis ThreadPoolExecutor max_workers using dbt threads => %s",
-                self.pool._max_workers,
+                max_workers,
             )
         else:
             logger.info(
                 ":notebook: Osmosis ThreadPoolExecutor max_workers using default => %s",
-                self.pool._max_workers,
+                max_workers,
             )
+
+    def _dbt_thread_count(self) -> int | None:
+        threads = getattr(self.project.runtime_cfg, "threads", None)
+        if isinstance(threads, int) and not isinstance(threads, bool) and threads > 0:
+            return threads
+        return None

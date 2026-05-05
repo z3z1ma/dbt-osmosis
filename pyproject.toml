@@ -70,18 +70,6 @@ dev = [
 [tool.uv]
 override-dependencies = ["protobuf>=5.0,<6.0"]
 
-[tool.black]
-line-length = 100
-target-version = ["py310", "py311", "py312", "py313"]
-preview = true
-
-[tool.isort]
-color_output = true
-line_length = 100
-profile = "black"
-src_paths = ["src"]
-include_trailing_comma = true
-
 [tool.ruff]
 line-length = 100
 preview = true

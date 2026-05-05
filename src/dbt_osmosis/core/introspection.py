@@ -213,7 +213,7 @@ class PropertySource(Enum):
     Values:
         MANIFEST: Parsed manifest.json with rendered jinja values
         YAML: Raw YAML files with unrendered jinja templates
-        DATABASE: Warehouse metadata via introspection (future use)
+        DATABASE: Unsupported placeholder for future warehouse metadata introspection
 
     Example:
         >>> # Get unrendered description from YAML
@@ -1586,6 +1586,9 @@ class PropertyAccessor:
     - YAML: Unrendered jinja templates (raw {{ doc(...) }} syntax)
     - Auto: Automatically selects based on unrendered jinja detection
 
+    ``PropertySource.DATABASE`` is reserved for future warehouse metadata
+    introspection and raises ``NotImplementedError`` when requested.
+
     This enables the unrendered jinja feature (doc blocks) by allowing users to
     choose between rendered and unrendered property values.
 
@@ -1799,13 +1802,15 @@ class PropertyAccessor:
             property_key: The property to retrieve (e.g., "description", "tags", "meta")
             node: The dbt node (model, source, seed, etc.)
             column_name: Optional column name for column-level properties
-            source: The source to read from ("manifest", "yaml", or "auto")
+            source: The source to read from ("manifest", "yaml", or "auto").
+                "database" is reserved and currently unsupported.
 
         Returns:
             The property value, or None if not found
 
         Raises:
             ValueError: If an invalid source is specified
+            NotImplementedError: If the unsupported database source is requested
 
         """
         # Handle "auto" as a special case before enum conversion
@@ -1847,12 +1852,10 @@ class PropertyAccessor:
             return yaml_value
 
         if source == PropertySource.DATABASE:
-            # Database introspection not yet implemented for PropertyAccessor
-            logger.debug(
-                ":mag: Database source not yet implemented for PropertyAccessor, "
-                "falling back to manifest",
+            raise NotImplementedError(
+                "database property source is not implemented for PropertyAccessor; "
+                + "use source='manifest', source='yaml', or source='auto' instead",
             )
-            return self._get_from_manifest(node, property_key, column_name)
 
         # This shouldn't happen with enum validation, but just in case
         raise ValueError(
@@ -1874,7 +1877,8 @@ class PropertyAccessor:
         Args:
             node: The dbt node (model, source, seed, etc.)
             column_name: Optional column name for column-level descriptions
-            source: The source to read from ("manifest", "yaml", or "auto")
+            source: The source to read from ("manifest", "yaml", or "auto").
+                "database" is reserved and currently unsupported.
 
         Returns:
             The description string, or None if not found

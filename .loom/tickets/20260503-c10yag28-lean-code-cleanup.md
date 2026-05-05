@@ -1,11 +1,11 @@
 ---
 id: ticket:c10yag28
 kind: ticket
-status: proposed
+status: complete_pending_acceptance
 change_class: code-behavior
 risk_class: low
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-03T21:10:43Z
+updated_at: 2026-05-05T05:03:18Z
 scope:
   kind: repository
   repositories:
@@ -15,6 +15,9 @@ links:
     - initiative:dbt-110-111-hardening
   evidence:
     - evidence:oracle-backlog-scan
+    - evidence:c10yag28-lean-cleanup-validation
+  packets:
+    - packet:ralph-ticket-c10yag28-20260505T045616Z
 depends_on:
   - ticket:c10res14
 ---
@@ -67,19 +70,23 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10yag28#ACC-001 | evidence:oracle-backlog-scan | None | open |
+| ticket:c10yag28#ACC-001 | evidence:c10yag28-lean-cleanup-validation | None | covered |
+| ticket:c10yag28#ACC-002 | evidence:c10yag28-lean-cleanup-validation | None | covered |
+| ticket:c10yag28#ACC-003 | evidence:c10yag28-lean-cleanup-validation | None | covered |
+| ticket:c10yag28#ACC-004 | evidence:c10yag28-lean-cleanup-validation | None | covered |
+| ticket:c10yag28#ACC-005 | evidence:c10yag28-lean-cleanup-validation | None | covered |
 
 # Execution Notes
 
-Keep this ticket behind ticket:c10res14 so cleanup does not remove code that the resolver integration decides to use. Prefer deleting misleading code over adding comments that preserve confusion.
+ticket:c10res14 is closed, so this cleanup is unblocked. Prefer deleting misleading code over adding comments that preserve confusion, but do not remove public compatibility exports or documented behavior without a deprecation plan.
 
 # Blockers
 
-Blocked on ticket:c10res14 for resolver cleanup pieces.
+None. Hard dependency ticket:c10res14 is closed.
 
 # Evidence
 
-Existing evidence: evidence:oracle-backlog-scan. Missing evidence: cleanup diff and focused tests if behavior changes.
+Evidence status: local test-first validation, parent focused pytest, Ruff checks, whitespace check, and basedpyright zero-error validation support ACC-001 through ACC-005 for the uncommitted implementation diff. Missing evidence: remote CI for the eventual implementation commit.
 
 # Critique Disposition
 
@@ -91,19 +98,19 @@ Policy rationale: Low-risk cleanup once dependencies are resolved.
 
 Required critique profiles: None - optional cleanup review unless diff grows.
 
-Findings: None - no critique yet.
+Findings: None - no critique performed.
 
-Disposition status: pending
+Disposition status: not_required
 
-Deferral / not-required rationale: Critique can be marked not_required if the final diff remains narrow and covered.
+Deferral / not-required rationale: Optional critique is not required because the final diff remains narrow, low-risk, and covered by focused red/green validation plus parent static checks. Revisit if remote CI or review reveals a broader behavior risk.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: not_required
 
-Promoted: None - implementation not complete.
+Promoted: None.
 
-Deferred / not-required rationale: Not likely wiki-worthy unless cleanup changes operator guidance.
+Deferred / not-required rationale: Local cleanup is covered by tests and evidence; no durable explanation promotion is needed.
 
 # Wiki Disposition
 
@@ -111,10 +118,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Not accepted yet.
+Accepted by: Pending remote CI.
 Accepted at: N/A.
-Basis: Pending cleanup.
-Residual risks: Cleanup can become risky if scope expands.
+Basis: Local implementation, red/green evidence, and parent validation are complete. Final acceptance waits for implementation commit packaging and remote CI.
+Residual risks: basedpyright warning debt remains but error count is zero; `_get_setting_for_node()` remains a compatibility wrapper rather than being removed; external callers that used `PropertySource.DATABASE` for manifest fallback will now receive an explicit unsupported-source error.
 
 # Dependencies
 
@@ -123,3 +130,5 @@ Hard dependency: ticket:c10res14.
 # Journal
 
 - 2026-05-03T21:10:43Z: Created from core architecture oracle cleanup findings.
+- 2026-05-05T04:56:16Z: Hard dependency ticket:c10res14 is closed. Promoted through ready into active and compiled packet:ralph-ticket-c10yag28-20260505T045616Z for a narrow test-first cleanup iteration covering executor construction, unsupported database property source behavior, resolver/source YAGNI verification, and stale formatter config removal.
+- 2026-05-05T05:03:18Z: Ralph iteration returned stop. Parent diff review and validation passed: focused settings/config-resolution/introspection pytest reported 134 passed, Ruff format/check and `git diff --check` passed, and basedpyright reported zero errors. Recorded evidence:c10yag28-lean-cleanup-validation, marked optional critique and retrospective/promotion not required, and moved to complete_pending_acceptance pending implementation commit packaging and remote CI.

@@ -19,6 +19,8 @@ import pytest
 from dbt.adapters.base.column import Column
 
 from dbt_osmosis.core.introspection import (
+    PropertyAccessor,
+    PropertySource,
     _find_first,
     _get_setting_for_node,
     _maybe_use_precise_dtype,
@@ -253,10 +255,17 @@ def test_get_setting_for_node_basic():
 class TestPropertyAccessorHasUnrenderedJinja:
     """Tests for PropertyAccessor._has_unrendered_jinja method."""
 
+    @pytest.mark.parametrize("source", [PropertySource.DATABASE, "database"])
+    def test_database_source_is_explicitly_unsupported(self, source):
+        """Database source must not silently fall back to manifest values."""
+        accessor = PropertyAccessor(context=mock.Mock())
+        node = SimpleNamespace(description="manifest description", columns={})
+
+        with pytest.raises(NotImplementedError, match="database.*not implemented"):
+            accessor.get("description", node, source=source)
+
     def test_has_unrendered_jinja_doc_function(self):
         """Test detection of {{ doc() }} function calls."""
-        from dbt_osmosis.core.introspection import PropertyAccessor
-
         accessor = PropertyAccessor(context=mock.Mock())
         assert accessor._has_unrendered_jinja("{{ doc('my_doc') }}") is True
         assert accessor._has_unrendered_jinja("Some text {{ doc('my_doc') }} more") is True
