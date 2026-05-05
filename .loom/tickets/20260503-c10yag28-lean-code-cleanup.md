@@ -1,11 +1,11 @@
 ---
 id: ticket:c10yag28
 kind: ticket
-status: complete_pending_acceptance
+status: closed
 change_class: code-behavior
 risk_class: low
 created_at: 2026-05-03T21:10:43Z
-updated_at: 2026-05-05T05:03:18Z
+updated_at: 2026-05-05T05:31:00Z
 scope:
   kind: repository
   repositories:
@@ -16,6 +16,7 @@ links:
   evidence:
     - evidence:oracle-backlog-scan
     - evidence:c10yag28-lean-cleanup-validation
+    - evidence:c10yag28-main-ci-success
   packets:
     - packet:ralph-ticket-c10yag28-20260505T045616Z
 depends_on:
@@ -70,11 +71,11 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:c10yag28#ACC-001 | evidence:c10yag28-lean-cleanup-validation | None | covered |
-| ticket:c10yag28#ACC-002 | evidence:c10yag28-lean-cleanup-validation | None | covered |
-| ticket:c10yag28#ACC-003 | evidence:c10yag28-lean-cleanup-validation | None | covered |
-| ticket:c10yag28#ACC-004 | evidence:c10yag28-lean-cleanup-validation | None | covered |
-| ticket:c10yag28#ACC-005 | evidence:c10yag28-lean-cleanup-validation | None | covered |
+| ticket:c10yag28#ACC-001 | evidence:c10yag28-lean-cleanup-validation; evidence:c10yag28-main-ci-success | None | covered |
+| ticket:c10yag28#ACC-002 | evidence:c10yag28-lean-cleanup-validation; evidence:c10yag28-main-ci-success | None | covered |
+| ticket:c10yag28#ACC-003 | evidence:c10yag28-lean-cleanup-validation; evidence:c10yag28-main-ci-success | None | covered |
+| ticket:c10yag28#ACC-004 | evidence:c10yag28-lean-cleanup-validation; evidence:c10yag28-main-ci-success | None | covered |
+| ticket:c10yag28#ACC-005 | evidence:c10yag28-lean-cleanup-validation; evidence:c10yag28-main-ci-success | None | covered |
 
 # Execution Notes
 
@@ -86,7 +87,7 @@ None. Hard dependency ticket:c10res14 is closed.
 
 # Evidence
 
-Evidence status: local test-first validation, parent focused pytest, Ruff checks, whitespace check, and basedpyright zero-error validation support ACC-001 through ACC-005 for the uncommitted implementation diff. Missing evidence: remote CI for the eventual implementation commit.
+Evidence status: local test-first validation, parent focused pytest, full pre-commit, Ruff checks, whitespace check, basedpyright zero-error validation, and green remote Labeler/lint/Tests/Release workflows support ACC-001 through ACC-005 for commit `5d009a9ac60713ae7c071cfc30557f0e4799571b`. Missing evidence: none for this ticket's acceptance scope.
 
 # Critique Disposition
 
@@ -118,9 +119,9 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending remote CI.
-Accepted at: N/A.
-Basis: Local implementation, red/green evidence, and parent validation are complete. Final acceptance waits for implementation commit packaging and remote CI.
+Accepted by: OpenCode parent acceptance gate.
+Accepted at: 2026-05-05T05:31:00Z.
+Basis: Implementation commit `5d009a9ac60713ae7c071cfc30557f0e4799571b`, evidence:c10yag28-lean-cleanup-validation, evidence:c10yag28-main-ci-success, optional critique not-required disposition, and retrospective/promotion not-required disposition.
 Residual risks: basedpyright warning debt remains but error count is zero; `_get_setting_for_node()` remains a compatibility wrapper rather than being removed; external callers that used `PropertySource.DATABASE` for manifest fallback will now receive an explicit unsupported-source error.
 
 # Dependencies
@@ -132,3 +133,4 @@ Hard dependency: ticket:c10res14.
 - 2026-05-03T21:10:43Z: Created from core architecture oracle cleanup findings.
 - 2026-05-05T04:56:16Z: Hard dependency ticket:c10res14 is closed. Promoted through ready into active and compiled packet:ralph-ticket-c10yag28-20260505T045616Z for a narrow test-first cleanup iteration covering executor construction, unsupported database property source behavior, resolver/source YAGNI verification, and stale formatter config removal.
 - 2026-05-05T05:03:18Z: Ralph iteration returned stop. Parent diff review and validation passed: focused settings/config-resolution/introspection pytest reported 134 passed, Ruff format/check and `git diff --check` passed, and basedpyright reported zero errors. Recorded evidence:c10yag28-lean-cleanup-validation, marked optional critique and retrospective/promotion not required, and moved to complete_pending_acceptance pending implementation commit packaging and remote CI.
+- 2026-05-05T05:31:00Z: Commit `5d009a9ac60713ae7c071cfc30557f0e4799571b` reached green Labeler, lint, Tests, and Release workflows on `origin/main`; accepted residual risks and closed ticket.
