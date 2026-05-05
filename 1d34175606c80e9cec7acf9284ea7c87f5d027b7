@@ -1,0 +1,234 @@
+.loom/critique/20260505-gh326skip-description-inheritance-review.md
+  human 1-63
+src/dbt_osmosis/core/inheritance.py
+  human 497-539,815,935-938
+tests/core/test_settings.py
+  human 12,40,42,65,67,86,88,104-120
+.loom/evidence/20260505-gh333meta-skip-inherited-meta-validation.md
+  human 1-117
+src/dbt_osmosis/core/settings.py
+  human 67-68,73-74
+.loom/critique/20260505-gh333meta-skip-inherited-meta-review.md
+  human 1-62
+.loom/tickets/20260505-gh326skip-skip-column-description-inheritance.md
+  human 4,8,16-21,79-83,87,95,112,114,120,124,126,134-137,146-147
+.loom/packets/ralph/20260505T070046Z-ticket-gh333meta-iter-01.md
+  human 1-152
+src/dbt_osmosis/cli/main.py
+  human 324-328,359-364,547-551,582-587
+tests/core/test_inheritance_behavior.py
+  human 305-385,474-531
+src/dbt_osmosis/core/transforms.py
+  human 242-250
+.loom/packets/ralph/20260505T072053Z-ticket-gh326skip-iter-01.md
+  human 1-153
+.loom/evidence/20260505-gh326skip-description-inheritance-validation.md
+  human 1-124
+.loom/tickets/20260505-gh333meta-skip-inherited-meta-keys.md
+  human 4,8,16-21,79-83,87,95,112,114,120,124,126,134-137,146-147
+---
+{
+  "attestations": [
+    {
+      "entries": [
+        {
+          "accepted_lines": 63,
+          "added_lines": 63,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-63",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/critique/20260505-gh326skip-description-inheritance-review.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 48,
+          "added_lines": 48,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "497-539,815,935-938",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/core/inheritance.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 24,
+          "added_lines": 24,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "12,40,42,65,67,86,88,104-120",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "tests/core/test_settings.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 117,
+          "added_lines": 117,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-117",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/evidence/20260505-gh333meta-skip-inherited-meta-validation.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 4,
+          "added_lines": 4,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "67-68,73-74",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/core/settings.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 62,
+          "added_lines": 62,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-62",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/critique/20260505-gh333meta-skip-inherited-meta-review.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 26,
+          "added_lines": 26,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "4,8,16-21,79-83,87,95,112,114,120,124,126,134-137,146-147",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/tickets/20260505-gh326skip-skip-column-description-inheritance.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 152,
+          "added_lines": 152,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-152",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/packets/ralph/20260505T070046Z-ticket-gh333meta-iter-01.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 22,
+          "added_lines": 22,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "324-328,359-364,547-551,582-587",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/cli/main.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 139,
+          "added_lines": 139,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "305-385,474-531",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "tests/core/test_inheritance_behavior.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 9,
+          "added_lines": 9,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "242-250",
+          "overridden_lines": 0
+        }
+      ],
+      "file": "src/dbt_osmosis/core/transforms.py"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 153,
+          "added_lines": 153,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-153",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/packets/ralph/20260505T072053Z-ticket-gh326skip-iter-01.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 124,
+          "added_lines": 124,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "1-124",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/evidence/20260505-gh326skip-description-inheritance-validation.md"
+    },
+    {
+      "entries": [
+        {
+          "accepted_lines": 26,
+          "added_lines": 26,
+          "deleted_lines": 0,
+          "hash": "human",
+          "lines": "4,8,16-21,79-83,87,95,112,114,120,124,126,134-137,146-147",
+          "overridden_lines": 0
+        }
+      ],
+      "file": ".loom/tickets/20260505-gh333meta-skip-inherited-meta-keys.md"
+    }
+  ],
+  "base_commit_sha": "1177ddda31bf9aa31f5fa66d9b275b9bf5812f4e",
+  "branch": "loom/dbt-110-111-hardening",
+  "commit_sha": "1d34175606c80e9cec7acf9284ea7c87f5d027b7",
+  "commit_time": "2026-05-05T01:10:09-07:00",
+  "commit_type": "direct_commit",
+  "git_ai_version": "1.4.2",
+  "prompts": {
+    "human": {
+      "accepted_lines": 969,
+      "agent_id": null,
+      "human_author": "z3z1ma <butler.alex2010@gmail.com>",
+      "messages": [],
+      "overriden_lines": 0,
+      "total_additions": 969,
+      "total_deletions": 0
+    }
+  },
+  "repo": "https://github.com/z3z1ma/dbt-osmosis.git",
+  "schema_version": "authorship/3.0.0"
+}
