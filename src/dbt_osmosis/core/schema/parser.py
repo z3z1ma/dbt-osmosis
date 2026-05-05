@@ -22,6 +22,30 @@ MANAGED_RESOURCE_TOP_LEVEL_KEYS = frozenset({
 MANAGED_TOP_LEVEL_KEYS = frozenset({"version", *MANAGED_RESOURCE_TOP_LEVEL_KEYS})
 
 
+def _is_nested_column_description_value(
+    dumper: ruamel.yaml.RoundTripDumper,
+    data: str,
+) -> bool:
+    object_keeper = t.cast("list[t.Any]", getattr(dumper, "object_keeper", []))
+    if len(object_keeper) < 3:
+        return False
+
+    current_mapping = object_keeper[-1]
+    parent_sequence = object_keeper[-2]
+    grandparent_mapping = object_keeper[-3]
+    if not isinstance(current_mapping, dict):
+        return False
+    if not isinstance(parent_sequence, list):
+        return False
+    if not isinstance(grandparent_mapping, dict):
+        return False
+    if not any(key == "description" and value is data for key, value in current_mapping.items()):
+        return False
+    return any(
+        key == "columns" and value is parent_sequence for key, value in grandparent_mapping.items()
+    )
+
+
 def _partition_yaml_top_level_sections(
     data: t.Mapping[str, t.Any],
 ) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
@@ -136,7 +160,15 @@ def create_yaml_instance(
         if re.match(r"^(y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF)$", data):
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
         newlines = len(data.splitlines())
-        if newlines == 1 and len(data) > width - len(f"description{y.prefix_colon or ''}: "):
+        description_indent = 0
+        if _is_nested_column_description_value(dumper, data):
+            description_indent = (
+                max(len(getattr(dumper, "object_keeper", [])) - 1, 0) * indent_mapping
+            )
+        description_threshold = (
+            width - description_indent - len(f"description{y.prefix_colon or ''}: ")
+        )
+        if newlines == 1 and len(data) > description_threshold:
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=">")
         if newlines > 1:
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")

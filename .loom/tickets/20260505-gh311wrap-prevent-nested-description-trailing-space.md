@@ -1,11 +1,11 @@
 ---
 id: ticket:gh311wrap
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-05T06:02:19Z
-updated_at: 2026-05-05T06:02:19Z
+updated_at: 2026-05-05T08:14:39Z
 scope:
   kind: repository
   repositories:
@@ -13,6 +13,12 @@ scope:
 links:
   initiative:
     - initiative:issue-pr-zero
+  evidence:
+    - evidence:gh311wrap-nested-description-wrap-validation
+  critique:
+    - critique:gh311wrap-nested-description-wrap-review
+  packets:
+    - packet:ralph-ticket-gh311wrap-20260505T074418Z
 external_refs:
   github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/311
   related_github_pr: https://github.com/z3z1ma/dbt-osmosis/pull/346
@@ -69,15 +75,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:gh311wrap#ACC-001 | None yet | None yet | open |
-| ticket:gh311wrap#ACC-002 | None yet | None yet | open |
-| ticket:gh311wrap#ACC-003 | None yet | None yet | open |
-| ticket:gh311wrap#ACC-004 | None yet | None yet | open |
-| ticket:gh311wrap#ACC-005 | None yet | None yet | open |
+| ticket:gh311wrap#ACC-001 | evidence:gh311wrap-nested-description-wrap-validation | critique:gh311wrap-nested-description-wrap-review | accepted |
+| ticket:gh311wrap#ACC-002 | evidence:gh311wrap-nested-description-wrap-validation | critique:gh311wrap-nested-description-wrap-review | accepted |
+| ticket:gh311wrap#ACC-003 | evidence:gh311wrap-nested-description-wrap-validation | critique:gh311wrap-nested-description-wrap-review | accepted |
+| ticket:gh311wrap#ACC-004 | evidence:gh311wrap-nested-description-wrap-validation | critique:gh311wrap-nested-description-wrap-review | accepted |
+| ticket:gh311wrap#ACC-005 | evidence:gh311wrap-nested-description-wrap-validation | critique:gh311wrap-nested-description-wrap-review | accepted |
 
 # Execution Notes
 
-Parent triage reproduced the bug with `create_yaml_instance(width=100)`: lengths 80-87 were plain scalars with trailing whitespace, and length 88+ used folded style. Oracle identified `src/dbt_osmosis/core/schema/parser.py` threshold logic as ignoring nested indentation. PR #346 should be treated as related context, not as the owner of this ticket.
+Ralph added a nested column description regression for lengths 80-87 and adjusted the YAML scalar threshold to account for nested indentation before plain scalar wrapping can create trailing whitespace. PR #346 remains related context, not a dependency.
 
 # Blockers
 
@@ -85,7 +91,7 @@ None.
 
 # Evidence
 
-Expected evidence: red/green formatter regression around the nested description threshold, focused `tests/core/test_schema.py` run, `git diff --check`, and remote CI before closure.
+Evidence status: local red/green Ralph evidence, parent focused schema pytest, Ruff, format check, and whitespace check support ACC-001 through ACC-005. Remote CI will be checked at the initiative level after the issue-backlog batch per operator direction.
 
 # Critique Disposition
 
@@ -101,21 +107,21 @@ Required critique profiles:
 
 Findings:
 
-None - no critique yet.
+None - critique:gh311wrap-nested-description-wrap-review returned `pass` with no findings.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: N/A.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
 Promoted:
 
-None yet.
+None - retrospective found no durable explanation needing wiki/research/spec promotion beyond this ticket, evidence, and critique.
 
-Deferred / not-required rationale: N/A.
+Deferred / not-required rationale: Behavior is a narrow YAML formatting bug fix with focused regression coverage.
 
 # Wiki Disposition
 
@@ -123,10 +129,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending implementation and evidence.
-Accepted at: N/A.
-Basis: N/A.
-Residual risks: N/A.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-05T08:14:39Z.
+Basis: Local red/green implementation evidence, focused validation, and Oracle critique support ACC-001 through ACC-005. The ticket is ready for issue closure with remote CI deferred to the issue-backlog initiative gate per operator direction.
+Residual risks: Remote CI not yet checked; parser logic relies on ruamel's current `object_keeper` traversal state; source-table column descriptions are expected to follow the same path but are not explicitly tested.
 
 # Dependencies
 
@@ -135,3 +141,5 @@ Related but not dependent: PR #346.
 # Journal
 
 - 2026-05-05T06:02:19Z: Created from GitHub issue #311, local reproduction, and Oracle triage as a validated YAML formatting bug.
+- 2026-05-05T07:44:19Z: Compiled Ralph packet packet:ralph-ticket-gh311wrap-20260505T074418Z and moved ticket to active for the nested description trailing-whitespace implementation iteration.
+- 2026-05-05T08:14:39Z: Ralph implemented the nested description wrapping fix. Parent validation passed and Oracle critique accepted with no findings. Retrospective completed with no promotion needed beyond ticket/evidence/critique records. Accepted and closed locally for issue packaging.

@@ -246,6 +246,38 @@ def test_yaml_string_representer_none_prefix_colon():
         )
 
 
+def test_yaml_string_representer_nested_column_descriptions_no_trailing_whitespace():
+    """Nested column descriptions near the default width must not wrap with trailing spaces."""
+    import io
+
+    yaml = create_yaml_instance()
+
+    for length in range(80, 88):
+        description = "x" * 65 + " " + "y" * (length - 66)
+        data = {
+            "version": 2,
+            "models": [
+                {
+                    "name": "test_model",
+                    "columns": [
+                        {
+                            "name": "nested_column",
+                            "description": description,
+                        }
+                    ],
+                }
+            ],
+        }
+
+        output = io.StringIO()
+        yaml.dump(data, output)
+        result = output.getvalue()
+
+        assert all(line.rstrip() == line for line in result.splitlines()), (
+            f"Nested description of {length} chars emitted trailing whitespace:\n{result!r}"
+        )
+
+
 def test_yaml_parser_allows_data_tests_and_filters_anchors():
     """Test that the parser allows data_tests but filters anchors (preserved by the writer)."""
     yaml_content = """version: 2

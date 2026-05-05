@@ -203,15 +203,23 @@ def _normalize_quoted_scalar_style(
     *,
     width: int,
     prefix_colon: str | None,
+    description_indent: int = 0,
 ) -> str:
     scalar = str(value)
     if scalar in _YAML_1_1_BOOLEAN_LIKE_STRINGS:
         return scalar
     if len(scalar.splitlines()) > 1:
         return scalar
-    if len(scalar) > width - len(f"description{prefix_colon or ''}: "):
+    description_threshold = width - description_indent - len(f"description{prefix_colon or ''}: ")
+    if len(scalar) > description_threshold:
         return scalar
     return PlainScalarString(scalar)
+
+
+def _nested_column_description_indent(path: tuple[str, ...], indent_mapping: int) -> int:
+    if len(path) < 3 or path[-3:] != ("columns", "[]", "description"):
+        return 0
+    return max(len(path) - 1, 0) * indent_mapping
 
 
 def _mark_yaml_caches_dirty(path: Path) -> None:
@@ -239,23 +247,35 @@ def _normalize_managed_quote_styles(
     *,
     width: int,
     prefix_colon: str | None,
+    indent_mapping: int,
+    path: tuple[str, ...] = (),
 ) -> t.Any:
     """Convert unanchored managed quoted scalars to plain strings in place."""
     if _has_yaml_anchor(value):
         return value
     if isinstance(value, _QUOTED_SCALAR_STRING_TYPES):
-        return _normalize_quoted_scalar_style(value, width=width, prefix_colon=prefix_colon)
+        return _normalize_quoted_scalar_style(
+            value,
+            width=width,
+            prefix_colon=prefix_colon,
+            description_indent=_nested_column_description_indent(path, indent_mapping),
+        )
     if isinstance(value, dict):
         for key, item in list(value.items()):
             normalized_key = _normalize_managed_quote_styles(
                 key,
                 width=width,
                 prefix_colon=prefix_colon,
+                indent_mapping=indent_mapping,
+                path=path,
             )
+            item_path = (*path, str(key)) if isinstance(key, str) else path
             normalized_item = _normalize_managed_quote_styles(
                 item,
                 width=width,
                 prefix_colon=prefix_colon,
+                indent_mapping=indent_mapping,
+                path=item_path,
             )
             if normalized_key is not key or normalized_item is not item:
                 if isinstance(value, CommentedMap):
@@ -271,6 +291,8 @@ def _normalize_managed_quote_styles(
                 item,
                 width=width,
                 prefix_colon=prefix_colon,
+                indent_mapping=indent_mapping,
+                path=(*path, "[]"),
             )
             if normalized is not item:
                 value[index] = normalized
@@ -280,6 +302,8 @@ def _normalize_managed_quote_styles(
                 item,
                 width=width,
                 prefix_colon=prefix_colon,
+                indent_mapping=indent_mapping,
+                path=(*path, "[]"),
             )
             if normalized is not item:
                 value[index] = normalized
@@ -322,6 +346,7 @@ def _read_yaml(
                             filtered_content,
                             width=yaml_handler.width,
                             prefix_colon=yaml_handler.prefix_colon,
+                            indent_mapping=yaml_handler.map_indent,
                         )
                 else:
                     filtered_content = original_content
