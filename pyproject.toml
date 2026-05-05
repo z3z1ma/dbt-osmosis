@@ -55,7 +55,7 @@ proxy = ["mysql-mimic>=2.5.7"]
 
 dev = [
   "basedpyright~=1.38.4",
-  "ruff==0.8.6",
+  "ruff==0.15.12",
   "pytest>=8.3.4,<9.1.0",
   "pytest-cov~=6.0",
   "hypothesis",
@@ -140,7 +140,7 @@ skip_covered = false
 [dependency-groups]
 dev = [
   "basedpyright~=1.38.4",
-  "ruff==0.8.6",
+  "ruff==0.15.12",
   "pytest>=8.3.4,<9.1.0",
   "pytest-cov~=6.0",
   "hypothesis",
