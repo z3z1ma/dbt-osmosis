@@ -239,7 +239,15 @@ def inherit_upstream_column_knowledge(
         kwargs = column_knowledge_graph.get(name)
         if kwargs is None:
             continue
-        inheritable = ["description"]
+        inheritable = []
+        if not resolve_setting(
+            context,
+            "skip-inherit-descriptions",
+            node,
+            name,
+            fallback=context.settings.skip_inherit_descriptions,
+        ):
+            inheritable.append("description")
         if not resolve_setting(
             context,
             "skip-add-tags",

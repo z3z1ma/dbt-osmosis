@@ -322,6 +322,11 @@ def _run_formatter_if_configured(context: YamlRefactorContext) -> None:
     help="Force descriptions to be inherited from an upstream source if possible.",
 )
 @click.option(
+    "--skip-inherit-descriptions",
+    is_flag=True,
+    help="Skip inheriting descriptions from upstream sources while preserving tag and meta inheritance.",
+)
+@click.option(
     "--use-unrendered-descriptions",
     is_flag=True,
     help="Use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
@@ -350,6 +355,12 @@ def _run_formatter_if_configured(context: YamlRefactorContext) -> None:
     "--skip-merge-meta",
     is_flag=True,
     help="Skip merging upstrean meta keys to the model columns.",
+)
+@click.option(
+    "--skip-inheritance-for-meta-keys",
+    multiple=True,
+    type=click.STRING,
+    help="Skip inheriting the specified upstream column meta keys while preserving other meta keys.",
 )
 @click.option(
     "--skip-add-data-types",
@@ -534,6 +545,11 @@ def organize(
     help="Force descriptions to be inherited from an upstream source if possible.",
 )
 @click.option(
+    "--skip-inherit-descriptions",
+    is_flag=True,
+    help="Skip inheriting descriptions from upstream sources while preserving tag and meta inheritance.",
+)
+@click.option(
     "--use-unrendered-descriptions",
     is_flag=True,
     help="Use unrendered column descriptions in the documentation. This is the only way to propogate docs blocks",
@@ -562,6 +578,12 @@ def organize(
     "--skip-merge-meta",
     is_flag=True,
     help="Skip merging upstrean meta keys to the model columns.",
+)
+@click.option(
+    "--skip-inheritance-for-meta-keys",
+    multiple=True,
+    type=click.STRING,
+    help="Skip inheriting the specified upstream column meta keys while preserving other meta keys.",
 )
 @click.option(
     "--skip-add-data-types",

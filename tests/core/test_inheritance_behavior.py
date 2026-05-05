@@ -302,6 +302,87 @@ def test_empty_column_inherits_from_upstream(yaml_context, fresh_caches):
     )
 
 
+def test_skip_inherit_descriptions_keeps_empty_description_but_inherits_tags_and_meta(
+    yaml_context,
+    fresh_caches,
+):
+    """Opting out of description inheritance should not block tag/meta inheritance."""
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["customer_id"].description = "Canonical customer id"
+    stg_customers.columns["customer_id"].tags = ["upstream_tag"]
+    stg_customers.columns["customer_id"].meta = {"governance": "customer_key"}
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["customer_id"].description = ""
+    customers.columns["customer_id"].tags = []
+    customers.columns["customer_id"].meta = {}
+    yaml_context.settings.skip_inherit_descriptions = True
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["customer_id"].description == ""
+    assert customers.columns["customer_id"].tags == ["upstream_tag"]
+    assert customers.columns["customer_id"].meta.get("governance") == "customer_key"
+
+
+def test_skip_inherit_descriptions_wins_over_force_inherit_for_empty_description(
+    yaml_context,
+    fresh_caches,
+):
+    """If force and skip are both enabled, skip wins deterministically."""
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "Standardized first name"
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = ""
+    yaml_context.settings.force_inherit_descriptions = True
+    yaml_context.settings.skip_inherit_descriptions = True
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["first_name"].description == ""
+
+
+def test_skip_inherit_descriptions_wins_over_force_inherit_for_existing_description(
+    yaml_context,
+    fresh_caches,
+):
+    """Skip-wins behavior preserves local descriptions even when force is enabled."""
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "Standardized first name"
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = "Local first name description"
+    yaml_context.settings.force_inherit_descriptions = True
+    yaml_context.settings.skip_inherit_descriptions = True
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["first_name"].description == "Local first name description"
+
+
+def test_skip_inherit_descriptions_resolves_from_column_meta(yaml_context, fresh_caches):
+    """Column-level config can opt one child column out of description inheritance."""
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["first_name"].description = "Standardized first name"
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["first_name"].description = ""
+    customers.columns["first_name"].meta = {"dbt-osmosis-skip-inherit-descriptions": True}
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["first_name"].description == ""
+
+
 def test_partial_documentation_propagation(yaml_context, fresh_caches):
     """Test that only undocumented columns are inherited, not already documented ones.
 
@@ -388,6 +469,64 @@ def test_config_tag_and_meta_inheritance(yaml_context, fresh_caches):
     assert "config_identifier" in customers.columns["customer_id"].tags
     assert customers.columns["customer_id"].meta.get("classification") == "restricted"
     assert customers.columns["customer_id"].meta.get("governance") == "config_customer_key"
+
+
+def test_skip_inheritance_for_classic_meta_keys_preserves_local_meta(yaml_context, fresh_caches):
+    """Configured classic meta keys should be filtered from inherited metadata only."""
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["customer_id"].meta = {
+        "expression": "upstream expression",
+        "doc_blocks": ["upstream_doc"],
+        "gdpr": True,
+        "security_classification": "restricted",
+    }
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["customer_id"].meta = {
+        "expression": "local expression",
+        "local_key": "local_value",
+    }
+    yaml_context.settings.skip_inheritance_for_meta_keys = ["expression", "doc_blocks"]
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["customer_id"].meta == {
+        "expression": "local expression",
+        "local_key": "local_value",
+        "gdpr": True,
+        "security_classification": "restricted",
+    }
+
+
+def test_skip_inheritance_for_config_meta_keys_preserves_other_meta(yaml_context, fresh_caches):
+    """Configured config.meta keys should be filtered while other config meta inherits."""
+    manifest = yaml_context.project.manifest
+
+    stg_customers = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    stg_customers.columns["customer_id"].meta = {}
+    stg_customer_id_config = _ensure_column_config(stg_customers.columns["customer_id"])
+    stg_customer_id_config.meta = {
+        "expression": "config expression",
+        "doc_blocks": ["config_doc"],
+        "gdpr": True,
+        "security_classification": "restricted",
+    }
+
+    customers = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    customers.columns["customer_id"].meta = {"local_key": "local_value"}
+    customer_id_config = _ensure_column_config(customers.columns["customer_id"])
+    customer_id_config.meta = {}
+    yaml_context.settings.skip_inheritance_for_meta_keys = ["expression", "doc_blocks"]
+
+    inherit_upstream_column_knowledge(yaml_context, customers)
+
+    assert customers.columns["customer_id"].meta == {
+        "local_key": "local_value",
+        "gdpr": True,
+        "security_classification": "restricted",
+    }
 
 
 def test_diamond_pattern_inheritance(yaml_context, fresh_caches):

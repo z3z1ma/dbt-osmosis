@@ -1,11 +1,11 @@
 ---
 id: ticket:gh333meta
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-05T06:02:19Z
-updated_at: 2026-05-05T06:02:19Z
+updated_at: 2026-05-05T08:07:56Z
 scope:
   kind: repository
   repositories:
@@ -13,6 +13,12 @@ scope:
 links:
   initiative:
     - initiative:issue-pr-zero
+  evidence:
+    - evidence:gh333meta-skip-inherited-meta-validation
+  critique:
+    - critique:gh333meta-skip-inherited-meta-review
+  packets:
+    - packet:ralph-ticket-gh333meta-20260505T070046Z
 external_refs:
   github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/333
 depends_on: []
@@ -70,15 +76,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:gh333meta#ACC-001 | None yet | None yet | open |
-| ticket:gh333meta#ACC-002 | None yet | None yet | open |
-| ticket:gh333meta#ACC-003 | None yet | None yet | open |
-| ticket:gh333meta#ACC-004 | None yet | None yet | open |
-| ticket:gh333meta#ACC-005 | None yet | None yet | open |
+| ticket:gh333meta#ACC-001 | evidence:gh333meta-skip-inherited-meta-validation | critique:gh333meta-skip-inherited-meta-review | accepted |
+| ticket:gh333meta#ACC-002 | evidence:gh333meta-skip-inherited-meta-validation | critique:gh333meta-skip-inherited-meta-review | accepted |
+| ticket:gh333meta#ACC-003 | evidence:gh333meta-skip-inherited-meta-validation | critique:gh333meta-skip-inherited-meta-review | accepted |
+| ticket:gh333meta#ACC-004 | evidence:gh333meta-skip-inherited-meta-validation | critique:gh333meta-skip-inherited-meta-review | accepted |
+| ticket:gh333meta#ACC-005 | evidence:gh333meta-skip-inherited-meta-validation | critique:gh333meta-skip-inherited-meta-review | accepted |
 
 # Execution Notes
 
-Oracle triage found `transforms.py` inheriting `meta` wholesale unless `skip-merge-meta` disables all meta, and `inheritance.py` exposing and merging `config.meta` through effective inherited `meta`. A Ralph implementation should keep the setting narrow and thread it through existing config-resolution paths rather than adding ad hoc lookups.
+Ralph added `skip-inheritance-for-meta-keys`, wired it into CLI/settings, and filters configured keys from ancestor graph edges before merging so local child meta is preserved.
 
 # Blockers
 
@@ -86,7 +92,7 @@ None.
 
 # Evidence
 
-Expected evidence: a failing regression test for skipped meta keys in classic and Fusion/config meta shapes, then passing focused inheritance/config tests. Remote CI evidence is needed before closing.
+Evidence status: local red/green Ralph evidence, parent inheritance/settings pytest, Ruff, format check, CLI help observation, and whitespace check support ACC-001 through ACC-005 for the uncommitted implementation diff. Remote CI will be checked at the initiative level after the full batch push per operator direction.
 
 # Critique Disposition
 
@@ -103,21 +109,21 @@ Required critique profiles:
 
 Findings:
 
-None - no critique yet.
+None - critique:gh333meta-skip-inherited-meta-review returned `pass` with no findings.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: N/A.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
 Promoted:
 
-None yet.
+None - retrospective found no durable explanation needing wiki/research/spec promotion beyond this ticket, evidence, and critique.
 
-Deferred / not-required rationale: N/A.
+Deferred / not-required rationale: New option behavior is captured in the ticket and tests; broader docs can be handled during release documentation if desired.
 
 # Wiki Disposition
 
@@ -125,10 +131,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending implementation and evidence.
-Accepted at: N/A.
-Basis: N/A.
-Residual risks: N/A.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-05T08:07:56Z.
+Basis: Local implementation evidence, focused validation, and Oracle critique support ACC-001 through ACC-005. The ticket is ready for issue closure with remote CI deferred to the issue-backlog initiative gate per operator direction.
+Residual risks: Remote CI not yet checked; no dedicated CLI invocation test was added beyond parent help observation.
 
 # Dependencies
 
@@ -137,3 +143,5 @@ None.
 # Journal
 
 - 2026-05-05T06:02:19Z: Created from GitHub issue #333 and Oracle triage as a validated medium-risk metadata-inheritance feature ticket.
+- 2026-05-05T07:19:30Z: Ralph implemented the inherited meta-key skip option. Parent validation passed and Oracle critique accepted with no findings. Retrospective completed with no promotion needed beyond ticket/evidence/critique records. Moved to complete_pending_acceptance pending final implementation commit packaging.
+- 2026-05-05T08:07:56Z: Accepted and closed locally for combined inheritance-options packaging with ticket:gh326skip. GitHub issue #333 is ready for commit, push, comment, and closure.

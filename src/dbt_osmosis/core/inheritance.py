@@ -494,6 +494,49 @@ def _build_graph_edge(
     return graph_edge
 
 
+def _filter_skipped_inherited_meta_keys(
+    context: YamlRefactorContextProtocol,
+    graph_edge: dict[str, t.Any],
+    node: ResultNode,
+    name: str,
+) -> None:
+    """Remove configured meta keys from inherited graph-edge metadata."""
+    from dbt_osmosis.core.introspection import resolve_setting
+
+    skipped_meta_keys = resolve_setting(
+        context,
+        "skip-inheritance-for-meta-keys",
+        node,
+        name,
+        fallback=context.settings.skip_inheritance_for_meta_keys,
+    )
+    if not skipped_meta_keys:
+        return
+
+    if isinstance(skipped_meta_keys, str):
+        skipped = {skipped_meta_keys}
+    else:
+        skipped = set(skipped_meta_keys)
+
+    meta = graph_edge.get("meta")
+    if isinstance(meta, dict):
+        for key in skipped:
+            meta.pop(key, None)
+        if not meta:
+            graph_edge.pop("meta", None)
+
+    config = graph_edge.get("config")
+    if isinstance(config, dict):
+        config_meta = config.get("meta")
+        if isinstance(config_meta, dict):
+            for key in skipped:
+                config_meta.pop(key, None)
+            if not config_meta:
+                config.pop("meta", None)
+        if not config:
+            graph_edge.pop("config", None)
+
+
 def _clean_graph_edge(
     context: YamlRefactorContextProtocol,
     graph_edge: dict[str, t.Any],
@@ -769,6 +812,7 @@ def _apply_progenitor_overrides(
             continue
 
         overridden_graph_node = _initialize_column_knowledge(node.columns[column_name], node)
+        _filter_skipped_inherited_meta_keys(context, inherited, node, column_name)
         _merge_graph_node_data(overridden_graph_node, inherited)
         _preserve_column_progenitor_override(overridden_graph_node, node_yaml, column_name)
 
@@ -887,6 +931,10 @@ def _build_column_knowledge_graph(
 
                 # Clean up empty values and placeholders
                 _clean_graph_edge(context, graph_edge, generation, node, name)
+
+                # Remove only configured meta keys from ancestor metadata before
+                # merging into the local graph node so local child meta survives.
+                _filter_skipped_inherited_meta_keys(context, graph_edge, node, name)
 
                 # Merge with existing graph node (which already has local column data)
                 graph_node = column_knowledge_graph.setdefault(name, {})

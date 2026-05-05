@@ -9,6 +9,7 @@ import pytest
 import ruamel.yaml
 from dbt.contracts.results import CatalogResults
 
+from dbt_osmosis.core.introspection import SettingsResolver
 from dbt_osmosis.core.settings import (
     EMPTY_STRING,
     YamlRefactorContext,
@@ -36,7 +37,9 @@ class TestYamlRefactorSettings:
         assert settings.numeric_precision_and_scale is False
         assert settings.string_length is False
         assert settings.force_inherit_descriptions is False
+        assert settings.skip_inherit_descriptions is False
         assert settings.use_unrendered_descriptions is False
+        assert settings.skip_inheritance_for_meta_keys == []
         assert settings.add_inheritance_for_specified_keys == []
         assert settings.output_to_lower is False
         assert settings.catalog_path is None
@@ -59,7 +62,9 @@ class TestYamlRefactorSettings:
             numeric_precision_and_scale=True,
             string_length=True,
             force_inherit_descriptions=True,
+            skip_inherit_descriptions=True,
             use_unrendered_descriptions=True,
+            skip_inheritance_for_meta_keys=["expression", "doc_blocks"],
             add_inheritance_for_specified_keys=["custom_field", "another_field"],
             output_to_lower=True,
             catalog_path="/path/to/catalog.json",
@@ -78,7 +83,9 @@ class TestYamlRefactorSettings:
         assert settings.numeric_precision_and_scale is True
         assert settings.string_length is True
         assert settings.force_inherit_descriptions is True
+        assert settings.skip_inherit_descriptions is True
         assert settings.use_unrendered_descriptions is True
+        assert settings.skip_inheritance_for_meta_keys == ["expression", "doc_blocks"]
         assert settings.add_inheritance_for_specified_keys == ["custom_field", "another_field"]
         assert settings.output_to_lower is True
         assert settings.catalog_path == "/path/to/catalog.json"
@@ -93,6 +100,23 @@ class TestYamlRefactorSettings:
 
         # Should not have _catalog as it's init=False
         assert not hasattr(settings, "_catalog")
+
+    def test_skip_inherit_descriptions_resolves_from_context_settings(self):
+        """Runtime skip-inherit-descriptions participates in SettingsResolver."""
+        context = mock.Mock()
+        context.settings = YamlRefactorSettings(skip_inherit_descriptions=True)
+        context.project.runtime_cfg.vars = {}
+
+        resolver = SettingsResolver()
+
+        assert (
+            resolver.resolve(
+                "skip-inherit-descriptions",
+                context=context,
+                fallback=context.settings.skip_inherit_descriptions,
+            )
+            is True
+        )
 
 
 class TestYamlRefactorContext:

@@ -1,11 +1,11 @@
 ---
 id: ticket:gh326skip
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: medium
 created_at: 2026-05-05T06:02:19Z
-updated_at: 2026-05-05T06:02:19Z
+updated_at: 2026-05-05T08:07:56Z
 scope:
   kind: repository
   repositories:
@@ -13,6 +13,12 @@ scope:
 links:
   initiative:
     - initiative:issue-pr-zero
+  evidence:
+    - evidence:gh326skip-description-inheritance-validation
+  critique:
+    - critique:gh326skip-description-inheritance-review
+  packets:
+    - packet:ralph-ticket-gh326skip-20260505T072053Z
 external_refs:
   github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/326
 depends_on: []
@@ -70,15 +76,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:gh326skip#ACC-001 | None yet | None yet | open |
-| ticket:gh326skip#ACC-002 | None yet | None yet | open |
-| ticket:gh326skip#ACC-003 | None yet | None yet | open |
-| ticket:gh326skip#ACC-004 | None yet | None yet | open |
-| ticket:gh326skip#ACC-005 | None yet | None yet | open |
+| ticket:gh326skip#ACC-001 | evidence:gh326skip-description-inheritance-validation | critique:gh326skip-description-inheritance-review | accepted |
+| ticket:gh326skip#ACC-002 | evidence:gh326skip-description-inheritance-validation | critique:gh326skip-description-inheritance-review | accepted |
+| ticket:gh326skip#ACC-003 | evidence:gh326skip-description-inheritance-validation | critique:gh326skip-description-inheritance-review | accepted |
+| ticket:gh326skip#ACC-004 | evidence:gh326skip-description-inheritance-validation | critique:gh326skip-description-inheritance-review | accepted |
+| ticket:gh326skip#ACC-005 | evidence:gh326skip-description-inheritance-validation | critique:gh326skip-description-inheritance-review | accepted |
 
 # Execution Notes
 
-Relevant code path: `src/dbt_osmosis/core/transforms.py` starts `inheritable = ["description"]` and only removes it when a local description exists and force inheritance is disabled. Implementation should avoid changing tag/meta inheritance.
+Ralph added `skip-inherit-descriptions`, wired it into CLI/settings, and removes `description` from the inheritable set before force inheritance can overwrite or fill it. Skip wins deterministically over force while tag/meta inheritance remains unchanged.
 
 # Blockers
 
@@ -86,7 +92,7 @@ None.
 
 # Evidence
 
-Expected evidence: red/green inheritance tests covering empty child descriptions, existing child descriptions, tag/meta inheritance, and option conflict behavior. Remote CI evidence is needed before closure.
+Evidence status: local red/green Ralph evidence, parent inheritance/settings pytest, Ruff, format check, CLI help observations, and whitespace check support ACC-001 through ACC-005 for the uncommitted implementation diff. Remote CI will be checked at the initiative level after the full batch push per operator direction.
 
 # Critique Disposition
 
@@ -103,21 +109,21 @@ Required critique profiles:
 
 Findings:
 
-None - no critique yet.
+None - critique:gh326skip-description-inheritance-review returned `pass` with no findings.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: N/A.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
 Promoted:
 
-None yet.
+None - retrospective found no durable explanation needing wiki/research/spec promotion beyond this ticket, evidence, and critique.
 
-Deferred / not-required rationale: N/A.
+Deferred / not-required rationale: New option behavior is captured in the ticket and tests; broader docs can be handled during release documentation if desired.
 
 # Wiki Disposition
 
@@ -125,10 +131,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending implementation and evidence.
-Accepted at: N/A.
-Basis: N/A.
-Residual risks: N/A.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-05T08:07:56Z.
+Basis: Local implementation evidence, focused validation, and Oracle critique support ACC-001 through ACC-005. The ticket is ready for issue closure with remote CI deferred to the issue-backlog initiative gate per operator direction.
+Residual risks: Remote CI not yet checked; no dedicated end-to-end CLI invocation test was added beyond parent help observations; user-facing docs beyond CLI help do not yet explain skip-vs-force precedence.
 
 # Dependencies
 
@@ -137,3 +143,5 @@ None.
 # Journal
 
 - 2026-05-05T06:02:19Z: Created from GitHub issue #326 and Oracle triage as a validated inheritance opt-out feature ticket.
+- 2026-05-05T07:41:32Z: Ralph implemented `skip-inherit-descriptions`. Parent validation passed and Oracle critique accepted with no findings. Retrospective completed with no promotion needed beyond ticket/evidence/critique records. Moved to complete_pending_acceptance pending final implementation commit packaging.
+- 2026-05-05T08:07:56Z: Accepted and closed locally for combined inheritance-options packaging with ticket:gh333meta. GitHub issue #326 is ready for commit, push, comment, and closure.
