@@ -291,6 +291,63 @@ def _remove_sources(existing_doc: dict[str, t.Any], nodes: list[ResultNode]) -> 
     existing_doc["sources"] = keep_sources
 
 
+def _has_section_content(value: t.Any) -> bool:
+    """Return whether a YAML section still carries content worth preserving."""
+    if value is None:
+        return False
+    if isinstance(value, (str, bytes)):
+        return bool(value)
+    try:
+        return len(value) > 0
+    except TypeError:
+        return True
+
+
+def _has_remaining_superseded_content(
+    existing_doc: dict[str, t.Any],
+    original_doc: dict[str, t.Any],
+) -> bool:
+    """Return whether a superseded YAML file still has managed or preserved content."""
+    from dbt_osmosis.core.schema.parser import _partition_yaml_top_level_sections
+
+    managed_keys = set(existing_doc.keys()) - {"version"}
+    if any(_has_section_content(existing_doc.get(key)) for key in managed_keys):
+        return True
+
+    _, preserved_sections = _partition_yaml_top_level_sections(original_doc)
+    return bool(preserved_sections)
+
+
+def _get_original_yaml_for_superseded_file(
+    yaml_handler_lock: threading.Lock,
+    path: Path,
+) -> dict[str, t.Any]:
+    """Return unfiltered YAML content for superseded cleanup, reloading if cache was evicted."""
+    from dbt_osmosis.core.schema.reader import _YAML_BUFFER_CACHE_LOCK, _YAML_ORIGINAL_CACHE
+
+    with _YAML_BUFFER_CACHE_LOCK:
+        if path in _YAML_ORIGINAL_CACHE:
+            return t.cast("dict[str, t.Any]", _YAML_ORIGINAL_CACHE[path])
+
+    if not path.is_file():
+        return {}
+
+    import ruamel.yaml
+
+    with yaml_handler_lock:
+        unfiltered_handler = ruamel.yaml.YAML()
+        unfiltered_handler.preserve_quotes = True
+        original_content = unfiltered_handler.load(path)
+
+    original_data = t.cast(
+        "dict[str, t.Any]",
+        original_content if isinstance(original_content, dict) else {},
+    )
+    with _YAML_BUFFER_CACHE_LOCK:
+        _YAML_ORIGINAL_CACHE[path] = original_data
+    return original_data
+
+
 def apply_restructure_plan(
     context: YamlRefactorContextProtocol,
     plan: RestructureDeltaPlan,
@@ -358,8 +415,18 @@ def apply_restructure_plan(
         )
 
         for path, nodes in op.superseded_paths.items():
+            if path.resolve() == op.file_path.resolve():
+                logger.debug(
+                    ":fast_forward: Skipping same-path superseded cleanup => %s",
+                    path,
+                )
+                continue
             if path.is_file():
                 existing_data = _read_yaml(context.yaml_handler, context.yaml_handler_lock, path)
+                original_data = _get_original_yaml_for_superseded_file(
+                    context.yaml_handler_lock,
+                    path,
+                )
 
                 if "models" in existing_data:
                     _remove_models(existing_data, nodes)
@@ -368,8 +435,7 @@ def apply_restructure_plan(
                 if "seeds" in existing_data:
                     _remove_seeds(existing_data, nodes)
 
-                keys = set(existing_data.keys()) - {"version"}
-                if all(len(existing_data.get(k, [])) == 0 for k in keys):
+                if not _has_remaining_superseded_content(existing_data, original_data):
                     if not context.settings.dry_run:
                         path.unlink(missing_ok=True)
                         if path.parent.exists() and not any(path.parent.iterdir()):

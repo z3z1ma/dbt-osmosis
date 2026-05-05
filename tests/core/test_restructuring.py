@@ -795,6 +795,245 @@ def test_partial_superseded_file_preserved(yaml_context: YamlRefactorContext, tm
     assert "model_to_move" not in model_names
 
 
+def test_superseded_file_with_unmanaged_top_level_content_is_preserved(
+    yaml_context: YamlRefactorContext,
+    tmp_path: Path,
+    fresh_caches,
+):
+    """Superseded cleanup must not delete files that still contain unmanaged sections."""
+    from unittest import mock as mock_patch
+
+    import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    old_file = tmp_path / "models" / "mixed.yml"
+    old_file.parent.mkdir(parents=True, exist_ok=True)
+    with old_file.open("w") as f:
+        yaml.dump(
+            {
+                "version": 2,
+                "models": [{"name": "model_to_move"}],
+                "semantic_models": [
+                    {
+                        "name": "orders_semantic_model",
+                        "model": "ref('model_to_move')",
+                    }
+                ],
+            },
+            f,
+        )
+
+    mock_node = mock_patch.Mock(spec=ModelNode)
+    mock_node.name = "model_to_move"
+    mock_node.resource_type = NodeType.Model
+
+    new_file = tmp_path / "models" / "staging" / "model_to_move.yml"
+    plan = RestructureDeltaPlan(
+        operations=[
+            RestructureOperation(
+                file_path=new_file,
+                content={"version": 2, "models": [{"name": "model_to_move"}]},
+                superseded_paths={old_file: [mock_node]},
+            ),
+        ],
+    )
+
+    with mock_patch.patch.object(yaml_context.settings, "dry_run", False):
+        apply_restructure_plan(yaml_context, plan, confirm=False)
+
+    assert old_file.exists()
+    with old_file.open() as f:
+        remaining = yaml.safe_load(f)
+
+    assert remaining["semantic_models"] == [
+        {
+            "name": "orders_semantic_model",
+            "model": "ref('model_to_move')",
+        }
+    ]
+    assert remaining.get("models") == []
+
+
+def test_superseded_file_with_unmanaged_content_is_preserved_when_original_cache_missing(
+    yaml_context: YamlRefactorContext,
+    tmp_path: Path,
+    fresh_caches,
+):
+    """Superseded cleanup must fail closed if the unfiltered original cache is missing."""
+    from unittest import mock as mock_patch
+
+    import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    from dbt_osmosis.core.schema.reader import (
+        _YAML_BUFFER_CACHE_LOCK,
+        _YAML_ORIGINAL_CACHE,
+        _read_yaml,
+    )
+
+    old_file = tmp_path / "models" / "missing_original_cache.yml"
+    old_file.parent.mkdir(parents=True, exist_ok=True)
+    with old_file.open("w") as f:
+        yaml.dump(
+            {
+                "version": 2,
+                "models": [{"name": "model_to_move"}],
+                "semantic_models": [{"name": "semantic_model_to_keep"}],
+            },
+            f,
+        )
+
+    _read_yaml(yaml_context.yaml_handler, yaml_context.yaml_handler_lock, old_file)
+    with _YAML_BUFFER_CACHE_LOCK:
+        _YAML_ORIGINAL_CACHE.clear()
+
+    mock_node = mock_patch.Mock(spec=ModelNode)
+    mock_node.name = "model_to_move"
+    mock_node.resource_type = NodeType.Model
+
+    new_file = tmp_path / "models" / "staging" / "model_to_move.yml"
+    plan = RestructureDeltaPlan(
+        operations=[
+            RestructureOperation(
+                file_path=new_file,
+                content={"version": 2, "models": [{"name": "model_to_move"}]},
+                superseded_paths={old_file: [mock_node]},
+            ),
+        ],
+    )
+
+    with mock_patch.patch.object(yaml_context.settings, "dry_run", False):
+        apply_restructure_plan(yaml_context, plan, confirm=False)
+
+    assert old_file.exists()
+    with old_file.open() as f:
+        remaining = yaml.safe_load(f)
+
+    assert remaining["semantic_models"] == [{"name": "semantic_model_to_keep"}]
+    assert remaining.get("models") == []
+
+
+def test_dry_run_unmanaged_superseded_file_with_missing_original_cache_is_not_stale_cached(
+    yaml_context: YamlRefactorContext,
+    tmp_path: Path,
+    fresh_caches,
+):
+    """Dry-run must not delete unmanaged superseded files or leave stale YAML caches."""
+    from unittest import mock as mock_patch
+
+    import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    from dbt_osmosis.core.schema.reader import (
+        _YAML_BUFFER_CACHE,
+        _YAML_BUFFER_CACHE_LOCK,
+        _YAML_ORIGINAL_CACHE,
+        _read_yaml,
+    )
+
+    old_file = tmp_path / "models" / "dry_run_unmanaged.yml"
+    old_file.parent.mkdir(parents=True, exist_ok=True)
+    original_content = {
+        "version": 2,
+        "models": [{"name": "model_to_move"}],
+        "semantic_models": [{"name": "semantic_model_to_keep"}],
+    }
+    with old_file.open("w") as f:
+        yaml.dump(original_content, f)
+
+    _read_yaml(yaml_context.yaml_handler, yaml_context.yaml_handler_lock, old_file)
+    with _YAML_BUFFER_CACHE_LOCK:
+        _YAML_ORIGINAL_CACHE.clear()
+
+    mock_node = mock_patch.Mock(spec=ModelNode)
+    mock_node.name = "model_to_move"
+    mock_node.resource_type = NodeType.Model
+
+    new_file = tmp_path / "models" / "staging" / "model_to_move.yml"
+    plan = RestructureDeltaPlan(
+        operations=[
+            RestructureOperation(
+                file_path=new_file,
+                content={"version": 2, "models": [{"name": "model_to_move"}]},
+                superseded_paths={old_file: [mock_node]},
+            ),
+        ],
+    )
+
+    with (
+        mock_patch.patch.object(yaml_context.settings, "dry_run", True),
+        mock_patch.patch("dbt_osmosis.core.restructuring.logger.info") as logger_info,
+    ):
+        apply_restructure_plan(yaml_context, plan, confirm=False)
+
+    assert old_file.exists()
+    assert all(
+        "Superseded entire file" not in str(call.args[0]) for call in logger_info.call_args_list
+    )
+    with old_file.open() as f:
+        assert yaml.safe_load(f) == original_content
+    with _YAML_BUFFER_CACHE_LOCK:
+        assert old_file not in _YAML_BUFFER_CACHE
+        assert old_file not in _YAML_ORIGINAL_CACHE
+
+
+def test_same_path_superseded_file_preserves_rewritten_managed_and_unmanaged_content(
+    yaml_context: YamlRefactorContext,
+    tmp_path: Path,
+    fresh_caches,
+):
+    """Same-path superseded entries should not remove the just-written managed section."""
+    from unittest import mock as mock_patch
+
+    import yaml
+    from dbt.artifacts.resources.types import NodeType
+    from dbt.contracts.graph.nodes import ModelNode
+
+    yaml_file = tmp_path / "models" / "same_path.yml"
+    yaml_file.parent.mkdir(parents=True, exist_ok=True)
+    with yaml_file.open("w") as f:
+        yaml.dump(
+            {
+                "version": 2,
+                "models": [{"name": "model_to_keep", "description": "old"}],
+                "semantic_models": [{"name": "semantic_model_to_keep"}],
+            },
+            f,
+        )
+
+    mock_node = mock_patch.Mock(spec=ModelNode)
+    mock_node.name = "model_to_keep"
+    mock_node.resource_type = NodeType.Model
+
+    plan = RestructureDeltaPlan(
+        operations=[
+            RestructureOperation(
+                file_path=yaml_file,
+                content={
+                    "version": 2,
+                    "models": [{"name": "model_to_keep", "description": "new"}],
+                },
+                superseded_paths={yaml_file: [mock_node]},
+            ),
+        ],
+    )
+
+    with mock_patch.patch.object(yaml_context.settings, "dry_run", False):
+        apply_restructure_plan(yaml_context, plan, confirm=False)
+
+    with yaml_file.open() as f:
+        remaining = yaml.safe_load(f)
+
+    assert remaining["models"] == [
+        {"name": "model_to_keep", "description": "old"},
+        {"name": "model_to_keep", "description": "new"},
+    ]
+    assert remaining["semantic_models"] == [{"name": "semantic_model_to_keep"}]
+
+
 # ============================================================================
 # Catalog Data Type Sync Tests
 # ============================================================================

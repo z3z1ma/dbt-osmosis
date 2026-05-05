@@ -1,11 +1,11 @@
 ---
 id: ticket:gh329loss
 kind: ticket
-status: ready
+status: closed
 change_class: code-behavior
 risk_class: high
 created_at: 2026-05-05T06:02:19Z
-updated_at: 2026-05-05T06:02:19Z
+updated_at: 2026-05-05T07:58:33Z
 scope:
   kind: repository
   repositories:
@@ -13,6 +13,13 @@ scope:
 links:
   initiative:
     - initiative:issue-pr-zero
+  evidence:
+    - evidence:gh329loss-restructure-preservation-validation
+  critique:
+    - critique:gh329loss-restructure-preservation-review
+  packets:
+    - packet:ralph-ticket-gh329loss-20260505T062916Z
+    - packet:ralph-ticket-gh329loss-20260505T064213Z
 external_refs:
   github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/329
   related_github_issue: https://github.com/z3z1ma/dbt-osmosis/issues/306
@@ -70,15 +77,15 @@ Covers:
 
 | Claim | Evidence | Critique | Status |
 | --- | --- | --- | --- |
-| ticket:gh329loss#ACC-001 | None yet | None yet | open |
-| ticket:gh329loss#ACC-002 | None yet | None yet | open |
-| ticket:gh329loss#ACC-003 | None yet | None yet | open |
-| ticket:gh329loss#ACC-004 | None yet | None yet | open |
-| ticket:gh329loss#ACC-005 | None yet | None yet | open |
+| ticket:gh329loss#ACC-001 | evidence:gh329loss-restructure-preservation-validation | critique:gh329loss-restructure-preservation-review | accepted |
+| ticket:gh329loss#ACC-002 | evidence:gh329loss-restructure-preservation-validation | critique:gh329loss-restructure-preservation-review | accepted |
+| ticket:gh329loss#ACC-003 | evidence:gh329loss-restructure-preservation-validation | critique:gh329loss-restructure-preservation-review | accepted |
+| ticket:gh329loss#ACC-004 | evidence:gh329loss-restructure-preservation-validation | critique:gh329loss-restructure-preservation-review | accepted |
+| ticket:gh329loss#ACC-005 | evidence:gh329loss-restructure-preservation-validation | critique:gh329loss-restructure-preservation-review | accepted |
 
 # Execution Notes
 
-Current preservation evidence is not enough to close issues #329 or #306 because it covers same-path read/write behavior, not restructure deletion of superseded source files. The likely implementation path is in `src/dbt_osmosis/core/restructuring.py` around superseded path cleanup and should continue using schema reader/writer cache discipline.
+Ralph iteration 1 fixed the primary superseded-file deletion path and added semantic-model/same-path regressions. Oracle critique found missing-original-cache and dry-run/cache coverage gaps. Ralph iteration 2 added missing-original-cache fallback handling and dry-run/cache regressions. Parent validation and mandatory Oracle critique now support all acceptance criteria locally.
 
 # Blockers
 
@@ -86,7 +93,7 @@ None.
 
 # Evidence
 
-Expected evidence: a failing restructure regression that loses `semantic_models` or `databricks-tags`, a green focused test after the fix, existing schema preservation tests, and remote CI before closure.
+Evidence status: local red/green Ralph evidence, parent focused pytest, Ruff, and whitespace checks support ACC-001 through ACC-005 for the uncommitted implementation diff. Remote CI will be checked at the initiative level after the full batch push per operator direction.
 
 # Critique Disposition
 
@@ -103,21 +110,21 @@ Required critique profiles:
 
 Findings:
 
-None - no critique yet.
+None - critique:gh329loss-restructure-preservation-review returned `pass` with no findings.
 
-Disposition status: pending
+Disposition status: completed
 
 Deferral / not-required rationale: N/A.
 
 # Retrospective / Promotion Disposition
 
-Disposition status: pending
+Disposition status: completed
 
 Promoted:
 
-None yet.
+None - retrospective found no durable explanation needing wiki/research/spec promotion beyond the ticket, evidence, and critique records.
 
-Deferred / not-required rationale: N/A.
+Deferred / not-required rationale: No broader behavior contract changed; this ticket adds targeted data-loss regression coverage and keeps the existing YAML preservation architecture intact.
 
 # Wiki Disposition
 
@@ -125,10 +132,10 @@ N/A - no wiki promotion selected yet.
 
 # Acceptance Decision
 
-Accepted by: Pending implementation, mandatory critique, and evidence.
-Accepted at: N/A.
-Basis: N/A.
-Residual risks: N/A.
+Accepted by: OpenCode parent agent.
+Accepted at: 2026-05-05T07:58:33Z.
+Basis: Local implementation evidence, focused validation, and mandatory Oracle critique support ACC-001 through ACC-005. The ticket is ready for issue closure with remote CI deferred to the issue-backlog initiative gate per operator direction.
+Residual risks: Remote CI not yet checked; empty unmanaged top-level sections may conservatively preserve a superseded file, which is accepted as fail-closed behavior.
 
 # Dependencies
 
@@ -137,3 +144,5 @@ None.
 # Journal
 
 - 2026-05-05T06:02:19Z: Created from GitHub issues #329 and #306 after Oracle identified a remaining restructure deletion edge despite current same-path preservation fixes.
+- 2026-05-05T06:51:54Z: Ralph iterations 1 and 2 implemented and validated the restructure preservation fix. Mandatory Oracle critique passed with no findings. Retrospective completed with no promotion needed beyond the ticket/evidence/critique records. Moved to complete_pending_acceptance pending final implementation commit packaging.
+- 2026-05-05T07:58:33Z: Accepted and closed locally for per-issue packaging. GitHub issues #329 and #306 are ready for commit, push, comment, and closure.
