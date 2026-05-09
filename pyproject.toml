@@ -26,7 +26,7 @@ dependencies = [
   "click>7,<9",
   "dbt-core>=1.8",
   "dbt-core-interface>=1.1.7",
-  "ruamel.yaml>=0.17,<0.19",
+  "ruamel.yaml>=0.17,<0.20",
   "rich>=10",
   "pluggy>=1.5.0,<2",
   "PyYAML>=6.0",
