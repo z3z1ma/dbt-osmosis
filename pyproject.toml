@@ -54,7 +54,7 @@ duckdb = ["dbt-duckdb>=1,<2"]
 proxy = ["mysql-mimic>=2.5.7"]
 
 dev = [
-  "basedpyright~=1.38.4",
+  "basedpyright>=1.38.4,<1.40.0",
   "ruff==0.8.6",
   "pytest>=8.3.4,<9.1.0",
   "pytest-cov~=6.0",
@@ -139,7 +139,7 @@ skip_covered = false
 
 [dependency-groups]
 dev = [
-  "basedpyright~=1.38.4",
+  "basedpyright>=1.38.4,<1.40.0",
   "ruff==0.8.6",
   "pytest>=8.3.4,<9.1.0",
   "pytest-cov~=6.0",
