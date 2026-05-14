@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+MANDATORY: Use loom.
+
 ## Project Overview
 
 `dbt-osmosis` is a Python CLI and package for dbt development workflows. The repo centers on four surfaces:
