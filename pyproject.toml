@@ -42,7 +42,7 @@ workbench = [
   "ipython>=8,<9",
   "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
-  "setuptools>=70,<83",
+  "setuptools>=70,<81",
 ]
 
 openai = ["openai>=1.58.1,<2.37.0"]
