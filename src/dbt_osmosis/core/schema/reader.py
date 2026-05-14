@@ -344,9 +344,9 @@ def _read_yaml(
                     if not yaml_handler.preserve_quotes:
                         _normalize_managed_quote_styles(
                             filtered_content,
-                            width=yaml_handler.width,
+                            width=t.cast("int", yaml_handler.width),
                             prefix_colon=yaml_handler.prefix_colon,
-                            indent_mapping=yaml_handler.map_indent,
+                            indent_mapping=t.cast("int", yaml_handler.map_indent),
                         )
                 else:
                     filtered_content = original_content

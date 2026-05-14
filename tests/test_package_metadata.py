@@ -110,7 +110,7 @@ def test_base_dependencies_and_optional_extras_are_intentional() -> None:
     assert "ydata-profiling" in workbench_packages
     assert "ipython" in workbench_packages
     assert "streamlit>=1.45.0,<2.0" in extras["workbench"]
-    assert "setuptools>=70,<81" in extras["workbench"]
+    assert "setuptools>=70,<83" in extras["workbench"]
     assert "dbt-duckdb" in _package_names(extras["duckdb"])
     assert "mysql-mimic" in _package_names(extras["proxy"])
     assert "azure-identity" in _package_names(extras["azure"])

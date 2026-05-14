@@ -26,11 +26,11 @@ dependencies = [
   "click>7,<9",
   "dbt-core>=1.8",
   "dbt-core-interface>=1.1.7",
-  "ruamel.yaml>=0.17,<0.19",
+  "ruamel.yaml>=0.17,<0.20",
   "rich>=10",
   "pluggy>=1.5.0,<2",
   "PyYAML>=6.0",
-  "sqlglot>=28,<29",
+  "sqlglot>=28,<31",
   "rapidfuzz>=3.0.0",
 ]
 
@@ -42,10 +42,10 @@ workbench = [
   "ipython>=8,<9",
   "feedparser~=6.0.12",
   "streamlit-elements-fluence>=0.1.4",
-  "setuptools>=70,<81",
+  "setuptools>=70,<83",
 ]
 
-openai = ["openai~=1.58.1"]
+openai = ["openai>=1.58.1,<2.37.0"]
 
 azure = ["azure-identity>=1.19,<2"]
 
@@ -54,7 +54,7 @@ duckdb = ["dbt-duckdb>=1,<2"]
 proxy = ["mysql-mimic>=2.5.7"]
 
 dev = [
-  "basedpyright~=1.38.4",
+  "basedpyright>=1.38.4,<1.40.0",
   "ruff==0.8.6",
   "pytest>=8.3.4,<9.1.0",
   "pytest-cov~=6.0",
@@ -139,7 +139,7 @@ skip_covered = false
 
 [dependency-groups]
 dev = [
-  "basedpyright~=1.38.4",
+  "basedpyright>=1.38.4,<1.40.0",
   "ruff==0.8.6",
   "pytest>=8.3.4,<9.1.0",
   "pytest-cov~=6.0",
