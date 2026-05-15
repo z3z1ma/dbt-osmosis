@@ -211,7 +211,7 @@ def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     @click.option(
         "--profiles-dir",
         type=click.Path(dir_okay=True, file_okay=False),
-        default=discover_profiles_dir,
+        default=None,
         help="Which directory to look in for the profiles.yml file. Defaults to DBT_PROFILES_DIR, the current directory, the discovered project root, or ~/.dbt.",
     )
     @click.option(
@@ -228,9 +228,22 @@ def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        kwargs["profiles_dir"] = _resolve_profiles_dir(
+            project_dir=t.cast(str | None, kwargs.get("project_dir")),
+            profiles_dir=t.cast(str | None, kwargs.get("profiles_dir")),
+        )
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def _resolve_profiles_dir(
+    project_dir: str | None,
+    profiles_dir: str | None,
+) -> str:
+    if profiles_dir is not None:
+        return profiles_dir
+    return discover_profiles_dir(project_dir)
 
 
 def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
@@ -1543,7 +1556,7 @@ def query(
 )
 @click.option(
     "--profiles-dir",
-    default=discover_profiles_dir,
+    default=None,
     type=click.Path(dir_okay=True, file_okay=False),
     help="Which directory to look in for the profiles.yml file. Defaults to DBT_PROFILES_DIR, the current directory, the discovered project root, or ~/.dbt.",
 )
@@ -1580,6 +1593,7 @@ def workbench(
     pass --config to see the output of streamlit config show
     """
     logger.info(":water_wave: Executing dbt-osmosis\n")
+    profiles_dir = _resolve_profiles_dir(project_dir, profiles_dir)
 
     if "--options" in ctx.args:
         proc = _run_streamlit_command(["run", "--help"])

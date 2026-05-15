@@ -1,6 +1,8 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
 import subprocess
+from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -146,6 +148,77 @@ def test_sql_compile_plain_sql_outputs_sql(
 
     assert result.exit_code == 0
     assert result.output.strip().splitlines()[-1] == "select 1"
+
+
+def test_sql_compile_uses_project_local_profiles_dir_when_omitted(
+    runner: CliRunner,
+) -> None:
+    """dbt_opts should resolve omitted profiles-dir from the effective project-dir."""
+    project_dir = Path("demo_duckdb").resolve()
+    project = mock.Mock()
+
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context",
+            return_value=project,
+        ) as create_context,
+        mock.patch(
+            "dbt_osmosis.cli.main.compile_sql_code",
+            return_value=SimpleNamespace(compiled_code="select 1"),
+        ),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "sql",
+                "compile",
+                "--project-dir",
+                str(project_dir),
+                "select 1",
+            ],
+        )
+
+    assert result.exit_code == 0
+    settings = create_context.call_args.args[0]
+    assert settings.project_dir == str(project_dir)
+    assert settings.profiles_dir == str(project_dir)
+
+
+def test_sql_compile_preserves_explicit_profiles_dir(
+    runner: CliRunner,
+) -> None:
+    """Explicit profiles-dir values should pass through without rediscovery."""
+    project_dir = Path("demo_duckdb").resolve()
+    explicit_profiles_dir = "demo_duckdb"
+    project = mock.Mock()
+
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context",
+            return_value=project,
+        ) as create_context,
+        mock.patch(
+            "dbt_osmosis.cli.main.compile_sql_code",
+            return_value=SimpleNamespace(compiled_code="select 1"),
+        ),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "sql",
+                "compile",
+                "--project-dir",
+                str(project_dir),
+                "--profiles-dir",
+                explicit_profiles_dir,
+                "select 1",
+            ],
+        )
+
+    assert result.exit_code == 0
+    settings = create_context.call_args.args[0]
+    assert settings.project_dir == str(project_dir)
+    assert settings.profiles_dir == explicit_profiles_dir
 
 
 def test_diff_schema_passes_positional_selectors_to_refactor_settings(
@@ -409,6 +482,35 @@ def test_workbench_enable_external_feed_passes_app_opt_in(
     script_args = command[script_path_index + 1 :]
     assert script_args[0] == "--"
     assert "--enable-external-feed" in script_args
+
+
+def test_workbench_uses_project_local_profiles_dir_when_omitted(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workbench should pass the project-local profiles dir to the app when omitted."""
+    project_dir = Path("demo_duckdb").resolve()
+    completed = subprocess.CompletedProcess(args=[], returncode=0)
+    monkeypatch.setattr("shutil.which", lambda name: "streamlit")
+    monkeypatch.setattr("importlib.import_module", lambda name: object())
+
+    with mock.patch.object(subprocess, "run", return_value=completed) as run:
+        result = runner.invoke(
+            cli,
+            [
+                "workbench",
+                "--project-dir",
+                str(project_dir),
+            ],
+        )
+
+    assert result.exit_code == 0
+    command = run.call_args.args[0]
+    script_path_index = next(i for i, value in enumerate(command) if str(value).endswith("app.py"))
+    script_args = command[script_path_index + 1 :]
+    assert script_args[0] == "--"
+    profiles_dir_index = script_args.index("--profiles-dir")
+    assert script_args[profiles_dir_index + 1] == str(project_dir)
 
 
 def test_workbench_preserves_literal_double_dash_passthrough(

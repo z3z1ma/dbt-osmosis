@@ -7,6 +7,7 @@ import pytest
 
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.transforms import (
+    apply_semantic_analysis,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     remove_columns_not_in_database,
@@ -128,6 +129,68 @@ def test_sort_columns_as_in_database(yaml_context: YamlRefactorContext, fresh_ca
     With duckdb, this is minimal but we can still ensure no errors.
     """
     sort_columns_as_in_database(yaml_context)
+
+
+@pytest.mark.parametrize(
+    ("output_to_lower", "output_to_upper", "yaml_columns", "database_columns", "expected_order"),
+    [
+        (
+            False,
+            True,
+            ["B", "STALE", "A"],
+            ["a", "b"],
+            ["A", "B", "STALE"],
+        ),
+        (
+            True,
+            False,
+            ["b", "stale", "a"],
+            ["A", "B"],
+            ["a", "b", "stale"],
+        ),
+    ],
+)
+def test_sort_columns_as_in_database_honors_output_case_settings(
+    fresh_caches,
+    output_to_lower: bool,
+    output_to_upper: bool,
+    yaml_columns: list[str],
+    database_columns: list[str],
+    expected_order: list[str],
+):
+    from dbt.contracts.graph.nodes import ColumnInfo
+    from dbt_common.contracts.metadata import ColumnMetadata
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.test_model"
+    mock_node.columns = OrderedDict(
+        (name, ColumnInfo.from_dict({"name": name, "description": ""}))
+        for name in yaml_columns
+    )
+
+    context = mock.MagicMock()
+    context.settings.output_to_lower = output_to_lower
+    context.settings.output_to_upper = output_to_upper
+    context.project.runtime_cfg.credentials.type = "postgres"
+
+    incoming = OrderedDict(
+        (
+            name,
+            ColumnMetadata(name=name, type="TEXT", index=index),
+        )
+        for index, name in enumerate(database_columns)
+    )
+
+    with (
+        mock.patch("dbt_osmosis.core.introspection.get_columns", return_value=incoming),
+        mock.patch(
+            "dbt_osmosis.core.introspection.resolve_setting",
+            side_effect=lambda *args, fallback=None, **kw: fallback,
+        ),
+    ):
+        sort_columns_as_in_database(context, mock_node)
+
+    assert list(mock_node.columns) == expected_order
 
 
 def test_sort_columns_alphabetically(yaml_context: YamlRefactorContext, fresh_caches):
@@ -608,3 +671,104 @@ def test_inject_missing_columns_with_lower_then_sort_alphabetically(fresh_caches
     assert column_keys == ["apple", "banana", "zebra"], (
         f"Columns should be alphabetically sorted lowercase on first run, got {column_keys}"
     )
+
+
+def test_apply_semantic_analysis_accumulates_description_tags_and_meta(monkeypatch):
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    def fake_analyze_column_semantics(**kwargs):
+        return {
+            "semantic_type": "identifier",
+            "tags": ["existing_tag", "primary_key"],
+            "meta": {
+                "semantic_type": "identifier",
+                "owner": "suggested owner",
+            },
+        }
+
+    def fake_generate_semantic_description(**kwargs):
+        return "Generated customer identifier."
+
+    monkeypatch.setitem(fake_analyze_column_semantics.__globals__, "get_llm_client", object)
+    monkeypatch.setattr(
+        "dbt_osmosis.core.llm.analyze_column_semantics",
+        fake_analyze_column_semantics,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.llm.generate_semantic_description",
+        fake_generate_semantic_description,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.inheritance._build_column_knowledge_graph",
+        lambda context, node: {},
+    )
+
+    column = ColumnInfo.from_dict({
+        "name": "customer_id",
+        "description": "short",
+        "tags": ["existing_tag"],
+        "meta": {"owner": "existing owner"},
+    })
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.customers"
+    mock_node.name = "customers"
+    mock_node.description = ""
+    mock_node.raw_sql = ""
+    mock_node.columns = OrderedDict({"customer_id": column})
+
+    apply_semantic_analysis(mock.MagicMock(), mock_node)
+
+    updated_column = mock_node.columns["customer_id"]
+    assert updated_column.description == "Generated customer identifier."
+    assert updated_column.tags == ["existing_tag", "primary_key"]
+    assert updated_column.meta == {
+        "semantic_type": "identifier",
+        "owner": "existing owner",
+    }
+
+
+def test_apply_semantic_analysis_continues_after_column_failure(monkeypatch):
+    from dbt.contracts.graph.nodes import ColumnInfo
+
+    def fake_analyze_column_semantics(**kwargs):
+        if kwargs["column_name"] == "bad_column":
+            raise RuntimeError("analysis failed")
+        return {"semantic_type": "dimension"}
+
+    def fake_generate_semantic_description(**kwargs):
+        return "Generated description."
+
+    monkeypatch.setitem(fake_analyze_column_semantics.__globals__, "get_llm_client", object)
+    monkeypatch.setattr(
+        "dbt_osmosis.core.llm.analyze_column_semantics",
+        fake_analyze_column_semantics,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.llm.generate_semantic_description",
+        fake_generate_semantic_description,
+    )
+    monkeypatch.setattr(
+        "dbt_osmosis.core.inheritance._build_column_knowledge_graph",
+        lambda context, node: {},
+    )
+
+    mock_node = mock.MagicMock()
+    mock_node.unique_id = "model.test.customers"
+    mock_node.name = "customers"
+    mock_node.description = ""
+    mock_node.raw_sql = ""
+    mock_node.columns = OrderedDict({
+        "bad_column": ColumnInfo.from_dict({
+            "name": "bad_column",
+            "description": "bad",
+        }),
+        "good_column": ColumnInfo.from_dict({
+            "name": "good_column",
+            "description": "good",
+        }),
+    })
+
+    apply_semantic_analysis(mock.MagicMock(), mock_node)
+
+    assert mock_node.columns["bad_column"].description == "bad"
+    assert mock_node.columns["good_column"].description == "Generated description."

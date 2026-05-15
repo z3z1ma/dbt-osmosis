@@ -245,7 +245,11 @@ class SchemaDiff:
         Returns:
             SchemaDiffResult with detected changes
         """
-        from dbt_osmosis.core.introspection import get_columns, normalize_column_name
+        from dbt_osmosis.core.introspection import (
+            get_columns,
+            normalize_column_name,
+            resolve_setting,
+        )
 
         # Get YAML columns
         yaml_columns: dict[str, ColumnInfo] = node.columns
@@ -255,10 +259,40 @@ class SchemaDiff:
 
         # Normalize column names for comparison
         credentials_type = self._context.project.runtime_cfg.credentials.type
-        yaml_col_names = {
-            normalize_column_name(c.name, credentials_type) for c in yaml_columns.values()
+        output_to_upper = bool(
+            resolve_setting(
+                self._context,
+                "output-to-upper",
+                node,
+                fallback=bool(self._context.settings.output_to_upper),
+            )
+        )
+        output_to_lower = bool(
+            resolve_setting(
+                self._context,
+                "output-to-lower",
+                node,
+                fallback=bool(self._context.settings.output_to_lower),
+            )
+        )
+        case_insensitive = output_to_upper or output_to_lower
+
+        def _yaml_compare_name(column_name: str) -> str:
+            normalized = normalize_column_name(column_name, credentials_type)
+            return normalized.lower() if case_insensitive else normalized
+
+        def _db_compare_name(column_name: str) -> str:
+            if case_insensitive:
+                return normalize_column_name(column_name, credentials_type).lower()
+            return column_name
+
+        yaml_columns_by_name = {_yaml_compare_name(c.name): c for c in yaml_columns.values()}
+        database_columns_by_name = {
+            _db_compare_name(name): (name, column)
+            for name, column in database_columns.items()
         }
-        db_col_names = set(database_columns.keys())
+        yaml_col_names = set(yaml_columns_by_name)
+        db_col_names = set(database_columns_by_name)
 
         # Detect changes
         changes: list[SchemaChange] = []
@@ -266,14 +300,14 @@ class SchemaDiff:
         # Find added columns (in DB but not in YAML)
         added_columns = db_col_names - yaml_col_names
         for col_name in added_columns:
-            col_meta = database_columns[col_name]
+            original_col_name, col_meta = database_columns_by_name[col_name]
             changes.append(
                 ColumnAdded(
                     category=ChangeCategory.COLUMN_ADDED,
                     severity=ChangeSeverity.SAFE,
                     node=node,
                     description="",
-                    column_name=col_name,
+                    column_name=original_col_name,
                     data_type=col_meta.type,
                     comment=col_meta.comment,
                 )
@@ -281,32 +315,34 @@ class SchemaDiff:
 
         # Find removed columns (in YAML but not in DB)
         removed_columns = yaml_col_names - db_col_names
+        removed_column_names: list[str] = []
         for col_name in removed_columns:
-            # Get the original column info (before normalization)
-            original_col = next(
-                (
-                    c
-                    for c in yaml_columns.values()
-                    if normalize_column_name(c.name, credentials_type) == col_name
-                ),
-                None,
+            original_col = yaml_columns_by_name.get(col_name)
+            original_col_name = (
+                normalize_column_name(original_col.name, credentials_type)
+                if original_col
+                else col_name
             )
+            removed_column_names.append(original_col_name)
             changes.append(
                 ColumnRemoved(
                     category=ChangeCategory.COLUMN_REMOVED,
                     severity=ChangeSeverity.MODERATE,
                     node=node,
                     description="",
-                    column_name=col_name,
+                    column_name=original_col_name,
                     data_type=original_col.data_type if original_col else None,
                 )
             )
 
         # Detect column renames via fuzzy matching
         if self._rename_detection_enabled and added_columns and removed_columns:
+            added_column_names = [
+                database_columns_by_name[col_name][0] for col_name in added_columns
+            ]
             renames = self._detect_column_renames(
-                list(removed_columns),
-                list(added_columns),
+                removed_column_names,
+                added_column_names,
                 database_columns,
                 node,
             )
@@ -330,15 +366,8 @@ class SchemaDiff:
         # Detect type changes for common columns
         common_columns = yaml_col_names & db_col_names
         for col_name in common_columns:
-            yaml_col = next(
-                (
-                    c
-                    for c in yaml_columns.values()
-                    if normalize_column_name(c.name, credentials_type) == col_name
-                ),
-                None,
-            )
-            db_col = database_columns[col_name]
+            yaml_col = yaml_columns_by_name.get(col_name)
+            original_db_col_name, db_col = database_columns_by_name[col_name]
 
             if yaml_col and db_col:
                 old_type = yaml_col.data_type or "unknown"
@@ -355,7 +384,7 @@ class SchemaDiff:
                         severity=severity,
                         node=node,
                         description="",
-                        column_name=col_name,
+                        column_name=original_db_col_name,
                         old_type=old_type,
                         new_type=new_type,
                     )

@@ -459,7 +459,7 @@ def sort_columns_as_in_database(
     node: ResultNode | None = None,
 ) -> None:
     """Sort columns in a dbt node and it's corresponding yaml section as they appear in the database. Changes are implicitly buffered until commit_yamls is called."""
-    from dbt_osmosis.core.introspection import get_columns, normalize_column_name
+    from dbt_osmosis.core.introspection import get_columns, normalize_column_name, resolve_setting
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
     if node is None:
@@ -479,9 +479,25 @@ def sort_columns_as_in_database(
         )
         return
 
+    credentials_type = context.project.runtime_cfg.credentials.type
+    output_to_upper = resolve_setting(
+        context, "output-to-upper", node, fallback=context.settings.output_to_upper
+    )
+    output_to_lower = resolve_setting(
+        context, "output-to-lower", node, fallback=context.settings.output_to_lower
+    )
+    case_insensitive = output_to_upper or output_to_lower
+    incoming_by_compare_name = {
+        normalize_column_name(name, credentials_type).lower(): column
+        for name, column in incoming_columns.items()
+    }
+
     def _position(column: str) -> int:
-        inc = incoming_columns.get(
-            normalize_column_name(column, context.project.runtime_cfg.credentials.type),
+        normalized_column = normalize_column_name(column, credentials_type)
+        inc = (
+            incoming_by_compare_name.get(normalized_column.lower())
+            if case_insensitive
+            else incoming_columns.get(normalized_column)
         )
         if inc is None or inc.index is None:
             return 99_999
@@ -926,16 +942,15 @@ def apply_semantic_analysis(
                 temperature=0.5,
             )
 
-            # Update column description
-            node.columns[column_name] = column_info.replace(description=new_description)
+            updated_column = column_info.replace(description=new_description)
 
             # Apply suggested tags if present
             if semantic_result.get("tags"):
-                existing_tags = list(column_info.tags) if column_info.tags else []
-                new_tags = semantic_result["tags"]
+                existing_tags = list(updated_column.tags) if updated_column.tags else []
+                new_tags = t.cast(t.Iterable[str], semantic_result["tags"])
                 merged_tags = _order_preserving_union(existing_tags, new_tags)
                 if merged_tags != existing_tags:
-                    node.columns[column_name] = column_info.replace(tags=merged_tags)
+                    updated_column = updated_column.replace(tags=merged_tags)
                     logger.debug(
                         ":label: Added tags to column %s: %s",
                         column_name,
@@ -944,16 +959,18 @@ def apply_semantic_analysis(
 
             # Apply suggested meta if present
             if semantic_result.get("meta"):
-                existing_meta = dict(column_info.meta) if column_info.meta else {}
+                existing_meta = dict(updated_column.meta) if updated_column.meta else {}
                 # Merge meta, prioritizing existing values
                 merged_meta = {**semantic_result["meta"], **existing_meta}
                 if merged_meta != existing_meta:
-                    node.columns[column_name] = column_info.replace(meta=merged_meta)
+                    updated_column = updated_column.replace(meta=merged_meta)
                     logger.debug(
                         ":wrench: Added meta to column %s: %s",
                         column_name,
                         semantic_result["meta"],
                     )
+
+            node.columns[column_name] = updated_column
 
             logger.info(
                 ":sparkles: Applied semantic analysis to column => %s: %s",
