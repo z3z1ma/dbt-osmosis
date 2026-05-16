@@ -288,8 +288,7 @@ class SchemaDiff:
 
         yaml_columns_by_name = {_yaml_compare_name(c.name): c for c in yaml_columns.values()}
         database_columns_by_name = {
-            _db_compare_name(name): (name, column)
-            for name, column in database_columns.items()
+            _db_compare_name(name): (name, column) for name, column in database_columns.items()
         }
         yaml_col_names = set(yaml_columns_by_name)
         db_col_names = set(database_columns_by_name)

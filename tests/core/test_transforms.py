@@ -164,8 +164,7 @@ def test_sort_columns_as_in_database_honors_output_case_settings(
     mock_node = mock.MagicMock()
     mock_node.unique_id = "model.test.test_model"
     mock_node.columns = OrderedDict(
-        (name, ColumnInfo.from_dict({"name": name, "description": ""}))
-        for name in yaml_columns
+        (name, ColumnInfo.from_dict({"name": name, "description": ""})) for name in yaml_columns
     )
 
     context = mock.MagicMock()
