@@ -2,7 +2,7 @@
 
 Tracked from real-world testing on [oem-dbt-bigquery](https://github.com/RicardoAGL/oem-dbt-bigquery) (BigQuery, Kimball star schema, 15+ models).
 
-dbt-fusion version: **2.0.0-preview.154**
+dbt-fusion version: **2.0.0-preview.154** | dbt-core 1.12.0b2 + dbt-core-experimental-parser 2.0.0a1 (tested 2026-06-01)
 
 ---
 
@@ -58,6 +58,76 @@ vars:
 Routing matches against the node's FQN folder path. For nested folders, use dot notation (e.g., `staging.oem_raw`). The most specific match wins. Existing `+dbt-osmosis` config keys still take priority for backward compatibility.
 
 **Status**: Implemented in `feat/fusion-vars-routing` branch. 18 tests passing (16 unit + 2 integration). 678 total tests green.
+
+---
+
+## Finding 4: `vars.yml` external file — dbt-core 1.12 / 2.0 forward-compatibility
+
+**Severity**: None (osmosis already compatible, see below)
+**Introduced in**: dbt-core 1.12.0b1 (Python) and dbt-core 2.0.0a1 (Rust/Fusion)
+**Behavior**: Projects may now declare `vars:` in a standalone `vars.yml` file at the project root instead of inside `dbt_project.yml`.
+
+### Mutual exclusion rule
+
+`vars.yml` and `dbt_project.yml`'s `vars:` key are mutually exclusive. Both defined simultaneously raises `DbtProjectError`. Pick one location.
+
+```
+# vars.yml (new option, dbt-core 1.12+)
+vars:
+  dbt-osmosis:
+    models:
+      staging: "_stg_{parent}__models.yml"
+
+# OR dbt_project.yml (existing option — remove if using vars.yml)
+vars:
+  dbt-osmosis:
+    models:
+      staging: "_stg_{parent}__models.yml"
+```
+
+### Scope clarification: `+meta:` keys vs `vars:`
+
+These are two separate config surfaces and do **not** conflict:
+
+| Config key | Location | Subject to mutual exclusion? | Used by osmosis for |
+| ---------- | -------- | ---------------------------- | ------------------- |
+| `models.*.+dbt-osmosis: "..."` | `dbt_project.yml` only | No | Routing (legacy, breaks fusion parser) |
+| `models.*.+meta: {dbt-osmosis: "..."}` | `dbt_project.yml` only | No | Routing (still works, but see Finding 1) |
+| `vars.dbt-osmosis.models.*` | `dbt_project.yml` OR `vars.yml` | Yes (pick one) | Routing (fusion-compatible) |
+
+The `+meta: dbt-osmosis:` config keys **stay in `dbt_project.yml`** regardless — they are model config properties, not vars. Only the top-level `vars:` key is subject to the mutual exclusion rule.
+
+### osmosis impact: none — VarProvider API is unchanged
+
+`_resolve_vars_routing` reads vars via `context.project.runtime_cfg.vars.to_dict()`. The `VarProvider` interface returned by `runtime_cfg.vars` is unchanged in dbt-core 1.12 and 2.0 regardless of which file the vars came from. No code change needed.
+
+CLI `--vars` is also unaffected — it deep-merges on top of `vars.yml` at load time, so by the time osmosis reads `runtime_cfg.vars`, the merged result is already there.
+
+### Migration guide for users moving to `vars.yml`
+
+1. Create `vars.yml` at project root:
+   ```yaml
+   vars:
+     dbt-osmosis:
+       models:
+         staging: "_stg_{parent}__models.yml"
+         intermediate: "_int_{parent}__models.yml"
+         marts: "_marts_{parent}__models.yml"
+       seeds: "_seeds__models.yml"
+   ```
+2. Remove the `vars:` block from `dbt_project.yml` (mutual exclusion enforced).
+3. The `+meta: dbt-osmosis:` and `+dbt-osmosis:` keys in your models config are unrelated — leave or remove them per Finding 1 guidance.
+
+### Empirical test results (2026-06-01, oem-dbt-bigquery)
+
+| Test | Result |
+| ---- | ------ |
+| `dbt parse` (Python, 1.12.0b2) with `vars.yml` | PASS |
+| `dbt parse --use-v2-parser` (Rust, 2.0.0a1) with `vars.yml` | PASS (208ms) |
+| `dbt-osmosis yaml refactor --fusion-compat --dry-run` reading from `vars.yml` | PASS (0 ops — routing resolved correctly) |
+| Mutual exclusion: `vars:` in both files | `DbtProjectError` as documented |
+
+**Status**: No code change needed in osmosis. Document only.
 
 ---
 
@@ -230,3 +300,6 @@ Osmosis depends on dbt-core at 4 levels:
 | `dbtf build --write-catalog` | PARTIAL -- catalog.json generated but empty (BQ permission bug) |
 | `dbt docs generate` (core) | PASS -- 30.9K catalog with full column metadata |
 | osmosis vars routing | PASS -- 18 tests (feat/fusion-vars-routing branch) |
+| `dbt parse` (1.12.0b2) + `vars.yml` | PASS (2026-06-01) |
+| `dbt parse --use-v2-parser` (2.0.0a1) + `vars.yml` | PASS 208ms (2026-06-01) |
+| osmosis reads routing from `vars.yml` | PASS -- 0 ops, routes identical to dbt_project.yml vars (2026-06-01) |
