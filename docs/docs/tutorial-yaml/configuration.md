@@ -55,6 +55,26 @@ Seeds can be a single string (applies to all seeds) or a dict with per-folder ke
 
 **Precedence**: `+dbt-osmosis` config keys (if present) take priority over vars routing. This means existing dbt-core projects keep working unchanged -- vars routing is only used when the config key is absent.
 
+### Placing vars in `vars.yml` (dbt-core 1.12+)
+
+dbt-core 1.12 and dbt-core 2.0 (Fusion) support an external `vars.yml` file at the project root as an alternative to the `vars:` key in `dbt_project.yml`. dbt-osmosis reads from both locations transparently -- no configuration change is needed in osmosis itself.
+
+To use `vars.yml`, create the file and move the `dbt-osmosis` vars block there:
+
+```yaml title="vars.yml"
+vars:
+  dbt-osmosis:
+    models:
+      staging: "_stg_{parent}__models.yml"
+      intermediate: "_int_{parent}__models.yml"
+      marts: "_marts_{parent}__models.yml"
+    seeds: "_seeds__models.yml"
+```
+
+Then remove the `vars:` block from `dbt_project.yml`. The two locations are mutually exclusive -- having `vars:` defined in both files raises a `DbtProjectError` at parse time.
+
+Note that `+meta: {dbt-osmosis: ...}` and `+dbt-osmosis:` model config keys are separate from the `vars:` block and are not affected by this rule. Those keys live in `dbt_project.yml` regardless of where vars are declared.
+
 ### Sources
 
 Configure managed sources under `vars.dbt-osmosis.sources`:
