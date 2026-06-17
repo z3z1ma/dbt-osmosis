@@ -371,8 +371,12 @@ class TestGenerateStagingFromSource:
                 )
 
         parsed = ruamel.yaml.YAML().load(result.yaml_content)
-        assert parsed["models"][0]["description"] == mock_spec.description
-        assert parsed["models"][0]["columns"][0]["description"] == mock_spec.columns[0].description
+        # YAML literal block scalars (|) add one trailing \n on parse (clip-chomp semantic).
+        # Strip it before comparing so the test is robust to the representer's normalization.
+        assert parsed["models"][0]["description"].rstrip("\n") == mock_spec.description.rstrip("\n")
+        assert parsed["models"][0]["columns"][0]["description"].rstrip("\n") == mock_spec.columns[
+            0
+        ].description.rstrip("\n")
 
 
 class TestCheckDocumentation:
