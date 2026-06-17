@@ -171,7 +171,12 @@ def create_yaml_instance(
         if newlines == 1 and len(data) > description_threshold:
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=">")
         if newlines > 1:
-            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+            # Ensure the string ends with exactly one newline so ruamel.yaml emits
+            # clip-chomp style (|) rather than strip-chomp style (|-).  A trailing
+            # \n is the YAML literal-block convention and is not added to the Python
+            # value on round-trip parse.
+            normalized = data if data.endswith("\n") else data + "\n"
+            return dumper.represent_scalar("tag:yaml.org,2002:str", normalized, style="|")
         return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
     def mapping_proxy_representer(
