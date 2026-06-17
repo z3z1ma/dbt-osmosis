@@ -16,11 +16,11 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
 
 __all__ = [
-    "DocumentationGap",
     "DiscoveryResult",
-    "discover_undocumented_models",
-    "discover_undocumented_columns",
+    "DocumentationGap",
     "calculate_priority_score",
+    "discover_undocumented_columns",
+    "discover_undocumented_models",
     "get_documentation_coverage",
 ]
 
@@ -235,9 +235,11 @@ def _get_dependents(node: ResultNode, manifest: t.Any) -> list[str]:
     all_nodes = list(manifest.nodes.values()) + list(manifest.sources.values())
 
     for other_node in all_nodes:
-        if hasattr(other_node, "depends_on_nodes"):
-            if node.unique_id in other_node.depends_on_nodes:  # type: ignore
-                dependents.append(other_node.unique_id)
+        if (
+            hasattr(other_node, "depends_on_nodes")
+            and node.unique_id in other_node.depends_on_nodes
+        ):  # type: ignore
+            dependents.append(other_node.unique_id)
 
     return dependents
 
@@ -471,10 +473,7 @@ def _check_column_documentation(
         return False
 
     # Generic description
-    if col.description.lower() in ["the id", "the name", "the value"]:
-        return False
-
-    return True
+    return col.description.lower() not in ["the id", "the name", "the value"]
 
 
 def get_documentation_coverage(

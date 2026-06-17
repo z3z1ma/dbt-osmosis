@@ -277,7 +277,7 @@ class TestDetectTerminologyPatterns:
         result = _detect_terminology_patterns(descriptions)
 
         # Should detect "email" preference
-        assert "email" in result or any("email" in k for k in result.keys())
+        assert "email" in result or any("email" in k for k in result)
 
     def test_timestamp_variations(self):
         """Test detecting timestamp terminology."""

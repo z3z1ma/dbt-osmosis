@@ -111,7 +111,7 @@ def _cleanup_temp_path(temp_path: Path | None) -> None:
     if temp_path and temp_path.exists():
         try:
             temp_path.unlink()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
 

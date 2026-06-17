@@ -12,16 +12,7 @@ from tests.conftest import _create_temp_project_copy
 def _write_minimal_duckdb_profile(project_dir: Path) -> None:
     project_dir.mkdir(parents=True)
     (project_dir / "profiles.yml").write_text(
-        "\n".join([
-            "jaffle_shop:",
-            "  target: test",
-            "  outputs:",
-            "    test:",
-            "      type: duckdb",
-            '      path: "test.db"',
-            "      threads: 1",
-            "",
-        ]),
+        'jaffle_shop:\n  target: test\n  outputs:\n    test:\n      type: duckdb\n      path: "test.db"\n      threads: 1\n',
     )
 
 

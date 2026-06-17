@@ -7,13 +7,13 @@ import pytest
 
 from dbt_osmosis.core.schema.parser import create_yaml_instance
 from dbt_osmosis.core.schema.reader import (
+    _YAML_BUFFER_CACHE,
+    _YAML_ORIGINAL_CACHE,
     LRUCache,
     _mark_yaml_caches_dirty,
     _read_yaml,
-    _YAML_BUFFER_CACHE,
-    _YAML_ORIGINAL_CACHE,
 )
-from dbt_osmosis.core.schema.writer import _write_yaml, _merge_preserved_sections, commit_yamls
+from dbt_osmosis.core.schema.writer import _merge_preserved_sections, _write_yaml, commit_yamls
 
 
 def test_create_yaml_instance_settings():
@@ -242,7 +242,7 @@ def test_yaml_string_representer_none_prefix_colon():
 
         assert has_folded == should_fold, (
             f"Description of {length} chars should {'use' if should_fold else 'not use'} "
-            f"folded style, but got: {repr(result.split('description:')[1].split(chr(10))[0])}"
+            f"folded style, but got: {result.split('description:')[1].split(chr(10))[0]!r}"
         )
 
 

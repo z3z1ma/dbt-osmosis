@@ -10,7 +10,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUFF_VERSION = "0.8.6"
+RUFF_VERSION = "0.15.17"
 SUPPORTED_EXTRA_INSTALLS = (".[openai]", ".[azure]", ".[workbench]", ".[duckdb]", ".[proxy]")
 SUPPORT_POLICY_DOCS = (
     ROOT / "README.md",

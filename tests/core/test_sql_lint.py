@@ -19,11 +19,11 @@ from sqlglot import parse
 from dbt_osmosis.core.node_filters import _is_fqn_match
 from dbt_osmosis.core.sql_lint import (
     KeywordCapitalizationRule,
+    LineLengthRule,
     LintLevel,
     LintResult,
     LintRule,
     LintViolation,
-    LineLengthRule,
     QuotedIdentifierRule,
     SelectStarRule,
     SQLLinter,

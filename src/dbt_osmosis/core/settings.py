@@ -9,6 +9,7 @@ from pathlib import Path
 
 import ruamel.yaml
 from dbt.artifacts.schemas.catalog import CatalogResults
+from typing_extensions import Self
 
 from dbt_osmosis.core import logger
 
@@ -146,7 +147,7 @@ class YamlRefactorContext:
     _closed: bool = field(default=False, init=False, repr=False)
     """Track whether the context has been closed to prevent double-cleanup."""
 
-    def __enter__(self) -> YamlRefactorContext:
+    def __enter__(self) -> Self:
         """Enter the context manager.
 
         Returns:
@@ -181,14 +182,14 @@ class YamlRefactorContext:
             if hasattr(self, "pool") and self.pool is not None:
                 logger.debug(":lock: Shutting down thread pool")
                 self.pool.shutdown(wait=True)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(":warning: Error shutting down thread pool: %s", e)
 
         try:
             # Close the project context
             if hasattr(self, "project") and self.project is not None:
                 self.project.close()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(":warning: Error closing project context: %s", e)
 
         self._closed = True
@@ -254,7 +255,7 @@ class YamlRefactorContext:
                 formatter = data.get("formatter")
                 if isinstance(formatter, str) and formatter.strip():
                     return formatter.strip()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(
                     ":warning: Failed to read formatter from %s: %s",
                     supp_file,

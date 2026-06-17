@@ -20,18 +20,18 @@ from dbt_osmosis.core.schema.parser import (
 )
 
 __all__ = [
-    "ValidationSeverity",
+    "FormattingValidator",
+    "ModelValidator",
+    "SeedValidator",
+    "SourceValidator",
+    "StructureValidator",
     "ValidationIssue",
     "ValidationResult",
+    "ValidationSeverity",
     "Validator",
+    "auto_fix_yaml",
     "validate_yaml_file",
     "validate_yaml_structure",
-    "auto_fix_yaml",
-    "StructureValidator",
-    "ModelValidator",
-    "SourceValidator",
-    "SeedValidator",
-    "FormattingValidator",
 ]
 
 
@@ -333,7 +333,7 @@ class TestConfigValidator(Validator):
     _VERSION_COLUMN_INCLUDE_ALL = frozenset({"all", "*"})
 
     # Valid test names for models
-    VALID_TESTS = {
+    VALID_TESTS: t.ClassVar[set[str]] = {
         "unique",
         "not_null",
         "unique_combination_of_columns",
@@ -1142,7 +1142,7 @@ class FormattingValidator(Validator):
     """Validates YAML formatting conventions."""
 
     # Common formatting issues to check
-    FORMAT_CHECKS = {
+    FORMAT_CHECKS: t.ClassVar[dict[str, re.Pattern[str]]] = {
         "trailing_whitespace": re.compile(r" +$"),
         "multiple_blank_lines": re.compile(r"\n\n\n+"),
     }
@@ -1261,7 +1261,7 @@ def validate_yaml_file(
             return result
 
         data, unmanaged_sections = _partition_yaml_top_level_sections(raw_data)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         result = ValidationResult()
         result.add_error(
             code="PARSE_ERROR",

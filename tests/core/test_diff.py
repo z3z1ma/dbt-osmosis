@@ -66,7 +66,7 @@ def test_schema_diff_compare_node(yaml_context: YamlRefactorContext, fresh_cache
     # Get a model node from the manifest
     from dbt.artifacts.resources.types import NodeType
 
-    for node_id, node in yaml_context.manifest.nodes.items():
+    for node in yaml_context.manifest.nodes.values():
         if node.resource_type == NodeType.Model:
             result = differ.compare_node(node)
             assert isinstance(result, SchemaDiffResult)
@@ -176,7 +176,7 @@ def test_schema_diff_compare_all(yaml_context: YamlRefactorContext, fresh_caches
 
     assert isinstance(results, dict)
     # Results should only contain nodes with changes
-    for node_id, result in results.items():
+    for result in results.values():
         assert isinstance(result, SchemaDiffResult)
         assert result.has_changes is True
 
@@ -188,7 +188,7 @@ def test_schema_diff_result_properties(yaml_context: YamlRefactorContext, fresh_
     # Find a node and get its diff result
     from dbt.artifacts.resources.types import NodeType
 
-    for node_id, node in yaml_context.manifest.nodes.items():
+    for node in yaml_context.manifest.nodes.values():
         if node.resource_type == NodeType.Model:
             result = differ.compare_node(node)
 
@@ -228,11 +228,11 @@ def test_schema_diff_type_difference_ignores_case_only_changes(
     node = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
     database_columns = {"customer_id": ColumnMetadata(name="customer_id", type="varchar", index=1)}
 
-    with _patched_node_columns(node, {"customer_id": _column("customer_id", "VARCHAR")}):
-        with mock.patch(
-            "dbt_osmosis.core.introspection.get_columns", return_value=database_columns
-        ):
-            result = differ.compare_node(node)
+    with (
+        _patched_node_columns(node, {"customer_id": _column("customer_id", "VARCHAR")}),
+        mock.patch("dbt_osmosis.core.introspection.get_columns", return_value=database_columns),
+    ):
+        result = differ.compare_node(node)
 
     assert not any(isinstance(change, ColumnTypeChanged) for change in result.changes)
 
@@ -360,14 +360,14 @@ def test_schema_diff_type_difference_ignores_whitespace_only_changes(
         "customer_id": ColumnMetadata(name="customer_id", type="decimal(10,2)", index=1)
     }
 
-    with _patched_node_columns(
-        node,
-        {"customer_id": _column("customer_id", "DECIMAL(10, 2)")},
+    with (
+        _patched_node_columns(
+            node,
+            {"customer_id": _column("customer_id", "DECIMAL(10, 2)")},
+        ),
+        mock.patch("dbt_osmosis.core.introspection.get_columns", return_value=database_columns),
     ):
-        with mock.patch(
-            "dbt_osmosis.core.introspection.get_columns", return_value=database_columns
-        ):
-            result = differ.compare_node(node)
+        result = differ.compare_node(node)
 
     assert not any(isinstance(change, ColumnTypeChanged) for change in result.changes)
 
@@ -385,14 +385,14 @@ def test_schema_diff_type_difference_preserves_original_type_strings(
         "customer_id": ColumnMetadata(name="customer_id", type="VARCHAR(100)", index=1)
     }
 
-    with _patched_node_columns(
-        node,
-        {"customer_id": _column("customer_id", "VARCHAR(50)")},
+    with (
+        _patched_node_columns(
+            node,
+            {"customer_id": _column("customer_id", "VARCHAR(50)")},
+        ),
+        mock.patch("dbt_osmosis.core.introspection.get_columns", return_value=database_columns),
     ):
-        with mock.patch(
-            "dbt_osmosis.core.introspection.get_columns", return_value=database_columns
-        ):
-            result = differ.compare_node(node)
+        result = differ.compare_node(node)
 
     type_changes = [change for change in result.changes if isinstance(change, ColumnTypeChanged)]
     assert len(type_changes) == 1

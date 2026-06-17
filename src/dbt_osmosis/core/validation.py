@@ -23,8 +23,8 @@ from dbt_osmosis.core.config import DbtProjectContext
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 
 __all__ = [
-    "ModelValidationStatus",
     "ModelValidationResult",
+    "ModelValidationStatus",
     "ValidationReport",
     "validate_models",
 ]
@@ -316,7 +316,7 @@ def _validate_single_model(
         logger.debug(":zap: Compiling SQL for model => %s", node.name)
         compiled_node = compile_sql_code(context, raw_sql)
         compiled_sql = compiled_node.compiled_code or compiled_node.raw_code
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ModelValidationResult(
             model_name=node.name,
             unique_id=unique_id,
@@ -366,7 +366,7 @@ def _validate_single_model(
             execution_time_seconds=e.elapsed_seconds,
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         error_message = str(e)
         # Check for timeout
         if timeout_seconds and "timeout" in error_message.lower():

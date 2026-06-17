@@ -25,9 +25,9 @@ from dbt_osmosis.core.settings import YamlRefactorContext
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "AITestSuggester",
     "TestPatternExtractor",
     "TestSuggestion",
-    "AITestSuggester",
     "suggest_tests_for_model",
     "suggest_tests_for_project",
 ]
@@ -452,7 +452,7 @@ class AITestSuggester:
 
             return self._parse_ai_response(content)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "AI test suggestions failed; falling back to pattern-based suggestions: %s",
                 exc,

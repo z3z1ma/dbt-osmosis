@@ -14,7 +14,7 @@ from pathlib import Path
 
 from dbt.contracts.graph.nodes import SourceDefinition
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 from dbt_osmosis.core.config import DbtProjectContext
 from dbt_osmosis.core.schema.parser import create_yaml_instance
 from dbt_osmosis.core.settings import YamlRefactorSettings
@@ -24,8 +24,8 @@ from dbt_osmosis.core.staging import (
 )
 
 __all__ = [
-    "check_documentation",
     "DocumentationCheckResult",
+    "check_documentation",
     "generate_sources_from_database",
 ]
 

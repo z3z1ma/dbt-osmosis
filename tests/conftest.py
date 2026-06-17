@@ -162,7 +162,7 @@ def built_duckdb_template() -> Iterator[Path]:
         try:
             shutil.rmtree(template_temp_dir)
             print("✓ Removed template directory")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Warning: Error removing template directory: {e}")
         print("=" * 60 + "\n")
 
@@ -236,20 +236,23 @@ def yaml_context(built_duckdb_template: Path) -> Iterator[YamlRefactorContext]:
         print(f"\n=== Cleaning up temp directory {temp_dir} ===")
         try:
             # Close connections first
-            if "project_context" in locals():
-                if hasattr(project_context, "_project") and project_context._project is not None:
-                    if hasattr(project_context._project, "adapter"):
-                        adapter = project_context._project.adapter
-                        if hasattr(adapter, "connections") and hasattr(
-                            adapter.connections,
-                            "close",
-                        ):
-                            try:
-                                adapter.connections.close()
-                                print("✓ Adapter connections closed")
-                            except Exception as e:
-                                print(f"Warning: Error closing connections: {e}")
-        except Exception as e:
+            if (
+                "project_context" in locals()
+                and hasattr(project_context, "_project")
+                and project_context._project is not None
+                and hasattr(project_context._project, "adapter")
+            ):
+                adapter = project_context._project.adapter
+                if hasattr(adapter, "connections") and hasattr(
+                    adapter.connections,
+                    "close",
+                ):
+                    try:
+                        adapter.connections.close()
+                        print("✓ Adapter connections closed")
+                    except Exception as e:  # noqa: BLE001
+                        print(f"Warning: Error closing connections: {e}")
+        except Exception as e:  # noqa: BLE001
             print(f"Warning: Error during connection cleanup: {e}")
 
         # Delete the DbtProject reference and trigger GC
@@ -258,14 +261,14 @@ def yaml_context(built_duckdb_template: Path) -> Iterator[YamlRefactorContext]:
                 del project_context._project
                 gc.collect()
                 print("✓ DbtProject reference deleted and garbage collected")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Warning: Error deleting DbtProject reference: {e}")
 
         # Remove the temp directory
         try:
             shutil.rmtree(temp_dir)
             print(f"✓ Removed temp directory {temp_dir}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Warning: Error removing temp directory: {e}")
 
         print("=== Teardown complete ===\n")

@@ -4,8 +4,8 @@ import uuid
 
 from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
 from dbt.adapters.contracts.connection import AdapterResponse
-from dbt.contracts.graph.nodes import ManifestSQLNode
 from dbt.artifacts.resources.types import NodeType
+from dbt.contracts.graph.nodes import ManifestSQLNode
 from dbt.parser.manifest import process_node
 from dbt.task.sql import SqlCompileRunner
 

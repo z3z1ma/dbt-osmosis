@@ -18,8 +18,8 @@ if t.TYPE_CHECKING:
 __all__ = [
     "ProjectStyleProfile",
     "analyze_project_documentation_style",
-    "find_similar_documented_nodes",
     "extract_style_examples",
+    "find_similar_documented_nodes",
 ]
 
 
@@ -259,9 +259,7 @@ def analyze_project_documentation_style(
     column_descriptions: list[str] = []
     column_names: list[str] = []
 
-    analyzed_count = 0
-
-    for _, node in _iter_candidate_nodes(context):
+    for analyzed_count, (_, node) in enumerate(_iter_candidate_nodes(context)):
         if analyzed_count >= max_nodes:
             break
 
@@ -276,8 +274,6 @@ def analyze_project_documentation_style(
             if col.description and col.description not in context.placeholders:
                 column_descriptions.append(col.description)
                 column_names.append(col_name)
-
-        analyzed_count += 1
 
     # Build profile
     profile = ProjectStyleProfile()

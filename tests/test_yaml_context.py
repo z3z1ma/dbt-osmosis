@@ -44,7 +44,7 @@ def _customer_column_types(yaml_context: YamlRefactorContext) -> dict[str, str]:
     columns = get_columns(yaml_context, node)
     assert columns
 
-    column_types = dict({name: meta.type for name, meta in columns.items()})
+    column_types = {name: meta.type for name, meta in columns.items()}
     assert column_types
     return column_types
 

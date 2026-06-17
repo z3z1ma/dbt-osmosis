@@ -1,9 +1,9 @@
 # pyright: reportPrivateImportUsage=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportFunctionMemberAccess=false, reportUnknownVariableType=false, reportUnusedParameter=false
 
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 import stat
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -11,17 +11,17 @@ import pytest
 import ruamel.yaml
 from dbt.artifacts.resources.types import NodeType
 
-from dbt_osmosis.core.inheritance import _get_node_yaml
 from dbt_osmosis.core.exceptions import YamlValidationError
+from dbt_osmosis.core.inheritance import _get_node_yaml
 from dbt_osmosis.core.schema.reader import _read_yaml
 from dbt_osmosis.core.schema.writer import _write_yaml, commit_yamls
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sync_operations import (
     _finalize_synced_document,
     _get_or_create_model,
-    _get_or_create_version,
     _get_or_create_source,
     _get_or_create_source_table,
+    _get_or_create_version,
     _group_sync_nodes,
     _sync_doc_section,
     sync_node_to_yaml,

@@ -40,9 +40,12 @@ def _sync_doc_section(
         node,
         fallback=context.settings.scaffold_empty_configs,
     )
-    if node.description and not doc_section.get("description"):
-        if scaffold_empty_configs or node.description not in context.placeholders:
-            doc_section["description"] = node.description
+    if (
+        node.description
+        and not doc_section.get("description")
+        and (scaffold_empty_configs or node.description not in context.placeholders)
+    ):
+        doc_section["description"] = node.description
 
     current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
     preserved_column_entries: list[dict[str, t.Any]] = []
@@ -158,10 +161,13 @@ def _sync_doc_section(
             fallback=context.settings.scaffold_empty_configs,
         )
         preserve_current_description = False
-        if use_unrendered and current_description:
+        if (
+            use_unrendered
+            and current_description
+            and ("{{ doc(" in current_description or "{% docs " in current_description)
+        ):
             # Check if current description contains unrendered doc blocks
-            if "{{ doc(" in current_description or "{% docs " in current_description:
-                preserve_current_description = True
+            preserve_current_description = True
 
         # Fields to preserve from current YAML when prefer_yaml_values is enabled
         # This includes ANY field that has unrendered jinja templates
@@ -600,7 +606,7 @@ def _deduplicate_versions(doc_model: dict[str, t.Any]) -> dict[str, dict[str, t.
 
 def _get_or_create_version(
     doc_model: dict[str, t.Any],
-    version: int | float | str,
+    version: float | str,
 ) -> dict[str, t.Any]:
     """Find or create a version entry within a model."""
     from dbt_osmosis.core.inheritance import _raw_model_version_value, _version_values_match

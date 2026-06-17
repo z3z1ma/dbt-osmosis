@@ -21,11 +21,9 @@ def _load_ai_assistant_module(monkeypatch):
 
         def Typography(self, text, *args, **kwargs):
             self.typography_calls.append(text)
-            return None
 
         def Chip(self, *args, **kwargs):
             self.chip_labels.append(kwargs["label"])
-            return None
 
     fake_streamlit = ModuleType("streamlit")
     fake_streamlit.session_state = SimpleNamespace(app=SimpleNamespace(model="SCRATCH"))

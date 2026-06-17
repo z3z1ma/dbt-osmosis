@@ -593,12 +593,14 @@ def test_get_llm_client_azure_ad_without_azure_identity(
     monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN_SCOPE", "https://cognitiveservices.azure.com")
 
     # Mock _AZURE_IDENTITY_AVAILABLE to False
-    with mock.patch("dbt_osmosis.core.llm._AZURE_IDENTITY_AVAILABLE", False):
-        with pytest.raises(
+    with (
+        mock.patch("dbt_osmosis.core.llm._AZURE_IDENTITY_AVAILABLE", False),
+        pytest.raises(
             LLMConfigurationError,
             match="Azure Identity library is not installed",
-        ):
-            get_llm_client()
+        ),
+    ):
+        get_llm_client()
 
 
 def test_get_llm_client_azure_ad_token_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -611,15 +613,17 @@ def test_get_llm_client_azure_ad_token_failure(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("AZURE_TENANT_ID", raising=False)
 
     # Mock credential to raise an exception
-    with mock.patch(
-        "dbt_osmosis.core.llm.DefaultAzureCredential.get_token",
-        side_effect=Exception("Authentication failed"),
-    ):
-        with pytest.raises(
+    with (
+        mock.patch(
+            "dbt_osmosis.core.llm.DefaultAzureCredential.get_token",
+            side_effect=Exception("Authentication failed"),
+        ),
+        pytest.raises(
             LLMConfigurationError,
             match="Failed to acquire Azure AD token",
-        ):
-            get_llm_client()
+        ),
+    ):
+        get_llm_client()
 
 
 def test_get_llm_client_azure_ad_scope_with_default_suffix(
@@ -628,7 +632,7 @@ def test_get_llm_client_azure_ad_scope_with_default_suffix(
     """Test that /.default suffix is added to scope if not present."""
     try:
         pytest.importorskip("azure.identity")
-    except Exception:
+    except Exception:  # noqa: BLE001
         pytest.skip("azure-identity not installed")
 
     monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
@@ -666,7 +670,7 @@ def test_get_llm_client_azure_ad_preserves_explicit_scoped_value(
     """Test that already-scoped gateway values are passed through unchanged."""
     try:
         pytest.importorskip("azure.identity")
-    except Exception:
+    except Exception:  # noqa: BLE001
         pytest.skip("azure-identity not installed")
 
     monkeypatch.setenv("LLM_PROVIDER", "azure-openai-ad")
@@ -776,9 +780,8 @@ def test_call_with_retry_max_retries_exceeded() -> None:
         body=None,
     )
 
-    with mock.patch("time.sleep"):
-        with pytest.raises(openai.RateLimitError):
-            _call_with_retry(mock_func, max_retries=2, initial_delay=0.1)
+    with mock.patch("time.sleep"), pytest.raises(openai.RateLimitError):
+        _call_with_retry(mock_func, max_retries=2, initial_delay=0.1)
 
     # Should try initial + 2 retries = 3 times
     assert mock_func.call_count == 3

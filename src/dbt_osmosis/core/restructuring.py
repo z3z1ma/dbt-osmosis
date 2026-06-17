@@ -247,7 +247,7 @@ def pretty_print_plan(plan: RestructureDeltaPlan) -> None:
         if not op.superseded_paths:
             logger.info(":blue_book: CREATE or MERGE => %s", op.file_path)
         else:
-            old_paths = [p.name for p in op.superseded_paths.keys()] or ["UNKNOWN"]
+            old_paths = [p.name for p in op.superseded_paths] or ["UNKNOWN"]
             logger.info(":blue_book: %s -> %s", old_paths, op.file_path)
 
 

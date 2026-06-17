@@ -81,7 +81,7 @@ class Editor(Dashboard.Item):
                     variant="scrollable",
                     sx={"flex": 1},
                 ):
-                    for tab_name in self.tabs.keys():
+                    for tab_name in self.tabs:
                         _ = mui.Tab(label=tab_name)
 
             for index, (tab_name, tab) in enumerate(self.tabs.items()):

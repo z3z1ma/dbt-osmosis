@@ -59,24 +59,24 @@ def test_generate_staging_dry_run_does_not_write_files(tmp_path: Path):
         yaml_path=yaml_path,
     )
 
-    with mock.patch("dbt_osmosis.cli.main.create_dbt_project_context", return_value=mock.Mock()):
-        with mock.patch(
-            "dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "staging",
-                    "raw",
-                    "users",
-                    "--dry-run",
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+    with (
+        mock.patch("dbt_osmosis.cli.main.create_dbt_project_context", return_value=mock.Mock()),
+        mock.patch("dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "staging",
+                "raw",
+                "users",
+                "--dry-run",
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code == 0
     assert "Generated SQL:" in result.output
@@ -96,28 +96,30 @@ def test_generate_model_refuses_existing_schema_without_overwrite(tmp_path: Path
     original_yaml = "version: 2\nmodels:\n  - name: existing_model\n"
     schema_path.write_text(original_yaml, encoding="utf-8")
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
-    ):
-        with mock.patch(
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch(
             "dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=_mock_model_spec()
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "model",
-                    "build a safe model",
-                    "--output-path",
-                    str(output_path),
-                    "--schema-yml",
-                    str(schema_path),
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        ),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "model",
+                "build a safe model",
+                "--output-path",
+                str(output_path),
+                "--schema-yml",
+                str(schema_path),
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "--overwrite" in result.output
@@ -140,29 +142,31 @@ def test_generate_model_overwrite_preserves_unmanaged_top_level_sections(tmp_pat
         encoding="utf-8",
     )
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
-    ):
-        with mock.patch(
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch(
             "dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=_mock_model_spec()
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "model",
-                    "build a safe model",
-                    "--overwrite",
-                    "--output-path",
-                    str(output_path),
-                    "--schema-yml",
-                    str(schema_path),
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        ),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "model",
+                "build a safe model",
+                "--overwrite",
+                "--output-path",
+                str(output_path),
+                "--schema-yml",
+                str(schema_path),
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code == 0, result.output
     parsed = ruamel.yaml.YAML().load(schema_path)
@@ -176,28 +180,30 @@ def test_generate_model_refuses_schema_path_outside_project_root(tmp_path: Path)
     outside_schema_path = tmp_path.parent / f"{tmp_path.name}_outside.yml"
     output_path = tmp_path / "models" / "stg_safe_model.sql"
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
-    ):
-        with mock.patch(
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch(
             "dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=_mock_model_spec()
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "model",
-                    "build a safe model",
-                    "--output-path",
-                    str(output_path),
-                    "--schema-yml",
-                    str(outside_schema_path),
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        ),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "model",
+                "build a safe model",
+                "--output-path",
+                str(output_path),
+                "--schema-yml",
+                str(outside_schema_path),
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "outside the dbt project root" in result.output
@@ -210,28 +216,30 @@ def test_generate_model_refuses_sql_output_path_outside_project_root(tmp_path: P
     outside_output_path = tmp_path.parent / f"{tmp_path.name}_outside.sql"
     schema_path = tmp_path / "models" / "stg_safe_model.yml"
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
-    ):
-        with mock.patch(
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch(
             "dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=_mock_model_spec()
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "model",
-                    "build a safe model",
-                    "--output-path",
-                    str(outside_output_path),
-                    "--schema-yml",
-                    str(schema_path),
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        ),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "model",
+                "build a safe model",
+                "--output-path",
+                str(outside_output_path),
+                "--schema-yml",
+                str(schema_path),
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "outside the dbt project root" in result.output
@@ -247,24 +255,26 @@ def test_generate_model_refuses_traversal_in_generated_model_name(tmp_path: Path
     model_spec = _mock_model_spec()
     model_spec["model_name"] = "../../outside_generated"
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch("dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=model_spec),
     ):
-        with mock.patch("dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=model_spec):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "model",
-                    "build a safe model",
-                    "--schema-yml",
-                    str(schema_path),
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "model",
+                "build a safe model",
+                "--schema-yml",
+                str(schema_path),
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "outside the dbt project root" in result.output
@@ -280,24 +290,26 @@ def test_deprecated_nl_generate_refuses_traversal_in_generated_model_name(tmp_pa
     model_spec = _mock_model_spec()
     model_spec["model_name"] = "../../outside_generated"
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch("dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=model_spec),
     ):
-        with mock.patch("dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=model_spec):
-            result = runner.invoke(
-                cli,
-                [
-                    "nl",
-                    "generate",
-                    "build a safe model",
-                    "--schema-yml",
-                    str(schema_path),
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "nl",
+                "generate",
+                "build a safe model",
+                "--schema-yml",
+                str(schema_path),
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "outside the dbt project root" in result.output
@@ -314,29 +326,31 @@ def test_generate_model_dry_run_refuses_existing_schema_without_overwrite(tmp_pa
     original_yaml = "version: 2\nmodels: []\n"
     schema_path.write_text(original_yaml, encoding="utf-8")
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
-    ):
-        with mock.patch(
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch(
             "dbt_osmosis.cli.main.generate_dbt_model_from_nl", return_value=_mock_model_spec()
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "model",
-                    "build a safe model",
-                    "--dry-run",
-                    "--output-path",
-                    str(output_path),
-                    "--schema-yml",
-                    str(schema_path),
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        ),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "model",
+                "build a safe model",
+                "--dry-run",
+                "--output-path",
+                str(output_path),
+                "--schema-yml",
+                str(schema_path),
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "--overwrite" in result.output
@@ -357,23 +371,23 @@ def test_generate_sources_refuses_existing_yaml_without_overwrite(tmp_path: Path
         yaml_path=yaml_path,
     )
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch("dbt_osmosis.cli.main.generate_sources_from_database", return_value=mock_result),
     ):
-        with mock.patch(
-            "dbt_osmosis.cli.main.generate_sources_from_database", return_value=mock_result
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "sources",
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "sources",
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "--overwrite" in result.output
@@ -393,26 +407,26 @@ def test_generate_staging_dry_run_reports_planned_writes(tmp_path: Path):
         yaml_path=yaml_path,
     )
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch("dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result),
     ):
-        with mock.patch(
-            "dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "staging",
-                    "raw",
-                    "users",
-                    "--dry-run",
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "staging",
+                "raw",
+                "users",
+                "--dry-run",
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code == 0, result.output
     assert "Planned writes:" in result.output
@@ -438,25 +452,25 @@ def test_generate_staging_refuses_existing_yaml_without_overwrite(tmp_path: Path
         yaml_path=yaml_path,
     )
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch("dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result),
     ):
-        with mock.patch(
-            "dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "staging",
-                    "raw",
-                    "users",
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "staging",
+                "raw",
+                "users",
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "--overwrite" in result.output
@@ -478,25 +492,25 @@ def test_generate_staging_refuses_sql_path_outside_project_root_without_yaml(
         yaml_path=None,
     )
 
-    with mock.patch(
-        "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+    with (
+        mock.patch(
+            "dbt_osmosis.cli.main.create_dbt_project_context", return_value=_mock_project(tmp_path)
+        ),
+        mock.patch("dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result),
     ):
-        with mock.patch(
-            "dbt_osmosis.cli.main.generate_staging_from_source", return_value=mock_result
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "generate",
-                    "staging",
-                    "raw",
-                    "users",
-                    "--project-dir",
-                    str(tmp_path),
-                    "--profiles-dir",
-                    str(tmp_path),
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                "staging",
+                "raw",
+                "users",
+                "--project-dir",
+                str(tmp_path),
+                "--profiles-dir",
+                str(tmp_path),
+            ],
+        )
 
     assert result.exit_code != 0
     assert "outside the dbt project root" in result.output

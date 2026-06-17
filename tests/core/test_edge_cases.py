@@ -113,7 +113,7 @@ def test_node_without_yaml_file(yaml_context: YamlRefactorContext):
         # Should handle gracefully - may create new file or skip
         try:
             sync_node_to_yaml(yaml_context, test_node, commit=False)
-        except (FileNotFoundError, Exception):
+        except (FileNotFoundError, Exception):  # noqa: BLE001, S110
             pass  # May raise if file truly doesn't exist
 
 
@@ -263,7 +263,7 @@ def test_deep_inheritance_chain(yaml_context: YamlRefactorContext):
     # Verify we have column information (structure may vary)
     if knowledge_graph:
         # At least one column should have been processed
-        for col_name, col_info in knowledge_graph.items():
+        for col_info in knowledge_graph.values():
             # Column info should be a dict with some metadata
             assert isinstance(col_info, dict)
             # The structure may include various keys like description, data_type, etc.

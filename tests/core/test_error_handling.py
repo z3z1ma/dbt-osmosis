@@ -142,13 +142,14 @@ def test_path_traversal_attack_absolute(yaml_context: YamlRefactorContext):
     # Attempt absolute path outside project (with double slash to bypass simple check)
     malicious_template = "//etc/passwd"
 
-    with mock.patch(
-        "dbt_osmosis.core.path_management._get_yaml_path_template",
-        return_value=malicious_template,
+    with (
+        mock.patch(
+            "dbt_osmosis.core.path_management._get_yaml_path_template",
+            return_value=malicious_template,
+        ),
+        pytest.raises((PathResolutionError, ValueError)),
     ):
-        # Should block path traversal attempts
-        with pytest.raises((PathResolutionError, ValueError)):
-            get_target_yaml_path(yaml_context, test_node)
+        get_target_yaml_path(yaml_context, test_node)
 
 
 def test_path_with_null_bytes(yaml_context: YamlRefactorContext):
@@ -255,7 +256,7 @@ models:
             try:
                 result = _read_yaml(yaml_handler, yaml_handler_lock, yaml_file)
                 results.append(result)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 errors.append(e)
 
         # Create multiple threads reading the same file
@@ -294,7 +295,7 @@ def test_yaml_cache_thread_safety():
                 # Multiple threads accessing cache
                 for _ in range(100):
                     _read_yaml(yaml_handler, yaml_handler_lock, yaml_file)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 errors.append((index, e))
 
         threads = [threading.Thread(target=cache_access_thread, args=(i,)) for i in range(5)]

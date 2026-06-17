@@ -115,7 +115,7 @@ class TestPathTraversalProtection:
         try:
             get_target_yaml_path(mock_context, mock_node)
             # If it doesn't raise, it should still produce a safe path
-        except (PathResolutionError, Exception):
+        except (PathResolutionError, Exception):  # noqa: BLE001, S110
             # PathResolutionError is the security exception we expect
             # Other exceptions are also acceptable for invalid input
             pass
@@ -223,7 +223,7 @@ class TestInputValidation:
             # If it doesn't raise, ensure the path is still safe
             project_root = Path("/fake/project/root").resolve()
             assert result.resolve().is_relative_to(project_root)
-        except (ValueError, KeyError, AttributeError, Exception):
+        except (ValueError, KeyError, AttributeError, Exception):  # noqa: BLE001, S110
             # These are acceptable failures for invalid input
             pass
 
@@ -275,7 +275,7 @@ class TestInputValidation:
                 except (OSError, ValueError):
                     # Path with invalid characters can't be resolved - also acceptable
                     pass
-            except (ValueError, PathResolutionError, OSError, Exception):
+            except (ValueError, PathResolutionError, OSError, Exception):  # noqa: BLE001, S110
                 # These are acceptable failures for dangerous input
                 pass
 
@@ -382,7 +382,7 @@ class TestSchemaValidation:
         context.project.runtime_cfg.vars.to_dict.return_value = {}
 
         # Empty template should raise MissingOsmosisConfig
-        with pytest.raises(Exception):  # MissingOsmosisConfig
+        with pytest.raises(Exception):  # noqa: B017  # MissingOsmosisConfig
             _get_yaml_path_template(context, mock_node)
 
 

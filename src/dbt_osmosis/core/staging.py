@@ -13,7 +13,7 @@ from pathlib import Path
 
 from dbt.contracts.graph.nodes import SourceDefinition
 
-import dbt_osmosis.core.logger as logger
+from dbt_osmosis.core import logger
 from dbt_osmosis.core.config import DbtProjectContext
 from dbt_osmosis.core.llm import (
     StagingModelSpec,
@@ -23,8 +23,8 @@ from dbt_osmosis.core.settings import YamlRefactorSettings
 
 __all__ = [
     "StagingGenerationResult",
-    "generate_staging_for_source",
     "generate_staging_for_all_sources",
+    "generate_staging_for_source",
     "write_staging_files",
 ]
 
@@ -103,7 +103,7 @@ def _get_source_table_columns(
             })
 
         return column_defs
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(
             ":warning: Could not introspect source %s.%s: %s", source_name, table_name, e
         )
@@ -234,7 +234,7 @@ def generate_staging_for_source(
             yaml_path=yaml_path,
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(":boom: Error generating staging for %s: %s", full_source_name, e)
         return StagingGenerationResult(
             source_name=full_source_name,
@@ -270,19 +270,19 @@ def generate_staging_for_all_sources(
         key = (source.source_name, source.name)
 
         # Apply include/exclude filters
-        if source_pattern:
-            if not _matches_pattern(source.source_name, source_pattern):
-                continue
+        if source_pattern and not _matches_pattern(source.source_name, source_pattern):
+            continue
 
-        if exclude_patterns:
-            if any(_matches_pattern(source.source_name, pat) for pat in exclude_patterns):
-                continue
+        if exclude_patterns and any(
+            _matches_pattern(source.source_name, pat) for pat in exclude_patterns
+        ):
+            continue
 
         sources_to_process[key] = source
 
     logger.info(":mag: Found %d source tables to process", len(sources_to_process))
 
-    for (source_name, table_name), source_def in sources_to_process.items():
+    for source_name, table_name in sources_to_process:
         result = generate_staging_for_source(
             project=project,
             settings=settings,

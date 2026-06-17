@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import typing as t
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
-import typing as t
 from importlib import import_module
 from types import MappingProxyType
 
@@ -397,7 +397,7 @@ def _collect_column_variants(
 
     pm = get_plugin_manager()
     node_column_variants: dict[str, list[str]] = {}
-    for column_name, _ in node.columns.items():
+    for column_name in node.columns:
         variants = node_column_variants.setdefault(column_name, [column_name])
         for v in pm.hook.get_candidates(name=column_name, node=node, context=context):
             variants.extend(t.cast("list[str]", v))
@@ -461,15 +461,16 @@ def _build_graph_edge(
         node,
         name,
         fallback=context.settings.use_unrendered_descriptions,
-    ):
-        if unrendered_description := _get_unrendered(
+    ) and (
+        unrendered_description := _get_unrendered(
             context,
             "description",
             name,
             ancestor,
             node_column_variants,
-        ):
-            graph_edge["description"] = unrendered_description
+        )
+    ):
+        graph_edge["description"] = unrendered_description
 
     # Handle inheritance for specified keys
     for inheritable in resolve_setting(
@@ -863,7 +864,7 @@ def _build_column_knowledge_graph(
             # in any upstream source (i.e., columns that originate in this model).
             if ancestor_uid == node.unique_id:
                 # Only process columns that haven't been found in any upstream ancestor yet
-                for name in node.columns.keys():
+                for name in node.columns:
                     if name in processed_columns_in_generation[generation]:
                         continue
                     # Only process if this column hasn't been processed in ANY generation
@@ -899,7 +900,7 @@ def _build_column_knowledge_graph(
                 continue
 
             # Process each column in the target node
-            for name, _ in node.columns.items():
+            for name in node.columns:
                 # Skip if this column was already processed in this generation
                 if name in processed_columns_in_generation[generation]:
                     continue

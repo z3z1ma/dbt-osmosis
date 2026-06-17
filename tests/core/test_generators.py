@@ -267,13 +267,15 @@ class TestGenerateStagingFromSource:
 
     def test_generate_staging_source_not_found(self, yaml_context):
         """Test staging generation when source not found."""
-        with mock.patch("dbt_osmosis.core.generators._get_source_definition", return_value=None):
-            with pytest.raises(ValueError, match="Source raw.users not found"):
-                generate_staging_from_source(
-                    context=yaml_context.project,
-                    source_name="raw",
-                    table_name="users",
-                )
+        with (
+            mock.patch("dbt_osmosis.core.generators._get_source_definition", return_value=None),
+            pytest.raises(ValueError, match="Source raw.users not found"),
+        ):
+            generate_staging_from_source(
+                context=yaml_context.project,
+                source_name="raw",
+                table_name="users",
+            )
 
     def test_generate_staging_with_custom_path(self, yaml_context, tmp_path):
         """Test staging generation with custom output path."""
@@ -318,16 +320,19 @@ class TestGenerateStagingFromSource:
             mock_result.error = Exception("AI generation failed")
             mock_result.spec = None
 
-            with mock.patch(
-                "dbt_osmosis.core.generators.generate_staging_for_source", return_value=mock_result
+            with (
+                mock.patch(
+                    "dbt_osmosis.core.generators.generate_staging_for_source",
+                    return_value=mock_result,
+                ),
+                pytest.raises(Exception, match="AI generation failed"),
             ):
-                with pytest.raises(Exception, match="AI generation failed"):
-                    generate_staging_from_source(
-                        context=yaml_context.project,
-                        source_name="raw",
-                        table_name="users",
-                        use_ai=True,
-                    )
+                generate_staging_from_source(
+                    context=yaml_context.project,
+                    source_name="raw",
+                    table_name="users",
+                    use_ai=True,
+                )
 
     def test_generate_staging_ai_yaml_escapes_special_descriptions(self, yaml_context):
         """AI staging YAML should parse when descriptions contain YAML-sensitive text."""
@@ -638,15 +643,17 @@ class TestEdgeCases:
         mock_generator.generate_sources.return_value = [mock_source_def]
 
         # Mock to_yaml to raise an exception
-        with mock.patch(
-            "dbt_core_interface.source_generator.to_yaml",
-            side_effect=Exception("YAML generation failed"),
+        with (
+            mock.patch(
+                "dbt_core_interface.source_generator.to_yaml",
+                side_effect=Exception("YAML generation failed"),
+            ),
+            pytest.raises(Exception, match="YAML generation failed"),
         ):
-            with pytest.raises(Exception, match="YAML generation failed"):
-                generate_sources_from_database(
-                    context=yaml_context.project,
-                    source_name="raw",
-                )
+            generate_sources_from_database(
+                context=yaml_context.project,
+                source_name="raw",
+            )
 
     def test_get_source_empty_manifest(self, yaml_context):
         """Test getting source from empty manifest."""

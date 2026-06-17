@@ -82,7 +82,7 @@ LOGGER = get_logger()
 
 def set_log_level(level: int | str) -> None:
     """Set the log level for the default logger"""
-    global LOGGER
+    global LOGGER  # noqa: PLW0602
     if isinstance(level, str):
         level = getattr(logging, level, logging.INFO)
     LOGGER.setLevel(level)

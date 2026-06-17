@@ -4,18 +4,16 @@
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import ruamel.yaml
 
 import tests.conftest as test_conftest
 import tests.core.conftest as core_conftest
-
 from tests.conftest import _run_dbt_commands
 from tests.support import manifest_requires_refresh
-
 
 DEMO_PROJECT_DIR = Path("demo_duckdb")
 GENERIC_TESTS_REQUIRING_ARGUMENTS = {"accepted_values", "relationships"}
@@ -162,16 +160,7 @@ def test_isolated_demo_manifest_parse_uses_temp_project_not_source_tree(
     source_dir = tmp_path / "demo_duckdb"
     source_dir.mkdir()
     (source_dir / "profiles.yml").write_text(
-        "\n".join([
-            "jaffle_shop:",
-            "  target: test",
-            "  outputs:",
-            "    test:",
-            "      type: duckdb",
-            '      path: "test.db"',
-            "      threads: 1",
-            "",
-        ]),
+        'jaffle_shop:\n  target: test\n  outputs:\n    test:\n      type: duckdb\n      path: "test.db"\n      threads: 1\n',
     )
     (source_dir / "dbt_project.yml").write_text("name: jaffle_shop\nprofile: jaffle_shop\n")
 

@@ -28,6 +28,7 @@ from dbt.contracts.graph.nodes import ModelNode
 from dbt_core_interface import DbtConfiguration as InterfaceDbtConfiguration
 from dbt_core_interface import DbtProject as InterfaceDbtProject
 from packaging.version import parse as parse_version
+from typing_extensions import Self
 
 from dbt_osmosis.core import logger
 
@@ -138,7 +139,7 @@ def _detect_fusion_manifest(project_dir: str) -> bool:
                     manifest_path,
                     "leaving fusion_compat auto-detection to dbt version or explicit override",
                 )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.debug(":information_source: Could not check manifest for Fusion: %s", e)
 
     return False
@@ -345,7 +346,7 @@ class DbtProjectContext:
     in dbt 1.10, where these fields moved from top-level to the config block.
     """
 
-    def __enter__(self) -> DbtProjectContext:
+    def __enter__(self) -> Self:
         """Enter the context manager.
 
         Returns:
@@ -390,7 +391,7 @@ class DbtProjectContext:
                         elif hasattr(adapter.connections, "close_all_connections"):
                             # Fallback for adapters that have close_all_connections
                             adapter.connections.close_all_connections()  # pyright: ignore[reportAttributeAccessIssue]
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(":warning: Error closing adapter connections: %s", e)
             finally:
                 self._closed = True
@@ -498,7 +499,7 @@ class DbtProjectContext:
                         adapter.connections.release()
                         adapter.connections.clear_thread_connection()
                         adapter.acquire_connection()
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         # If refresh fails, continue with existing adapter
                         pass
                 self._connection_created_at[ident] = current_time
@@ -532,7 +533,7 @@ def _add_cross_project_references(
     except (AttributeError, KeyError, TypeError) as e:
         logger.warning(":warning: Failed to load dbt loom manifests: %s", e)
         return manifest
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(":warning: Unexpected error loading dbt loom manifests: %s", e)
         return manifest
 
@@ -540,19 +541,18 @@ def _add_cross_project_references(
     for name, loom_manifest in loom_manifests.items():
         if loom_manifest.get("nodes"):
             loom_manifest_nodes = loom_manifest.get("nodes")
-            for _, node in loom_manifest_nodes.items():
+            for node in loom_manifest_nodes.values():
                 if node.get("access"):
                     node_access = node.get("access")
-                    if node_access != "protected":
-                        if node.get("resource_type") == "model":
-                            try:
-                                loomnodes.append(ModelNode.from_dict(node))
-                            except Exception as e:
-                                logger.warning(
-                                    ":warning: Failed to parse node %s from dbt loom: %s",
-                                    node.get("unique_id", "unknown"),
-                                    e,
-                                )
+                    if node_access != "protected" and node.get("resource_type") == "model":
+                        try:
+                            loomnodes.append(ModelNode.from_dict(node))
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                ":warning: Failed to parse node %s from dbt loom: %s",
+                                node.get("unique_id", "unknown"),
+                                e,
+                            )
             for node in loomnodes:
                 manifest.nodes[node.unique_id] = node
             logger.info(
@@ -586,7 +586,7 @@ def _bind_project_adapter(project: InterfaceDbtProject) -> None:
     if registered_adapter is not None:
         try:
             _cleanup_stale_adapter(registered_adapter, adapter_type)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.debug(
                 ":information_source: Could not clean up stale adapter '%s' before rebinding: %s",
                 adapter_type,
@@ -649,7 +649,7 @@ def create_dbt_project_context(config: DbtConfiguration) -> DbtProjectContext:
                 project.project_name,
             )
             _set_project_manifest(project, manifest)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(":warning: Failed to add cross-project references from dbt_loom: %s", e)
 
     logger.info(":sparkles: DbtProjectContext successfully created!")

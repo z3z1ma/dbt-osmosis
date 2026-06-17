@@ -17,37 +17,42 @@ from pathlib import Path
 from dbt.adapters.base.column import Column as BaseColumn
 from dbt.adapters.base.relation import BaseRelation
 from dbt.adapters.exceptions.compilation import ApproximateMatchError
-from dbt.artifacts.schemas.catalog import CatalogArtifact, CatalogResults  # pyright: ignore[reportPrivateImportUsage]
+from dbt.artifacts.schemas.catalog import (  # pyright: ignore[reportPrivateImportUsage]
+    CatalogArtifact,
+    CatalogResults,
+)
 from dbt.contracts.graph.nodes import ResultNode  # pyright: ignore[reportPrivateImportUsage]
-from dbt_common.contracts.metadata import ColumnMetadata  # pyright: ignore[reportPrivateImportUsage]
 from dbt.task.docs.generate import Catalog
+from dbt_common.contracts.metadata import (
+    ColumnMetadata,  # pyright: ignore[reportPrivateImportUsage]
+)
 
 from dbt_osmosis.core import logger
 
 __all__ = [
-    "_find_first",
-    "normalize_column_name",
-    "_maybe_use_precise_dtype",
-    "get_columns",
-    "SettingsResolver",
-    "resolve_setting",
-    "_load_catalog",
-    "_generate_catalog",
     "_COLUMN_LIST_CACHE",
-    # Foundational classes for unified config resolution
-    "ConfigurationError",
-    "ConfigSourceName",
-    "PropertySource",
-    "ConfigurationSource",
-    # Unified property access for US2
-    "PropertyAccessor",
     # New configuration sources for US1
     "ConfigMetaSource",
-    "UnrenderedConfigSource",
+    "ConfigSourceName",
+    # Foundational classes for unified config resolution
+    "ConfigurationError",
+    "ConfigurationSource",
     "ProjectVarsSource",
+    # Unified property access for US2
+    "PropertyAccessor",
+    "PropertySource",
+    "SettingsResolver",
     "SupplementaryFileSource",
+    "UnrenderedConfigSource",
+    "_find_first",
+    "_generate_catalog",
     "_get_effective_column_meta",
     "_get_effective_column_tags",
+    "_load_catalog",
+    "_maybe_use_precise_dtype",
+    "get_columns",
+    "normalize_column_name",
+    "resolve_setting",
 ]
 
 T = t.TypeVar("T")
@@ -271,7 +276,7 @@ def _get_explicit_context_setting_value(context: t.Any, setting_name: str) -> t.
         from dbt_osmosis.core.settings import YamlRefactorSettings
 
         default_value = getattr(YamlRefactorSettings(), attr_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _MISSING
 
     if not _same_setting_value(current_value, default_value):
@@ -1410,8 +1415,7 @@ def get_columns(
         columns = [c]
         flattener = getattr(t.cast(t.Any, c), "flatten", None)
         if callable(flattener):
-            for flattened in t.cast(t.Iterable[t.Any], flattener()):
-                columns.append(flattened)
+            columns.extend(t.cast(t.Iterable[t.Any], flattener()))
 
         for column in columns:
             if any(re.match(b, column.name) for b in context.ignore_patterns):
@@ -1497,7 +1501,7 @@ def get_columns(
                 context.project.adapter.get_columns_in_relation(relation),
             ),
         )
-    except Exception as ex:
+    except Exception as ex:  # noqa: BLE001
         logger.warning(":warning: Could not introspect columns for %s: %s", rendered_relation, ex)
         return normalized_columns
 
@@ -1736,7 +1740,7 @@ class PropertyAccessor:
                 getattr(node, "unique_id", "unknown"),
             )
             return None
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
             logger.warning(
                 ":warning: Error reading YAML for node %s: %s",
                 getattr(node, "unique_id", "unknown"),

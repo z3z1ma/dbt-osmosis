@@ -194,7 +194,7 @@ def test_workbench_change_target_rebuilds_context_and_closes_old_context(monkeyp
         lambda ctx, sql: _CompiledNode(f"{ctx.runtime_cfg.target_name}: {sql}"),
     )
     monkeypatch.setattr(app, "set_invocation_context", lambda env: None)
-    monkeypatch.setattr(app, "get_env", lambda: {})
+    monkeypatch.setattr(app, "get_env", dict)
 
     app.change_target()
 
@@ -235,7 +235,7 @@ def test_workbench_change_target_failure_keeps_old_context_and_reports_error(mon
         lambda config: (_ for _ in ()).throw(RuntimeError("bad target")),
     )
     monkeypatch.setattr(app, "set_invocation_context", lambda env: None)
-    monkeypatch.setattr(app, "get_env", lambda: {})
+    monkeypatch.setattr(app, "get_env", dict)
 
     app.change_target()
 

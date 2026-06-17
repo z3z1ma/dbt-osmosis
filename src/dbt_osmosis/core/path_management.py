@@ -162,7 +162,7 @@ def _get_yaml_path_template(context: YamlRefactorContextProtocol, node: ResultNo
                 )
             elif not isinstance(path_template, str):
                 path_template = None
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.debug(":warning: Failed to read global var: %s", e)
             path_template = None
 
@@ -244,7 +244,7 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
     else:
         segments.append(path.parent)
 
-    if not (rendered.endswith(".yml") or rendered.endswith(".yaml")):
+    if not (rendered.endswith((".yml", ".yaml"))):
         rendered += ".yml"
     segments.append(rendered)
 
@@ -331,7 +331,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
         # Check if source already exists in the manifest
         existing_source_node = _find_first(
             context.project.manifest.sources.values(),
-            lambda s: s.source_name == source,
+            lambda s, _source=source: s.source_name == _source,
         )
         manifest_tables: set[str] = set()
 
@@ -419,7 +419,7 @@ def create_missing_source_yamls(context: t.Any) -> None:
                 for src_entry in existing_doc.get("sources", []):
                     if src_entry.get("name") == source:
                         # Add new tables to the existing source
-                        existing_tables_set = {t["name"] for t in src_entry.get("tables", [])}
+                        existing_tables_set = {tbl["name"] for tbl in src_entry.get("tables", [])}
                         for table_name in sorted(new_table_names):
                             if table_name not in existing_tables_set:
                                 src_entry.setdefault("tables", []).append(db_tables[table_name])

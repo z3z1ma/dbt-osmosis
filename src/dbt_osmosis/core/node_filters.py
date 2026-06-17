@@ -45,16 +45,16 @@ def _is_file_match(node: ResultNode, paths: list[Path | str], root: Path | str) 
         if node.name == model_or_dir.stem:
             logger.debug(":white_check_mark: Name match => %s", model_or_dir)
             return True
-        if model_or_dir.is_dir():
-            if model_or_dir in node_path.parents or (
-                yaml_path and model_or_dir in yaml_path.parents
-            ):
-                logger.debug(":white_check_mark: Directory path match => %s", model_or_dir)
-                return True
-        if model_or_dir.is_file():
-            if model_or_dir.samefile(node_path) or (yaml_path and model_or_dir.samefile(yaml_path)):
-                logger.debug(":white_check_mark: File path match => %s", model_or_dir)
-                return True
+        if model_or_dir.is_dir() and (
+            model_or_dir in node_path.parents or (yaml_path and model_or_dir in yaml_path.parents)
+        ):
+            logger.debug(":white_check_mark: Directory path match => %s", model_or_dir)
+            return True
+        if model_or_dir.is_file() and (
+            model_or_dir.samefile(node_path) or (yaml_path and model_or_dir.samefile(yaml_path))
+        ):
+            logger.debug(":white_check_mark: File path match => %s", model_or_dir)
+            return True
     return False
 
 
@@ -129,16 +129,14 @@ def _iter_candidate_nodes(
             return False
         if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
             return False
-        if context.settings.models:
-            if not _is_file_match(
-                node,
-                context.settings.models,
-                context.project.runtime_cfg.project_root,
-            ):
-                return False
-        if context.settings.fqn:
-            if not _is_fqn_match(node, context.settings.fqn):
-                return False
+        if context.settings.models and not _is_file_match(
+            node,
+            context.settings.models,
+            context.project.runtime_cfg.project_root,
+        ):
+            return False
+        if context.settings.fqn and not _is_fqn_match(node, context.settings.fqn):
+            return False
         logger.debug(":white_check_mark: Node => %s passed filtering logic.", node.unique_id)
         return True
 

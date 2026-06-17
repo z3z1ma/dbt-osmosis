@@ -5,7 +5,7 @@ from unittest import mock
 import pytest
 from dbt.artifacts.resources.types import NodeType
 
-import dbt_osmosis.core.sql_operations as sql_operations
+from dbt_osmosis.core import sql_operations
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 

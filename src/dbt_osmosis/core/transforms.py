@@ -9,7 +9,10 @@ from functools import partial
 from types import MappingProxyType
 
 from dbt.artifacts.resources.types import NodeType
-from dbt.contracts.graph.nodes import ResultNode, ColumnInfo  # pyright: ignore[reportPrivateImportUsage]
+from dbt.contracts.graph.nodes import (  # pyright: ignore[reportPrivateImportUsage]
+    ColumnInfo,
+    ResultNode,
+)
 
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import (
@@ -22,16 +25,16 @@ __all__ = [
     "TransformOperation",
     "TransformPipeline",
     "_transform_op",
+    "apply_semantic_analysis",
     "inherit_upstream_column_knowledge",
     "inject_missing_columns",
     "remove_columns_not_in_database",
     "sort_columns_alphabetically",
     "sort_columns_as_configured",
     "sort_columns_as_in_database",
+    "suggest_improved_documentation",
     "synchronize_data_types",
     "synthesize_missing_documentation_with_openai",
-    "apply_semantic_analysis",
-    "suggest_improved_documentation",
 ]
 
 
@@ -115,7 +118,7 @@ class TransformPipeline:
         elif callable(next_op):
             self.operations.append(TransformOperation(next_op, next_op.__name__))
         else:
-            raise ValueError(f"Cannot chain non-callable: {next_op}")
+            raise ValueError(f"Cannot chain non-callable: {next_op}")  # noqa: TRY004
         return self
 
     def __call__(
@@ -177,7 +180,7 @@ class TransformPipeline:
                     ":checkered_flag: YAML commits completed in => %.2fs",
                     _commit_end - _commit_start,
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # Log error but don't raise during atexit (prevents shutdown issues)
                 logger.error(":boom: Failed to commit YAML changes during shutdown: %s", e)
 
@@ -287,10 +290,9 @@ def inherit_upstream_column_knowledge(
             meta_progenitor = kwargs.get("meta", {}).get("osmosis_progenitor")
             if not meta_progenitor:
                 meta_progenitor = kwargs.get("config", {}).get("meta", {}).get("osmosis_progenitor")
-            if meta_progenitor:
+            if meta_progenitor and "meta" not in inheritable:
                 # Ensure meta is in inheritable if not already present
-                if "meta" not in inheritable:
-                    inheritable.append("meta")
+                inheritable.append("meta")
 
         # Special case: if force_inherit_descriptions is False and the local column already has
         # a description, don't inherit the description from upstream (preserve local description)
@@ -887,7 +889,7 @@ def apply_semantic_analysis(
 
         # Verify LLM client can be created (will raise if not configured)
         _ = analyze_column_semantics.__globals__["get_llm_client"]()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(
             ":warning: LLM not configured or accessible. Skipping semantic analysis: %s",
             e,
@@ -978,7 +980,7 @@ def apply_semantic_analysis(
                 semantic_result.get("semantic_type", "unknown"),
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(
                 ":warning: Failed to analyze semantics for column %s: %s",
                 column_name,

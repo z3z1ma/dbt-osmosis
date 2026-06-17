@@ -1103,14 +1103,16 @@ def test_catalog_data_type_used_in_sync(yaml_context: YamlRefactorContext, fresh
     mock_runtime = mock_patch.Mock()
     mock_runtime.credentials.type = "postgres"
 
-    with mock_patch.patch.object(yaml_context, "_catalog", mock_catalog):
-        with mock_patch.patch.object(
+    with (
+        mock_patch.patch.object(yaml_context, "_catalog", mock_catalog),
+        mock_patch.patch.object(
             type(yaml_context.project),
             "runtime_cfg",
             new_callable=PropertyMock,
             return_value=mock_runtime,
-        ):
-            _sync_doc_section(yaml_context, mock_node, doc_section)
+        ),
+    ):
+        _sync_doc_section(yaml_context, mock_node, doc_section)
 
     # Verify catalog data types were used
     assert len(doc_section["columns"]) == 2

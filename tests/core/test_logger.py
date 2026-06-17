@@ -267,7 +267,7 @@ class TestEdgeCases:
             t.join()
 
         # Should have created 5 different loggers
-        assert len(set(id(logger_result) for logger_result in results)) == 5
+        assert len({id(logger_result) for logger_result in results}) == 5
 
     def test_custom_formatter(self, temp_log_dir):
         """Test that custom formatter is applied"""
@@ -278,9 +278,9 @@ class TestEdgeCases:
             formatter=custom_format,
         )
 
-        file_handler = [
+        file_handler = next(
             h for h in test_logger.handlers if isinstance(h, logging.handlers.RotatingFileHandler)
-        ][0]
+        )
         assert file_handler.formatter._fmt == custom_format
 
     def test_logger_with_path_as_string(self, temp_log_dir):

@@ -17,8 +17,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from dbt.contracts.graph.nodes import ColumnInfo, ResultNode  # pyright: ignore[reportPrivateImportUsage]
-from dbt_common.contracts.metadata import ColumnMetadata  # pyright: ignore[reportPrivateImportUsage]
+from dbt.contracts.graph.nodes import (  # pyright: ignore[reportPrivateImportUsage]
+    ColumnInfo,
+    ResultNode,
+)
+from dbt_common.contracts.metadata import (
+    ColumnMetadata,  # pyright: ignore[reportPrivateImportUsage]
+)
 from rapidfuzz import fuzz, process
 
 if t.TYPE_CHECKING:
@@ -27,13 +32,13 @@ if t.TYPE_CHECKING:
 __all__ = [
     "ChangeCategory",
     "ChangeSeverity",
-    "SchemaChange",
     "ColumnAdded",
     "ColumnRemoved",
     "ColumnRenamed",
     "ColumnTypeChanged",
-    "SchemaDiffResult",
+    "SchemaChange",
     "SchemaDiff",
+    "SchemaDiffResult",
 ]
 
 
@@ -508,7 +513,7 @@ class SchemaDiff:
         }
 
         # Check if types are in the same family
-        for family, types in type_families.items():
+        for types in type_families.values():
             if any(t in old_norm for t in types) and any(t in new_norm for t in types):
                 # Same family - generally safe (e.g., int -> bigint, varchar(50) -> varchar(100))
                 # But narrowing is potentially breaking

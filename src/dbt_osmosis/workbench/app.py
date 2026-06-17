@@ -25,10 +25,12 @@ from streamlit_elements_fluence import elements, event, sync
 
 from dbt_osmosis.core.config import (
     DbtConfiguration,
-    DbtProjectContext as DbtProject,
     create_dbt_project_context,
     discover_profiles_dir,
     discover_project_dir,
+)
+from dbt_osmosis.core.config import (
+    DbtProjectContext as DbtProject,
 )
 from dbt_osmosis.core.sql_operations import compile_sql_code, execute_sql_code
 from dbt_osmosis.workbench.components.ai_assistant import AIAssistant
@@ -128,7 +130,7 @@ def _get_demo_query() -> str:
 def _is_http_url(url: str) -> bool:
     try:
         parsed = urllib.parse.urlparse(url)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
@@ -208,7 +210,7 @@ def build_feed_html(
             return _FEED_UNAVAILABLE_HTML
         entries = getattr(parsed_feed, "entries", [])
         feed_html = [_entry_html(entry) for entry in entries]
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _FEED_UNAVAILABLE_HTML
 
     return "".join(feed_html) or _FEED_UNAVAILABLE_HTML
@@ -242,7 +244,7 @@ def _parse_args() -> dict[str, t.Any]:
             help="Opt in to fetching the external Hacker News RSS feed",
         )
         args = vars(parser.parse_args(sys.argv[1:]))
-    except Exception:
+    except Exception:  # noqa: BLE001
         args = {}
     return args
 
@@ -285,7 +287,7 @@ def _call_connection_cleanup(target: t.Any, method_name: str) -> None:
     if callable(method):
         try:
             method()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Could not run adapter cleanup method {method_name}: {e}")
 
 
@@ -295,7 +297,7 @@ def _close_context_connections(ctx: DbtProject) -> None:
         try:
             close()
             return
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Could not close previous dbt context: {e}")
 
     adapter = getattr(ctx, "adapter", None)
@@ -326,7 +328,7 @@ def change_target() -> None:
         new_ctx = create_dbt_project_context(
             config=_project_config_for_target(ctx, requested_target),
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         state.app.ctx = ctx
         state.app.target_name = current_target
         state.target_name = current_target
@@ -423,7 +425,7 @@ def compile(sql: str) -> str:
     ctx: DbtProject = state.app.ctx
     try:
         return compile_sql_code(ctx, sql).compiled_code or ""
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return str(e)
 
 
@@ -448,7 +450,7 @@ def run_query() -> None:
     try:
         state.app.query_state = "running"
         resp, table = execute_sql_code(ctx, state.app.query_template.format(sql=sql))
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         state.app.query_state = "error"
         state.app.query_adapter_resp = str(error)
         state.app.query_result_columns = []
@@ -507,8 +509,8 @@ def main():
         )
         for v in vars(app).copy().values():
             if isinstance(v, Dashboard.Item):
-                for k, v in v.initial_state().items():
-                    setattr(app, k, v)
+                for k, state_val in v.initial_state().items():
+                    setattr(app, k, state_val)
 
         state.app = app
 

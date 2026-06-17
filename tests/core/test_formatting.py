@@ -6,7 +6,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest import mock
 
-
 from dbt_osmosis.core.formatting import run_external_formatter
 
 

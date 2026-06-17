@@ -1,5 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportPrivateImportUsage=false, reportUnknownMemberType=false
-# ruff: noqa: E402,F401
+# ruff: noqa: F401
 """Public compatibility facade for dbt-osmosis core APIs."""
 
 from __future__ import annotations
@@ -22,6 +22,19 @@ from dbt_osmosis.core.config import (
     discover_project_dir,
 )
 
+# Schema diff functionality
+from dbt_osmosis.core.diff import (
+    ChangeCategory,
+    ChangeSeverity,
+    ColumnAdded,
+    ColumnRemoved,
+    ColumnRenamed,
+    ColumnTypeChanged,
+    SchemaChange,
+    SchemaDiff,
+    SchemaDiffResult,
+)
+
 # Inheritance functionality
 from dbt_osmosis.core.inheritance import (
     _build_column_knowledge_graph,
@@ -39,19 +52,6 @@ from dbt_osmosis.core.introspection import (
     _maybe_use_precise_dtype,
     get_columns,
     normalize_column_name,
-)
-
-# Schema diff functionality
-from dbt_osmosis.core.diff import (
-    ChangeCategory,
-    ChangeSeverity,
-    ColumnAdded,
-    ColumnRemoved,
-    ColumnRenamed,
-    ColumnTypeChanged,
-    SchemaChange,
-    SchemaDiff,
-    SchemaDiffResult,
 )
 
 # Natural language generation (from llm.py) - conditional on openai availability
@@ -117,6 +117,10 @@ else:
 
 
 # Node filtering and sorting
+# External formatter integration
+from dbt_osmosis.core.formatting import (
+    run_external_formatter,
+)
 from dbt_osmosis.core.node_filters import (
     _topological_sort,
 )
@@ -147,9 +151,6 @@ from dbt_osmosis.core.restructuring import (
     pretty_print_plan,
 )
 
-# External formatter integration
-from dbt_osmosis.core.formatting import run_external_formatter as run_external_formatter  # noqa: F401
-
 # Schema parsing and writing
 from dbt_osmosis.core.schema.parser import (
     create_yaml_instance,
@@ -168,25 +169,25 @@ from dbt_osmosis.core.settings import (
     YamlRefactorSettings,
 )
 
-# SQL operations
-from dbt_osmosis.core.sql_operations import (
-    compile_sql_code,
-    execute_sql_code,
-)
-
 # SQL linting
 from dbt_osmosis.core.sql_lint import (
     KeywordCapitalizationRule,
+    LineLengthRule,
     LintLevel,
     LintResult,
     LintRule,
     LintViolation,
-    LineLengthRule,
     QuotedIdentifierRule,
-    SQLLinter,
     SelectStarRule,
+    SQLLinter,
     TableAliasRule,
     lint_sql_code,
+)
+
+# SQL operations
+from dbt_osmosis.core.sql_operations import (
+    compile_sql_code,
+    execute_sql_code,
 )
 
 # Staging operations - conditional on openai availability
@@ -234,7 +235,6 @@ else:
 from dbt_osmosis.core.sync_operations import (
     sync_node_to_yaml,
 )
-
 from dbt_osmosis.core.test_suggestions import (
     AITestSuggester,
     ModelTestAnalysis,
@@ -243,7 +243,6 @@ from dbt_osmosis.core.test_suggestions import (
     suggest_tests_for_model,
     suggest_tests_for_project,
 )
-
 
 # Transform operations
 from dbt_osmosis.core.transforms import (

@@ -24,17 +24,17 @@ if t.TYPE_CHECKING:
     from dbt_osmosis.core.config import DbtProjectContext
 
 __all__ = [
-    "LintLevel",
-    "LintViolation",
-    "LintResult",
-    "SQLLinter",
-    "lint_sql_code",
-    "LintRule",
     "KeywordCapitalizationRule",
     "LineLengthRule",
+    "LintLevel",
+    "LintResult",
+    "LintRule",
+    "LintViolation",
+    "QuotedIdentifierRule",
+    "SQLLinter",
     "SelectStarRule",
     "TableAliasRule",
-    "QuotedIdentifierRule",
+    "lint_sql_code",
 ]
 
 
@@ -562,10 +562,10 @@ class SQLLinter:
                 try:
                     violations = rule(t.cast(exp.Expression, ast), sql_to_lint)
                     result.violations.extend(violations)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.warning(f"Rule {rule.rule_id} failed: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # If parsing fails, add a parsing error violation
             result.violations.append(
                 LintViolation(
@@ -587,7 +587,7 @@ class SQLLinter:
 
         try:
             compiled_node = compile_sql_code(context, raw_sql)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.debug(":warning: SQL compilation failed: %s", e)
             return LintResult(
                 violations=[

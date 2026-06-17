@@ -15,7 +15,6 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
-
 from dbt.adapters.base.column import Column
 
 from dbt_osmosis.core.introspection import (

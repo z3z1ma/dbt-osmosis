@@ -993,7 +993,7 @@ class TestColumnLevelConfigurationOverride:
 
         # Get the orders model from the manifest
         orders_node = None
-        for node_id, node in yaml_context.manifest.nodes.items():
+        for node in yaml_context.manifest.nodes.values():
             if hasattr(node, "name") and node.name == "orders":
                 orders_node = node
                 break

@@ -24,13 +24,13 @@ tasks:
   lint:
     desc: Run ruff to check code for linting issues
     cmds:
-      - uvx ruff==0.8.6 check
+      - uvx ruff==0.15.17 check
 
   format:
     desc: Auto-fix imports, then format code with ruff
     cmds:
-      - uvx ruff==0.8.6 check --fix --select I
-      - uvx ruff==0.8.6 format --preview
+      - uvx ruff==0.15.17 check --fix --select I
+      - uvx ruff==0.15.17 format --preview
 
   dev:
     desc: Sets up dev environment (.venv + pre-commit), syncs dev extra

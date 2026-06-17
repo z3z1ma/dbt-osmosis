@@ -356,8 +356,8 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext, fr
         },
     }
     if dbt_version >= Version("1.9.0"):
-        for column in expect:
-            expect[column]["granularity"] = None
+        for col_data in expect.values():
+            col_data["granularity"] = None
 
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
     target_node.columns["customer_id"].description = ""

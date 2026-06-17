@@ -14,7 +14,6 @@ from dbt_osmosis.core.sync_operations import _sync_doc_section
 from dbt_osmosis.core.transforms import inject_missing_columns
 from tests.support import create_temp_project_copy, run_dbt_command
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_NODE_ID = "model.jaffle_shop_duckdb.real_config_shape"
 

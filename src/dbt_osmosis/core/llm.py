@@ -112,21 +112,21 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
 
 
 __all__ = [
+    "ColumnTransformation",
+    "DocumentationSuggestion",
+    "StagingModelSpec",
     "analyze_column_semantics",
     "generate_column_doc",
     "generate_dbt_model_from_nl",
     "generate_model_spec_as_json",
     "generate_semantic_description",
     "generate_sql_from_nl",
-    "generate_table_doc",
     "generate_staging_model_spec",
     "generate_staging_sql",
-    "ColumnTransformation",
-    "StagingModelSpec",
     "generate_style_aware_column_doc",
     "generate_style_aware_table_doc",
+    "generate_table_doc",
     "suggest_documentation_improvements",
-    "DocumentationSuggestion",
 ]
 
 
@@ -385,9 +385,10 @@ def _create_llm_prompt_for_model_docs_as_json(
     """,
     )
 
-    if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
-        if len(sql_content) > int(max_sql_chars):
-            sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
+    if (max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS")) and len(sql_content) > int(
+        max_sql_chars
+    ):
+        sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
 
     user_message = dedent(
         f"""
@@ -507,9 +508,10 @@ def _create_llm_prompt_for_table(
     """,
     )
 
-    if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
-        if len(sql_content) > int(max_sql_chars):
-            sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
+    if (max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS")) and len(sql_content) > int(
+        max_sql_chars
+    ):
+        sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
 
     user_message = dedent(
         f"""
@@ -1142,7 +1144,7 @@ def generate_sql_from_nl(
         sql_lines = []
         in_sql = False
         for line in lines:
-            if line.startswith("```sql") or line.startswith("```SQL"):
+            if line.startswith(("```sql", "```SQL")):
                 in_sql = True
                 continue
             elif line.startswith("```") and in_sql:
@@ -1741,9 +1743,10 @@ def _create_style_aware_prompt_for_table(
     """
     )
 
-    if max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS"):
-        if len(sql_content) > int(max_sql_chars):
-            sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
+    if (max_sql_chars := os.getenv("OSMOSIS_LLM_MAX_SQL_CHARS")) and len(sql_content) > int(
+        max_sql_chars
+    ):
+        sql_content = sql_content[: int(max_sql_chars)] + "... (TRUNCATED)"
 
     user_message_sections = [f"The table name is: {table_name}"]
 

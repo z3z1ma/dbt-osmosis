@@ -33,10 +33,10 @@ from dbt_osmosis.core.diff import (
 )
 
 __all__ = [
-    "MigrationPlan",
-    "MigrationStep",
-    "MigrationPlanner",
     "MigrationFormat",
+    "MigrationPlan",
+    "MigrationPlanner",
+    "MigrationStep",
 ]
 
 
@@ -488,15 +488,13 @@ class MigrationPlanner:
         new_col = self._quote_identifier(change.new_name)
 
         # Different dialects use different syntax
-        if self._dialect == "snowflake":
-            sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_col} TO {new_col};"
-        elif self._dialect in ("postgres", "redshift"):
-            sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_col} TO {new_col};"
-        elif self._dialect == "bigquery":
-            sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_col} TO {new_col};"
-        elif self._dialect == "duckdb":
-            sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_col} TO {new_col};"
-        elif self._dialect == "spark":
+        if (
+            self._dialect == "snowflake"
+            or self._dialect in ("postgres", "redshift")
+            or self._dialect == "bigquery"
+            or self._dialect == "duckdb"
+            or self._dialect == "spark"
+        ):
             sql = f"ALTER TABLE {table_name} RENAME COLUMN {old_col} TO {new_col};"
         elif self._dialect == "sqlserver":
             sql = f"EXEC sp_rename '{table_name}.{change.old_name}', '{change.new_name}', 'COLUMN';"

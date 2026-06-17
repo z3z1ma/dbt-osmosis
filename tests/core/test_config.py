@@ -14,8 +14,8 @@ from dbt_osmosis.core.config import (
     _add_cross_project_references,
     _detect_fusion_manifest,
     _reload_manifest,
-    create_dbt_project_context,
     config_to_namespace,
+    create_dbt_project_context,
     discover_profiles_dir,
     discover_project_dir,
 )
@@ -342,11 +342,13 @@ class TestDetectFusionManifest:
         """Installed Fusion binaries alone are not evidence about this project."""
         with mock.patch(
             "shutil.which",
-            side_effect=lambda cmd: "/usr/bin/dbtf"
-            if cmd == "dbtf"
-            else "/usr/bin/dbt-fusion"
-            if cmd == "dbt-fusion"
-            else None,
+            side_effect=lambda cmd: (
+                "/usr/bin/dbtf"
+                if cmd == "dbtf"
+                else "/usr/bin/dbt-fusion"
+                if cmd == "dbt-fusion"
+                else None
+            ),
         ) as mock_which:
             assert _detect_fusion_manifest(str(tmp_path)) is False
         mock_which.assert_not_called()
