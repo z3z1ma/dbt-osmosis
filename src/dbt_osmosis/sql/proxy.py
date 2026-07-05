@@ -49,6 +49,7 @@ def _regex_parse_to_complete_dict(sql: str, pattern: re.Pattern[str]) -> dict[st
         result = match.groupdict()
         if all(result.values()):
             return result
+    return None
 
 
 class QueryException(MysqlError):

@@ -42,6 +42,7 @@ def sample_node(yaml_context):
         if hasattr(node, "columns") and node.columns:
             return node
     pytest.skip("No suitable model node found")
+    raise AssertionError("pytest.skip did not raise")
 
 
 class TestTestSuggestion:
