@@ -1,4 +1,4 @@
-Status: open
+Status: blocked
 Created: 2026-07-05
 Updated: 2026-07-05
 Parent: None
@@ -39,13 +39,22 @@ Out of scope:
 - 2026-07-05: Final quality pass ran `uv run --no-sync --with ty ty check`; it reported broad diagnostics across optional extras, tests, CLI, and protocol strictness.
 - 2026-07-05: Final quality pass ran `uv run --no-sync --with mypy mypy .`; it reported broad diagnostics across optional extras, tests, and current typing contracts.
 - 2026-07-05: A bounded cleanup in `.10x/tickets/done/2026-07-05-tighten-final-type-tool-feedback.md` fixed diagnostics tied to recently touched optimizer surfaces and left broader adoption decisions for this ticket.
+- 2026-07-05: Refreshed and categorized current `ty`/mypy output in `.10x/evidence/2026-07-05-type-checker-adoption-scope.md`.
+- 2026-07-05: Whole-repo `ty` remains broad at 343 parsed diagnostics: 299 tests, 21 optional workbench extra, 14 core/source, 5 optional sql proxy extra, and 4 optional llm extra.
+- 2026-07-05: Whole-repo mypy remains broad at 263 parsed errors: 222 tests, 20 optional workbench extra, 11 core/source, 5 optional llm extra, and 5 optional sql proxy extra.
+- 2026-07-05: Existing basedpyright-covered `src/dbt_osmosis/core` plus `src/dbt_osmosis/cli` surface is closer but still not clean: `ty` reports 18 diagnostics and mypy exits non-zero with source/stub/optional-extra diagnostics.
 
 ## Blockers
 
 The adoption scope is a project policy decision because it may require configuration, optional extra installation assumptions, stubs, baselines, CI changes, or many test typing edits.
 
+Recommended ratification question:
+
+Should this project keep basedpyright as the only enforced type gate for now and leave `ty`/mypy non-gating, or should a narrower adoption plan be opened for `ty`, mypy, or both? Recommended answer: keep basedpyright as the enforced gate until a separate source-only, optional-extra-aware adoption spec is ratified.
+
 ## References
 
 - `.10x/evidence/2026-07-05-final-type-tool-feedback.md`
+- `.10x/evidence/2026-07-05-type-checker-adoption-scope.md`
 - `.10x/evidence/2026-07-05-quality-optimizer-final-vector.md`
 - `.10x/tickets/done/2026-07-05-tighten-final-type-tool-feedback.md`
