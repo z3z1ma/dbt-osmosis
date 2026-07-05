@@ -39,7 +39,7 @@ The following risks are deliberately not hidden in the final answer:
 
 - Dependency cooldown policy remains blocked on ratification: `.10x/tickets/2026-07-04-ratify-dependency-cooldown-policy.md`.
 - GitHub Actions SHA pinning policy remains blocked on ratification: `.10x/tickets/2026-07-04-ratify-github-actions-pinning-policy.md`.
-- Docs npm audit vulnerabilities are a newly discovered executable follow-up: `.10x/tickets/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md`.
+- Docs npm audit vulnerabilities are a newly discovered executable follow-up: `.10x/tickets/done/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md`.
 
 ## What This Supports
 

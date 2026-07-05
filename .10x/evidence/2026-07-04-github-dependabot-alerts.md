@@ -1,7 +1,7 @@
 Status: recorded
 Created: 2026-07-04
 Updated: 2026-07-04
-Relates-To: .10x/tickets/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md, .10x/tickets/done/2026-07-04-quality-optimizer-hill-climb.md
+Relates-To: .10x/tickets/done/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md, .10x/tickets/done/2026-07-04-quality-optimizer-hill-climb.md
 
 # GitHub Dependabot Alerts Evidence
 
@@ -40,7 +40,7 @@ The audit report indicates the non-major available Docusaurus remediation path i
 
 ## What This Supports
 
-The Python lock remediation in `.10x/tickets/done/2026-07-04-remediate-uv-audit-vulnerabilities.md` addresses 7 of the currently open default-branch Python alerts once merged. The docs npm alerts are a distinct non-trivial dependency remediation and need their own executable ticket: `.10x/tickets/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md`.
+The Python lock remediation in `.10x/tickets/done/2026-07-04-remediate-uv-audit-vulnerabilities.md` addresses 7 of the currently open default-branch Python alerts once merged. The docs npm alerts are a distinct non-trivial dependency remediation and have their own terminal ticket: `.10x/tickets/done/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md`.
 
 ## Limits
 
