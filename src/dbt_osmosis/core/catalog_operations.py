@@ -79,11 +79,11 @@ def _generate_catalog(context: t.Any) -> CatalogResults | None:
     )
     catalogable_nodes = chain(
         [
-            t.cast("t.Any", node)  # pyright: ignore[reportInvalidCast]
+            node
             for node in context.manifest.nodes.values()
             if node.is_relational and not node.is_ephemeral_model
         ],
-        [t.cast("t.Any", node) for node in context.manifest.sources.values()],  # pyright: ignore[reportInvalidCast]
+        context.manifest.sources.values(),
     )
     table, exceptions = context.adapter.get_filtered_catalog(
         catalogable_nodes,

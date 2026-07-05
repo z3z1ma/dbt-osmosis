@@ -103,6 +103,37 @@ reportPrivateImportUsage = false
 reportImportCycles = false
 reportUnsupportedDunderAll = false
 
+[tool.ty.src]
+exclude = [
+  "tests/**",
+  "src/dbt_osmosis/workbench/**",
+  "src/dbt_osmosis/sql/**",
+]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+
+[tool.mypy]
+python_version = "3.10"
+exclude = [
+  "^tests/",
+  "^src/dbt_osmosis/workbench/",
+  "^src/dbt_osmosis/sql/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+  "agate",
+  "agate.*",
+  "azure",
+  "azure.*",
+  "dbt_core_interface",
+  "dbt_core_interface.*",
+  "openai",
+  "yaml",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

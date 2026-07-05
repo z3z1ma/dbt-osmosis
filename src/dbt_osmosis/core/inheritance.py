@@ -739,9 +739,10 @@ def _build_column_knowledge_graph(
                     continue
 
                 # Find matching column in ancestor
-                incoming = _find_matching_column(ancestor, node_column_variants[name])
-                if incoming is None:
+                matched_column = _find_matching_column(ancestor, node_column_variants[name])
+                if matched_column is None:
                     continue
+                incoming = t.cast("t.Any", matched_column)
 
                 # Track this ancestor as a potential progenitor alternative
                 # (excluding self-reference which happens in generation_0 above)

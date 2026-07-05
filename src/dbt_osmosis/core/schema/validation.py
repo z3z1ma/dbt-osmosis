@@ -881,7 +881,7 @@ class ModelValidator(TestConfigValidator):
                 version_name = f"{model_name}.v{version_value}"
 
             self._validate_resource_tests(
-                version,
+                t.cast("dict[str, t.Any]", version),
                 result,
                 file_path,
                 "model version",
@@ -1075,7 +1075,13 @@ class SourceValidator(TestConfigValidator):
                     )
                     continue
 
-                self._validate_resource_tests(table, result, file_path, "source table", table_name)
+                self._validate_resource_tests(
+                    t.cast("dict[str, t.Any]", table),
+                    result,
+                    file_path,
+                    "source table",
+                    table_name,
+                )
                 self._validate_columns(
                     table.get("columns", []),
                     result,

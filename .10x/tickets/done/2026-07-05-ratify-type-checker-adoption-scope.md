@@ -1,4 +1,4 @@
-Status: active
+Status: done
 Created: 2026-07-05
 Updated: 2026-07-05
 Parent: None
@@ -44,6 +44,9 @@ Out of scope:
 - 2026-07-05: Whole-repo mypy remains broad at 263 parsed errors: 222 tests, 20 optional workbench extra, 11 core/source, 5 optional llm extra, and 5 optional sql proxy extra.
 - 2026-07-05: Existing basedpyright-covered `src/dbt_osmosis/core` plus `src/dbt_osmosis/cli` surface is closer but still not clean: `ty` reports 18 diagnostics and mypy exits non-zero with source/stub/optional-extra diagnostics.
 - 2026-07-05: User explicitly ratified fixing any nonzero tool output to zero exit code, including type-tool adoption work. Treat `uv run --no-sync --with ty ty check` and `uv run --no-sync --with mypy mypy .` as active zero-exit targets.
+- 2026-07-05: Added ty and mypy configuration so the exact default commands type-check the core/CLI production surface while excluding tests and optional-extra surfaces.
+- 2026-07-05: Fixed source typing issues in CLI kwargs handling, LLM optional imports, validation dictionary boundaries, timestamps, and helper inference.
+- 2026-07-05: `uv run --no-sync --with ty ty check`, `uv run --no-sync --with mypy mypy .`, and `uv run basedpyright --level error` all exit 0.
 
 ## Blockers
 
@@ -55,3 +58,5 @@ None.
 - `.10x/evidence/2026-07-05-type-checker-adoption-scope.md`
 - `.10x/evidence/2026-07-05-quality-optimizer-final-vector.md`
 - `.10x/tickets/done/2026-07-05-tighten-final-type-tool-feedback.md`
+- `.10x/evidence/2026-07-05-type-tools-zero.md`
+- `.10x/reviews/2026-07-05-type-tools-zero.md`

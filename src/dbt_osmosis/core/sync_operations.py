@@ -875,7 +875,7 @@ def _sync_node_group_to_yaml(
     for grouped_node in _order_sync_group_nodes(nodes):
         resource_key = _get_resource_type_key(grouped_node)
         if grouped_node.resource_type == NodeType.Source:
-            _sync_source_node(context, t.cast("SourceDefinition", grouped_node), doc, resource_key)
+            _sync_source_node(context, grouped_node, doc, resource_key)
         else:
             _sync_model_or_seed_node(context, grouped_node, doc, resource_key)
 

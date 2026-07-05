@@ -17,8 +17,9 @@ from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 _OpenAIRateLimitError: type[Exception]
 
 try:
-    from openai import AzureOpenAI, OpenAI
-    from openai import RateLimitError as _OpenAIRateLimitError
+    from openai import AzureOpenAI, OpenAI, RateLimitError
+
+    _OpenAIRateLimitError = RateLimitError
 
     _OPENAI_AVAILABLE = True
 except ImportError:
@@ -215,12 +216,13 @@ def get_llm_client() -> tuple[t.Any, str]:
         azure_endpoint = os.getenv("AZURE_OPENAI_BASE_URL")
         api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
         api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
-        if not (azure_endpoint and model_engine):
+        if not (azure_endpoint and deployment_name):
             raise LLMConfigurationError(
                 "AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai provider",
             )
+        model_engine = deployment_name
 
         if not api_key:
             raise LLMConfigurationError(
@@ -235,14 +237,15 @@ def get_llm_client() -> tuple[t.Any, str]:
 
     elif provider == "azure-openai-ad":
         azure_endpoint = os.getenv("AZURE_OPENAI_BASE_URL")
-        model_engine = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
         api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
         azure_ad_token_scope = os.getenv("AZURE_OPENAI_AD_TOKEN_SCOPE")
 
-        if not (azure_endpoint and model_engine):
+        if not (azure_endpoint and deployment_name):
             raise LLMConfigurationError(
                 "AZURE_OPENAI_BASE_URL and AZURE_OPENAI_DEPLOYMENT_NAME must be set for azure-openai-ad provider",
             )
+        model_engine = deployment_name
 
         if not azure_ad_token_scope:
             raise LLMConfigurationError(

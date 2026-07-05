@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from dbt.contracts.graph.nodes import (  # pyright: ignore[reportPrivateImportUsage]
@@ -182,7 +182,7 @@ class SchemaDiffResult:
     yaml_columns: dict[str, ColumnInfo]
     database_columns: dict[str, ColumnMetadata]
     changes: list[SchemaChange] = field(default_factory=list)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def summary(self) -> dict[str, int]:

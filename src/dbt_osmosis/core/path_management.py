@@ -208,9 +208,9 @@ def get_target_yaml_path(context: YamlRefactorContextProtocol, node: ResultNode)
     tpl = _get_yaml_path_template(context, node)
     if not tpl:
         logger.warning(":warning: No path template found for => %s", node.unique_id)
-        return Path(project_root, t.cast("str", node.original_file_path))
+        return Path(project_root, node.original_file_path)
 
-    path = Path(project_root, t.cast("str", node.original_file_path))
+    path = Path(project_root, node.original_file_path)
 
     format_dict = {
         "model": node.name,
@@ -329,9 +329,12 @@ def create_missing_source_yamls(context: t.Any) -> None:
             continue
 
         # Check if source already exists in the manifest
+        def source_name_matches(candidate: t.Any, *, expected_source: str = source) -> bool:
+            return candidate.source_name == expected_source
+
         existing_source_node = _find_first(
             context.project.manifest.sources.values(),
-            lambda s, _source=source: s.source_name == _source,
+            source_name_matches,
         )
         manifest_tables: set[str] = set()
 

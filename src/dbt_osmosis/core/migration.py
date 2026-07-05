@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -85,7 +85,7 @@ class MigrationPlan:
     node_id: str
     node_name: str
     steps: list[MigrationStep] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def has_breaking_changes(self) -> bool:

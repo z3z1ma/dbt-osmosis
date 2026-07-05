@@ -238,11 +238,12 @@ def dbt_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
     )
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-        kwargs["profiles_dir"] = _resolve_profiles_dir(
-            project_dir=t.cast(str | None, kwargs.get("project_dir")),
-            profiles_dir=t.cast(str | None, kwargs.get("profiles_dir")),
+        wrapper_kwargs = t.cast("dict[str, t.Any]", kwargs)
+        wrapper_kwargs["profiles_dir"] = _resolve_profiles_dir(
+            project_dir=t.cast(str | None, wrapper_kwargs.get("project_dir")),
+            profiles_dir=t.cast(str | None, wrapper_kwargs.get("profiles_dir")),
         )
-        return func(*args, **kwargs)
+        return func(*args, **wrapper_kwargs)
 
     return wrapper
 
@@ -1303,7 +1304,7 @@ def generate_query(
         click.echo("=" * 80)
         _, table = execute_sql_code(project, sql)
 
-        table.print_table(  # pyright: ignore[reportAttributeAccessIssue]
+        t.cast("t.Any", table).print_table(
             max_rows=50,
             max_columns=6,
             output=sys.stdout,
@@ -1541,7 +1542,7 @@ def query(
         click.echo("=" * 80)
         _, table = execute_sql_code(project, sql)
 
-        table.print_table(  # pyright: ignore[reportAttributeAccessIssue]
+        t.cast("t.Any", table).print_table(
             max_rows=50,
             max_columns=6,
             output=sys.stdout,
@@ -1662,7 +1663,7 @@ def run(
     project = create_dbt_project_context(settings)
     _, table = execute_sql_code(project, sql)
 
-    table.print_table(  # pyright: ignore[reportAttributeAccessIssue]
+    t.cast("t.Any", table).print_table(
         max_rows=50,
         max_columns=6,
         output=sys.stdout,

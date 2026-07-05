@@ -238,7 +238,7 @@ def _get_dependents(node: ResultNode, manifest: t.Any) -> list[str]:
         if (
             hasattr(other_node, "depends_on_nodes")
             and node.unique_id in other_node.depends_on_nodes
-        ):  # type: ignore
+        ):
             dependents.append(other_node.unique_id)
 
     return dependents

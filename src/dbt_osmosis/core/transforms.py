@@ -221,7 +221,7 @@ def _transform_op(
     def decorator(
         func: t.Callable[[t.Any, ResultNode | None], None],  # YamlRefactorContext
     ) -> TransformOperation:
-        operation_name = name or getattr(func, "__name__", func.__class__.__name__)
+        operation_name = t.cast("str", name or getattr(func, "__name__", func.__class__.__name__))
         return TransformOperation(func, name=operation_name)
 
     return decorator
