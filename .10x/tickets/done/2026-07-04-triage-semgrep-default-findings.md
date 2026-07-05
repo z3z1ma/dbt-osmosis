@@ -1,4 +1,4 @@
-Status: open
+Status: done
 Created: 2026-07-04
 Updated: 2026-07-04
 Parent: .10x/tickets/2026-07-04-quality-optimizer-hill-climb.md
@@ -39,6 +39,9 @@ Out of scope:
 ## Progress and Notes
 
 - 2026-07-04: Baseline Semgrep findings include Dependabot/uv cooldown policy, mutable GitHub Action tags, `workflow_run` checkout concerns, dynamic import, and dynamic urllib usage.
+- 2026-07-04: Re-ran Semgrep through `uvx` into `/tmp/dbt-osmosis-ai-quality/semgrep-default-current.json`; current result remains 33 blocking findings.
+- 2026-07-04: Classified all findings in `.10x/evidence/2026-07-04-semgrep-triage.md`.
+- 2026-07-04: Opened blocked policy owners for dependency cooldowns and GitHub Actions pinning. No source/workflow changes were made in this ticket.
 
 ## Blockers
 
@@ -48,3 +51,7 @@ Policy findings may require user ratification before implementation.
 
 - `.10x/research/2026-07-04-quality-optimizer-baseline.md`
 - `.10x/evidence/2026-07-04-quality-optimizer-baseline.md`
+- `.10x/evidence/2026-07-04-semgrep-triage.md`
+- `.10x/reviews/2026-07-04-semgrep-triage-review.md`
+- `.10x/tickets/2026-07-04-ratify-dependency-cooldown-policy.md`
+- `.10x/tickets/2026-07-04-ratify-github-actions-pinning-policy.md`
