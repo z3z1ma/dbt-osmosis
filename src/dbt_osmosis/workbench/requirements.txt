@@ -1,2 +1,9 @@
 dbt-osmosis[workbench,duckdb]==1.4.0
 setuptools>=70,<81
+# Keep Streamlit deployment resolution above OSV-flagged vulnerable lower bounds.
+gitpython>=3.1.50
+h11>=0.16.0
+idna>=3.15
+ipython>=8.10.0,<9
+pillow>=12.2.0
+pyarrow>=17.0.0

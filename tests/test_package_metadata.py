@@ -121,6 +121,15 @@ def test_workbench_requirements_reference_current_supported_extras() -> None:
 
     assert "==1.1.5" not in requirements
     assert f"dbt-osmosis[workbench,duckdb]=={_pyproject()['project']['version']}" in requirements
+    for constraint in (
+        "gitpython>=3.1.50",
+        "h11>=0.16.0",
+        "idna>=3.15",
+        "ipython>=8.10.0,<9",
+        "pillow>=12.2.0",
+        "pyarrow>=17.0.0",
+    ):
+        assert constraint in requirements
 
 
 def test_dev_dependency_surfaces_are_canonicalized() -> None:
