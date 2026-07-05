@@ -98,8 +98,6 @@ def test_column_knowledge_processes_numeric_generations_farthest_to_closest(
     monkeypatch,
 ):
     """generation_10 should be treated as farther away than generation_2, not lexicographic."""
-    import dbt_osmosis.core.inheritance as inheritance_module
-
     manifest = yaml_context.project.manifest
     raw_customers = manifest.nodes["seed.jaffle_shop_duckdb.raw_customers"]
     raw_customers.columns["first_name"].description = "Raw source description"
@@ -109,8 +107,7 @@ def test_column_knowledge_processes_numeric_generations_farthest_to_closest(
     customers.columns["first_name"].description = ""
 
     monkeypatch.setattr(
-        inheritance_module,
-        "_build_node_ancestor_tree",
+        "dbt_osmosis.core.inheritance._build_node_ancestor_tree",
         lambda manifest, node: {
             "generation_0": [customers.unique_id],
             "generation_2": [stg_customers.unique_id],
@@ -150,7 +147,6 @@ def test_semantic_analysis_tag_merge_preserves_existing_then_suggested_order(
     monkeypatch,
 ):
     """Semantic tag suggestions should append unseen tags without set reordering."""
-    import dbt_osmosis.core.inheritance as inheritance_module
     import dbt_osmosis.core.llm as llm_module
 
     class FakeColumn:
@@ -189,7 +185,8 @@ def test_semantic_analysis_tag_merge_preserves_existing_then_suggested_order(
         return {"tags": ["semantic", "shared", "new"], "semantic_type": "primary_key"}
 
     monkeypatch.setattr(
-        inheritance_module, "_build_column_knowledge_graph", lambda context, node: {}
+        "dbt_osmosis.core.inheritance._build_column_knowledge_graph",
+        lambda context, node: {},
     )
     monkeypatch.setitem(fake_analyze_column_semantics.__globals__, "get_llm_client", object)
     monkeypatch.setattr(llm_module, "analyze_column_semantics", fake_analyze_column_semantics)

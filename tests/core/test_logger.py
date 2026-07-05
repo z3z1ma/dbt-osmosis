@@ -10,13 +10,12 @@ import pytest
 from rich.logging import RichHandler
 
 import dbt_osmosis.core.logger as logger_module
-from dbt_osmosis.core.logger import (
-    LOGGER,
-    LogMethod,
-    get_logger,
-    get_rotating_log_handler,
-    set_log_level,
-)
+
+LOGGER = logger_module.LOGGER
+LogMethod = logger_module.LogMethod
+get_logger = logger_module.get_logger
+get_rotating_log_handler = logger_module.get_rotating_log_handler
+set_log_level = logger_module.set_log_level
 
 
 @pytest.fixture

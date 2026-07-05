@@ -12,7 +12,6 @@ import ruamel.yaml
 
 import tests.conftest as test_conftest
 import tests.core.conftest as core_conftest
-from tests.conftest import _run_dbt_commands
 from tests.support import manifest_requires_refresh
 
 DEMO_PROJECT_DIR = Path("demo_duckdb")
@@ -86,7 +85,7 @@ def test_run_dbt_commands_fails_fast_on_first_error(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr("dbt.cli.main.dbtRunner", lambda: fake_runner)
 
     with pytest.raises(RuntimeError, match=r"dbt seed failed after .*seed exploded"):
-        _run_dbt_commands("demo_duckdb", "demo_duckdb")
+        test_conftest._run_dbt_commands("demo_duckdb", "demo_duckdb")
 
     assert fake_runner.calls == [
         [
