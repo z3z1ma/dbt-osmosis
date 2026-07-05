@@ -7,9 +7,13 @@ version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
+    cooldown:
+      default-days: 7
     schedule:
       interval: "weekly"
   - package-ecosystem: "npm"
     directory: "/docs"
+    cooldown:
+      default-days: 7
     schedule:
       interval: "weekly"

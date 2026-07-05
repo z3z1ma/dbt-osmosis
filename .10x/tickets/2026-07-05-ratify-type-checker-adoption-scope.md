@@ -1,4 +1,4 @@
-Status: blocked
+Status: active
 Created: 2026-07-05
 Updated: 2026-07-05
 Parent: None
@@ -43,14 +43,11 @@ Out of scope:
 - 2026-07-05: Whole-repo `ty` remains broad at 343 parsed diagnostics: 299 tests, 21 optional workbench extra, 14 core/source, 5 optional sql proxy extra, and 4 optional llm extra.
 - 2026-07-05: Whole-repo mypy remains broad at 263 parsed errors: 222 tests, 20 optional workbench extra, 11 core/source, 5 optional llm extra, and 5 optional sql proxy extra.
 - 2026-07-05: Existing basedpyright-covered `src/dbt_osmosis/core` plus `src/dbt_osmosis/cli` surface is closer but still not clean: `ty` reports 18 diagnostics and mypy exits non-zero with source/stub/optional-extra diagnostics.
+- 2026-07-05: User explicitly ratified fixing any nonzero tool output to zero exit code, including type-tool adoption work. Treat `uv run --no-sync --with ty ty check` and `uv run --no-sync --with mypy mypy .` as active zero-exit targets.
 
 ## Blockers
 
-The adoption scope is a project policy decision because it may require configuration, optional extra installation assumptions, stubs, baselines, CI changes, or many test typing edits.
-
-Recommended ratification question:
-
-Should this project keep basedpyright as the only enforced type gate for now and leave `ty`/mypy non-gating, or should a narrower adoption plan be opened for `ty`, mypy, or both? Recommended answer: keep basedpyright as the enforced gate until a separate source-only, optional-extra-aware adoption spec is ratified.
+None.
 
 ## References
 

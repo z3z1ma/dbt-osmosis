@@ -60,13 +60,6 @@ P = t.ParamSpec("P")
 
 _CONTEXT = {"max_content_width": 800}
 _WORKBENCH_EXTRA_HINT = "pip install dbt-osmosis[workbench]"
-_WORKBENCH_APP_MODULES = (
-    "feedparser",
-    "pandas",
-    "streamlit",
-    "streamlit_elements_fluence",
-    "ydata_profiling",
-)
 
 
 def _missing_streamlit_error() -> click.ClickException:
@@ -83,16 +76,39 @@ def _streamlit_executable() -> str:
     return executable
 
 
+def _record_missing_workbench_module(
+    missing: list[str],
+    module: str,
+    error: ImportError,
+) -> None:
+    if isinstance(error, ModuleNotFoundError) and error.name == module:
+        missing.append(module)
+    else:
+        missing.append(f"{module} ({error})")
+
+
 def _check_workbench_app_dependencies() -> None:
-    missing = []
-    for module in _WORKBENCH_APP_MODULES:
-        try:
-            importlib.import_module(module)
-        except ImportError as e:
-            if isinstance(e, ModuleNotFoundError) and e.name == module:
-                missing.append(module)
-            else:
-                missing.append(f"{module} ({e})")
+    missing: list[str] = []
+    try:
+        importlib.import_module("feedparser")
+    except ImportError as e:
+        _record_missing_workbench_module(missing, "feedparser", e)
+    try:
+        importlib.import_module("pandas")
+    except ImportError as e:
+        _record_missing_workbench_module(missing, "pandas", e)
+    try:
+        importlib.import_module("streamlit")
+    except ImportError as e:
+        _record_missing_workbench_module(missing, "streamlit", e)
+    try:
+        importlib.import_module("streamlit_elements_fluence")
+    except ImportError as e:
+        _record_missing_workbench_module(missing, "streamlit_elements_fluence", e)
+    try:
+        importlib.import_module("ydata_profiling")
+    except ImportError as e:
+        _record_missing_workbench_module(missing, "ydata_profiling", e)
 
     if missing:
         missing_modules = ", ".join(missing)

@@ -69,6 +69,7 @@ dev = [
 "dbt-osmosis" = "dbt_osmosis.cli.main:cli"
 
 [tool.uv]
+exclude-newer = "7 days"
 override-dependencies = ["protobuf>=5.0,<6.0"]
 
 [tool.ruff]
