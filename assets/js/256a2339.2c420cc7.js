@@ -1,0 +1,1 @@
+"use strict";(globalThis.webpackChunkdbt_osmosis=globalThis.webpackChunkdbt_osmosis||[]).push([[486],{3711(s){s.exports=JSON.parse('{"metadata":{"permalink":"/dbt-osmosis/blog","page":1,"postsPerPage":10,"totalPages":1,"totalCount":0,"blogDescription":"Blog","blogTitle":"Blog"}}')}}]);
