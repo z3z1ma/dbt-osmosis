@@ -342,25 +342,134 @@ def test_workbench_fetch_feed_bytes_rejects_responses_over_size_cap(monkeypatch)
     monkeypatch.setattr(app, "FEED_RESPONSE_MAX_BYTES", 5, raising=False)
 
     class OversizedResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return False
+        status = 200
 
         def read(self, size=-1):
             assert size in {-1, 6}
             return b"abcdef"
 
-    def fake_urlopen(url, *, timeout):
-        assert url == "https://news.ycombinator.com/rss"
-        assert timeout == 1.5
-        return OversizedResponse()
+    class FakeConnection:
+        def __init__(self, host, port=None, *, timeout):
+            assert host == "news.ycombinator.com"
+            assert port is None
+            assert timeout == 1.5
+            self.closed = False
 
-    monkeypatch.setattr(app.urllib.request, "urlopen", fake_urlopen)
+        def request(self, method, path, *, headers):
+            assert method == "GET"
+            assert path == "/rss"
+            assert headers == {"User-Agent": "dbt-osmosis-workbench"}
+
+        def getresponse(self):
+            return OversizedResponse()
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(app.http.client, "HTTPSConnection", FakeConnection)
 
     with pytest.raises(ValueError, match="exceeds maximum"):
         app._fetch_feed_bytes("https://news.ycombinator.com/rss", 1.5)
+
+
+def test_workbench_fetch_feed_bytes_rejects_non_http_schemes(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+
+    def fail_connection(*_args, **_kwargs):
+        raise AssertionError("non-http feed URL should not open a connection")
+
+    monkeypatch.setattr(app.http.client, "HTTPConnection", fail_connection)
+    monkeypatch.setattr(app.http.client, "HTTPSConnection", fail_connection)
+
+    with pytest.raises(ValueError, match="http or https"):
+        app._fetch_feed_bytes("file:///etc/passwd", 1.5)
+
+
+def test_workbench_fetch_feed_bytes_closes_connection_on_http_error(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+    closed = []
+
+    class ErrorResponse:
+        status = 500
+
+    class FakeConnection:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def request(self, *_args, **_kwargs):
+            pass
+
+        def getresponse(self):
+            return ErrorResponse()
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(app.http.client, "HTTPSConnection", FakeConnection)
+
+    with pytest.raises(ValueError, match="Feed request failed"):
+        app._fetch_feed_bytes("https://news.ycombinator.com/rss", 1.5)
+
+    assert closed == [True]
+
+
+def test_workbench_fetch_feed_bytes_supports_query_paths(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+
+    class Response:
+        status = 200
+
+        def read(self, size=-1):
+            assert size == app.FEED_RESPONSE_MAX_BYTES + 1
+            return b"ok"
+
+    class FakeConnection:
+        def __init__(self, host, port=None, *, timeout):
+            assert host == "example.com"
+            assert port == 8443
+            assert timeout == 2.0
+
+        def request(self, method, path, *, headers):
+            assert method == "GET"
+            assert path == "/feed?x=1"
+            assert headers == {"User-Agent": "dbt-osmosis-workbench"}
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(app.http.client, "HTTPSConnection", FakeConnection)
+
+    assert app._fetch_feed_bytes("https://example.com:8443/feed?x=1", 2.0) == b"ok"
+
+
+def test_workbench_fetch_feed_bytes_reads_root_path(monkeypatch) -> None:
+    app = _import_workbench_app_with_stubs(monkeypatch)
+
+    class Response:
+        status = 200
+
+        def read(self, size=-1):
+            return b"ok"
+
+    class FakeConnection:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def request(self, method, path, *, headers):
+            assert path == "/"
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(app.http.client, "HTTPConnection", FakeConnection)
+
+    assert app._fetch_feed_bytes("http://example.com", 2.0) == b"ok"
 
 
 def test_workbench_parse_args_accepts_external_feed_opt_in(monkeypatch) -> None:

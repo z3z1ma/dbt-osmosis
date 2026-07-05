@@ -2,12 +2,12 @@
 import argparse
 import decimal
 import html
+import http.client
 import os
 import pathlib
 import sys
 import typing as t
 import urllib.parse
-import urllib.request
 from collections import OrderedDict
 from datetime import date, datetime
 from textwrap import dedent
@@ -135,6 +135,16 @@ def _is_http_url(url: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def _parse_feed_url(feed_url: str) -> urllib.parse.ParseResult:
+    try:
+        parsed = urllib.parse.urlparse(feed_url)
+    except Exception as exc:
+        raise ValueError("Feed URL must use http or https") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Feed URL must use http or https")
+    return parsed
+
+
 def _safe_url(value: t.Any) -> str | None:
     url = str(value or "").strip()
     if not _is_http_url(url):
@@ -151,10 +161,22 @@ def _entry_value(entry: t.Any, key: str) -> str:
 
 
 def _fetch_feed_bytes(feed_url: str, timeout_seconds: float) -> bytes:
-    if not _is_http_url(feed_url):
-        raise ValueError("Feed URL must use http or https")
-    with urllib.request.urlopen(feed_url, timeout=timeout_seconds) as response:
+    parsed = _parse_feed_url(feed_url)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    connection_cls = (
+        http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    )
+    connection = connection_cls(parsed.hostname, parsed.port, timeout=timeout_seconds)
+    try:
+        connection.request("GET", path, headers={"User-Agent": "dbt-osmosis-workbench"})
+        response = connection.getresponse()
+        if response.status >= 400:
+            raise ValueError("Feed request failed")
         feed_bytes = response.read(FEED_RESPONSE_MAX_BYTES + 1)
+    finally:
+        connection.close()
     if len(feed_bytes) > FEED_RESPONSE_MAX_BYTES:
         raise ValueError("Feed response exceeds maximum size")
     return feed_bytes
