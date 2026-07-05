@@ -547,8 +547,8 @@ def main():
     with elements("dashboard"):  # pyright: ignore[reportGeneralTypeIssues]
         event.Hotkey("ctrl+enter", sync(), bindInputs=True, overrideDefault=True)
         event.Hotkey("command+s", sync(), bindInputs=True, overrideDefault=True)
-        event.Hotkey("ctrl+shift+enter", lambda: run_query(), bindInputs=True, overrideDefault=True)
-        event.Hotkey("command+shift+s", lambda: run_query(), bindInputs=True, overrideDefault=True)
+        event.Hotkey("ctrl+shift+enter", run_query, bindInputs=True, overrideDefault=True)
+        event.Hotkey("command+shift+s", run_query, bindInputs=True, overrideDefault=True)
 
         with app.dashboard(rowHeight=57):
             app.editor()

@@ -326,7 +326,7 @@ class YamlRefactorContext:
         c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = self._find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]],
-            lambda v: bool(v),
+            bool,
             {},
         )
         return toplevel_conf.get("sources", {})
@@ -337,7 +337,7 @@ class YamlRefactorContext:
         c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = self._find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]],
-            lambda v: bool(v),
+            bool,
             {},
         )
         return toplevel_conf.get("column_ignore_patterns", [])
@@ -348,7 +348,7 @@ class YamlRefactorContext:
         c = self.project.runtime_cfg.vars.to_dict()
         toplevel_conf = self._find_first(
             [c.get(k, {}) for k in ["dbt-osmosis", "dbt_osmosis"]],
-            lambda v: bool(v),
+            bool,
             {},
         )
         return toplevel_conf.get("yaml_settings", {})

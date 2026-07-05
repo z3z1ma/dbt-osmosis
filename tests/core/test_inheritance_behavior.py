@@ -191,9 +191,7 @@ def test_semantic_analysis_tag_merge_preserves_existing_then_suggested_order(
     monkeypatch.setattr(
         inheritance_module, "_build_column_knowledge_graph", lambda context, node: {}
     )
-    monkeypatch.setitem(
-        fake_analyze_column_semantics.__globals__, "get_llm_client", lambda: object()
-    )
+    monkeypatch.setitem(fake_analyze_column_semantics.__globals__, "get_llm_client", object)
     monkeypatch.setattr(llm_module, "analyze_column_semantics", fake_analyze_column_semantics)
     monkeypatch.setattr(
         llm_module,
