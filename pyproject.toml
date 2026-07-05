@@ -23,19 +23,24 @@ classifiers = [
 requires-python = ">=3.10,<3.14"
 
 dependencies = [
+  "agate>=1.9,<2",
   "click>7,<9",
+  "dbt-common>=1,<2",
   "dbt-core>=1.8",
   "dbt-core-interface>=1.1.7",
+  "packaging>=24,<26",
   "ruamel.yaml>=0.17,<0.20",
   "rich>=10",
   "pluggy>=1.5.0,<2",
   "PyYAML>=6.0",
   "sqlglot>=28,<31",
   "rapidfuzz>=3.0.0",
+  "typing-extensions>=4.12,<5",
 ]
 
 [project.optional-dependencies]
 workbench = [
+  "pandas>=2.2,<3",
   "streamlit>=1.45.0,<2.0",
   "streamlit-ace~=0.1.1",
   "ydata-profiling>=4.17.0",
@@ -137,6 +142,26 @@ fail_under = 70
 precision = 2
 show_missing = true
 skip_covered = false
+
+[tool.deptry]
+known_first_party = ["dbt_osmosis"]
+optional_dependencies_dev_groups = ["dev"]
+package_module_name_map = { "azure-identity" = ["azure"], "dbt-common" = ["dbt_common"], "streamlit-elements-fluence" = ["streamlit_elements_fluence"], "ydata-profiling" = ["ydata_profiling"] }
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+  "streamlit-ace",
+  "ipython",
+  "setuptools",
+  "basedpyright",
+  "ruff",
+  "pytest",
+  "pytest-cov",
+  "hypothesis",
+  "mutmut",
+  "pre-commit",
+  "tomli",
+]
 
 [dependency-groups]
 dev = [

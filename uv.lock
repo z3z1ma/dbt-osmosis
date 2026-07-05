@@ -749,15 +749,19 @@ name = "dbt-osmosis"
 version = "1.4.0"
 source = { editable = "." }
 dependencies = [
+    { name = "agate" },
     { name = "click" },
+    { name = "dbt-common" },
     { name = "dbt-core" },
     { name = "dbt-core-interface" },
+    { name = "packaging" },
     { name = "pluggy" },
     { name = "pyyaml" },
     { name = "rapidfuzz" },
     { name = "rich" },
     { name = "ruamel-yaml" },
     { name = "sqlglot" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -787,6 +791,7 @@ proxy = [
 workbench = [
     { name = "feedparser" },
     { name = "ipython" },
+    { name = "pandas" },
     { name = "setuptools" },
     { name = "streamlit" },
     { name = "streamlit-ace" },
@@ -809,9 +814,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agate", specifier = ">=1.9,<2" },
     { name = "azure-identity", marker = "extra == 'azure'", specifier = ">=1.19,<2" },
     { name = "basedpyright", marker = "extra == 'dev'", specifier = ">=1.38.4,<1.40.0" },
     { name = "click", specifier = ">7,<9" },
+    { name = "dbt-common", specifier = ">=1,<2" },
     { name = "dbt-core", specifier = ">=1.8" },
     { name = "dbt-core-interface", specifier = ">=1.1.7" },
     { name = "dbt-duckdb", marker = "extra == 'dev'", specifier = ">=1,<2" },
@@ -822,6 +829,8 @@ requires-dist = [
     { name = "mutmut", marker = "extra == 'dev'" },
     { name = "mysql-mimic", marker = "extra == 'proxy'", specifier = ">=2.5.7" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.58.1,<2.42.0" },
+    { name = "packaging", specifier = ">=24,<26" },
+    { name = "pandas", marker = "extra == 'workbench'", specifier = ">=2.2,<3" },
     { name = "pluggy", specifier = ">=1.5.0,<2" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">3.0.0,<5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.4,<9.2.0" },
@@ -837,6 +846,7 @@ requires-dist = [
     { name = "streamlit-ace", marker = "extra == 'workbench'", specifier = "~=0.1.1" },
     { name = "streamlit-elements-fluence", marker = "extra == 'workbench'", specifier = ">=0.1.4" },
     { name = "tomli", marker = "python_full_version < '3.11' and extra == 'dev'", specifier = ">=2" },
+    { name = "typing-extensions", specifier = ">=4.12,<5" },
     { name = "ydata-profiling", marker = "extra == 'workbench'", specifier = ">=4.17.0" },
 ]
 provides-extras = ["workbench", "openai", "azure", "duckdb", "proxy", "dev"]
