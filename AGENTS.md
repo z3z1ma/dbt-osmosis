@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-MANDATORY: Use loom.
+MANDATORY: Use 10x.
 
 ## Project Overview
 
