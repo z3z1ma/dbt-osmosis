@@ -1,7 +1,7 @@
 Status: blocked
 Created: 2026-07-04
 Updated: 2026-07-04
-Parent: .10x/tickets/2026-07-04-quality-optimizer-hill-climb.md
+Parent: .10x/tickets/done/2026-07-04-quality-optimizer-hill-climb.md
 Depends-On: .10x/tickets/done/2026-07-04-triage-semgrep-default-findings.md
 
 # Ratify Dependency Cooldown Policy
