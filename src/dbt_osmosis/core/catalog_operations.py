@@ -22,14 +22,12 @@ class _CatalogArtifactProtocol(t.Protocol):
     nodes: t.Mapping[str, object]
     sources: t.Mapping[str, object]
 
-    def write(self, path: str) -> None:
-        raise NotImplementedError
+    def write(self, path: str) -> None: ...
 
 
 class _CatalogArtifactFactoryProtocol(t.Protocol):
     @staticmethod
-    def from_dict(data: object) -> _CatalogArtifactProtocol:
-        raise NotImplementedError
+    def from_dict(data: object) -> _CatalogArtifactProtocol: ...
 
     @staticmethod
     def from_results(
@@ -40,6 +38,7 @@ class _CatalogArtifactFactoryProtocol(t.Protocol):
         compile_results: object,
         errors: list[str] | None,
     ) -> _CatalogArtifactProtocol:
+        del generated_at, compile_results
         raise NotImplementedError
 
 

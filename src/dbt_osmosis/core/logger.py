@@ -98,7 +98,8 @@ class LogMethod(t.Protocol):
 
     @abstractmethod
     def __call__(self, msg: t.Any, /, *args: t.Any, **kwds: t.Any) -> t.Any:
-        pass
+        del msg, kwds
+        raise NotImplementedError
 
 
 def __getattr__(name: str) -> LogMethod:

@@ -116,6 +116,7 @@ class DbtSession(Session):
         sql: str,
         attrs: dict[str, t.Any],
     ) -> AllowedResult:
+        del attrs
         logger.info("Query: %s", sql)
         resp, table = await asyncio.to_thread(
             execute_sql_code,

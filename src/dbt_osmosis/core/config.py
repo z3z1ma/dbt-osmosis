@@ -355,13 +355,13 @@ class DbtProjectContext:
         """
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         """Exit the context manager, ensuring connections are closed.
 
         Args:
-            exc_type: Exception type if an exception was raised
-            exc_val: Exception value if an exception was raised
-            exc_tb: Exception traceback if an exception was raised
+            _exc_type: Exception type if an exception was raised
+            _exc_val: Exception value if an exception was raised
+            _exc_tb: Exception traceback if an exception was raised
 
         """
         self.close()

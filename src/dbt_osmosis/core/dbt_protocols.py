@@ -174,6 +174,7 @@ class ColumnInfoProtocol(t.Protocol):
 
     def to_dict(self, omit_none: bool = False) -> dict[str, t.Any]:
         """Convert column info to dictionary representation."""
+        del omit_none
         raise NotImplementedError
 
 
