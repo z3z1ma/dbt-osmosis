@@ -230,7 +230,7 @@ def inherit_upstream_column_knowledge(
             partial(inherit_upstream_column_knowledge, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
 
     logger.info(":dna: Inheriting column knowledge for => %s", node.unique_id)
@@ -335,7 +335,7 @@ def inject_missing_columns(
             partial(inject_missing_columns, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
     if resolve_setting(
         context, "skip-add-columns", node, fallback=context.settings.skip_add_columns
@@ -420,7 +420,7 @@ def remove_columns_not_in_database(
             partial(remove_columns_not_in_database, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
     output_to_upper = resolve_setting(
         context, "output-to-upper", node, fallback=context.settings.output_to_upper
@@ -472,7 +472,7 @@ def sort_columns_as_in_database(
             partial(sort_columns_as_in_database, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
     logger.info(":1234: Sorting columns by warehouse order => %s", node.unique_id)
     incoming_columns = get_columns(context, node)
@@ -525,7 +525,7 @@ def sort_columns_alphabetically(
             partial(sort_columns_alphabetically, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
     logger.info(":abcd: Sorting columns alphabetically => %s", node.unique_id)
 
@@ -571,7 +571,7 @@ def sort_columns_as_configured(
             partial(sort_columns_as_configured, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
     sort_by = resolve_setting(context, "sort-by", node, fallback="database")
     if sort_by == "database":
@@ -601,7 +601,7 @@ def synchronize_data_types(
             partial(synchronize_data_types, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
     logger.info(":1234: Synchronizing data types => %s", node.unique_id)
     incoming_columns = get_columns(context, node)
@@ -821,7 +821,7 @@ def synthesize_missing_documentation_with_openai(
             partial(synthesize_missing_documentation_with_openai, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
 
     # since we are topologically sorted, we continually pass down synthesized knowledge leveraging our inheritance system
@@ -880,7 +880,7 @@ def apply_semantic_analysis(
             partial(apply_semantic_analysis, context),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
 
     logger.info(":robot: Analyzing semantics for => %s", node.unique_id)
@@ -1045,7 +1045,7 @@ def suggest_improved_documentation(
             ),
             (n for _, n in _iter_candidate_nodes(context)),
         ):
-            ...
+            pass
         return
 
     # Check if AI co-pilot is disabled for this node

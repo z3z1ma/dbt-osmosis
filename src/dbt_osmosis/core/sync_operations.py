@@ -1001,7 +1001,7 @@ def sync_node_to_yaml(
             _sync_group,
             groups,
         ):
-            ...
+            pass
         return
 
     # Sync the single node
