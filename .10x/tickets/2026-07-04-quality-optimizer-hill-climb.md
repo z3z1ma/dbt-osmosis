@@ -16,7 +16,7 @@ This is a parent plan, not an executable ticket. Child tickets own executable wo
 
 1. `.10x/tickets/done/2026-07-04-remediate-uv-audit-vulnerabilities.md`
 2. `.10x/tickets/done/2026-07-04-triage-semgrep-default-findings.md`
-3. `.10x/tickets/2026-07-04-refactor-sync-doc-section-complexity.md`
+3. `.10x/tickets/done/2026-07-04-refactor-sync-doc-section-complexity.md`
 
 ## Acceptance Criteria
 
@@ -30,6 +30,7 @@ This is a parent plan, not an executable ticket. Child tickets own executable wo
 - 2026-07-04: Baseline completed. The highest-priority executable child is `remediate-uv-audit-vulnerabilities`.
 - 2026-07-04: Closed dependency audit remediation after targeted `uv.lock` upgrades cleared `uv audit --frozen` and full local pytest passed. Evidence: `.10x/evidence/2026-07-04-uv-audit-remediation.md`. Review: `.10x/reviews/2026-07-04-uv-audit-remediation-review.md`.
 - 2026-07-04: Closed Semgrep triage. Current Semgrep remains at 33 findings: 3 dependency cooldown policy findings and 26 GitHub Actions pinning findings are blocked on ratification, while 4 findings are classified as guarded false positives/no-action. Evidence: `.10x/evidence/2026-07-04-semgrep-triage.md`.
+- 2026-07-04: Closed `_sync_doc_section` complexity refactor. Radon moved from CC 78/rank F to CC 4/rank A; Complexipy now passes `_sync_doc_section` at 5. Evidence: `.10x/evidence/2026-07-04-sync-doc-section-refactor.md`.
 
 ## Blockers
 

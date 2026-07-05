@@ -4,7 +4,7 @@ import typing as t
 from pathlib import Path
 
 from dbt.artifacts.resources.types import NodeType
-from dbt.contracts.graph.nodes import ModelNode, ResultNode, SourceDefinition
+from dbt.contracts.graph.nodes import ColumnInfo, ModelNode, ResultNode, SourceDefinition
 
 if t.TYPE_CHECKING:
     from dbt_osmosis.core.dbt_protocols import YamlRefactorContextProtocol
@@ -16,6 +16,369 @@ __all__ = [
     "_sync_doc_section",
     "sync_node_to_yaml",
 ]
+
+
+def _sync_section_description(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    doc_section: dict[str, t.Any],
+) -> None:
+    from dbt_osmosis.core.introspection import resolve_setting
+
+    scaffold_empty_configs = resolve_setting(
+        context,
+        "scaffold-empty-configs",
+        node,
+        fallback=context.settings.scaffold_empty_configs,
+    )
+    if (
+        node.description
+        and not doc_section.get("description")
+        and (scaffold_empty_configs or node.description not in context.placeholders)
+    ):
+        doc_section["description"] = node.description
+
+
+def _normalized_column_name(context: YamlRefactorContextProtocol, column_name: str) -> str:
+    from dbt_osmosis.core.introspection import normalize_column_name
+
+    return normalize_column_name(column_name, context.project.runtime_cfg.credentials.type)
+
+
+def _current_column_state(
+    context: YamlRefactorContextProtocol,
+    doc_section: dict[str, t.Any],
+) -> tuple[dict[str, dict[str, t.Any]], list[dict[str, t.Any]]]:
+    current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
+    preserved_column_entries: list[dict[str, t.Any]] = []
+    current_map: dict[str, dict[str, t.Any]] = {}
+    for c in current_columns:
+        if not isinstance(c, t.Mapping):
+            continue
+        column_name = c.get("name")
+        if not isinstance(column_name, str):
+            if "v" in doc_section and ("include" in c or "exclude" in c):
+                preserved_column_entries.append(dict(c))
+            continue
+
+        current_map[_normalized_column_name(context, column_name)] = c
+    return current_map, preserved_column_entries
+
+
+def _catalog_column_types(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+) -> dict[str, str]:
+    catalog_column_types: dict[str, str] = {}
+    if catalog := context.read_catalog():
+        from dbt_osmosis.core.introspection import _find_first
+
+        # For source nodes, search catalog.sources; for model nodes, search catalog.nodes
+        # CatalogTable metadata doesn't have a 'source' field, so we match based on which dict we're searching
+        if hasattr(node, "source_name"):
+            catalog_entries = catalog.sources.values()
+        else:
+            catalog_entries = catalog.nodes.values()
+
+        catalog_entry = _find_first(
+            catalog_entries,
+            lambda c: c.metadata.name == node.name and c.metadata.schema == node.schema,
+        )
+        if catalog_entry:
+            for col_name, col_meta in catalog_entry.columns.items():
+                catalog_column_types[_normalized_column_name(context, col_name)] = col_meta.type
+    return catalog_column_types
+
+
+def _column_dict_from_manifest(
+    context: YamlRefactorContextProtocol,
+    name: str,
+    meta: ColumnInfo,
+    catalog_column_types: dict[str, str],
+) -> dict[str, t.Any]:
+    cdict = meta.to_dict(omit_none=True)
+    # Filter out fields added in dbt-core >= 1.9.6.
+    # In fusion_compat mode, preserve 'config' (meta/tags will be nested inside it).
+    # In classic mode, strip 'config' (meta/tags stay at top level).
+    if context.fusion_compat:
+        cdict = {k: v for k, v in cdict.items() if k != "doc_blocks"}
+    else:
+        cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
+    cdict["name"] = name
+
+    # Use catalog data_type if available, otherwise use manifest's data_type.
+    norm_name = _normalized_column_name(context, name)
+    if norm_name in catalog_column_types:
+        cdict["data_type"] = catalog_column_types[norm_name]
+    return cdict
+
+
+def _preserve_current_description(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    name: str,
+    current_yaml: dict[str, t.Any],
+) -> bool:
+    from dbt_osmosis.core.introspection import resolve_setting
+
+    current_description = current_yaml.get("description")
+    use_unrendered = resolve_setting(
+        context,
+        "use-unrendered-descriptions",
+        node,
+        name,
+        fallback=context.settings.use_unrendered_descriptions,
+    )
+    return bool(
+        use_unrendered
+        and current_description
+        and ("{{ doc(" in current_description or "{% docs " in current_description)
+    )
+
+
+def _preserved_jinja_fields(
+    context: YamlRefactorContextProtocol,
+    name: str,
+    current_yaml: dict[str, t.Any],
+    *,
+    prefer_yaml: bool,
+) -> set[str]:
+    if not prefer_yaml:
+        return set()
+
+    from dbt_osmosis.core.introspection import PropertyAccessor
+
+    accessor = PropertyAccessor(context=context)
+    preserved_yaml_fields: set[str] = set()
+    for field_key, field_value in current_yaml.items():
+        if field_key == "name":
+            continue
+        # Handles strings, lists (e.g., policy_tags), and nested dicts.
+        if accessor._has_unrendered_jinja(field_value):
+            preserved_yaml_fields.add(field_key)
+            logger.debug(
+                ":magic_wand: Preserving unrendered YAML field '%s' for column %s "
+                "(prefer-yaml-values enabled)",
+                field_key,
+                name,
+            )
+    return preserved_yaml_fields
+
+
+def _merge_column_values(
+    cdict: dict[str, t.Any],
+    current_yaml: dict[str, t.Any],
+    *,
+    skip_add_types: bool,
+    skip_merge_meta: bool,
+    preserve_current_description: bool,
+    preserved_yaml_fields: set[str],
+) -> dict[str, t.Any]:
+    merged = dict(current_yaml)
+    for k, v in cdict.items():
+        if k == "data_type" and skip_add_types:
+            # don't add data types if told not to
+            continue
+        if k == "meta" and skip_merge_meta and current_yaml.get("meta") not in (None, {}):
+            continue
+        if k == "constraints" and "constraints" in merged:
+            # keep constraints as is if present, mashumaro dumps too much info :shrug:
+            continue
+        if k == "description" and preserve_current_description:
+            # Preserve the unrendered description from current YAML.
+            continue
+        if k in preserved_yaml_fields:
+            # Preserve unrendered jinja templates from current YAML (prefer-yaml-values).
+            continue
+        merged[k] = v
+    return merged
+
+
+def _merge_unique_tags(existing_tags: list[t.Any], incoming_tags: list[t.Any]) -> list[t.Any]:
+    seen = set(existing_tags)
+    merged_tags = list(existing_tags)
+    for tag in incoming_tags:
+        if tag not in seen:
+            merged_tags.append(tag)
+            seen.add(tag)
+    return merged_tags
+
+
+def _apply_fusion_config_fields(merged: dict[str, t.Any]) -> None:
+    # Fusion mode: push top-level meta/tags INTO config block.
+    config_value = merged.get("config")
+    if not isinstance(config_value, dict):
+        config_value = {}
+    meta_value = merged.pop("meta", None)
+    tags_value = merged.pop("tags", None)
+    if isinstance(meta_value, dict) and meta_value:
+        existing_config_meta = config_value.get("meta", {})
+        config_value["meta"] = {**existing_config_meta, **meta_value}
+    if isinstance(tags_value, list) and tags_value:
+        existing_config_tags = config_value.get("tags", [])
+        config_value["tags"] = _merge_unique_tags(existing_config_tags, tags_value)
+    if config_value:
+        merged["config"] = config_value
+
+
+def _apply_classic_config_fields(merged: dict[str, t.Any]) -> None:
+    # Classic mode: keep meta/tags at top level and strip config wrappers.
+    config_value = merged.get("config")
+    if not isinstance(config_value, dict):
+        return
+
+    config_meta = config_value.get("meta")
+    if isinstance(config_meta, dict) and config_meta:
+        existing_meta = merged.get("meta")
+        if isinstance(existing_meta, dict):
+            merged["meta"] = {**config_meta, **existing_meta}
+        else:
+            merged["meta"] = config_meta
+
+    config_tags = config_value.get("tags")
+    if isinstance(config_tags, list) and config_tags:
+        existing_tags = merged.get("tags")
+        if isinstance(existing_tags, list):
+            merged["tags"] = _merge_unique_tags(existing_tags, config_tags)
+        else:
+            merged["tags"] = config_tags
+
+    merged.pop("config", None)
+
+
+def _cleanup_column_config(merged: dict[str, t.Any]) -> None:
+    # Clean up empty nested config entries (e.g., config: {meta: {}, tags: []}).
+    if not isinstance(merged.get("config"), dict):
+        return
+
+    config = merged["config"]
+    if config.get("meta", {}) == {}:
+        config.pop("meta", None)
+    if config.get("tags", []) == []:
+        config.pop("tags", None)
+    if not config:
+        merged.pop("config", None)
+
+
+def _cleanup_empty_column_values(
+    merged: dict[str, t.Any],
+    *,
+    scaffold_column_empty_configs: bool,
+) -> None:
+    _cleanup_column_config(merged)
+
+    if merged.get("description") is None:
+        merged.pop("description", None)
+    if merged.get("tags", []) == []:
+        merged.pop("tags", None)
+    if merged.get("meta", {}) == {}:
+        merged.pop("meta", None)
+
+    for k in set(merged.keys()) - {"name", "description", "tags", "meta"}:
+        if merged[k] in (None, [], {}):
+            merged.pop(k)
+
+    if not scaffold_column_empty_configs:
+        if merged.get("description") == "":
+            merged.pop("description", None)
+        if merged.get("tags", []) == []:
+            merged.pop("tags", None)
+        if merged.get("meta", {}) == {}:
+            merged.pop("meta", None)
+        if merged.get("config", {}) == {}:
+            merged.pop("config", None)
+
+
+def _apply_output_casing(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    name: str,
+    merged: dict[str, t.Any],
+) -> None:
+    from dbt_osmosis.core.introspection import resolve_setting
+
+    if resolve_setting(
+        context,
+        "output-to-upper",
+        node,
+        name,
+        fallback=context.settings.output_to_upper,
+    ):
+        merged["name"] = merged["name"].upper()
+    elif resolve_setting(
+        context,
+        "output-to-lower",
+        node,
+        name,
+        fallback=context.settings.output_to_lower,
+    ):
+        merged["name"] = merged["name"].lower()
+
+
+def _synced_column(
+    context: YamlRefactorContextProtocol,
+    node: ResultNode,
+    name: str,
+    meta: ColumnInfo,
+    current_yaml: dict[str, t.Any],
+    catalog_column_types: dict[str, str],
+) -> dict[str, t.Any]:
+    from dbt_osmosis.core.introspection import resolve_setting
+
+    cdict = _column_dict_from_manifest(context, name, meta, catalog_column_types)
+
+    prefer_yaml = resolve_setting(
+        context,
+        "prefer-yaml-values",
+        node,
+        name,
+        fallback=context.settings.prefer_yaml_values,
+    )
+    merged = _merge_column_values(
+        cdict,
+        current_yaml,
+        skip_add_types=resolve_setting(
+            context,
+            "skip-add-data-types",
+            node,
+            name,
+            fallback=context.settings.skip_add_data_types,
+        ),
+        skip_merge_meta=resolve_setting(
+            context,
+            "skip-merge-meta",
+            node,
+            name,
+            fallback=context.settings.skip_merge_meta,
+        ),
+        preserve_current_description=_preserve_current_description(
+            context, node, name, current_yaml
+        ),
+        preserved_yaml_fields=_preserved_jinja_fields(
+            context,
+            name,
+            current_yaml,
+            prefer_yaml=prefer_yaml,
+        ),
+    )
+
+    if context.fusion_compat:
+        _apply_fusion_config_fields(merged)
+    else:
+        _apply_classic_config_fields(merged)
+
+    _cleanup_empty_column_values(
+        merged,
+        scaffold_column_empty_configs=resolve_setting(
+            context,
+            "scaffold-empty-configs",
+            node,
+            name,
+            fallback=context.settings.scaffold_empty_configs,
+        ),
+    )
+    _apply_output_casing(context, node, name, merged)
+    return merged
 
 
 def _sync_doc_section(
@@ -31,64 +394,12 @@ def _sync_doc_section(
     If a catalog is available (via --catalog-path), data_type from the catalog
     takes precedence over the manifest's data_type.
     """
-    from dbt_osmosis.core.introspection import resolve_setting
-
     logger.debug(":arrows_counterclockwise: Syncing doc_section with node => %s", node.unique_id)
-    scaffold_empty_configs = resolve_setting(
-        context,
-        "scaffold-empty-configs",
-        node,
-        fallback=context.settings.scaffold_empty_configs,
-    )
-    if (
-        node.description
-        and not doc_section.get("description")
-        and (scaffold_empty_configs or node.description not in context.placeholders)
-    ):
-        doc_section["description"] = node.description
+    _sync_section_description(context, node, doc_section)
 
-    current_columns: list[dict[str, t.Any]] = doc_section.setdefault("columns", [])
-    preserved_column_entries: list[dict[str, t.Any]] = []
+    current_map, preserved_column_entries = _current_column_state(context, doc_section)
+    catalog_column_types = _catalog_column_types(context, node)
     incoming_columns: list[dict[str, t.Any]] = []
-
-    current_map = {}
-    for c in current_columns:
-        from dbt_osmosis.core.introspection import normalize_column_name
-
-        if not isinstance(c, t.Mapping):
-            continue
-        column_name = c.get("name")
-        if not isinstance(column_name, str):
-            if "v" in doc_section and ("include" in c or "exclude" in c):
-                preserved_column_entries.append(dict(c))
-            continue
-
-        norm_name = normalize_column_name(column_name, context.project.runtime_cfg.credentials.type)
-        current_map[norm_name] = c
-
-    # Build a map of catalog column types if catalog is available
-    catalog_column_types: dict[str, str] = {}
-    if catalog := context.read_catalog():
-        from dbt_osmosis.core.introspection import _find_first, normalize_column_name
-
-        # For source nodes, search catalog.sources; for model nodes, search catalog.nodes
-        # CatalogTable metadata doesn't have a 'source' field, so we match based on which dict we're searching
-        if hasattr(node, "source_name"):
-            catalog_entries = catalog.sources.values()
-        else:
-            catalog_entries = catalog.nodes.values()
-
-        catalog_entry = _find_first(
-            catalog_entries,
-            lambda c: c.metadata.name == node.name and c.metadata.schema == node.schema,
-        )
-        if catalog_entry:
-            for col_name, col_meta in catalog_entry.columns.items():
-                norm_name = normalize_column_name(
-                    col_name,
-                    context.project.runtime_cfg.credentials.type,
-                )
-                catalog_column_types[norm_name] = col_meta.type
 
     for name, meta in node.columns.items():
         # Null check: validate meta exists before calling to_dict
@@ -99,212 +410,17 @@ def _sync_doc_section(
                 node.unique_id,
             )
             continue
-        cdict = meta.to_dict(omit_none=True)
-        # Filter out fields added in dbt-core >= 1.9.6.
-        # In fusion_compat mode, preserve 'config' (meta/tags will be nested inside it).
-        # In classic mode, strip 'config' (meta/tags stay at top level).
-        if context.fusion_compat:
-            cdict = {k: v for k, v in cdict.items() if k != "doc_blocks"}
-        else:
-            cdict = {k: v for k, v in cdict.items() if k not in ("config", "doc_blocks")}
-        cdict["name"] = name
-        from dbt_osmosis.core.introspection import normalize_column_name
 
-        norm_name = normalize_column_name(name, context.project.runtime_cfg.credentials.type)
-
-        # Use catalog data_type if available, otherwise use manifest's data_type
-        if norm_name in catalog_column_types:
-            cdict["data_type"] = catalog_column_types[norm_name]
-
-        current_yaml = t.cast("dict[str, t.Any]", current_map.get(norm_name, {}))
-        merged = dict(current_yaml)
-
-        skip_add_types = resolve_setting(
-            context,
-            "skip-add-data-types",
-            node,
-            name,
-            fallback=context.settings.skip_add_data_types,
+        incoming_columns.append(
+            _synced_column(
+                context,
+                node,
+                name,
+                meta,
+                current_map.get(_normalized_column_name(context, name), {}),
+                catalog_column_types,
+            )
         )
-        skip_merge_meta = resolve_setting(
-            context,
-            "skip-merge-meta",
-            node,
-            name,
-            fallback=context.settings.skip_merge_meta,
-        )
-
-        # Check if we should preserve unrendered descriptions from current YAML
-        # When use_unrendered_descriptions is True and the current description contains
-        # doc blocks (e.g., {{ doc(...) }} or {% docs %}{% enddocs %}), we should
-        # preserve the unrendered version instead of using the rendered version from manifest
-        current_description = current_yaml.get("description")
-        use_unrendered = resolve_setting(
-            context,
-            "use-unrendered-descriptions",
-            node,
-            name,
-            fallback=context.settings.use_unrendered_descriptions,
-        )
-        prefer_yaml = resolve_setting(
-            context,
-            "prefer-yaml-values",
-            node,
-            name,
-            fallback=context.settings.prefer_yaml_values,
-        )
-        scaffold_column_empty_configs = resolve_setting(
-            context,
-            "scaffold-empty-configs",
-            node,
-            name,
-            fallback=context.settings.scaffold_empty_configs,
-        )
-        preserve_current_description = False
-        if (
-            use_unrendered
-            and current_description
-            and ("{{ doc(" in current_description or "{% docs " in current_description)
-        ):
-            # Check if current description contains unrendered doc blocks
-            preserve_current_description = True
-
-        # Fields to preserve from current YAML when prefer_yaml_values is enabled
-        # This includes ANY field that has unrendered jinja templates
-        preserved_yaml_fields: set[str] = set()
-        if prefer_yaml:
-            from dbt_osmosis.core.introspection import PropertyAccessor
-
-            accessor = PropertyAccessor(context=context)
-            for field_key, field_value in current_yaml.items():
-                if field_key == "name":
-                    continue
-                # Check if the field value contains unrendered jinja
-                # Handles strings, lists (e.g., policy_tags), and nested dicts
-                if accessor._has_unrendered_jinja(field_value):
-                    preserved_yaml_fields.add(field_key)
-                    logger.debug(
-                        ":magic_wand: Preserving unrendered YAML field '%s' for column %s "
-                        "(prefer-yaml-values enabled)",
-                        field_key,
-                        name,
-                    )
-
-        for k, v in cdict.items():
-            if k == "data_type" and skip_add_types:
-                # don't add data types if told not to
-                continue
-            if k == "meta" and skip_merge_meta and current_yaml.get("meta") not in (None, {}):
-                continue
-            if k == "constraints" and "constraints" in merged:
-                # keep constraints as is if present, mashumaro dumps too much info :shrug:
-                continue
-            if k == "description" and preserve_current_description:
-                # Preserve the unrendered description from current YAML
-                continue
-            if k in preserved_yaml_fields:
-                # Preserve unrendered jinja templates from current YAML (prefer-yaml-values)
-                continue
-            merged[k] = v
-
-        if context.fusion_compat:
-            # Fusion mode: push top-level meta/tags INTO config block
-            config_value = merged.get("config")
-            if not isinstance(config_value, dict):
-                config_value = {}
-            meta_value = merged.pop("meta", None)
-            tags_value = merged.pop("tags", None)
-            if isinstance(meta_value, dict) and meta_value:
-                existing_config_meta = config_value.get("meta", {})
-                config_value["meta"] = {**existing_config_meta, **meta_value}
-            if isinstance(tags_value, list) and tags_value:
-                existing_config_tags = config_value.get("tags", [])
-                seen = set(existing_config_tags)
-                merged_tags = list(existing_config_tags)
-                for tag in tags_value:
-                    if tag not in seen:
-                        merged_tags.append(tag)
-                        seen.add(tag)
-                config_value["tags"] = merged_tags
-            if config_value:
-                merged["config"] = config_value
-        else:
-            # Classic mode: keep meta/tags at top level and strip config wrappers.
-            config_value = merged.get("config")
-            if isinstance(config_value, dict):
-                config_meta = config_value.get("meta")
-                if isinstance(config_meta, dict) and config_meta:
-                    existing_meta = merged.get("meta")
-                    if isinstance(existing_meta, dict):
-                        merged["meta"] = {**config_meta, **existing_meta}
-                    else:
-                        merged["meta"] = config_meta
-
-                config_tags = config_value.get("tags")
-                if isinstance(config_tags, list) and config_tags:
-                    existing_tags = merged.get("tags")
-                    if isinstance(existing_tags, list):
-                        seen = set(existing_tags)
-                        merged_tags = list(existing_tags)
-                        for tag in config_tags:
-                            if tag not in seen:
-                                merged_tags.append(tag)
-                                seen.add(tag)
-                        merged["tags"] = merged_tags
-                    else:
-                        merged["tags"] = config_tags
-
-                merged.pop("config", None)
-
-        # Clean up empty nested config entries (e.g., config: {meta: {}, tags: []})
-        if isinstance(merged.get("config"), dict):
-            config = merged["config"]
-            if config.get("meta", {}) == {}:
-                config.pop("meta", None)
-            if config.get("tags", []) == []:
-                config.pop("tags", None)
-            if not config:
-                merged.pop("config", None)
-
-        if merged.get("description") is None:
-            merged.pop("description", None)
-        if merged.get("tags", []) == []:
-            merged.pop("tags", None)
-        if merged.get("meta", {}) == {}:
-            merged.pop("meta", None)
-
-        for k in set(merged.keys()) - {"name", "description", "tags", "meta"}:
-            if merged[k] in (None, [], {}):
-                merged.pop(k)
-
-        if not scaffold_column_empty_configs:
-            if merged.get("description") == "":
-                merged.pop("description", None)
-            if merged.get("tags", []) == []:
-                merged.pop("tags", None)
-            if merged.get("meta", {}) == {}:
-                merged.pop("meta", None)
-            if merged.get("config", {}) == {}:
-                merged.pop("config", None)
-
-        if resolve_setting(
-            context,
-            "output-to-upper",
-            node,
-            name,
-            fallback=context.settings.output_to_upper,
-        ):
-            merged["name"] = merged["name"].upper()
-        elif resolve_setting(
-            context,
-            "output-to-lower",
-            node,
-            name,
-            fallback=context.settings.output_to_lower,
-        ):
-            merged["name"] = merged["name"].lower()
-
-        incoming_columns.append(merged)
 
     synced_columns = preserved_column_entries + incoming_columns
     if synced_columns:
