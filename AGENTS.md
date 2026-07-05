@@ -120,7 +120,7 @@ npm --prefix docs run serve
 - Formatter/linter/import sorter: Ruff is canonical, even though Black/isort config still exists in `pyproject.toml`
 - Test runner: `pytest`
 - Type checking: pyright only covers `src/dbt_osmosis/core` and `src/dbt_osmosis/cli`
-- Docs toolchain: Docusaurus 3 in `docs/`, Node `>=18`
+- Docs toolchain: Docusaurus 3 in `docs/`, Node `>=20`
 - Streamlit config exists in both `config.toml` and `.streamlit/config.toml`; check both before documenting runtime behavior
 
 Important nuance: `task` is not a pure verification command; it formats, lints, tests, and defers `task dev`.

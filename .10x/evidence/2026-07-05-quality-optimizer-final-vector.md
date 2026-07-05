@@ -1,7 +1,7 @@
 Status: recorded
 Created: 2026-07-05
 Updated: 2026-07-05
-Relates-To: .10x/tickets/done/2026-07-04-quality-optimizer-hill-climb.md, .10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md, .10x/tickets/2026-07-05-ratify-type-checker-adoption-scope.md
+Relates-To: .10x/tickets/done/2026-07-04-quality-optimizer-hill-climb.md, .10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md, .10x/tickets/2026-07-05-ratify-type-checker-adoption-scope.md
 
 # Quality optimizer final vector
 
@@ -36,7 +36,7 @@ npm audit docs: 26 -> 20 advisories
 coverage: 71.38% earlier in run -> 71.66% final
 ```
 
-The remaining OSV/npm findings are all in `docs/package-lock.json` and are owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+The remaining OSV/npm findings are all in `docs/package-lock.json` and are owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
 
 ## Procedure
 

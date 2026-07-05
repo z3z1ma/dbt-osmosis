@@ -45,19 +45,19 @@ Out of scope:
 - 2026-07-04: Started execution on branch `codex/quality-optimizer-hill-climb`.
 - 2026-07-05: Checked Docusaurus package metadata and rejected the apparent `3.10.1` path for this ticket because `@docusaurus/core@3.9+` requires Node `>=20.0` while the repo docs contract still includes Node 18.
 - 2026-07-05: Updated the existing docs `qs` override from `6.14.1` to `6.15.3` and regenerated `docs/package-lock.json`.
-- 2026-07-05: After the safe remediation, `npm --prefix docs audit --json` reports 20 vulnerabilities: 19 moderate and 1 high. Remaining advisories are owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+- 2026-07-05: After the safe remediation, `npm --prefix docs audit --json` reports 20 vulnerabilities: 19 moderate and 1 high. Remaining advisories are owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
 - 2026-07-05: `npm --prefix docs ci` and `npm --prefix docs run build` both exited 0. Evidence recorded in `.10x/evidence/2026-07-05-docs-npm-audit-remediation.md`.
 - 2026-07-05: Python/root gates were ruled unaffected because the diff is limited to docs npm dependency metadata and 10x records.
 - 2026-07-05: Closure review recorded in `.10x/reviews/2026-07-05-docs-npm-audit-remediation-review.md`.
 
 ## Blockers
 
-None for this ticket. Full docs audit clearance is blocked on the docs Node 20 support decision owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+None for this ticket. Full docs audit clearance is blocked on the docs Node 20 support decision owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
 
 ## References
 
 - `.10x/evidence/2026-07-04-github-dependabot-alerts.md`
 - `.10x/evidence/2026-07-05-docs-npm-audit-remediation.md`
 - `.10x/reviews/2026-07-05-docs-npm-audit-remediation-review.md`
-- `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`
+- `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`
 - `.10x/tickets/done/2026-07-04-remediate-uv-audit-vulnerabilities.md`

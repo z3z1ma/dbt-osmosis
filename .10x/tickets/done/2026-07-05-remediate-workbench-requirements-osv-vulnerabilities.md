@@ -23,7 +23,7 @@ Out of scope:
 - Changing `pyproject.toml` optional dependency contracts.
 - Updating `uv.lock` or root dependency resolution.
 - Changing workbench application behavior or Streamlit UI code.
-- Fully clearing docs npm advisories, already owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+- Fully clearing docs npm advisories, already owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
 
 ## Acceptance Criteria
 

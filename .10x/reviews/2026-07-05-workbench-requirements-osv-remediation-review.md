@@ -14,7 +14,7 @@ Review of the requirements-file hardening that adds explicit lower-bound constra
 
 - No significant implementation defect found. The diff is limited to `src/dbt_osmosis/workbench/requirements.txt`, the package metadata test that guards it, and 10x records.
 - The constraints use fixed lower bounds from OSV and preserve the existing deployment package entry `dbt-osmosis[workbench,duckdb]==1.4.0`.
-- Residual OSV findings remain only in `docs/package-lock.json`; those are outside this ticket and are owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+- Residual OSV findings remain only in `docs/package-lock.json`; those are outside this ticket and are owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
 
 ## Verdict
 

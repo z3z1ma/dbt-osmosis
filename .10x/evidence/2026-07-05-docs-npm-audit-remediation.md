@@ -1,7 +1,7 @@
 Status: recorded
 Created: 2026-07-05
 Updated: 2026-07-05
-Relates-To: .10x/tickets/done/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md, .10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md
+Relates-To: .10x/tickets/done/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md, .10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md
 
 # Docs npm audit remediation evidence
 
@@ -76,4 +76,4 @@ This challenges any claim that the remaining docs audit advisories can be fully 
 
 The verification ran on the local Node runtime, not a local Node 18 runtime. Node 18 compatibility is inferred from the unchanged `docs/package.json` engine, unchanged docs CI matrix, Docusaurus package metadata for the retained 3.7 line, and avoiding Node-20-only dependency upgrades.
 
-The docs audit still exits non-zero because 20 advisories remain. Those advisories are not dismissed; they are owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+The docs audit still exits non-zero because 20 advisories remain. Those advisories are not dismissed; they are owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.

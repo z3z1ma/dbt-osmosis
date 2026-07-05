@@ -1,4 +1,4 @@
-Status: blocked
+Status: done
 Created: 2026-07-05
 Updated: 2026-07-05
 Parent: None
@@ -40,14 +40,25 @@ Out of scope:
 - 2026-07-05: Local npm metadata shows `@docusaurus/core@3.7.0` and `3.8.1` support Node `>=18.0`, while `3.9.0`, `3.9.2`, and `3.10.1` require Node `>=20.0`.
 - 2026-07-05: `.github/workflows/tests.yml` docs CI matrix currently includes Node 18 and Node 24.
 - 2026-07-05: `npm --prefix docs audit fix --package-lock-only` reports the remaining 20 advisories require `@docusaurus/preset-classic@3.10.1`; that path is not executable without the Node support decision.
+- 2026-07-05: User ratified proceeding on the docs Node upgrade.
+- 2026-07-05: Upgraded docs Docusaurus direct packages to `3.10.1`, changed `docs/package.json` to Node `>=20.0`, changed docs CI matrix from Node `18`/`24` to `20`/`24`, and updated `AGENTS.md` docs toolchain guidance to Node `>=20`.
+- 2026-07-05: Docusaurus `3.10.1` alone still left npm advisories through transitive `serialize-javascript`, `webpack-dev-server`/`sockjs`, and `uuid`. Added the scoped override decision in `.10x/decisions/docs-npm-security-overrides.md` and exact docs workspace overrides.
+- 2026-07-05: Migrated `docs/docusaurus.config.js` from deprecated `onBrokenMarkdownLinks` to `markdown.hooks.onBrokenMarkdownLinks`, eliminating the Docusaurus v4 deprecation warning during build/start.
+- 2026-07-05: Verification recorded in `.10x/evidence/2026-07-05-docs-node20-docusaurus-upgrade.md`: npm audit 0, OSV 0, `npm --prefix docs ci` pass, docs build pass, dev-server smoke pass, `git diff --check` pass.
+- 2026-07-05: Closure review recorded in `.10x/reviews/2026-07-05-docs-node20-docusaurus-upgrade-review.md` with verdict pass.
 
 ## Blockers
 
-- User ratification required: changing the docs minimum supported Node version from 18 to 20 is a platform support decision, not a safe dependency default.
+- None.
 
 ## References
 
 - `.10x/evidence/2026-07-05-docs-npm-audit-remediation.md`
+- `.10x/evidence/2026-07-05-docs-node20-docusaurus-upgrade.md`
+- `.10x/reviews/2026-07-05-docs-node20-docusaurus-upgrade-review.md`
+- `.10x/decisions/docs-npm-security-overrides.md`
 - `.10x/tickets/done/2026-07-04-remediate-docs-npm-audit-vulnerabilities.md`
 - `docs/package.json`
+- `docs/package-lock.json`
+- `docs/docusaurus.config.js`
 - `.github/workflows/tests.yml`

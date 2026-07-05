@@ -29,7 +29,7 @@ total OSV records: 5
 workbench requirements records: 0
 ```
 
-The 5 remaining OSV records are from `docs/package-lock.json` and match the docs Docusaurus chain already owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+The 5 remaining OSV records are from `docs/package-lock.json` and match the docs Docusaurus chain already owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
 
 ## Procedure
 

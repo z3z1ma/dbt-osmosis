@@ -180,7 +180,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["18", "24"]
+        node-version: ["20", "24"]
 
     steps:
       - name: Check out the repository

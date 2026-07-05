@@ -13,7 +13,7 @@ Review of the docs npm audit remediation that updates the existing `qs` override
 ## Findings
 
 - No significant implementation defect found. The change is limited to docs dependency metadata plus 10x records.
-- Residual risk remains: `npm --prefix docs audit --json` still reports 20 advisories, including 1 high severity advisory through `serialize-javascript`. This is acceptable for this ticket only because the remaining fix path requires a separate docs Node 20 support decision and is owned by `.10x/tickets/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
+- Residual risk remains: `npm --prefix docs audit --json` still reports 20 advisories, including 1 high severity advisory through `serialize-javascript`. This is acceptable for this ticket only because the remaining fix path requires a separate docs Node 20 support decision and is owned by `.10x/tickets/done/2026-07-05-ratify-docs-node20-docusaurus-upgrade.md`.
 - Minor operational note: `npm --prefix docs ci` emits the existing React 19 peer warning from `react-json-view-lite@1.5.0` under `@docusaurus/plugin-debug@3.7.0`. The command exits 0 and this ticket did not introduce the React/Docusaurus pairing.
 
 ## Verdict
