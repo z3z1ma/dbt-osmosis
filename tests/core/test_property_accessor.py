@@ -234,7 +234,7 @@ class TestPropertyAccessor:
         result = accessor.get("description", sample_node_rendered, source="manifest")
         assert "comprehensive documentation" in result
 
-    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    @patch("dbt_osmosis.core.node_yaml._get_node_yaml")
     def test_get_property_from_yaml(
         self,
         mock_get_yaml,
@@ -259,7 +259,7 @@ class TestPropertyAccessor:
         result = accessor.get("description", sample_node_with_unrendered, source="yaml")
         assert "{{ doc('my_doc_block') }}" in result
 
-    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    @patch("dbt_osmosis.core.node_yaml._get_node_yaml")
     def test_prefer_unrendered_true(
         self,
         mock_get_yaml,
@@ -364,7 +364,7 @@ class TestPropertyAccessor:
 
         assert result == ["legacy", "shared", "config"]
 
-    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    @patch("dbt_osmosis.core.node_yaml._get_node_yaml")
     def test_get_yaml_column_config_meta_and_tags_are_effective(
         self,
         mock_get_yaml,
@@ -469,7 +469,7 @@ class TestPropertyAccessor:
             "not_null",
         ]
 
-    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    @patch("dbt_osmosis.core.node_yaml._get_node_yaml")
     def test_yaml_column_without_meta_or_tags_falls_back_to_manifest(
         self,
         mock_get_yaml,
@@ -513,7 +513,7 @@ class TestPropertyAccessor:
         result = accessor.get("data_type", node, column_name="id", source="manifest")
         assert result == "integer"
 
-    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    @patch("dbt_osmosis.core.node_yaml._get_node_yaml")
     def test_missing_yaml_file(
         self,
         mock_get_yaml,
@@ -549,7 +549,7 @@ class TestPropertyAccessor:
         # Should fall back to manifest or return None
         assert result is None or result == "Ephemeral model"
 
-    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    @patch("dbt_osmosis.core.node_yaml._get_node_yaml")
     def test_column_not_in_yaml(
         self,
         mock_get_yaml,
@@ -580,7 +580,7 @@ class TestPropertyAccessor:
         # Should fall back to manifest if column not in YAML
         assert result is not None
 
-    @patch("dbt_osmosis.core.inheritance._get_node_yaml")
+    @patch("dbt_osmosis.core.node_yaml._get_node_yaml")
     def test_unrendered_jinja_preservation(
         self,
         mock_get_yaml,

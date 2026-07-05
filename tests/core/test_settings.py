@@ -393,8 +393,8 @@ class TestYamlRefactorContext:
         context = YamlRefactorContext(project=mock_project_context)
 
         with (
-            mock.patch("dbt_osmosis.core.introspection._load_catalog") as mock_load,
-            mock.patch("dbt_osmosis.core.introspection._generate_catalog") as mock_generate,
+            mock.patch("dbt_osmosis.core.catalog_operations._load_catalog") as mock_load,
+            mock.patch("dbt_osmosis.core.catalog_operations._generate_catalog") as mock_generate,
         ):
             mock_load.return_value = None
             mock_generate.return_value = Mock(spec=CatalogResults)
@@ -414,8 +414,8 @@ class TestYamlRefactorContext:
         context = YamlRefactorContext(project=mock_project_context, settings=settings)
 
         with (
-            mock.patch("dbt_osmosis.core.introspection._load_catalog") as mock_load,
-            mock.patch("dbt_osmosis.core.introspection._generate_catalog") as mock_generate,
+            mock.patch("dbt_osmosis.core.catalog_operations._load_catalog") as mock_load,
+            mock.patch("dbt_osmosis.core.catalog_operations._generate_catalog") as mock_generate,
         ):
             mock_load.return_value = None
             mock_generate.return_value = Mock(spec=CatalogResults)

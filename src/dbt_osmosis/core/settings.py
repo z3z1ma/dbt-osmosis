@@ -357,7 +357,7 @@ class YamlRefactorContext:
         """Read the catalog file if it exists."""
         logger.debug(":mag: Checking if catalog is already loaded => %s", bool(self._catalog))
         if not self._catalog:
-            from dbt_osmosis.core.introspection import _generate_catalog, _load_catalog
+            from dbt_osmosis.core.catalog_operations import _generate_catalog, _load_catalog
 
             catalog = _load_catalog(self.settings)
             if not catalog and self.settings.create_catalog_if_not_exists:
