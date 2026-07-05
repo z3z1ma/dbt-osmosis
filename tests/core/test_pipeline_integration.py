@@ -16,8 +16,11 @@ These tests verify:
 
 from __future__ import annotations
 
+import pytest
+
 from dbt_osmosis.core.settings import YamlRefactorContext
 from dbt_osmosis.core.transforms import (
+    TransformPipeline,
     inherit_upstream_column_knowledge,
     inject_missing_columns,
     remove_columns_not_in_database,
@@ -26,6 +29,14 @@ from dbt_osmosis.core.transforms import (
     sort_columns_as_in_database,
     synchronize_data_types,
 )
+
+
+def test_transform_pipeline_rejects_unsupported_rshift_operand():
+    """Unsupported pipeline operands should use Python's operator TypeError."""
+    pipeline = TransformPipeline()
+
+    with pytest.raises(TypeError, match="unsupported operand type"):
+        pipeline >> object()
 
 
 def test_full_pipeline_execution(yaml_context: YamlRefactorContext, fresh_caches):

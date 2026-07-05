@@ -6,7 +6,7 @@ import typing as t
 from collections import ChainMap
 from dataclasses import dataclass, field
 from functools import partial
-from types import MappingProxyType
+from types import MappingProxyType, NotImplementedType
 
 from dbt.artifacts.resources.types import NodeType
 from dbt.contracts.graph.nodes import (  # pyright: ignore[reportPrivateImportUsage]
@@ -111,14 +111,16 @@ class TransformPipeline:
         """Metadata about the pipeline."""
         return MappingProxyType(self._metadata)
 
-    def __rshift__(self, next_op: TransformOperation | t.Callable[..., t.Any]) -> TransformPipeline:
+    def __rshift__(
+        self, next_op: TransformOperation | t.Callable[..., t.Any]
+    ) -> TransformPipeline | NotImplementedType:
         """Chain operations together."""
         if isinstance(next_op, TransformOperation):
             self.operations.append(next_op)
         elif callable(next_op):
             self.operations.append(TransformOperation(next_op, next_op.__name__))
         else:
-            raise ValueError(f"Cannot chain non-callable: {next_op}")  # noqa: TRY004
+            return NotImplemented
         return self
 
     def __call__(
