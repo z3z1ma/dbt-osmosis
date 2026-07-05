@@ -744,11 +744,7 @@ def test_call_with_retry_success_on_first_attempt() -> None:
 
 def test_call_with_retry_success_after_rate_limit() -> None:
     """Test successful retry after rate limit error."""
-    # Import here to avoid issues if openai not installed
-    try:
-        import openai
-    except ImportError:
-        pytest.skip("openai not installed")
+    openai = pytest.importorskip("openai", reason="openai not installed")
 
     mock_func = mock.Mock()
     # First call raises RateLimitError, second succeeds
@@ -767,10 +763,7 @@ def test_call_with_retry_success_after_rate_limit() -> None:
 
 def test_call_with_retry_max_retries_exceeded() -> None:
     """Test that exception is raised when max retries exceeded."""
-    try:
-        import openai
-    except ImportError:
-        pytest.skip("openai not installed")
+    openai = pytest.importorskip("openai", reason="openai not installed")
 
     mock_func = mock.Mock()
     # Always raise RateLimitError
@@ -789,10 +782,7 @@ def test_call_with_retry_max_retries_exceeded() -> None:
 
 def test_call_with_retry_exponential_backoff() -> None:
     """Test that exponential backoff is applied correctly."""
-    try:
-        import openai
-    except ImportError:
-        pytest.skip("openai not installed")
+    openai = pytest.importorskip("openai", reason="openai not installed")
 
     mock_func = mock.Mock()
     mock_func.side_effect = [
@@ -818,10 +808,7 @@ def test_call_with_retry_exponential_backoff() -> None:
 
 def test_call_with_retry_respects_retry_after_header() -> None:
     """Test that retry logic respects Retry-After header if present."""
-    try:
-        import openai
-    except ImportError:
-        pytest.skip("openai not installed")
+    openai = pytest.importorskip("openai", reason="openai not installed")
 
     # Create mock response with retry-after header
     mock_response = _make_mock_response(headers={"retry-after": "5.0"})
