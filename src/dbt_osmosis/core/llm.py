@@ -17,13 +17,11 @@ from dbt_osmosis.core.exceptions import LLMConfigurationError, LLMResponseError
 _OpenAIRateLimitError: type[Exception]
 
 try:
-    import openai
     from openai import AzureOpenAI, OpenAI
+    from openai import RateLimitError as _OpenAIRateLimitError
 
-    _OpenAIRateLimitError = openai.RateLimitError
     _OPENAI_AVAILABLE = True
 except ImportError:
-    openai = None  # type: ignore[assignment]
     OpenAI = None  # type: ignore[assignment,misc]
     AzureOpenAI = None  # type: ignore[assignment,misc]
 
@@ -98,6 +96,7 @@ def _call_with_retry(func, max_retries=5, initial_delay=1.0):
                     try:
                         wait_time = float(retry_after)
                     except ValueError:
+                        # Keep exponential backoff when the server sends a malformed header.
                         pass
 
             time.sleep(wait_time)
