@@ -230,13 +230,6 @@ class SchemaDiff:
         fuzzy_match_threshold: float = 85.0,
         detect_column_renames: bool = True,
     ) -> None:
-        """Initialize the schema diff engine.
-
-        Args:
-            context: The YamlRefactorContext instance
-            fuzzy_match_threshold: Threshold for detecting column renames (0-100)
-            detect_column_renames: Whether to enable fuzzy matching for renames
-        """
         self._context = context
         self._fuzzy_match_threshold = fuzzy_match_threshold
         self._rename_detection_enabled = detect_column_renames

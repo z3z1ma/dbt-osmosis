@@ -119,13 +119,6 @@ class ConfigurationError(Exception):
     """
 
     def __init__(self, message: str, file_path: str | None = None) -> None:
-        """Initialize a ConfigurationError.
-
-        Args:
-            message: The error message describing what went wrong.
-            file_path: Optional path to the configuration file that caused the error.
-
-        """
         self.file_path = file_path
         self.message = message
         if file_path:
@@ -323,12 +316,6 @@ class ConfigurationSource(ABC):
     """
 
     def __init__(self, name: ConfigSourceName) -> None:
-        """Initialize a ConfigurationSource.
-
-        Args:
-            name: The ConfigSourceName enum value for this source.
-
-        """
         self._name = name
 
     @property
@@ -369,12 +356,6 @@ class ConfigMetaSource(ConfigurationSource):
     """
 
     def __init__(self, node: ResultNode) -> None:
-        """Initialize ConfigMetaSource.
-
-        Args:
-            node: The dbt node to read config.meta from.
-
-        """
         super().__init__(ConfigSourceName.CONFIG_META)
         self._node = node
 
@@ -452,12 +433,6 @@ class UnrenderedConfigSource(ConfigurationSource):
     """
 
     def __init__(self, node: ResultNode) -> None:
-        """Initialize UnrenderedConfigSource.
-
-        Args:
-            node: The dbt node to read unrendered_config from.
-
-        """
         super().__init__(ConfigSourceName.UNRENDERED_CONFIG)
         self._node = node
 
@@ -525,12 +500,6 @@ class ProjectVarsSource(ConfigurationSource):
     """
 
     def __init__(self, context: t.Any) -> None:
-        """Initialize ProjectVarsSource.
-
-        Args:
-            context: The dbt context with project.runtime_cfg.vars.
-
-        """
         super().__init__(ConfigSourceName.PROJECT_VARS)
         self._context = context
 
@@ -628,12 +597,6 @@ class SupplementaryFileSource(ConfigurationSource):
     _SHARED_CONFIG_CACHE_LOCK: t.ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self, context: t.Any) -> None:
-        """Initialize SupplementaryFileSource.
-
-        Args:
-            context: The dbt context with project root path.
-
-        """
         super().__init__(ConfigSourceName.SUPPLEMENTARY_FILE)
         self._context = context
         self._config_cache: dict[str, t.Any] | None = None
@@ -1505,12 +1468,6 @@ class PropertyAccessor:
     """
 
     def __init__(self, context: t.Any) -> None:
-        """Initialize the PropertyAccessor.
-
-        Args:
-            context: YamlRefactorContext containing project, manifest, yaml_handler, etc.
-
-        """
         self._context = context
 
     def _get_from_manifest(

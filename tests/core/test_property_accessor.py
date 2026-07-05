@@ -47,16 +47,6 @@ class MockColumn:
         config_meta: dict[str, Any] | None = None,
         config_tags: list[str] | None = None,
     ) -> None:
-        """Initialize a mock column.
-
-        Args:
-            name: Column name
-            description: Optional column description
-            meta: Optional metadata dictionary
-            data_type: Optional data type
-            tags: Optional list of tags
-
-        """
         self.name = name
         self.description = description
         self.meta = meta or {}
@@ -79,19 +69,6 @@ class MockNode:
         patch_path: str | None = "models/my_model.yml",
         resource_type: str = "model",
     ) -> None:
-        """Initialize a mock node.
-
-        Args:
-            unique_id: Unique identifier for the node
-            description: Optional node description
-            meta: Optional metadata dictionary
-            tags: Optional list of tags
-            columns: Optional dictionary of columns
-            raw_code: Optional raw SQL code
-            patch_path: Optional YAML file path
-            resource_type: Optional resource type (model, source, seed, etc.)
-
-        """
         self.unique_id = unique_id
         self.description = description
         self.meta = meta or {}

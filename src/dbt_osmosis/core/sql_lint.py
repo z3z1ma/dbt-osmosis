@@ -487,13 +487,6 @@ class SQLLinter:
         enabled_rules: list[str] | None = None,
         disabled_rules: list[str] | None = None,
     ) -> None:
-        """Initialize the SQL linter.
-
-        Args:
-            dialect: SQL dialect to use (e.g., 'postgres', 'duckdb', 'snowflake')
-            enabled_rules: List of rule IDs to enable (None = all)
-            disabled_rules: List of rule IDs to disable
-        """
         self.dialect = dialect if isinstance(dialect, Dialect) else None
         self.dialect_name = str(dialect) if dialect else None
 

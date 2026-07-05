@@ -161,11 +161,6 @@ class TestPatternExtractor:
     __test__ = False
 
     def __init__(self, context: YamlRefactorContext) -> None:
-        """Initialize the extractor with a dbt project context.
-
-        Args:
-            context: The YamlRefactorContext containing project information
-        """
         self.context = context
         self.accessor = PropertyAccessor(context=context)
 
@@ -356,12 +351,6 @@ class AITestSuggester:
         context: YamlRefactorContext,
         pattern_extractor: TestPatternExtractor | None = None,
     ) -> None:
-        """Initialize the AI test suggester.
-
-        Args:
-            context: The YamlRefactorContext containing project information
-            pattern_extractor: Optional TestPatternExtractor with learned patterns
-        """
         self.context = context
         self.pattern_extractor = pattern_extractor
         self.accessor = PropertyAccessor(context=context)

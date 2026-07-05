@@ -227,11 +227,6 @@ class Validator:
     """Base class for YAML validators."""
 
     def __init__(self, auto_fix: bool = False) -> None:
-        """Initialize the validator.
-
-        Args:
-            auto_fix: Whether to automatically fix issues when possible
-        """
         self.auto_fix = auto_fix
 
     def validate(
@@ -1148,11 +1143,6 @@ class FormattingValidator(Validator):
     }
 
     def __init__(self, auto_fix: bool = False) -> None:
-        """Initialize the formatting validator.
-
-        Args:
-            auto_fix: Whether to automatically fix formatting issues
-        """
         super().__init__(auto_fix=auto_fix)
         self.raw_content: str | None = None
 

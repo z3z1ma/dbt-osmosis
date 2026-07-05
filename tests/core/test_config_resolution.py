@@ -39,13 +39,6 @@ class MockColumn:
     """Mock column for testing configuration resolution."""
 
     def __init__(self, name: str, meta: dict[str, Any] | None = None) -> None:
-        """Initialize a mock column.
-
-        Args:
-            name: Column name
-            meta: Optional metadata dictionary for the column
-
-        """
         self.name = name
         self.meta = meta or {}
 
@@ -58,13 +51,6 @@ class MockConfig:
         extra: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> None:
-        """Initialize a mock config object.
-
-        Args:
-            extra: Optional extra configuration dictionary
-            meta: Optional meta configuration dictionary (dbt 1.10+)
-
-        """
         self.extra = extra or {}
         self.meta = meta or {}
 
@@ -80,16 +66,6 @@ class MockNode:
         columns: dict[str, MockColumn] | None = None,
         unique_id: str = "model.test.my_model",
     ) -> None:
-        """Initialize a mock node.
-
-        Args:
-            meta: Optional node-level metadata
-            config_extra: Optional config.extra dictionary
-            config_meta: Optional config.meta dictionary (dbt 1.10+)
-            columns: Optional dictionary of columns
-            unique_id: Unique identifier for the node
-
-        """
         self.meta = meta or {}
         self.config = MockConfig(config_extra, config_meta)
         self.columns = columns or {}

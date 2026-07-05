@@ -252,13 +252,6 @@ class MigrationPlanner:
         dry_run: bool = False,
         format: MigrationFormat = MigrationFormat.SQL,
     ) -> None:
-        """Initialize the migration planner.
-
-        Args:
-            context: The YamlRefactorContext instance
-            dry_run: If True, generates SQL but doesn't apply changes
-            format: Output format for migration plans
-        """
         self._context = context
         self._dry_run = dry_run
         self._format = format
