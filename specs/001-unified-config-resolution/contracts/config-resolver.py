@@ -73,7 +73,7 @@ class ConfigResolver(Protocol):
             ... )
 
         """
-        ...
+        raise NotImplementedError
 
     def has(
         self,
@@ -100,7 +100,7 @@ class ConfigResolver(Protocol):
             ...     value = resolver.resolve("custom-setting", node)
 
         """
-        ...
+        raise NotImplementedError
 
     def get_precedence_chain(
         self,
@@ -124,7 +124,7 @@ class ConfigResolver(Protocol):
             ['column_meta', 'node_meta', 'config_extra', ...]
 
         """
-        ...
+        raise NotImplementedError
 
 
 class PropertySource:
@@ -183,7 +183,7 @@ class PropertyAccessor(Protocol):
             >>> # desc may contain "{{ doc('my_doc') }}"
 
         """
-        ...
+        raise NotImplementedError
 
     def get_description(
         self,
@@ -206,7 +206,7 @@ class PropertyAccessor(Protocol):
             >>> desc = accessor.get_description(my_model, "user_id")
 
         """
-        ...
+        raise NotImplementedError
 
     def get_meta(
         self,
@@ -231,7 +231,7 @@ class PropertyAccessor(Protocol):
             >>> pii = accessor.get_meta(my_model, "pii", "email")
 
         """
-        ...
+        raise NotImplementedError
 
     def has_property(
         self,
@@ -255,7 +255,7 @@ class PropertyAccessor(Protocol):
             ...     desc = accessor.get("description", my_model)
 
         """
-        ...
+        raise NotImplementedError
 
 
 # Validation rules as type annotations

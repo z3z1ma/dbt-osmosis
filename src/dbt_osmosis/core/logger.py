@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import typing as t
+from abc import abstractmethod
 from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -95,7 +96,9 @@ def set_log_level(level: int | str) -> None:
 class LogMethod(t.Protocol):
     """Protocol for logger methods"""
 
-    def __call__(self, msg: t.Any, /, *args: t.Any, **kwds: t.Any) -> t.Any: ...
+    @abstractmethod
+    def __call__(self, msg: t.Any, /, *args: t.Any, **kwds: t.Any) -> t.Any:
+        pass
 
 
 def __getattr__(name: str) -> LogMethod:

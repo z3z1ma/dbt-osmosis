@@ -12,7 +12,9 @@ from streamlit_elements_fluence import dashboard, mui  # pyright: ignore[reportM
 
 
 class ImplementsBool(t.Protocol):
-    def __bool__(self) -> bool: ...
+    @abstractmethod
+    def __bool__(self) -> bool:
+        pass
 
 
 class DarkMode:

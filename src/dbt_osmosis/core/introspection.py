@@ -63,12 +63,14 @@ class _CatalogArtifactProtocol(t.Protocol):
     nodes: t.Mapping[str, object]
     sources: t.Mapping[str, object]
 
-    def write(self, path: str) -> None: ...
+    def write(self, path: str) -> None:
+        raise NotImplementedError
 
 
 class _CatalogArtifactFactoryProtocol(t.Protocol):
     @staticmethod
-    def from_dict(data: object) -> _CatalogArtifactProtocol: ...
+    def from_dict(data: object) -> _CatalogArtifactProtocol:
+        raise NotImplementedError
 
     @staticmethod
     def from_results(
@@ -78,7 +80,8 @@ class _CatalogArtifactFactoryProtocol(t.Protocol):
         generated_at: datetime,
         compile_results: object,
         errors: list[str] | None,
-    ) -> _CatalogArtifactProtocol: ...
+    ) -> _CatalogArtifactProtocol:
+        raise NotImplementedError
 
 
 def _catalog_artifact_factory() -> _CatalogArtifactFactoryProtocol:
@@ -1224,7 +1227,8 @@ _SETTINGS_RESOLVER = SettingsResolver()
 
 
 @t.overload
-def _find_first(coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: T) -> T: ...
+def _find_first(coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: T) -> T:
+    raise NotImplementedError
 
 
 @t.overload
@@ -1232,7 +1236,8 @@ def _find_first(
     coll: t.Iterable[T],
     predicate: t.Callable[[T], bool],
     default: None = ...,
-) -> T | None: ...
+) -> T | None:
+    raise NotImplementedError
 
 
 def _find_first(

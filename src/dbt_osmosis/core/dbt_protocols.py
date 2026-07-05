@@ -35,11 +35,11 @@ class DbtAdapterProtocol(t.Protocol):
 
     def acquire_connection(self) -> t.Any:
         """Acquire a connection from the pool."""
-        ...
+        raise NotImplementedError
 
     def set_macro_resolver(self, manifest: t.Any) -> None:
         """Set the macro resolver for the adapter."""
-        ...
+        raise NotImplementedError
 
 
 class DbtRuntimeConfigProtocol(t.Protocol):
@@ -57,7 +57,7 @@ class DbtRuntimeConfigProtocol(t.Protocol):
 
     def to_dict(self) -> dict[str, t.Any]:
         """Convert config to dictionary representation."""
-        ...
+        raise NotImplementedError
 
 
 class DbtManifestProtocol(t.Protocol):
@@ -72,7 +72,7 @@ class DbtManifestProtocol(t.Protocol):
 
     def build_flat_graph(self) -> None:
         """Build the flat graph for node traversal."""
-        ...
+        raise NotImplementedError
 
 
 class DbtProjectContextProtocol(t.Protocol):
@@ -85,16 +85,20 @@ class DbtProjectContextProtocol(t.Protocol):
     config: t.Any  # DbtConfiguration
 
     @property
-    def runtime_cfg(self) -> t.Any: ...
+    def runtime_cfg(self) -> t.Any:
+        raise NotImplementedError
 
     @property
-    def manifest(self) -> t.Any: ...
+    def manifest(self) -> t.Any:
+        raise NotImplementedError
 
     @property
-    def adapter(self) -> t.Any: ...
+    def adapter(self) -> t.Any:
+        raise NotImplementedError
 
     @property
-    def manifest_mutex(self) -> threading.RLock: ...
+    def manifest_mutex(self) -> threading.RLock:
+        raise NotImplementedError
 
 
 class YamlRefactorContextProtocol(t.Protocol):
@@ -105,7 +109,8 @@ class YamlRefactorContextProtocol(t.Protocol):
     """
 
     @property
-    def project(self) -> DbtProjectContext: ...
+    def project(self) -> DbtProjectContext:
+        raise NotImplementedError
 
     settings: t.Any  # YamlRefactorSettings
     pool: ThreadPoolExecutor
@@ -119,38 +124,39 @@ class YamlRefactorContextProtocol(t.Protocol):
     @property
     def mutation_count(self) -> int:
         """Get the total mutation count."""
-        ...
+        raise NotImplementedError
 
     @property
     def mutated(self) -> bool:
         """Check if any mutations have been performed."""
-        ...
+        raise NotImplementedError
 
     @property
     def source_definitions(self) -> dict[str, t.Any]:
         """Get source definitions from dbt config."""
-        ...
+        raise NotImplementedError
 
     @property
     def ignore_patterns(self) -> list[str]:
         """Get column ignore patterns from dbt config."""
-        ...
+        raise NotImplementedError
 
     @property
     def yaml_settings(self) -> dict[str, t.Any]:
         """Get YAML formatting settings from dbt config."""
-        ...
+        raise NotImplementedError
 
     @property
     def fusion_compat(self) -> bool:
         """Whether to output Fusion-compatible YAML (meta/tags inside config block)."""
-        ...
+        raise NotImplementedError
 
     def read_catalog(self) -> CatalogResults | None:
         """Read and cache the catalog file."""
-        ...
+        raise NotImplementedError
 
-    def register_mutations(self, count: int) -> None: ...
+    def register_mutations(self, count: int) -> None:
+        raise NotImplementedError
 
 
 class ColumnInfoProtocol(t.Protocol):
@@ -168,7 +174,7 @@ class ColumnInfoProtocol(t.Protocol):
 
     def to_dict(self, omit_none: bool = False) -> dict[str, t.Any]:
         """Convert column info to dictionary representation."""
-        ...
+        raise NotImplementedError
 
 
 class ResultNodeProtocol(t.Protocol):
@@ -196,12 +202,12 @@ class ResultNodeProtocol(t.Protocol):
     @property
     def is_relational(self) -> bool:
         """Check if this is a relational node (has columns)."""
-        ...
+        raise NotImplementedError
 
     @property
     def is_ephemeral_model(self) -> bool:
         """Check if this is an ephemeral model."""
-        ...
+        raise NotImplementedError
 
 
 class ModelNodeProtocol(ResultNodeProtocol, t.Protocol):
@@ -216,7 +222,7 @@ class ModelNodeProtocol(ResultNodeProtocol, t.Protocol):
     @property
     def has_documented_parent(self) -> bool:
         """Check if this model has a documented parent."""
-        ...
+        raise NotImplementedError
 
 
 class SourceDefinitionProtocol(ResultNodeProtocol, t.Protocol):
