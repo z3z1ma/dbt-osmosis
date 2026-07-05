@@ -111,14 +111,24 @@ class TransformPipeline:
         """Metadata about the pipeline."""
         return MappingProxyType(self._metadata)
 
+    @t.overload
     def __rshift__(
-        self, next_op: TransformOperation | t.Callable[..., t.Any]
-    ) -> TransformPipeline | NotImplementedType:
+        self,
+        next_op: TransformOperation | t.Callable[..., t.Any],
+    ) -> TransformPipeline:
+        pass
+
+    @t.overload
+    def __rshift__(self, next_op: object) -> TransformPipeline | NotImplementedType:
+        pass
+
+    def __rshift__(self, next_op: object) -> TransformPipeline | NotImplementedType:
         """Chain operations together."""
         if isinstance(next_op, TransformOperation):
             self.operations.append(next_op)
         elif callable(next_op):
-            self.operations.append(TransformOperation(next_op, next_op.__name__))
+            operation_name = getattr(next_op, "__name__", next_op.__class__.__name__)
+            self.operations.append(TransformOperation(next_op, operation_name))
         else:
             return NotImplemented
         return self
@@ -211,7 +221,8 @@ def _transform_op(
     def decorator(
         func: t.Callable[[t.Any, ResultNode | None], None],  # YamlRefactorContext
     ) -> TransformOperation:
-        return TransformOperation(func, name=name or func.__name__)
+        operation_name = name or getattr(func, "__name__", func.__class__.__name__)
+        return TransformOperation(func, name=operation_name)
 
     return decorator
 
@@ -1036,9 +1047,10 @@ def suggest_improved_documentation(
 
     if node is None:
         logger.info(":wave: Suggesting improved documentation across all matched nodes.")
+        operation = suggest_improved_documentation
         for _ in context.pool.map(
             partial(
-                suggest_improved_documentation,
+                operation.func,
                 context,
                 threshold=threshold,
                 learning_mode=learning_mode,

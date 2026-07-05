@@ -1182,7 +1182,7 @@ _SETTINGS_RESOLVER = SettingsResolver()
 
 @t.overload
 def _find_first(coll: t.Iterable[T], predicate: t.Callable[[T], bool], default: T) -> T:
-    raise NotImplementedError
+    pass
 
 
 @t.overload
@@ -1191,7 +1191,7 @@ def _find_first(
     predicate: t.Callable[[T], bool],
     default: None = ...,
 ) -> T | None:
-    raise NotImplementedError
+    pass
 
 
 def _find_first(
