@@ -265,6 +265,48 @@ class TestGenerateStagingFromSource:
                 assert result.sql_path is not None and not result.sql_path.exists()
                 assert result.yaml_path is not None and not result.yaml_path.exists()
 
+    def test_generate_staging_interface_based_new_dbt_core_interface_keys(self, yaml_context):
+        """Test compatibility with newer dbt-core-interface staging output keys."""
+        # Mock the source definition
+        mock_source = mock.MagicMock()
+        mock_source.source_name = "raw"
+        mock_source.name = "orders"
+
+        with mock.patch(
+            "dbt_osmosis.core.generators._get_source_definition", return_value=mock_source
+        ):
+            # Mock interface generator
+            result_dict = {
+                "model_name": "stg_orders",
+                "source_name": "raw",
+                "table_name": "orders",
+                "model_sql": "select * from {{ source('raw', 'orders') }}",
+                "schema_yml": "version: 2\nmodels: []",
+                "column_mappings": [],
+            }
+
+            custom_path = Path(yaml_context.project.config.project_dir) / "tmp_staging_test"
+
+            with mock.patch(
+                "dbt_core_interface.staging_generator.generate_staging_model_from_source",
+                return_value=result_dict,
+            ):
+                result = generate_staging_from_source(
+                    context=yaml_context.project,
+                    source_name="raw",
+                    table_name="orders",
+                    use_ai=False,
+                    staging_path=custom_path,
+                )
+
+                assert result.staging_name == "stg_orders"
+                assert result.sql_content == result_dict["model_sql"]
+                assert result.yaml_content == result_dict["schema_yml"]
+                assert result.sql_path == custom_path / "stg_orders.sql"
+                assert result.yaml_path == custom_path / "stg_orders.yml"
+                assert result.sql_path is not None and not result.sql_path.exists()
+                assert result.yaml_path is not None and not result.yaml_path.exists()
+
     def test_generate_staging_source_not_found(self, yaml_context):
         """Test staging generation when source not found."""
         with (
