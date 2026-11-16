@@ -1167,3 +1167,130 @@ def test_write_yaml_no_tracker_when_no_changes():
         assert len(tracked_paths) == 0
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("buffered", [False, True])
+@pytest.mark.parametrize("width", [40, 60, 100])
+def test_flow_fixture_write_converges_after_whitespace_cleanup(tmp_path, buffered, width):
+    """Wrapping fixture keys must not restart the trailing-whitespace/check loop."""
+    import threading
+
+    import ruamel.yaml
+
+    path = tmp_path / "schema.yml"
+    path.write_text(
+        "version: 2\n"
+        "models:\n"
+        "  - name: visits\n"
+        "    description: original\n"
+        "unit_tests:\n"
+        "  - name: fixture\n"
+        "    given:\n"
+        "      - input: ref('visits')\n"
+        "        rows: &rows\n"
+        '          - {visit_id: "v1", caregiver_id: "rostered", '
+        "is_booking_cancelled: false, extra_fixture_column: testing} # fixture row\n"
+        "    expect:\n"
+        "      rows: *rows\n",
+        encoding="utf-8",
+    )
+    expected = ruamel.yaml.YAML().load(path)
+    expected["models"][0]["description"] = "updated"
+    yaml_handler = create_yaml_instance(width=width)
+    lock = threading.Lock()
+
+    def write(*, dry_run=False, mutations=None):
+        data = _read_yaml(yaml_handler, lock, path)
+        data["models"][0]["description"] = "updated"
+        if buffered:
+            commit_yamls(yaml_handler, lock, dry_run=dry_run, mutation_tracker=mutations)
+        else:
+            _write_yaml(yaml_handler, lock, path, data, dry_run=dry_run, mutation_tracker=mutations)
+
+    write()
+    rendered = path.read_text(encoding="utf-8")
+    cleaned = "\n".join(line.rstrip() for line in rendered.splitlines()) + "\n"
+    assert rendered == cleaned
+    assert "# fixture row" in rendered
+    assert "&rows" in rendered and "*rows" in rendered
+    reloaded = ruamel.yaml.YAML().load(rendered)
+    assert reloaded == expected
+    fixture = reloaded["unit_tests"][0]
+    assert fixture["given"][0]["rows"] is fixture["expect"]["rows"]
+    path.write_text(cleaned, encoding="utf-8")
+    mutations = []
+    write(dry_run=True, mutations=mutations.append)
+    assert mutations == []
+    assert path.read_text(encoding="utf-8") == rendered
+
+
+@pytest.mark.parametrize("encoding", [None, "utf-8", "utf-16-le"])
+@pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"])
+def test_plain_scalar_wrap_preserves_values_and_other_scalar_whitespace(encoding, line_break):
+    import io
+
+    import ruamel.yaml
+    from ruamel.yaml.comments import CommentedSeq
+    from ruamel.yaml.scalarstring import (
+        DoubleQuotedScalarString,
+        FoldedScalarString,
+        LiteralScalarString,
+        PlainScalarString,
+        SingleQuotedScalarString,
+    )
+
+    values = CommentedSeq([
+        PlainScalarString("short then_a_very_long_word_that_wraps_at_the_configured_width"),
+        PlainScalarString("first  second"),
+        PlainScalarString("first line\nsecond  line"),
+        DoubleQuotedScalarString("quoted trailing  "),
+        SingleQuotedScalarString("single trailing  "),
+        LiteralScalarString("literal trailing  \nnext line\n"),
+        FoldedScalarString("folded trailing  \nnext line\n"),
+    ])
+    data = {"unit_tests": values}
+    handler = create_yaml_instance(width=30)
+    handler.encoding = encoding
+    handler.line_break = line_break
+    stream = io.BytesIO() if encoding else io.StringIO()
+    handler.dump(data, stream)
+    rendered = stream.getvalue()
+    if isinstance(rendered, bytes):
+        rendered = rendered.decode(encoding)
+    assert ruamel.yaml.YAML().load(rendered) == data
+    assert "short " + line_break not in rendered
+    assert "literal trailing  " + line_break in rendered
+    assert "folded trailing  " + line_break in rendered
+    assert 'quoted trailing  "' in rendered
+    assert "single trailing  '" in rendered
+
+
+def test_plain_scalar_emitter_restores_stream_after_failure(monkeypatch):
+    import io
+
+    from ruamel.yaml.emitter import RoundTripEmitter
+
+    from dbt_osmosis.core.schema.parser import OsmosisEmitter
+
+    def fail(*args):
+        raise ValueError("emission failed")
+
+    stream = io.BytesIO()
+    emitter = OsmosisEmitter(stream)
+    emitter.encoding = "utf-8"
+    monkeypatch.setattr(RoundTripEmitter, "write_plain", fail)
+    with pytest.raises(ValueError, match="emission failed"):
+        emitter.write_plain("value")
+    assert emitter.stream is stream
+    assert emitter.encoding == "utf-8"
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["models: []\nmodels: []\n", "---\nmodels: []\n---\nmodels: []\n"],
+)
+def test_yaml_parser_still_rejects_duplicate_keys_and_multiple_documents(content):
+    import ruamel.yaml
+
+    with pytest.raises(ruamel.yaml.YAMLError):
+        create_yaml_instance().load(content)
