@@ -5,7 +5,7 @@ import uuid
 from agate.table import Table  # pyright: ignore[reportMissingTypeStubs]
 from dbt.adapters.contracts.connection import AdapterResponse
 from dbt.artifacts.resources.types import NodeType
-from dbt.contracts.graph.nodes import ManifestSQLNode
+from dbt.contracts.graph.nodes import ManifestSQLNode, ModelNode
 from dbt.parser.manifest import process_node
 from dbt.task.sql import SqlCompileRunner
 
@@ -69,3 +69,18 @@ def execute_sql_code(context: DbtProjectContext, raw_sql: str) -> tuple[AdapterR
     resp, table = context.adapter.execute(sql_to_exec, auto_begin=False, fetch=True)
     logger.info(":white_check_mark: SQL execution complete => %s rows returned.", len(table.rows))  # pyright: ignore[reportUnknownArgumentType]
     return resp, table
+
+
+def compile_model_for_lineage(context: DbtProjectContext, node: ModelNode) -> str | None:
+    """Compile the actual model context without executing its SQL.
+
+    As with other dbt compilation, user macros can query the warehouse. The
+    caller opts in and serializes attempts with the same manifest mutex.
+    """
+    with context.manifest_mutex:
+        with context.adapter.connection_named(node.unique_id):
+            compiled = SqlCompileRunner(
+                context.runtime_cfg, context.adapter, node=node, node_index=1, num_nodes=1
+            ).compile(context.manifest)
+        node.compiled_code = compiled.compiled_code
+        return node.compiled_code
