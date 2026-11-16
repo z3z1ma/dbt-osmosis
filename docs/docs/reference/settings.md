@@ -40,7 +40,7 @@ If you set options inside a SQL `config(...)` block, use Python identifiers such
 | --- | --- | --- |
 | `skip-merge-meta` | `false` | Skip inheriting and merging upstream `meta` fields. |
 | `skip-add-columns` | `false` | Skip injecting missing model columns from the warehouse or catalog. |
-| `skip-add-source-columns` | `false` | Skip injecting missing source columns. |
+| `skip-add-source-columns` | `false` | Skip injecting missing source columns. Configure via project `vars`, source metadata, or the CLI flag; options under `models:` do not apply to sources. See [Manage source YAML files](../how-to/manage-sources.md#3-sync-columns). |
 | `skip-add-tags` | `false` | Skip inheriting upstream tags. |
 | `skip-add-data-types` | `false` | Skip populating `data_type`. |
 | `force-inherit-descriptions` | `false` | Overwrite child descriptions with upstream descriptions when available. |
