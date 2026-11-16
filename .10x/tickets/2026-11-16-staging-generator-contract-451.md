@@ -46,7 +46,13 @@ None identified yet.
 - Local validation uses Python 3.11 and dbt-core-interface 1.1.7 (both declared lower bound and lock version); CI matrix and independent review remain separate gates. Normal dbt fixture/logging access required sandbox escalation after an initial logger PermissionError; the approved run passed. No shared environment/package changes were made.
 
 ## Review
-Pending independent review.
+- Independent reviewer: `/root/review_contract`, 2026-11-16; reviewed implementation commit `b172303` against main `674de99a`, including contributor changes from `41c99b3`.
+- Findings: no critical, significant, minor, or nit findings requiring changes.
+- Verdict: **pass** for implementation and focused validation; exact-head CI remains the separate merge gate.
+- Source review independently confirmed `dbt-core-interface` 1.1.7 returns `model_name`, `model_sql`, and `schema_yml`, and applies snake-case normalization to the table before generating both model name and schema. The wrapper now carries that name through both artifact paths while retaining legacy key precedence, string checks, and absent-name fallback.
+- Adversarial checks: inspected the complete main-to-head production diff, alias precedence cases, real-generator test assertions, CLI path preparation, project-root checks, YAML overwrite refusal, and shared YAML writer use. No production write boundary or AI path changes were introduced. New CLI tests mock only project bootstrap, leaving generator, wrapper, path resolution, and writing/dry-run behavior real; mixed-case names make fallback mismatches observable.
+- Evidence limits: accepted author's recorded 5-failure pre-fix reproduction and 50-test post-fix run without duplicating them. New contract tests use lightweight project/source objects and do not independently prove database-adapter integration. Supported lower-bound/lock dependency 1.1.7 was inspected; arbitrary future dependency contracts are not guaranteed.
+- Residual risk: low for this bounded alias correction; CI matrix and post-merge main verification are still required before closure.
 
 ## Retrospective
 The contributor's content aliases are valid, but content alone does not satisfy the artifact contract: a generator-derived schema name must agree with filenames. A fixture whose model name equals the wrapper fallback masked the omission. Testing the real dependency with a mixed-case table caught the mismatch in both wrapper and CLI without mocking away the boundary. Existing write guards were retained unchanged.
