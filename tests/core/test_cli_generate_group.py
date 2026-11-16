@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import pytest
 import ruamel.yaml
 from click.testing import CliRunner
 
@@ -515,6 +516,50 @@ def test_generate_staging_refuses_sql_path_outside_project_root_without_yaml(
     assert result.exit_code != 0
     assert "outside the dbt project root" in result.output
     assert not outside_sql_path.exists()
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_generate_staging_real_interface_artifacts(tmp_path: Path, dry_run: bool):
+    """Exercise dependency output through the wrapper and CLI write/dry-run paths."""
+    project = _mock_project(tmp_path)
+    project.manifest.sources = {
+        "source.raw.CustomerOrders": SimpleNamespace(
+            source_name="raw", name="CustomerOrders", columns={"OrderID": {"data_type": "integer"}}
+        ),
+    }
+    args = [
+        "generate",
+        "staging",
+        "raw",
+        "CustomerOrders",
+        "--project-dir",
+        str(tmp_path),
+        "--profiles-dir",
+        str(tmp_path),
+    ]
+    if dry_run:
+        args.append("--dry-run")
+
+    with mock.patch("dbt_osmosis.cli.main.create_dbt_project_context", return_value=project):
+        result = CliRunner().invoke(cli, args)
+
+    assert result.exit_code == 0, result.output
+    output_path = tmp_path / "models" / "staging"
+    if dry_run:
+        assert "source('raw', 'CustomerOrders')" in result.output
+        assert "stg_customer_orders.sql" in result.output
+        assert "stg_customer_orders.yml" in result.output
+        assert not output_path.exists()
+    else:
+        assert {path.name for path in output_path.iterdir()} == {
+            "stg_customer_orders.sql",
+            "stg_customer_orders.yml",
+        }
+        sql = (output_path / "stg_customer_orders.sql").read_text(encoding="utf-8")
+        assert "source('raw', 'CustomerOrders')" in sql
+        assert "OrderID as order_id" in sql
+        schema = ruamel.yaml.YAML().load(output_path / "stg_customer_orders.yml")
+        assert schema["models"][0]["name"] == "stg_customer_orders"
 
 
 if __name__ == "__main__":

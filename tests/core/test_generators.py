@@ -12,6 +12,7 @@ This module contains tests for the generators module, which provides:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -264,6 +265,110 @@ class TestGenerateStagingFromSource:
                 assert result.yaml_path == custom_path / "stg_orders.yml"
                 assert result.sql_path is not None and not result.sql_path.exists()
                 assert result.yaml_path is not None and not result.yaml_path.exists()
+
+    def test_generate_staging_interface_based_new_dbt_core_interface_keys(self, yaml_context):
+        """Test compatibility with newer dbt-core-interface staging output keys."""
+        # Mock the source definition
+        mock_source = mock.MagicMock()
+        mock_source.source_name = "raw"
+        mock_source.name = "orders"
+
+        with mock.patch(
+            "dbt_osmosis.core.generators._get_source_definition", return_value=mock_source
+        ):
+            # Mock interface generator
+            result_dict = {
+                "model_name": "stg_orders",
+                "source_name": "raw",
+                "table_name": "orders",
+                "model_sql": "select * from {{ source('raw', 'orders') }}",
+                "schema_yml": "version: 2\nmodels: []",
+                "column_mappings": [],
+            }
+
+            custom_path = Path(yaml_context.project.config.project_dir) / "tmp_staging_test"
+
+            with mock.patch(
+                "dbt_core_interface.staging_generator.generate_staging_model_from_source",
+                return_value=result_dict,
+            ):
+                result = generate_staging_from_source(
+                    context=yaml_context.project,
+                    source_name="raw",
+                    table_name="orders",
+                    use_ai=False,
+                    staging_path=custom_path,
+                )
+
+                assert result.staging_name == "stg_orders"
+                assert result.sql_content == result_dict["model_sql"]
+                assert result.yaml_content == result_dict["schema_yml"]
+                assert result.sql_path == custom_path / "stg_orders.sql"
+                assert result.yaml_path == custom_path / "stg_orders.yml"
+                assert result.sql_path is not None and not result.sql_path.exists()
+                assert result.yaml_path is not None and not result.yaml_path.exists()
+
+    def test_generate_staging_real_interface_normalizes_model_name(self, tmp_path):
+        """The dependency's schema name must match both returned artifact paths."""
+        source = SimpleNamespace(
+            source_name="raw", name="CustomerOrders", columns={"OrderID": {"data_type": "integer"}}
+        )
+        project = SimpleNamespace(
+            config=SimpleNamespace(project_dir=str(tmp_path)),
+            manifest=SimpleNamespace(sources={"source.raw.CustomerOrders": source}),
+        )
+        output_path = tmp_path / "custom_staging"
+
+        result = generate_staging_from_source(
+            context=project,
+            source_name="raw",
+            table_name="CustomerOrders",
+            staging_path=output_path,
+        )
+
+        assert result.staging_name == "stg_customer_orders"
+        assert result.sql_path == output_path / "stg_customer_orders.sql"
+        assert result.yaml_path == output_path / "stg_customer_orders.yml"
+        assert "source('raw', 'CustomerOrders')" in result.sql_content
+        assert "OrderID as order_id" in result.sql_content
+        schema = ruamel.yaml.YAML().load(result.yaml_content)
+        assert schema["models"][0]["name"] == result.staging_name
+        assert not output_path.exists()
+
+    @pytest.mark.parametrize(
+        ("names", "expected_name"),
+        [
+            ({"staging_name": "legacy_name", "model_name": "interface_name"}, "legacy_name"),
+            ({"model_name": "interface_name"}, "interface_name"),
+            ({}, "stg_orders"),
+            ({"staging_name": "", "model_name": "interface_name"}, "interface_name"),
+        ],
+    )
+    def test_generate_staging_output_key_compatibility(self, tmp_path, names, expected_name):
+        """Existing names/content take precedence, with modern aliases and name fallback."""
+        project = SimpleNamespace(config=SimpleNamespace(project_dir=str(tmp_path)), manifest=None)
+        payload = {
+            **names,
+            "sql": "select 1 as legacy",
+            "yaml": "version: 2\nmodels: []\n",
+            "model_sql": "select 2 as modern",
+            "schema_yml": "version: 2\nmodels: [{name: modern}]\n",
+        }
+        with (
+            mock.patch("dbt_osmosis.core.generators._get_source_definition", return_value=object()),
+            mock.patch(
+                "dbt_core_interface.staging_generator.generate_staging_model_from_source",
+                return_value=payload,
+            ),
+        ):
+            result = generate_staging_from_source(project, "raw", "orders")
+
+        assert result.staging_name == expected_name
+        assert result.sql_content == payload["sql"]
+        assert result.yaml_content == payload["yaml"]
+        assert result.sql_path == tmp_path / "models" / "staging" / f"{expected_name}.sql"
+        assert result.yaml_path == tmp_path / "models" / "staging" / f"{expected_name}.yml"
+        assert not (tmp_path / "models").exists()
 
     def test_generate_staging_source_not_found(self, yaml_context):
         """Test staging generation when source not found."""
