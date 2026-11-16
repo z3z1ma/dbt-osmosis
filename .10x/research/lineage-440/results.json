@@ -1,0 +1,59 @@
+{
+  "versions": {
+    "dbt-core": "1.10.20",
+    "dbt-duckdb": "1.10.0",
+    "sqlglot": "30.8.0"
+  },
+  "compiled_sql": {
+    "multiple": "select coalesce(a.old_name, b.old_name) as renamed from \"probe\".\"raw\".\"input\" a join \"probe\".\"raw\".\"other\" b on a.id=b.id",
+    "direct": "select s.old_name as renamed from \"probe\".\"raw\".\"input\" s",
+    "cte_star": "with s as (select * from \"probe\".\"raw\".\"input\"), r as (select old_name as renamed from s) select * from r",
+    "transform": "with r as (select lower(old_name) as renamed from \"probe\".\"raw\".\"input\") select renamed from r",
+    "ambiguous": "select old_name as renamed from \"probe\".\"raw\".\"input\" a join \"probe\".\"raw\".\"other\" b on a.id=b.id"
+  },
+  "observations": {
+    "multiple": {
+      "status": "reject",
+      "leaves": [
+        "a.old_name",
+        "b.old_name"
+      ],
+      "direct_path": false
+    },
+    "direct": {
+      "status": "candidate",
+      "leaves": [
+        "s.old_name"
+      ],
+      "direct_path": true
+    },
+    "cte_star": {
+      "status": "candidate",
+      "leaves": [
+        "input.old_name"
+      ],
+      "direct_path": true
+    },
+    "transform": {
+      "status": "reject",
+      "leaves": [
+        "input.old_name"
+      ],
+      "direct_path": false
+    },
+    "ambiguous": {
+      "status": "unresolved",
+      "error": "OptimizeError"
+    },
+    "missing_schema_star": {
+      "status": "reject",
+      "leaves": [
+        "*"
+      ],
+      "direct_path": false
+    },
+    "missing_sql": {
+      "status": "unavailable"
+    }
+  }
+}
