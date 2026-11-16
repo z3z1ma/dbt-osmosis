@@ -304,14 +304,14 @@ def generate_staging_from_source(
                 config=config,
             )
 
-            staging_name_value = result_dict.get("staging_name")
+            staging_name_value = result_dict.get("staging_name") or result_dict.get("model_name")
             staging_name = (
                 staging_name_value
                 if isinstance(staging_name_value, str) and staging_name_value
                 else f"stg_{table_name}"
             )
-            sql_content = (result_dict.get("sql") or result_dict.get("model_sql"))
-            yaml_content = (result_dict.get("yaml") or result_dict.get("schema_yml"))
+            sql_content = result_dict.get("sql") or result_dict.get("model_sql")
+            yaml_content = result_dict.get("yaml") or result_dict.get("schema_yml")
             sql_path, yaml_path = _resolve_staging_output_paths(context, staging_name, staging_path)
 
             logger.info(
