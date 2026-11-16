@@ -28,3 +28,7 @@ Verdict: concerns (release-build pin rationale outstanding; no new source correc
 Residual risk: full remote matrix and exact-head CI pending; local focused Python 3.13 evidence does not prove all supported environments. No release or merge performed by reviewer.
 
 - Review response: aligned both release workflow direct Hatchling invocations to 1.31.0; no gates, version or publishing behavior changed. `uvx --from=hatchling==1.31.0 hatchling build` passes locally (sdist and wheel). No release dispatched.
+
+### Independent review resolution
+Target: 7c06f06bd8af5ead9bdb333f748249c3bcc4572e.
+Verdict: pass. Both direct release-build invocations now match Hatchling 1.31.0; executor recorded successful exact-command sdist/wheel builds. Follow-up diff contains only these two pins and ticket updates; publishing gates, version, permissions and credentials are unchanged. Previous minor concern resolved. Remote exact-head CI remains the merge gate; this verdict is source/evidence review, not a claim of matrix completion.
