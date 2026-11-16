@@ -685,10 +685,12 @@ class TestSQLLinter:
             for result in results.values()
         )
 
-    def test_iter_model_nodes_excludes_external_and_ephemeral_models_by_default(self):
+    @pytest.mark.parametrize("patch_path", [None, "pkg://models/schema.yml"])
+    def test_iter_model_nodes_excludes_external_and_ephemeral_models_by_default(self, patch_path):
         """Lint model selection should match project-owned non-ephemeral model defaults."""
         linter = SQLLinter(enabled_rules=["select-star"])
         local_model = SimpleNamespace(
+            patch_path=patch_path,
             name="customers",
             unique_id="model.my_project.customers",
             resource_type=NodeType.Model,

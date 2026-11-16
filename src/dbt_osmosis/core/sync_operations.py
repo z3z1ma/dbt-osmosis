@@ -1078,7 +1078,7 @@ def _group_sync_nodes(context: YamlRefactorContextProtocol) -> list[list[ResultN
 
     groups_by_path: dict[Path, list[ResultNode]] = {}
 
-    for _, n in _iter_candidate_nodes(context):
+    for _, n in _iter_candidate_nodes(context, exclude_external_patches=True):
         if n.package_name != context.project.runtime_cfg.project_name:
             logger.debug(
                 ":package: Skipping package model => %s from package => %s",
