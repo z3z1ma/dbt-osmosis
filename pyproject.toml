@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling==1.30.1"]  # hatch-vcs
+requires = ["hatchling==1.31.0"]  # hatch-vcs
 build-backend = "hatchling.build"
 
 [project]
@@ -28,7 +28,7 @@ dependencies = [
   "dbt-common>=1,<2",
   "dbt-core>=1.8",
   "dbt-core-interface>=1.1.7",
-  "packaging>=24,<26",
+  "packaging>=24,<27",
   "ruamel.yaml>=0.17,<0.20",
   "rich>=10",
   "pluggy>=1.5.0,<2",
@@ -50,7 +50,7 @@ workbench = [
   "setuptools>=70,<81",
 ]
 
-openai = ["openai>=1.58.1,<2.42.0"]
+openai = ["openai>=1.58.1,<2.54.0"]
 
 azure = ["azure-identity>=1.19,<2"]
 
@@ -60,7 +60,7 @@ proxy = ["mysql-mimic>=2.5.7"]
 
 dev = [
   "basedpyright>=1.38.4,<1.40.0",
-  "ruff==0.15.17",
+  "ruff==0.16.2",
   "pytest>=8.3.4,<9.2.0",
   "pytest-cov~=6.0",
   "hypothesis",
@@ -198,7 +198,7 @@ DEP002 = [
 [dependency-groups]
 dev = [
   "basedpyright>=1.38.4,<1.40.0",
-  "ruff==0.15.17",
+  "ruff==0.16.2",
   "pytest>=8.3.4,<9.2.0",
   "pytest-cov~=6.0",
   "hypothesis",

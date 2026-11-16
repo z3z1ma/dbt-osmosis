@@ -2723,8 +2723,10 @@ def _documentation_check_text(result: DocumentationCheckResult) -> str:
     lines = [
         "Documentation check summary",
         f"  Models described: {result.models_with_descriptions}/{result.total_models}",
-        f"  Columns documented: {result.documented_columns}/{result.total_columns} "
-        f"({_documentation_column_coverage(result):.1f}%)",
+        (
+            f"  Columns documented: {result.documented_columns}/{result.total_columns} "
+            f"({_documentation_column_coverage(result):.1f}%)"
+        ),
         f"  Gaps: {len(result.gaps)}",
     ]
     for gap in result.gaps[:20]:
