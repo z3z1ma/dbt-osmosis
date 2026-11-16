@@ -21,6 +21,8 @@ Primary sources checked 2026-11-16:
 - [Catalog contract](https://docs.getdbt.com/reference/artifacts/catalog-json) retains catalog v1 for external tools while v2 docs uses the information schema. Historical empty BigQuery catalog observations must not be generalized to all current Fusion installations.
 - [Metadata configuration](https://docs.getdbt.com/reference/resource-configs/meta) distinguishes config-level metadata and backward-compatible top-level forms. Preserve unknown non-null semantic fields and old-version source behavior; do not normalize away meaningful data.
 
+- [SQLGlot lineage API](https://sqlglot.com/sqlglot/lineage.html) accepts schema, sources and dialect inputs; verify the installed API before using current documentation examples. [dbt MCP tools](https://docs.getdbt.com/docs/dbt-ai/mcp-available-tools) offer local LSP-backed and platform lineage. These are evaluation inputs for #440, not a reason to introduce a new service dependency or duplicate MCP execution surfaces.
+
 These sources motivate compatibility tests and cautious artifact boundaries, not dependency upgrades or blanket engine support claims. Current upstream tooling increasingly supplies SQL execution and lineage; prioritize osmosis's YAML preservation and documentation inheritance value instead of duplicating editor/runtime capabilities.
 
 ## Ordered work
