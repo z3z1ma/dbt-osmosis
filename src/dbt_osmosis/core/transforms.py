@@ -239,7 +239,7 @@ def inherit_upstream_column_knowledge(
 
         for _ in context.pool.map(
             partial(inherit_upstream_column_knowledge, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -388,7 +388,7 @@ def inject_missing_columns(
         logger.info(":wave: Injecting missing columns for all matched nodes.")
         for _ in context.pool.map(
             partial(inject_missing_columns, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -546,7 +546,7 @@ def remove_columns_not_in_database(
         logger.info(":wave: Removing columns not in DB across all matched nodes.")
         for _ in context.pool.map(
             partial(remove_columns_not_in_database, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -598,7 +598,7 @@ def sort_columns_as_in_database(
         logger.info(":wave: Sorting columns as they appear in DB across all matched nodes.")
         for _ in context.pool.map(
             partial(sort_columns_as_in_database, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -651,7 +651,7 @@ def sort_columns_alphabetically(
         logger.info(":wave: Sorting columns alphabetically across all matched nodes.")
         for _ in context.pool.map(
             partial(sort_columns_alphabetically, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -697,7 +697,7 @@ def sort_columns_as_configured(
         logger.info(":wave: Sorting columns as configured across all matched nodes.")
         for _ in context.pool.map(
             partial(sort_columns_as_configured, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -726,7 +726,7 @@ def synchronize_data_types(
         logger.info(":wave: Populating data types across all matched nodes.")
         for _ in context.pool.map(
             partial(synchronize_data_types, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -995,7 +995,7 @@ def synthesize_missing_documentation_with_openai(
         logger.info(":wave: Synthesizing missing documentation across all matched nodes.")
         for _ in context.pool.map(
             partial(synthesize_missing_documentation_with_openai, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -1053,7 +1053,7 @@ def apply_semantic_analysis(
         logger.info(":wave: Applying semantic analysis across all matched nodes.")
         for _ in context.pool.map(
             partial(apply_semantic_analysis, context),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return
@@ -1271,7 +1271,7 @@ def suggest_improved_documentation(
                 threshold=threshold,
                 learning_mode=learning_mode,
             ),
-            (n for _, n in _iter_candidate_nodes(context)),
+            (n for _, n in _iter_candidate_nodes(context, exclude_external_patches=True)),
         ):
             pass
         return

@@ -306,7 +306,7 @@ def build_yaml_file_mapping(
     out_map: dict[str, SchemaFileLocation] = {}
     from dbt_osmosis.core.node_filters import _iter_candidate_nodes
 
-    for uid, node in _iter_candidate_nodes(context):
+    for uid, node in _iter_candidate_nodes(context, exclude_external_patches=True):
         current_path = get_current_yaml_path(context, node)
         out_map[uid] = SchemaFileLocation(
             target=get_target_yaml_path(context, node).resolve(),
