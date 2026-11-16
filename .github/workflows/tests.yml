@@ -409,6 +409,7 @@ jobs:
           import os
           import platform
           import sys
+          from packaging.requirements import Requirement
 
           label = os.environ["SMOKE_LABEL"]
           print(f"smoke: {label}")
@@ -435,7 +436,16 @@ jobs:
               "proxy": ["mysql_mimic"],
           }
           if label == "duckdb":
-              expected_prefixes["dbt-duckdb"] = "1.10."
+              requirement = next(
+                  Requirement(raw)
+                  for raw in metadata.requires("dbt-osmosis") or []
+                  if Requirement(raw).name == "dbt-duckdb"
+                  and Requirement(raw).marker is not None
+                  and Requirement(raw).marker.evaluate({"extra": "duckdb"})
+              )
+              version = metadata.version("dbt-duckdb")
+              print(f"dbt-duckdb: {version} (requires {requirement.specifier})")
+              assert version in requirement.specifier, f"dbt-duckdb {version} violates {requirement}"
           if label == "base":
               assert importlib.util.find_spec("mysql_mimic") is None
           if label == "workbench":

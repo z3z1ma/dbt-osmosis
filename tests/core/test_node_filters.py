@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import pytest
 from dbt.artifacts.resources.types import NodeType
 
 from dbt_osmosis.core.node_filters import _iter_candidate_nodes, _topological_sort
@@ -125,3 +126,26 @@ def test_iter_candidate_nodes_keeps_model_filters_when_external_included():
     candidate_ids = [uid for uid, _ in _iter_candidate_nodes(context)]
 
     assert candidate_ids == ["model.my_project.selected_model"]
+
+
+@pytest.mark.parametrize("resource_type", [NodeType.Model, NodeType.Seed])
+@pytest.mark.parametrize("include_external", [False, True])
+@pytest.mark.parametrize("exclude_external_patches", [False, True])
+@pytest.mark.parametrize("patch_package", [None, "my_project", "external_package"])
+def test_iter_candidate_nodes_respects_patch_ownership(
+    resource_type, include_external, patch_package, exclude_external_patches
+):
+    node = _make_node(
+        "node.my_project.local", "local", package_name="my_project", resource_type=resource_type
+    )
+    node.patch_path = f"{patch_package}://seeds/seeds.yml" if patch_package else None
+    context = _make_context(node, include_external=include_external)
+
+    candidates = list(
+        _iter_candidate_nodes(context, exclude_external_patches=exclude_external_patches)
+    )
+
+    if patch_package == "external_package" and not include_external and exclude_external_patches:
+        assert candidates == []
+    else:
+        assert candidates == [(node.unique_id, node)]

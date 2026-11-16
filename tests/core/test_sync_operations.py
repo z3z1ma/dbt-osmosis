@@ -418,7 +418,8 @@ def test_group_sync_nodes_serializes_unversioned_nodes_sharing_target_path(
     orders = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.orders"]
     shared_target = tmp_path / "shared_schema.yml"
 
-    def iter_same_target_nodes(context: YamlRefactorContext):
+    def iter_same_target_nodes(context: YamlRefactorContext, *, exclude_external_patches: bool):
+        assert exclude_external_patches is True
         yield customers.unique_id, customers
         yield orders.unique_id, orders
 
@@ -450,7 +451,8 @@ def test_group_sync_nodes_serializes_mixed_versioned_and_unversioned_models(
     unversioned = yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"]
     shared_target = tmp_path / "shared_models.yml"
 
-    def iter_same_target_nodes(context: YamlRefactorContext):
+    def iter_same_target_nodes(context: YamlRefactorContext, *, exclude_external_patches: bool):
+        assert exclude_external_patches is True
         yield versioned.unique_id, versioned
         yield unversioned.unique_id, unversioned
 
@@ -492,7 +494,8 @@ def test_group_sync_nodes_serializes_sources_sharing_target_path(
     ]
     shared_target = tmp_path / "shared_sources.yml"
 
-    def iter_same_target_sources(context: YamlRefactorContext):
+    def iter_same_target_sources(context: YamlRefactorContext, *, exclude_external_patches: bool):
+        assert exclude_external_patches is True
         for source_node in source_nodes:
             yield source_node.unique_id, source_node
 
@@ -526,7 +529,8 @@ def test_sync_node_to_yaml_repeated_threads_same_target_preserves_model_sections
     shared_target.write_text("version: 2\nmodels: []\n", encoding="utf-8")
     yaml_context.settings.dry_run = False
 
-    def iter_same_target_nodes(context: YamlRefactorContext):
+    def iter_same_target_nodes(context: YamlRefactorContext, *, exclude_external_patches: bool):
+        assert exclude_external_patches is True
         yield customers.unique_id, customers
         yield orders.unique_id, orders
 

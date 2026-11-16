@@ -153,11 +153,25 @@ def _topological_sort(
     return [(uid, uid_to_node[uid]) for uid in sorted_uids]
 
 
-def _is_candidate_node(context: t.Any, node: ResultNode, *, include_external: bool) -> bool:
+def _is_candidate_node(
+    context: t.Any, node: ResultNode, *, include_external: bool, exclude_external_patches: bool
+) -> bool:
     if node.resource_type not in (NodeType.Model, NodeType.Source, NodeType.Seed):
         return False
     if node.package_name != context.project.runtime_cfg.project_name and not include_external:
         return False
+    if (
+        exclude_external_patches
+        and not include_external
+        and node.resource_type in (NodeType.Model, NodeType.Seed)
+    ):
+        patch_path = node.patch_path
+        if patch_path:
+            patch_package, separator, _ = patch_path.partition("://")
+            if separator and patch_package != context.project.runtime_cfg.project_name:
+                # A local override can be documented by an installed package. Treat its
+                # patch as external too, or root-relative writes create duplicate patches.
+                return False
     if node.resource_type == NodeType.Model and node.config.materialized == "ephemeral":
         return False
     if context.settings.models and not _is_file_match(
@@ -177,8 +191,14 @@ def _manifest_nodes(context: t.Any) -> t.Iterator[tuple[str, ResultNode]]:
 
 def _iter_candidate_nodes(
     context: t.Any,  # YamlRefactorContext type will be imported
+    *,
+    exclude_external_patches: bool = False,
 ) -> t.Iterator[tuple[str, ResultNode]]:
-    """Iterate over candidate nodes using the context's single selection contract."""
+    """Select nodes, optionally excluding package-owned patches for YAML management.
+
+    Read-only consumers such as SQL lint still need locally owned nodes regardless
+    of which package documents them.
+    """
     logger.debug(
         ":mag: Filtering nodes (models/sources/seeds) with user-specified settings => %s",
         context.settings,
@@ -188,7 +208,12 @@ def _iter_candidate_nodes(
 
     candidate_nodes: list[t.Any] = []
     for uid, dbt_node in _manifest_nodes(context):
-        if _is_candidate_node(context, dbt_node, include_external=include_external):
+        if _is_candidate_node(
+            context,
+            dbt_node,
+            include_external=include_external,
+            exclude_external_patches=exclude_external_patches,
+        ):
             logger.debug(
                 ":white_check_mark: Node => %s passed filtering logic.", dbt_node.unique_id
             )
