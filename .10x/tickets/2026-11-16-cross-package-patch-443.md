@@ -94,3 +94,10 @@ verification; baseline tests already pass for this case.
 
 Review lesson: shared candidate selection also serves SQL lint, discovery, and
 reporting. YAML write ownership restrictions must be explicit at mutation callers.
+
+## Authorized integration follow-up
+- Alex subsequently authorized routine merge decisions for #453, #454 and #455, with no release; this supersedes the original draft-only handoff.
+- Integrated main through 1b3a41593dac89699c059abbc2d3594aaac9979b, preserving #455's original 799083b1 commit. This includes the CI contract fix and shared-ancestor warning fix.
+- Core 1.12.7 canary exposed a test-fixture issue before osmosis executed: an installed but undeclared package fails dbt's package-count validation (4 failed). Changed only the regression fixture to declare a sibling local package and run dbt deps. Both project and source-package YAML are snapshotted so symlink installation cannot weaken byte/mtime preservation checks.
+- Corrected canary real-parser regression: 4 passed in 25.91s. Independent integration review: pass; exact patch owner, all four cases, byte/mtime assertions and final parse remain enforced. Reviewed supported Core's relative-local-dependency install behavior.
+- Combined full Core 1.11.17 and 1.12.7 suites started; final results and merge/CI outcomes are recorded in the integration handoff and PR. Runtime changes remain the originally reviewed bounded ownership fix.

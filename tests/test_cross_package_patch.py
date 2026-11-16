@@ -35,7 +35,7 @@ def _run(project: Path, module: str, *args: str) -> None:
 @pytest.mark.parametrize("existing_yaml", [False, True])
 def test_refactor_preserves_package_owned_seed_patch(tmp_path, dry_run, existing_yaml):
     project = tmp_path / "analytics"
-    package = project / "dbt_packages" / "patch_owner"
+    package = tmp_path / "patch_owner"
     for root in (project, package):
         (root / "seeds").mkdir(parents=True)
         (root / "seeds" / "exceptions.csv").write_text("id\n1\n")
@@ -56,6 +56,8 @@ def test_refactor_preserves_package_owned_seed_patch(tmp_path, dry_run, existing
         "analytics:\n  target: test\n  outputs:\n    test:\n"
         "      type: duckdb\n      path: ':memory:'\n      threads: 1\n"
     )
+    (project / "packages.yml").write_text("packages:\n  - local: ../patch_owner\n")
+    _run(project, "dbt.cli.main", "deps")
     if existing_yaml:
         (project / "seeds" / "seeds.yml").write_text("version: 2\nseeds: []\n")
 
@@ -63,12 +65,20 @@ def test_refactor_preserves_package_owned_seed_patch(tmp_path, dry_run, existing
     manifest = json.loads((project / "target" / "manifest.json").read_text())
     seed = manifest["nodes"]["seed.analytics.exceptions"]
     assert seed["patch_path"] == "patch_owner://seeds/seeds.yml"
-    before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob("*.yml")}
+    before = {
+        p: (p.read_bytes(), p.stat().st_mtime_ns)
+        for root in (project, package)
+        for p in root.rglob("*.yml")
+    }
 
     args = ["yaml", "refactor", "--auto-apply", "--disable-introspection"]
     if dry_run:
         args.append("--dry-run")
     _run(project, "dbt_osmosis", *args)
 
-    assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob("*.yml")} == before
+    assert {
+        p: (p.read_bytes(), p.stat().st_mtime_ns)
+        for root in (project, package)
+        for p in root.rglob("*.yml")
+    } == before
     _run(project, "dbt.cli.main", "parse", "--no-partial-parse")
