@@ -92,7 +92,7 @@ jobs:
 
       - name: Build package
         run: |
-          uvx --from=hatchling==1.26.3 hatchling build
+          uvx --from=hatchling==1.31.0 hatchling build
 
       - name: Validate package metadata
         run: |
@@ -237,7 +237,7 @@ jobs:
         if: "! steps.check-version.outputs.tag"
         run: |
           rm -rf dist
-          uvx --from=hatchling==1.26.3 hatchling build
+          uvx --from=hatchling==1.31.0 hatchling build
 
       - name: Publish package on PyPI
         if: steps.check-version.outputs.tag
