@@ -176,6 +176,8 @@ def _build_node_ancestor_tree(
     visited: set[str] | None = None,
     depth: int = 1,
     max_depth: int = 100,
+    *,
+    active_path: set[str] | None = None,
 ) -> dict[str, list[str]]:
     """Build a flat graph of a node and it's ancestors."""
     logger.debug(":seedling: Building ancestor tree/branch for => %s", node.unique_id)
@@ -183,6 +185,9 @@ def _build_node_ancestor_tree(
         visited = {node.unique_id}
         tree = {"generation_0": [node.unique_id]}
         depth = 1
+
+    if active_path is None:
+        active_path = {node.unique_id}
 
     if not hasattr(node, "depends_on"):
         return tree
@@ -200,8 +205,8 @@ def _build_node_ancestor_tree(
         if not dep.startswith(("model.", "seed.", "source.")):
             continue
 
-        # Cycle detection: skip if already visited
-        if dep in visited:
+        # Only an edge back into the current recursion path is a cycle.
+        if dep in active_path:
             logger.warning(
                 ":rotating_light: Circular dependency detected: %s -> %s",
                 node.unique_id,
@@ -209,11 +214,23 @@ def _build_node_ancestor_tree(
             )
             continue
 
+        # Shared ancestors were already recorded at their first discovery depth.
+        if dep in visited:
+            continue
+
         visited.add(dep)
         member = manifest.nodes.get(dep, manifest.sources.get(dep))
         if member:
             tree.setdefault(f"generation_{depth}", []).append(dep)
-            _ = _build_node_ancestor_tree(manifest, member, tree, visited, depth + 1, max_depth)
+            _ = _build_node_ancestor_tree(
+                manifest,
+                member,
+                tree,
+                visited,
+                depth + 1,
+                max_depth,
+                active_path=active_path | {dep},
+            )
 
     for generation in tree.values():
         generation.sort()  # For deterministic ordering

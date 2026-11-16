@@ -3,6 +3,7 @@ import typing as t
 
 import dbt.version
 import pytest
+from dbt.contracts.graph.nodes import ColumnInfo
 
 pytestmark = pytest.mark.usefixtures("fresh_caches")
 from packaging.version import Version
@@ -358,6 +359,10 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
     if dbt_version >= Version("1.9.0"):
         for col_data in expect.values():
             col_data["granularity"] = None
+    if dbt_version >= Version("1.12.0"):
+        for col_data in expect.values():
+            col_data["dimension"] = None
+            col_data["entity"] = None
 
     target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
     target_node.columns["customer_id"].description = ""
@@ -373,3 +378,61 @@ def test_inherit_upstream_column_knowledge(yaml_context: YamlRefactorContext):
     # Filter out 'config' field for comparison (dbt-core 1.9+ includes it)
     actual = {k: _filter_config_field(v.to_dict()) for k, v in target_node.columns.items()}
     assert actual == expect
+
+
+@pytest.mark.parametrize("inherit_semantics", [False, True])
+@pytest.mark.parametrize(
+    "semantic_metadata",
+    [
+        {"dimension": "categorical", "entity": "primary"},
+        {
+            "dimension": {
+                "name": "customer_segment",
+                "type": "categorical",
+                "description": "Customer segment",
+                "is_partition": False,
+                "config": {"meta": {"owner": "analytics"}},
+            },
+            "entity": {
+                "name": "customer",
+                "type": "primary",
+                "description": "Customer identity",
+                "config": {"meta": {"owner": "analytics"}},
+            },
+        },
+    ],
+)
+def test_semantic_column_metadata_survives_inheritance_and_yaml_sync(
+    yaml_context: YamlRefactorContext,
+    inherit_semantics: bool,
+    semantic_metadata: dict[str, t.Any],
+):
+    manifest = yaml_context.project.manifest
+    target_node = manifest.nodes["model.jaffle_shop_duckdb.customers"]
+    upstream_node = manifest.nodes["model.jaffle_shop_duckdb.stg_customers.v1"]
+    owner = upstream_node if inherit_semantics else target_node
+    column_data = owner.columns["customer_id"].to_dict()
+    column_data.update(semantic_metadata)
+    owner.columns["customer_id"] = ColumnInfo.from_dict(column_data)
+    upstream_node.columns["customer_id"].description = "Inherited description"
+    target_node.columns["customer_id"].description = ""
+    yaml_context.settings.use_unrendered_descriptions = False
+    yaml_context.settings.dry_run = False
+    if inherit_semantics:
+        yaml_context.settings.add_inheritance_for_specified_keys = list(semantic_metadata)
+
+    inherit_upstream_column_knowledge(yaml_context, target_node)
+
+    column = target_node.columns["customer_id"]
+    assert column.description == "Inherited description"
+    serialized = column.to_dict(omit_none=True)
+    for key, value in semantic_metadata.items():
+        assert serialized[key] == value
+
+    sync_node_to_yaml(yaml_context, target_node, commit=True)
+    yaml_slice = _get_node_yaml(yaml_context, target_node)
+    assert yaml_slice
+    yaml_column = next(c for c in yaml_slice["columns"] if c["name"] == "customer_id")
+    assert yaml_column["description"] == "Inherited description"
+    for key, value in semantic_metadata.items():
+        assert yaml_column[key] == value
