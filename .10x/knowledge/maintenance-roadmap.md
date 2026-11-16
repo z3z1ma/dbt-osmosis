@@ -37,7 +37,11 @@ These sources motivate compatibility tests and cautious artifact boundaries, not
 | P3 / support policy follow-up | Review legacy Python/Core support and prerelease detection after 1.12 audit. | Measure adapter availability and user impact; explicit policy decision before removing old rows or changing package bounds. Current latest-stable canary is not prerelease coverage; add a bounded 1.13 beta audit separately if warranted. |
 
 ## First iteration and next action
-Executable owner: `.10x/tickets/2026-11-16-core-112-audit.md`. The compatibility promotion is in progress until exact-head CI and independent review pass. The next iteration is issue reconciliation for #443/#452 using the already recorded regression evidence, followed by a bounded #440 direct-rename specification and experiment. No broad feature delivery dates are committed.
+Core 1.12 coverage merged in #459; issue reconciliation merged in #464. Both completed exact-head and post-merge CI. Residual symptom regression work for #443/#452 is tracked separately in #465; do not infer closure from this snapshot.
+
+The direct-rename implementation owner is `.10x/tickets/2026-11-16-direct-rename-implementation.md`, governed by `.10x/specs/direct-rename-implementation.md`. Local implementation and independent review are complete; publication and exact-head integration gates remain pending. Real CLI tests exposed that fresh parsing discards compiled SQL, so opt-in lineage now compiles actual selected models through the established runner. Compilation macros may query the warehouse; YAML dry-run remains non-writing.
+
+Scope is direct aliases and CTE identity preservation for DuckDB/Trino, with donor-column docs references, conservative rejection, structural budgets and no persistent candidate cache. Automatic derived/aggregate/multi-donor documentation copying is deliberately excluded: a common source column does not establish unchanged meaning. Trino validation is offline, not warehouse certification. Other dialects and artifact-only/Fusion operation require their own evidence before support claims. No broad feature delivery dates are committed.
 
 ## Integration gates
 Use isolated branches; publish draft first; commission independent review; require all executed blocking checks on the exact proposed head. Fetch main again before merge, integrate concurrent dependency changes and rerun affected/full remote gates as required. Never treat scheduled-canary skip as an executed pass. Keep release operations separate. Preserve original checkouts and unrelated work.
