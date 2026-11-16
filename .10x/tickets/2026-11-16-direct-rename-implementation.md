@@ -1,4 +1,4 @@
-Status: active
+Status: blocked
 Created: 2026-11-16
 Updated: 2026-11-16
 
@@ -17,7 +17,7 @@ User authorized concrete roadmap implementation with maintainer judgment. Existi
 ## Journal
 - Created isolated branch from main8b86daef after reading source and prior research. Chose no persistent cache, DuckDB-only scope, distinct semantic-rejection vs unavailable fallback. No denied action retried.
 ## Blockers
-None for local implementation; external actions remain subject to review.
+Local implementation/review complete. Branch push denied by automatic approval review: publication not clearly authorized. Push did not execute; no alternative publication route or retry attempted. Parent requested explicit authorization; exact-head remote CI and merge remain blocked.
 ## Evidence
 Pending executor journal.
 ## Review
@@ -63,3 +63,5 @@ The key rejected premise was that a prior dbt compile artifact survives normal o
 
 ### Independent integration review after #465
 Reviewed merge `d8a6bdc` of main `27172b4`, the added `tests/test_residual_issue_reproductions.py`, and roadmap progress commit `c1aff4f`. Incoming main adds residual symptom tests and their ticket, not runtime changes. The new package dry-run and diamond inheritance fixtures do not enable `use-sqlglot-lineage`; the opt-in guard preserves their existing execution path. Their real-CLI/introspection assertions remain intact, and neither fixture conflicts with or weakens the lineage CLI tests. The roadmap accurately states direct-only DuckDB/Trino scope, macro-query effects, offline Trino limits, pending exact-head gates, and separate residual issue disposition. No unsupported closure or broad compatibility claim found. **Integration review verdict: PASS**, with no new findings. No full test suite repeated by reviewer; exact integrated-head CI remains required, and the integration owner retains the #465 post-merge hold before any subsequent merge.
+
+- Integrated main27172b4 (#465 tests/records only) cleanly; independent integration review PASS. Attempt to push implementation branch was denied before execution. Checked user history; parent instructed no retry and requested explicit push/PR/validated-merge approval. Local review record committed separately; no remote publication, release, or denied-action workaround.
