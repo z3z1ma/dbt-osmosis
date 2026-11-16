@@ -1,8 +1,10 @@
+import io
 import re
 import typing as t
 from types import MappingProxyType
 
 import ruamel.yaml
+from ruamel.yaml.emitter import RoundTripEmitter
 
 from dbt_osmosis.core import logger
 
@@ -20,6 +22,22 @@ MANAGED_RESOURCE_TOP_LEVEL_KEYS = frozenset({
     "data_tests",
 })
 MANAGED_TOP_LEVEL_KEYS = frozenset({"version", *MANAGED_RESOURCE_TOP_LEVEL_KEYS})
+
+
+class OsmosisEmitter(RoundTripEmitter):
+    """Keep plain-scalar wrapping compatible with whitespace cleanup hooks."""
+
+    def write_plain(self, text: t.Any, split: t.Any = True) -> None:
+        stream, encoding = self.stream, self.encoding
+        with io.StringIO() as staging:
+            self.stream, self.encoding = staging, None
+            try:
+                super().write_plain(text, split)
+            finally:
+                self.stream, self.encoding = stream, encoding
+            # Plain scalar line-end spaces are separation, unlike quoted or block content.
+            rendered = re.sub(r" +(?=[\r\n])", "", staging.getvalue())
+        stream.write(rendered.encode(encoding) if encoding else rendered)
 
 
 def _is_nested_column_description_value(
@@ -130,6 +148,7 @@ def create_yaml_instance(
     """Returns a ruamel.yaml.YAML instance configured with the provided settings."""
     logger.debug(":notebook: Creating ruamel.yaml.YAML instance with custom formatting.")
     y = OsmosisYAML()
+    y.Emitter = OsmosisEmitter
     y.indent(mapping=indent_mapping, sequence=indent_sequence, offset=indent_offset)
     y.width = width
     y.preserve_quotes = preserve_quotes
