@@ -407,11 +407,11 @@ class ConfigurationSource(ABC):
 
 
 class ConfigMetaSource(ConfigurationSource):
-    """Configuration source for node.config.meta (dbt 1.10+).
+    """Configuration source for node.config.meta.
 
     This source reads configuration from the config.meta dictionary,
-    which is available in dbt 1.10 and later versions. It gracefully
-    handles versions where this field doesn't exist.
+    which is available in dbt 1.10 and later versions. Older source
+    configs retain project-level meta in config.extra instead.
 
     Supported key variants:
     - dbt-osmosis-<key> (kebab-case with prefix)
@@ -439,11 +439,9 @@ class ConfigMetaSource(ConfigurationSource):
             The configuration value if found, None otherwise.
 
         """
-        # Gracefully handle dbt versions < 1.10 where config.meta doesn't exist
-        if not hasattr(self._node, "config") or not hasattr(self._node.config, "meta"):
-            return None
-
-        config_meta = getattr(self._node.config, "meta", None)
+        config = getattr(self._node, "config", None)
+        extra = getattr(config, "extra", {})
+        config_meta = getattr(config, "meta", _get_mapping_value(extra, "meta"))
         if not isinstance(config_meta, dict):
             return None
 
@@ -784,10 +782,10 @@ def _node_dict_setting_sources(
 
 
 def _node_configuration_sources(node: ResultNode) -> list[tuple[str, ConfigurationSource]]:
-    """Return object-backed dbt 1.10+ setting sources in precedence order."""
+    """Return object-backed setting sources in precedence order."""
     sources: list[tuple[str, ConfigurationSource]] = []
-    if hasattr(node, "config") and hasattr(node.config, "meta"):
-        sources.append(("config.meta (dbt 1.10+)", ConfigMetaSource(node)))
+    if hasattr(node, "config"):
+        sources.append(("config.meta", ConfigMetaSource(node)))
     if hasattr(node, "unrendered_config"):
         sources.append(("unrendered_config (dbt 1.10+)", UnrenderedConfigSource(node)))
     return sources
@@ -901,9 +899,7 @@ def _node_precedence_entries(
 
 
 def _config_meta_precedence_value(setting_name: str, node: ResultNode) -> t.Any | None:
-    if hasattr(node, "config") and hasattr(node.config, "meta"):
-        return ConfigMetaSource(node).get(setting_name)
-    return None
+    return ConfigMetaSource(node).get(setting_name)
 
 
 def _unrendered_config_precedence_value(setting_name: str, node: ResultNode) -> t.Any | None:
