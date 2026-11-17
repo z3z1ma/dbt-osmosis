@@ -57,3 +57,8 @@ A deserializer accepting unknown schema URLs is not an artifact compatibility ch
 - Added fresh subprocess `migration plan --catalog-path <manifest> --output <existing-file>` regression: actionable path-specific diagnostic without traceback, existing output bytes/mtime unchanged, YAML bytes/mtime unchanged, and catalog bytes unchanged.
 - `PYTHONPATH=src /tmp/osmosis-supported/bin/python -m pytest tests/test_catalog_contract.py tests/core/test_cli.py -q`: **76 passed in 28.68s**, `/tmp/catalog-migration-tests-final.log`. Initial editing-script syntax error made no source changes and is not counted as new-fix verification; the recorded final run followed the successful edit.
 - Ruff check/format and diff check passed for the affected CLI and test files. Basedpyright on the CLI with the explicit same interpreter: **0 errors, 394 warnings**, `/tmp/catalog-cli-types-final.log`. No runtime loader, dependency, or catalog compatibility behavior changed in this follow-up. Awaiting independent follow-up review.
+
+### Independent follow-up review (2026-11-17)
+- Reviewed `75050a1..b281a5cff52f43c1b1e0c5898a0d4afb55ae610e`, including the new CLI factory and actual migration regression assertions. **Verdict: pass**, subject to exact-head matrix. The minor presentation finding is resolved.
+- All CLI constructors now pass through the narrow factory; only `CatalogValidationError` is translated, with core API exception behavior unchanged. Migration planning validates at context creation before comparing schema or writing the output. The new test asserts no traceback and unchanged existing output bytes/mtime, YAML bytes/mtime and catalog bytes.
+- No executor tests repeated. Prior residual compatibility/producer limits remain; no new blocking findings.
