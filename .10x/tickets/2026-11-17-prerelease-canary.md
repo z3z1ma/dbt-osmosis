@@ -32,13 +32,13 @@ No package bounds/lock edits, legacy support removal, Rust v2 runtime audit, war
 None for implementation. Remote publication/gates pending.
 
 ## Evidence
-Pending executor commands and results.
+Criteria1–4: selector policy/gating tests, byte-identical old jobs, live candidate resolution and exact-version isolated audit are recorded below. Criterion5: local audit and independent reviews complete; integrated remote manual/full CI, merge and post-merge gates remain pending.
 
 ## Review
-Pending independent review.
+PASS for selector/workflow and bounded compatibility assertion; see independent review and addendum below. Remote execution gates remain.
 
 ## Retrospective
-Pending.
+A prerelease namespace can contain a different runtime generation and yanked candidates; filter those deliberately instead of globally enabling previews. Test resolved configuration semantics separately from unrendered producer representation. Full execution retrospective and evidence follow below.
 
 ## Execution journal (append-only)
 - Implemented `.github/scripts/select_dbt_prerelease.py`, policy tests, separate `prerelease-dbt-canary` job and support-policy documentation. The selector validates release/file structure, excludes empty/all-yanked releases, non-1.x/epoch/local candidates, and obsolete previews; no upcoming preview writes an empty output and explicit skip message. Metadata/network failures propagate. Exact selected Core version is installed without global prerelease flags.
