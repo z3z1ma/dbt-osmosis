@@ -44,10 +44,23 @@ If you set options inside a SQL `config(...)` block, use Python identifiers such
 | `skip-add-tags` | `false` | Skip inheriting upstream tags. |
 | `skip-add-data-types` | `false` | Skip populating `data_type`. |
 | `force-inherit-descriptions` | `false` | Overwrite child descriptions with upstream descriptions when available. |
+| `use-sqlglot-lineage` | `false` | Opt in to direct-column rename inheritance for DuckDB and Trino using compiled model SQL. See limitations below. |
 | `use-unrendered-descriptions` | `false` | Preserve unrendered `{{ doc(...) }}` descriptions instead of rendered manifest text. |
 | `prefer-yaml-values` | `false` | Preserve YAML values as authored across supported fields, including unrendered Jinja such as `{{ var(...) }}` or `{{ env_var(...) }}`. |
 | `add-progenitor-to-meta` | `false` | Add progenitor metadata so downstream columns can point back to their inherited origin. |
 | `add-inheritance-for-specified-keys` | `[]` | Additional keys to inherit, supplied as a repeatable CLI flag or list-valued option. |
+
+### Direct-column lineage (opt-in)
+
+Set `use-sqlglot-lineage: true` in `vars.dbt-osmosis.dbt-osmosis-options` or the usual node/column options. This is a configuration setting, not a CLI flag. It resolves direct aliases, including aliases through CTEs with a complete schema, using the existing SQLGlot dependency. DuckDB and Trino are supported dialects; Trino coverage uses offline SQL fixtures, not a live warehouse certification.
+
+For an enabled DuckDB or Trino model without compiled SQL, osmosis compiles the actual model context once per loaded manifest generation using dbt's compiler. This resolves `ref`, `source`, `this`, and model configuration; it does not execute the resulting model SQL. **dbt compilation can execute user macros that query the warehouse, including during `--dry-run`.** Dry-run still prevents YAML writes; it is not a no-query mode. Leave this setting disabled if compilation side effects are unacceptable.
+
+Compilation failures emit a warning naming the model and retain legacy name matching; failed models are not retried until that context loads a new manifest. Unsupported adapters, parser failures, or structural budget limits also retain legacy matching, with debug diagnostics. Check debug logs for `Column lineage` outcomes before relying on rename inheritance.
+
+Resolved transformations (including casts, functions and aggregates), unions, ambiguous origins, and unresolved stars suppress automatic name matching for the affected column. This avoids copying an unrelated same-name description after rejecting a SQL-derived donor. Explicit progenitor overrides retain their existing meaning. Local descriptions remain authoritative unless force inheritance is enabled; unrendered docs references are read from the actual donor column.
+
+There is no persistent lineage cache. Limits are 64 KiB SQL, 4,096 AST nodes, 256 eligible relations, 4,096 schema/target columns and 256 nodes per lineage walk. These structural limits are **not a wall-clock timeout**. This initial feature does not inherit through meaning-changing expressions or claim general column lineage support.
 
 ## Output formatting
 

@@ -118,6 +118,8 @@ class YamlRefactorContextProtocol(t.Protocol):
     yaml_handler_lock: threading.Lock
     placeholders: tuple[str, ...]
     _catalog: CatalogResults | None
+    lineage_compilation_manifest: object | None
+    lineage_compilation_attempts: set[str]
     _mutation_count: int
     current_node: ResultNodeProtocol | None
 
