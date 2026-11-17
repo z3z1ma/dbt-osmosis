@@ -509,6 +509,14 @@ dbt-osmosis-options:
         assert source.get("skip-add-tags") is None
         assert source.get("yaml-settings") is None
 
+    @pytest.mark.parametrize("raw_value", [False, "False"])
+    def test_rendered_false_precedes_unrendered_literal(self, raw_value: Any) -> None:
+        """Core patch-level raw literal types must not change resolved booleans."""
+        node = MockNode(config_extra={"dbt_osmosis_skip_add_columns": False})
+        node.unrendered_config = {"dbt_osmosis_skip_add_columns": raw_value}
+
+        assert SettingsResolver().resolve("skip-add-columns", node, fallback=True) is False
+
     def test_full_precedence_chain(self) -> None:
         """T012: Test full precedence chain across all 7 sources."""
         # Create a resolver with all sources

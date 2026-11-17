@@ -139,13 +139,18 @@ def test_real_dbt_parse_exposes_dbt_110_config_shapes(tmp_path: Path) -> None:
         assert node.config.meta["sql_config_meta"] == "from_config_macro"
         assert node.config.extra["dbt-osmosis-skip-add-tags"] is True
         assert node.config.extra["dbt_osmosis_skip_add_columns"] is False
-        assert node.unrendered_config["dbt_osmosis_skip_add_columns"] is False
+        # Core 1.12.6 reconstructs this unrendered Jinja literal as "False";
+        # 1.12.7 preserves its native type. The rendered value above and the
+        # resolver result below are the osmosis contract, not that raw type.
+        raw_skip_add_columns = node.unrendered_config["dbt_osmosis_skip_add_columns"]
+        assert raw_skip_add_columns is False or raw_skip_add_columns == "False"
 
         column = node.columns["configured_col"]
         assert column.config.meta["dbt-osmosis-string-length"] is True
         assert "configured-column-tag" in column.config.tags
 
         resolver = SettingsResolver()
+        assert resolver.resolve("skip-add-columns", node, fallback=True) is False
         assert resolver.resolve("string-length", node, column_name="configured_col", fallback=False)
 
         accessor = PropertyAccessor(fixture.context)
