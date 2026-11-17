@@ -8,6 +8,7 @@ from __future__ import annotations
 
 __all__ = [
     "CatalogGenerationError",
+    "CatalogValidationError",
     "ConfigurationError",
     "DatabaseError",
     "IntrospectionError",
@@ -55,6 +56,10 @@ class ValidationError(OsmosisError):
     This includes schema validation, data validation, or any
     validation checks that fail during processing.
     """
+
+
+class CatalogValidationError(ValidationError):
+    """Raised when an explicitly supplied catalog cannot safely be consumed."""
 
 
 class YamlValidationError(ValidationError):
