@@ -84,6 +84,9 @@ def _validate_catalog_input(data: object) -> None:
             for key in ("type", "schema", "name"):
                 if not isinstance(table_metadata.get(key), str):
                     raise TypeError(f"{location}.metadata.{key} must be a string")
+            database = table_metadata.get("database")
+            if database is not None and not isinstance(database, str):
+                raise TypeError(f"{location}.metadata.database must be a string or null")
             columns = table.get("columns")
             if not isinstance(columns, dict):
                 raise TypeError(f"{location}.columns must be an object")
