@@ -110,6 +110,34 @@ def test_rejects_malformed_consumed_column(tmp_path, field, value):
         _load(tmp_path, data)
 
 
+@pytest.mark.parametrize("section", ["nodes", "sources"])
+@pytest.mark.parametrize("database", [7, 1.5, True, [], {}])
+def test_rejects_malformed_database(tmp_path, section, database):
+    data = _catalog()
+    table = data["nodes"].pop("model.analytics.example")
+    unique_id = "source.analytics.example" if section == "sources" else "model.analytics.example"
+    data[section][unique_id] = table
+    table["metadata"]["database"] = database
+    with pytest.raises(CatalogValidationError, match=rf"{section}.*metadata.database") as exc:
+        _load(tmp_path, data)
+    assert str(tmp_path / "catalog.json") in str(exc.value)
+    assert json.loads((tmp_path / "catalog.json").read_text()) == data
+
+
+@pytest.mark.parametrize("section", ["nodes", "sources"])
+@pytest.mark.parametrize("metadata", [{}, {"database": None}, {"database": "analytics"}])
+def test_accepts_optional_database(tmp_path, section, metadata):
+    data = _catalog()
+    table = data["nodes"].pop("model.analytics.example")
+    unique_id = "source.analytics.example" if section == "sources" else "model.analytics.example"
+    data[section][unique_id] = table
+    table["metadata"].update(metadata)
+    artifact = _load(tmp_path, data)
+    loaded = getattr(artifact, section)[unique_id]
+    assert loaded.metadata.database == metadata.get("database")
+    assert tuple(loaded.key()) == (metadata.get("database"), "main", "example")
+
+
 @pytest.mark.parametrize("section,value", [("metadata", []), ("columns", []), ("stats", [])])
 def test_rejects_malformed_table(tmp_path, section, value):
     data = _catalog()
@@ -169,15 +197,16 @@ def test_actual_core_generated_catalog(built_duckdb_template):
 
 
 @pytest.mark.parametrize(
-    ("command", "valid"),
+    ("command", "artifact_kind"),
     [
-        (command, valid)
+        (command, artifact_kind)
         for command in ("refactor", "organize", "document")
-        for valid in (False, True)
+        for artifact_kind in ("manifest", "valid", "bad_database")
     ]
-    + [("migration", False)],
+    + [("migration", "manifest"), ("migration", "bad_database")],
 )
-def test_catalog_cli_preserves_yaml_or_fails_before_writes(tmp_path, command, valid):
+def test_catalog_cli_preserves_yaml_or_fails_before_writes(tmp_path, command, artifact_kind):
+    valid = artifact_kind == "valid"
     project = tmp_path / "project"
     models = project / "models"
     models.mkdir(parents=True)
@@ -195,8 +224,11 @@ def test_catalog_cli_preserves_yaml_or_fails_before_writes(tmp_path, command, va
     catalog.write_text(
         '{"metadata":{"dbt_schema_version":"https://schemas.getdbt.com/dbt/manifest/v12.json"},"nodes":{},"sources":{}}'
     )
-    if valid:
-        catalog.write_text(json.dumps(_catalog()))
+    if artifact_kind != "manifest":
+        data = _catalog()
+        if artifact_kind == "bad_database":
+            data["nodes"]["model.analytics.example"]["metadata"]["database"] = 7
+        catalog.write_text(json.dumps(data))
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob("*.yml")}
     catalog_before = catalog.read_bytes()
     extra = ["--auto-apply"] if command in {"refactor", "organize"} else []
@@ -243,6 +275,8 @@ def test_catalog_cli_preserves_yaml_or_fails_before_writes(tmp_path, command, va
         assert "Error: Cannot load catalog" in output
         assert str(catalog) in output
         assert "Traceback" not in output
+        if artifact_kind == "bad_database":
+            assert "metadata.database" in output
         assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob("*.yml")} == before
     assert catalog.read_bytes() == catalog_before
     if command == "migration":
