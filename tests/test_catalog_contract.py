@@ -168,8 +168,15 @@ def test_actual_core_generated_catalog(built_duckdb_template):
     assert path.read_bytes() == before
 
 
-@pytest.mark.parametrize("command", ["refactor", "organize", "document"])
-@pytest.mark.parametrize("valid", [False, True])
+@pytest.mark.parametrize(
+    ("command", "valid"),
+    [
+        (command, valid)
+        for command in ("refactor", "organize", "document")
+        for valid in (False, True)
+    ]
+    + [("migration", False)],
+)
 def test_catalog_cli_preserves_yaml_or_fails_before_writes(tmp_path, command, valid):
     project = tmp_path / "project"
     models = project / "models"
@@ -193,13 +200,19 @@ def test_catalog_cli_preserves_yaml_or_fails_before_writes(tmp_path, command, va
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob("*.yml")}
     catalog_before = catalog.read_bytes()
     extra = ["--auto-apply"] if command in {"refactor", "organize"} else []
+    command_args = ["yaml", command]
+    output_path = tmp_path / "migration.sql"
+    if command == "migration":
+        command_args = ["migration", "plan"]
+        output_path.write_text("Existing migration output must survive invalid input.")
+        output_before = (output_path.read_bytes(), output_path.stat().st_mtime_ns)
+        extra = ["--output", str(output_path)]
     result = subprocess.run(
         [
             sys.executable,
             "-m",
             "dbt_osmosis",
-            "yaml",
-            command,
+            *command_args,
             "--project-dir",
             str(project),
             "--profiles-dir",
@@ -232,3 +245,5 @@ def test_catalog_cli_preserves_yaml_or_fails_before_writes(tmp_path, command, va
         assert "Traceback" not in output
         assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob("*.yml")} == before
     assert catalog.read_bytes() == catalog_before
+    if command == "migration":
+        assert (output_path.read_bytes(), output_path.stat().st_mtime_ns) == output_before
