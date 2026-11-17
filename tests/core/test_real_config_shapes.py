@@ -139,13 +139,19 @@ def test_real_dbt_parse_exposes_dbt_110_config_shapes(tmp_path: Path) -> None:
         assert node.config.meta["sql_config_meta"] == "from_config_macro"
         assert node.config.extra["dbt-osmosis-skip-add-tags"] is True
         assert node.config.extra["dbt_osmosis_skip_add_columns"] is False
-        assert node.unrendered_config["dbt_osmosis_skip_add_columns"] is False
+        # Core 1.13's parser preserves the string representation in unrendered config;
+        # rendered config.extra must still retain the boolean used by our resolver.
+        if parse_version(_installed_dbt_version()) >= parse_version("1.13.0b1"):
+            assert node.unrendered_config["dbt_osmosis_skip_add_columns"] == "False"
+        else:
+            assert node.unrendered_config["dbt_osmosis_skip_add_columns"] is False
 
         column = node.columns["configured_col"]
         assert column.config.meta["dbt-osmosis-string-length"] is True
         assert "configured-column-tag" in column.config.tags
 
         resolver = SettingsResolver()
+        assert resolver.resolve("skip-add-columns", node, fallback=True) is False
         assert resolver.resolve("string-length", node, column_name="configured_col", fallback=False)
 
         accessor = PropertyAccessor(fixture.context)

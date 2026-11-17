@@ -178,3 +178,21 @@ def test_proxy_extra_docs_are_dependency_only() -> None:
     assert "do not expose it to untrusted networks" in docs
     assert "proxy comment middleware is in-memory only" in docs
     assert "ticket:c10proxy25" in docs
+
+
+def test_prerelease_canary_is_separate_explicit_and_non_blocking() -> None:
+    workflow = (ROOT / ".github/workflows/tests.yml").read_text()
+    canary = _workflow_job(workflow, "prerelease-dbt-canary")
+
+    assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in canary
+    assert "continue-on-error: true" in canary
+    assert ".github/scripts/select_dbt_prerelease.py" in canary
+    assert "steps.prerelease.outputs.version != ''" in canary
+    assert "steps.prerelease.outputs.version == ''" in canary
+    assert '"dbt-core==$DBT_PRERELEASE"' in canary
+    assert "--pre" not in canary
+    assert 'metadata.version("dbt-core") == os.environ["DBT_PRERELEASE"]' in canary
+    assert "uv --no-config pip check" in canary
+    assert "dbt parse" in canary
+    assert "pytest -q" in canary
+    assert "basedpyright" in canary
