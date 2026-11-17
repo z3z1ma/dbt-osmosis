@@ -12,8 +12,10 @@ from dbt.artifacts.schemas.catalog import (
     CatalogResults,
 )
 from dbt.task.docs.generate import Catalog
+from mashumaro.exceptions import InvalidFieldValue, MissingField
 
 from dbt_osmosis.core import logger
+from dbt_osmosis.core.exceptions import CatalogValidationError
 
 __all__ = ["_generate_catalog", "_load_catalog"]
 
@@ -54,8 +56,52 @@ def _as_catalog_results(artifact: _CatalogArtifactProtocol) -> CatalogResults:
     return t.cast("CatalogResults", t.cast("object", artifact))
 
 
+_CATALOG_SCHEMA = "https://schemas.getdbt.com/dbt/catalog/v1.json"
+
+
+def _validate_catalog_input(data: object) -> None:
+    """Check the catalog envelope and fields used by column introspection."""
+    if not isinstance(data, dict):
+        raise TypeError("expected a JSON object")
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        raise TypeError("metadata must be an object")
+    if "dbt_schema_version" in metadata and metadata["dbt_schema_version"] != _CATALOG_SCHEMA:
+        raise ValueError(f"expected catalog v1 schema {_CATALOG_SCHEMA!r}")
+    if any(key in data for key in ("macros", "parent_map", "child_map")):
+        raise ValueError("received manifest fields; supply catalog.json, not manifest.json")
+    for section in ("nodes", "sources"):
+        entries = data.get(section)
+        if not isinstance(entries, dict):
+            raise TypeError(f"{section} must be an object")
+        for unique_id, table in entries.items():
+            location = f"{section}.{unique_id}"
+            if not isinstance(table, dict):
+                raise TypeError(f"{location} must be an object")
+            table_metadata = table.get("metadata")
+            if not isinstance(table_metadata, dict):
+                raise TypeError(f"{location}.metadata must be an object")
+            for key in ("type", "schema", "name"):
+                if not isinstance(table_metadata.get(key), str):
+                    raise TypeError(f"{location}.metadata.{key} must be a string")
+            columns = table.get("columns")
+            if not isinstance(columns, dict):
+                raise TypeError(f"{location}.columns must be an object")
+            for column_key, column in columns.items():
+                column_location = f"{location}.columns.{column_key}"
+                if not isinstance(column, dict):
+                    raise TypeError(f"{column_location} must be an object")
+                for key in ("name", "type"):
+                    if not isinstance(column.get(key), str):
+                        raise TypeError(f"{column_location}.{key} must be a string")
+                if type(column.get("index")) is not int:
+                    raise TypeError(f"{column_location}.index must be an integer")
+                if column.get("comment") is not None and not isinstance(column["comment"], str):
+                    raise TypeError(f"{column_location}.comment must be a string or null")
+
+
 def _load_catalog(settings: t.Any) -> CatalogResults | None:
-    """Load the catalog file if it exists and return a CatalogResults instance."""
+    """Load a compatible catalog, retaining the existing missing-path fallback."""
     logger.debug(":mag: Attempting to load catalog from => %s", settings.catalog_path)
     if not settings.catalog_path:
         return None
@@ -64,7 +110,15 @@ def _load_catalog(settings: t.Any) -> CatalogResults | None:
         logger.warning(":warning: Catalog path => %s does not exist.", fp)
         return None
     logger.info(":books: Loading existing catalog => %s", fp)
-    return _as_catalog_results(_catalog_artifact_factory().from_dict(json.loads(fp.read_text())))
+    try:
+        data = json.loads(fp.read_text(encoding="utf-8"))
+        _validate_catalog_input(data)
+        return _as_catalog_results(_catalog_artifact_factory().from_dict(data))
+    except (OSError, UnicodeError, ValueError, TypeError, InvalidFieldValue, MissingField) as exc:
+        raise CatalogValidationError(
+            f"Cannot load catalog {str(fp)!r}: {exc}. "
+            "Supply a valid dbt catalog v1 JSON artifact (not manifest.json)."
+        ) from exc
 
 
 # NOTE: this is mostly adapted from dbt-core with some cruft removed, strict pyright is not a fan of dbt's shenanigans

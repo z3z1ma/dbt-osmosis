@@ -420,7 +420,12 @@ def yaml_opts(func: t.Callable[P, T]) -> t.Callable[P, T]:
             logger.warning(
                 ":construction: You have disabled introspection without providing a catalog path. This will result in some features not working as expected."
             )
-        return func(*args, **kwargs)
+        from dbt_osmosis.core.exceptions import CatalogValidationError
+
+        try:
+            return func(*args, **kwargs)
+        except CatalogValidationError as exc:
+            raise click.ClickException(str(exc)) from exc
 
     return wrapper
 
