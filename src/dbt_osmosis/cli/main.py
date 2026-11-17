@@ -300,6 +300,18 @@ def _parsed_cli_vars(vars_value: str | None) -> dict[str, t.Any]:
     return t.cast("dict[str, t.Any]", parsed)
 
 
+def _create_yaml_refactor_context(
+    *, project: DbtProjectContext, settings: YamlRefactorSettings
+) -> YamlRefactorContext:
+    """Translate explicit catalog input errors for every CLI context consumer."""
+    from dbt_osmosis.core.exceptions import CatalogValidationError
+
+    try:
+        return YamlRefactorContext(project=project, settings=settings)
+    except CatalogValidationError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 def _create_cli_yaml_context(
     *,
     project_dir: str | None,
@@ -323,7 +335,7 @@ def _create_cli_yaml_context(
         vars=_parsed_cli_vars(vars_value),
         disable_introspection=disable_introspection,
     )
-    return YamlRefactorContext(
+    return _create_yaml_refactor_context(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             create_catalog_if_not_exists=False,
@@ -567,7 +579,7 @@ def refactor(
         disable_introspection=disable_introspection,
     )
 
-    with YamlRefactorContext(
+    with _create_yaml_refactor_context(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
@@ -637,7 +649,7 @@ def organize(
         disable_introspection=disable_introspection,
     )
 
-    with YamlRefactorContext(
+    with _create_yaml_refactor_context(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
@@ -783,7 +795,7 @@ def document(
         disable_introspection=disable_introspection,
     )
 
-    with YamlRefactorContext(
+    with _create_yaml_refactor_context(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             **{k: v for k, v in kwargs.items() if v is not None}, create_catalog_if_not_exists=False
@@ -1801,7 +1813,7 @@ def schema(
         disable_introspection=disable_introspection,
     )
 
-    with YamlRefactorContext(
+    with _create_yaml_refactor_context(
         project=create_dbt_project_context(settings),
         settings=YamlRefactorSettings(
             **{
@@ -2261,7 +2273,9 @@ def _suggest_tests_for_nodes(
         model_name = getattr(node, "name", "unknown")
         try:
             analysis = suggest_tests_for_model(
-                context=YamlRefactorContext(project=project, settings=YamlRefactorSettings()),
+                context=_create_yaml_refactor_context(
+                    project=project, settings=YamlRefactorSettings()
+                ),
                 node=node,
                 use_ai=use_ai_for_suggestions,
                 temperature=temperature,
@@ -2289,7 +2303,7 @@ def _suggestion_results(
         )
 
     try:
-        context = YamlRefactorContext(project=project, settings=YamlRefactorSettings())
+        context = _create_yaml_refactor_context(project=project, settings=YamlRefactorSettings())
         return suggest_tests_for_project(
             context=context,
             use_ai=use_ai_for_suggestions,

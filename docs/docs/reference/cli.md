@@ -48,6 +48,14 @@ YAML commands manage schema files and column-level documentation inheritance.
 - `-d, --dry-run`
 - `-C, --check`
 - `--catalog-path`
+
+  Uses a dbt catalog v1 JSON artifact for column metadata. Existing compatible catalogs with a
+  metadata object but no schema URL remain supported. An existing malformed catalog, a manifest
+  supplied in its place, or an explicitly unsupported schema fails before YAML changes, with the
+  catalog path in the diagnostic; it does not silently trigger warehouse fallback or regeneration.
+  A nonexistent path retains the existing warning and fallback behavior. Catalog acceptance is not
+  a claim of Fusion runtime compatibility.
+
 - `--disable-introspection`
 - `--include-external`
 - `--scaffold-empty-configs/--no-scaffold-empty-configs`

@@ -385,6 +385,12 @@ class YamlRefactorContext:
 
     def __post_init__(self) -> None:
         logger.debug(":green_book: Running post-init for YamlRefactorContext.")
+        if self.settings.catalog_path:
+            from dbt_osmosis.core.catalog_operations import _load_catalog
+
+            # Validate explicit input before any source bootstrap or YAML restructuring.
+            # Do not call read_catalog here: its optional generation can query the warehouse.
+            self._catalog = _load_catalog(self.settings)
         if EMPTY_STRING not in self.placeholders:
             self.placeholders = (EMPTY_STRING, *self.placeholders)
         for setting, val in self.yaml_settings.items():

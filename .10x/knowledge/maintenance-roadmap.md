@@ -1,6 +1,6 @@
 Status: active
 Created: 2026-11-16
-Updated: 2026-11-16
+Updated: 2026-11-17
 
 # dbt-osmosis maintenance roadmap
 
@@ -36,12 +36,12 @@ These sources motivate compatibility tests and cautious artifact boundaries, not
 | P2 / artifact boundary follow-up | Establish a supported artifact-consumption contract before any Fusion claim. | Fixtures from identified Core/Fusion producers; check schema/version, missing compiled SQL/catalog, semantic metadata and unchanged YAML. Separate read-only artifact operations from Python compilation and warehouse introspection. No manifest-only CLI until it can fail clearly on unsupported operations. |
 | P3 / support policy follow-up | Review legacy Python/Core support and prerelease detection after 1.12 audit. | Measure adapter availability and user impact; explicit policy decision before removing old rows or changing package bounds. Current latest-stable canary is not prerelease coverage; add a bounded 1.13 beta audit separately if warranted. |
 
-## First iteration and next action
-Core 1.12 coverage merged in #459; issue reconciliation merged in #464. Both completed exact-head and post-merge CI. Residual symptom regression work for #443/#452 is tracked separately in #465; do not infer closure from this snapshot.
+## Completed work and active iteration
+Core 1.12 coverage merged in #459; issue reconciliation merged in #464 and real CLI residual regressions in #465. Direct-rename lineage merged in #466 at `f1d8947f`. Each completed exact-head and post-merge CI. The original #443/#452 defects were resolved with bounded reproductions; #440 was resolved as direct-rename support plus an explicit decision against automatic derived/ambiguous documentation copying. The five superseded docs dependency PRs were closed after #463 incorporated their changes. GitHub inventory was zero open PRs/issues on 2026-11-17; this is a snapshot, not a completion criterion for the roadmap.
 
-The direct-rename implementation owner is `.10x/tickets/2026-11-16-direct-rename-implementation.md`, governed by `.10x/specs/direct-rename-implementation.md`. Local implementation and independent review are complete; publication and exact-head integration gates remain pending. Real CLI tests exposed that fresh parsing discards compiled SQL, so opt-in lineage now compiles actual selected models through the established runner. Compilation macros may query the warehouse; YAML dry-run remains non-writing.
+The next active outcome is the existing catalog input boundary, owned by `.10x/tickets/2026-11-17-catalog-input-contract.md` and `.10x/specs/catalog-input-contract.md`: reject malformed or explicitly incompatible supplied catalogs with a useful diagnostic before YAML mutation, retain existing missing-file fallback and metadata-free compatible inputs, and verify valid generated Core artifacts. This is runtime work on the existing `--catalog-path`, not a new artifact-only CLI or a claim that Fusion provides Core's Python APIs. Validation and integration evidence will be recorded in the ticket.
 
-Scope is direct aliases and CTE identity preservation for DuckDB/Trino, with donor-column docs references, conservative rejection, structural budgets and no persistent candidate cache. Automatic derived/aggregate/multi-donor documentation copying is deliberately excluded: a common source column does not establish unchanged meaning. Trino validation is offline, not warehouse certification. Other dialects and artifact-only/Fusion operation require their own evidence before support claims. No broad feature delivery dates are committed.
+Direct lineage remains opt-in for DuckDB/Trino with raw donor docs references, conservative rejection, structural budgets and no persistent candidate cache. Compilation macros may query the warehouse; YAML dry-run remains non-writing. Automatic derived/aggregate/multi-donor copying remains deliberately excluded because origin does not prove unchanged meaning. Trino evidence is offline, not warehouse certification. Actual Fusion producer fixtures, other dialects, artifact-only operations and future Core prerelease auditing remain evidence-gated follow-ups. No broad delivery dates are committed.
 
 ## Integration gates
 Use isolated branches; publish draft first; commission independent review; require all executed blocking checks on the exact proposed head. Fetch main again before merge, integrate concurrent dependency changes and rerun affected/full remote gates as required. Never treat scheduled-canary skip as an executed pass. Keep release operations separate. Preserve original checkouts and unrelated work.
