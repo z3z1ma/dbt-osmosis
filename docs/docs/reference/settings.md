@@ -79,10 +79,12 @@ There is no persistent lineage cache. Limits are 64 KiB SQL, 4,096 AST nodes, 25
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `catalog-path` | `null` | Use a specific `catalog.json` instead of live warehouse introspection for column/type lookup. |
+| `catalog-path` | `null` | Prefer a specific `catalog.json` for column/type lookup; missing relations can fall back to live introspection. |
 | `create-catalog-if-not-exists` | `false` | Generate a catalog when one is missing and then use it for introspection. |
-| `disable-introspection` | `false` | Allow YAML commands to run without a live database connection. Pair this with `catalog-path` when you still want column/type information. |
+| `disable-introspection` | `false` | Disable live column introspection and catalog generation. Pair with `catalog-path` for column/type information; this does not prevent warehouse queries from project macros or compilation. |
 | `include-external` | `false` | Include models and sources from external dbt packages. |
+
+See [Catalog artifacts and engine support](./artifacts.md) for validation, missing-path fallback, and the limits of offline and Fusion compatibility.
 
 ## Execution
 

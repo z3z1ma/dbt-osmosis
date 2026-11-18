@@ -1,5 +1,7 @@
 # dbt-fusion Compatibility Findings
 
+> Historical experiment record, not a current support matrix. The findings below describe the named versions, project, and credentials at the time. Statements about empty catalogs, Python interfaces, or matching manifest schemas must not be generalized to current Fusion releases. For the current, narrower catalog input boundary and Python runtime requirements, see [Catalog artifacts and engine support](docs/docs/reference/artifacts.md). No actual current Fusion producer fixture is certified by the catalog validation tests.
+
 Tracked from real-world testing on [oem-dbt-bigquery](https://github.com/RicardoAGL/oem-dbt-bigquery) (BigQuery, Kimball star schema, 15+ models).
 
 dbt-fusion version: **2.0.0-preview.154** | dbt-core 1.12.0b2 + dbt-core-experimental-parser 2.0.0a1 (tested 2026-06-01)

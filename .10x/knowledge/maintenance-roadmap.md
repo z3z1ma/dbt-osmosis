@@ -1,6 +1,6 @@
 Status: active
 Created: 2026-11-16
-Updated: 2026-11-17
+Updated: 2026-11-18
 
 # dbt-osmosis maintenance roadmap
 
@@ -39,9 +39,11 @@ These sources motivate compatibility tests and cautious artifact boundaries, not
 ## Completed work and active iteration
 Core 1.12 coverage merged in #459; issue reconciliation merged in #464 and real CLI residual regressions in #465. Direct-rename lineage merged in #466 at `f1d8947f`. Each completed exact-head and post-merge CI. The original #443/#452 defects were resolved with bounded reproductions; #440 was resolved as direct-rename support plus an explicit decision against automatic derived/ambiguous documentation copying. The five superseded docs dependency PRs were closed after #463 incorporated their changes. GitHub inventory was zero open PRs/issues on 2026-11-17; this is a snapshot, not a completion criterion for the roadmap.
 
-The existing catalog input boundary merged in #467 at `a7632b5b`: invalid supplied artifacts fail before YAML mutation; valid generated Core catalogs and legacy schema-less metadata objects remain accepted. Main Tests/lint pass. Release validation is independently blocked by a Core 1.12.6 raw unrendered-config representation assertion; no release-success claim follows from the test workflow.
+The existing catalog input boundary merged in #467 at `a7632b5b`: invalid supplied artifacts fail before YAML mutation; valid generated Core catalogs and legacy schema-less metadata objects remain accepted. Follow-up #469 at `271b269` completed optional relation database identifier validation, preserving absent/null/string values while rejecting malformed values during preflight. Exact-head and post-merge Tests/lint passed.
 
-The current bounded artifact follow-up is `.10x/tickets/2026-11-17-catalog-database-shape.md`: complete the existing consumed-field contract for optional relation database identifiers. Inspection found that numeric database metadata passes dbt deserialization, then crashes in relation matching; reject malformed shapes during preflight while preserving absent/null/string inputs. This does not expand engine support or introduce artifact-only execution. Draft #468 separately owns prerelease-audit work and remains outside this slice.
+Release validation's Core 1.12.6 raw unrendered-config representation assertion was corrected by test-only #470 at `0cdf4a7`. The rendered value and resolver still require boolean false; only the raw version-dependent representation is tolerated. Main Release validation succeeded with 1,144 tests passed and 11 skipped; publication steps were skipped. This is validation evidence, not a new package release.
+
+The current bounded follow-up is `.10x/tickets/2026-11-18-artifact-support-documentation.md`: publish the implemented catalog boundary, explain missing-path and missing-relation fallback, distinguish artifact ingestion from engine support, and qualify historical Fusion claims. Actual current Fusion producer fixtures remain a separate evidence gap. Draft #468 owns prerelease auditing and is blocked pending explicit approval to resume the previously denied publication/ready/merge actions; this slice does not change it.
 
 Direct lineage remains opt-in for DuckDB/Trino with raw donor docs references, conservative rejection, structural budgets and no persistent candidate cache. Compilation macros may query the warehouse; YAML dry-run remains non-writing. Automatic derived/aggregate/multi-donor copying remains deliberately excluded because origin does not prove unchanged meaning. Trino evidence is offline, not warehouse certification. Actual Fusion producer fixtures, other dialects, artifact-only operations and future Core prerelease auditing remain evidence-gated follow-ups. No broad delivery dates are committed.
 
