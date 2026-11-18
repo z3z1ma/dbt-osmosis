@@ -34,3 +34,9 @@ None for bounded documentation. Current actual Fusion producer fixtures unavaila
 Pending independent review.
 ## Retrospective
 Source inspection exposed two existing settings descriptions that overstated offline behavior: a catalog miss may still query the warehouse, and disabling introspection does not prevent arbitrary macros/compilation queries. The new page and corrected settings distinguish these boundaries rather than expanding the runtime contract.
+
+### Independent review (2026-11-18)
+- Reviewed `0cdf4a7..84b4f97` and relevant source/test assertions without repeating executor validation.
+- **Finding (significant documentation correctness):** the new fallback paragraph describes a nonexistent `--catalog-path` as falling back. Both YAML and migration CLI options use `click.Path(exists=True)` (`src/dbt_osmosis/cli/main.py` lines 388–390 and 2138–2140), so a missing explicit CLI path is rejected before `_load_catalog`. The loader's absent/nonexistent-path fallback is accurate only once a setting reaches that internal boundary (or a file disappears after CLI parsing). Qualify CLI versus loader behavior, preserving runtime behavior.
+- Catalog envelope/consumed fields, generation guard, missing-relation fallback, preflight before YAML writes, Core dependency, and historical Fusion caveat otherwise match inspected source and test assertions. Generated artifact producer limits are correctly bounded.
+- **Verdict: concerns** until the CLI/loader distinction is corrected. No code safety finding. Residual risk: no actual current Fusion fixtures; exact-head CI/publication remains pending as ticket states.
