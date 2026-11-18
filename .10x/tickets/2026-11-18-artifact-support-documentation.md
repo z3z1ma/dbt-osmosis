@@ -45,3 +45,7 @@ Source inspection exposed two existing settings descriptions that overstated off
 - Corrected the user-facing fallback paragraph: explicit nonexistent CLI paths fail Click argument validation in both YAML and migration commands; omitted options retain normal behavior. Documented loader fallback separately, including files disappearing after argument validation. No runtime change.
 - The initial source cross-check was incomplete because it started at the loader rather than the CLI boundary; future user-facing input documentation must follow the whole entry path, not just the internal helper.
 - Corrected-docs build: `npm --prefix docs run build` exit 0, static generation succeeded; `git diff --check` passed. Log `/private/tmp/dbt-artifact-docs-build-corrected.log`. Same Node localStorage warning only.
+
+### Independent follow-up review (2026-11-18)
+- Reviewed correction `c0cba12` against the original finding and both CLI `click.Path(exists=True)` declarations plus `_load_catalog`. The revised paragraph correctly distinguishes an explicit nonexistent CLI argument from absent/internal loader paths and the post-validation disappearance case.
+- **Verdict: pass** for documentation correctness. Significant finding resolved; no additional findings. Executor's corrected-build evidence accepted without rerunning tests. Exact-head CI/integration gates and actual Fusion-producer fixture limitations remain unchanged.
