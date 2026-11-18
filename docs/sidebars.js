@@ -33,6 +33,7 @@ const sidebars = {
       items: [
         'reference/cli',
         'reference/settings',
+        'reference/artifacts',
         'tutorial-yaml/configuration',
       ],
     },

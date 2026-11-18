@@ -11,3 +11,4 @@ Reference docs are **information-oriented**: stable, complete, and optimized for
 - [CLI reference](./cli)
 - [YAML configuration and options](../tutorial-yaml/configuration)
 - [Settings reference](./settings)
+- [Catalog artifacts and engine support](./artifacts)
