@@ -160,6 +160,67 @@ def test_missing_path_retains_fallback(tmp_path):
     assert _load_catalog(SimpleNamespace(catalog_path=str(tmp_path / "absent.json"))) is None
 
 
+@pytest.mark.parametrize("errors", [["private warehouse detail"], ["secret one", "secret two"]])
+def test_partial_catalog_warns_without_error_details(tmp_path, errors):
+    data = _catalog()
+    data["errors"] = errors
+    data["sources"]["source.analytics.example"] = data["nodes"]["model.analytics.example"]
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps(data))
+    before = path.read_bytes()
+    with patch("dbt_osmosis.core.catalog_operations.logger") as log:
+        artifact = _load_catalog(SimpleNamespace(catalog_path=str(path)))
+    log.warning.assert_called_once()
+    message, *args = log.warning.call_args.args
+    rendered = message % tuple(args)
+    assert str(path) in rendered
+    assert f"{len(errors)} generation error(s)" in rendered
+    assert "incomplete" in rendered
+    assert "errors" in rendered
+    assert all(error not in str(log.mock_calls) for error in errors)
+    assert artifact.errors == errors
+    for section, unique_id in (
+        ("nodes", "model.analytics.example"),
+        ("sources", "source.analytics.example"),
+    ):
+        assert getattr(artifact, section)[unique_id].columns["id"].comment == "Identity"
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("errors", ["missing", None, []])
+def test_catalog_without_generation_errors_is_quiet(tmp_path, errors):
+    data = _catalog()
+    if errors == "missing":
+        del data["errors"]
+    else:
+        data["errors"] = errors
+    with patch("dbt_osmosis.core.catalog_operations.logger") as log:
+        assert _load(tmp_path, data) is not None
+    log.warning.assert_not_called()
+
+
+def test_partial_catalog_context_warns_only_on_preflight(tmp_path):
+    data = _catalog()
+    data["errors"] = ["private warehouse detail"]
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps(data))
+    project = Mock()
+    project.runtime_cfg.vars.to_dict.return_value = {}
+    with (
+        patch("dbt_osmosis.core.catalog_operations.logger") as log,
+        YamlRefactorContext(
+            project=project,
+            settings=YamlRefactorSettings(catalog_path=str(path)),
+            pool=Mock(),
+        ) as context,
+    ):
+        log.warning.assert_called_once()
+        catalog = context.read_catalog()
+        assert catalog.nodes
+        assert context.read_catalog() is catalog
+        log.warning.assert_called_once()
+
+
 def test_context_preflight_does_not_generate_or_allocate_pool(tmp_path):
     path = tmp_path / "catalog.json"
     path.write_text("[]")

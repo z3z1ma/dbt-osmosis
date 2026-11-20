@@ -1,6 +1,6 @@
 Status: active
 Created: 2026-11-16
-Updated: 2026-11-18
+Updated: 2026-11-20
 
 # dbt-osmosis maintenance roadmap
 
@@ -43,9 +43,11 @@ The existing catalog input boundary merged in #467 at `a7632b5b`: invalid suppli
 
 Release validation's Core 1.12.6 raw unrendered-config representation assertion was corrected by test-only #470 at `0cdf4a7`. The rendered value and resolver still require boolean false; only the raw version-dependent representation is tolerated. Main Release validation succeeded with 1,144 tests passed and 11 skipped; publication steps were skipped. This is validation evidence, not a new package release.
 
-The current bounded follow-up is `.10x/tickets/2026-11-18-artifact-support-documentation.md`: publish the implemented catalog boundary, explain missing-path and missing-relation fallback, distinguish artifact ingestion from engine support, and qualify historical Fusion claims. Actual current Fusion producer fixtures remain a separate evidence gap. Draft #468 owns prerelease auditing and is blocked pending explicit approval to resume the previously denied publication/ready/merge actions; this slice does not change it.
+The artifact support documentation is now on main, describing the implemented boundary, missing-path and missing-relation fallback, and engine support limits. The next bounded iteration is `.10x/tickets/2026-11-20-catalog-error-observability.md`: surface generation errors in supplied compatible catalogs without rejecting usable metadata or printing raw warehouse errors. Official [catalog documentation](https://docs.getdbt.com/reference/artifacts/catalog-json), rechecked 2026-11-20, identifies `errors` as metadata-query failures. Generated catalogs already warn; supplied catalogs lacked that visibility. Focused validation and integration evidence belongs in the ticket. Actual current Fusion producer fixtures remain a separate evidence gap. Draft #468 owns prerelease auditing and is blocked pending explicit approval to resume the previously denied publication/ready/merge actions; this slice does not change it.
 
 Direct lineage remains opt-in for DuckDB/Trino with raw donor docs references, conservative rejection, structural budgets and no persistent candidate cache. Compilation macros may query the warehouse; YAML dry-run remains non-writing. Automatic derived/aggregate/multi-donor copying remains deliberately excluded because origin does not prove unchanged meaning. Trino evidence is offline, not warehouse certification. Actual Fusion producer fixtures, other dialects, artifact-only operations and future Core prerelease auditing remain evidence-gated follow-ups. No broad delivery dates are committed.
 
 ## Integration gates
 Use isolated branches; publish draft first; commission independent review; require all executed blocking checks on the exact proposed head. Fetch main again before merge, integrate concurrent dependency changes and rerun affected/full remote gates as required. Never treat scheduled-canary skip as an executed pass. Keep release operations separate. Preserve original checkouts and unrelated work.
+
+Observed 2026-11-20: main `4843795` includes merged [#473](https://github.com/z3z1ma/dbt-osmosis/pull/473), a certifi-only lock refresh; stable [v1.6.0](https://github.com/z3z1ma/dbt-osmosis/releases/tag/v1.6.0) was published 2026-11-18. This iteration performs no release or dependency changes. Next evidence-gated artifact priority remains actual versioned producer fixtures before broader engine claims.
