@@ -116,7 +116,15 @@ def _load_catalog(settings: t.Any) -> CatalogResults | None:
     try:
         data = json.loads(fp.read_text(encoding="utf-8"))
         _validate_catalog_input(data)
-        return _as_catalog_results(_catalog_artifact_factory().from_dict(data))
+        catalog = _as_catalog_results(_catalog_artifact_factory().from_dict(data))
+        if catalog.errors:
+            logger.warning(
+                ":warning: Catalog %s reports %s generation error(s); metadata may be incomplete. "
+                "Inspect the artifact's errors field for details.",
+                fp,
+                len(catalog.errors),
+            )
+        return catalog
     except (OSError, UnicodeError, ValueError, TypeError, InvalidFieldValue, MissingField) as exc:
         raise CatalogValidationError(
             f"Cannot load catalog {str(fp)!r}: {exc}. "

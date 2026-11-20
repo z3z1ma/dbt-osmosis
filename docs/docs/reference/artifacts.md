@@ -22,6 +22,8 @@ These checks cover fields consumed by dbt-osmosis, followed by dbt's typed deser
 
 An existing invalid artifact produces an actionable error naming its path. Validation happens before YAML mutation; invalid input does not silently trigger warehouse fallback or catalog regeneration. The input artifact is not rewritten. Project loading may already have occurred before validation, so this is not a promise of zero dbt activity.
 
+A compatible catalog with recorded generation errors remains usable, but dbt-osmosis warns with its path and error count because metadata may be incomplete. Inspect the catalog's `errors` field for details; the warning does not print the producer's raw error messages. Repeated reads within the same context reuse the loaded catalog without repeating the warning.
+
 The YAML and migration CLI commands require an explicitly supplied `--catalog-path` to exist: a nonexistent path is rejected during argument validation, not silently treated as a missing catalog. Omitting the option retains normal lookup behavior. Internally, the catalog loader returns no catalog when its path setting is absent or no longer exists; that internal fallback also covers a file disappearing after CLI argument validation.
 
 Catalog generation can be requested with `--create-catalog-if-not-exists`; it requires introspection to be enabled. For a relation not found in a loaded catalog, column lookup may fall back to the warehouse unless `--disable-introspection` is enabled.
