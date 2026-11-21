@@ -92,11 +92,11 @@ jobs:
 
       - name: Build package
         run: |
-          uvx --from=hatchling==1.31.0 hatchling build
+          uvx --from=hatchling==1.33.0 hatchling build
 
       - name: Validate package metadata
         run: |
-          uvx --from=twine==6.1.0 twine check --strict dist/*
+          uvx --from=twine==7.0.0 twine check --strict dist/*
 
       - name: Smoke test built wheel install
         run: |
@@ -237,7 +237,7 @@ jobs:
         if: "! steps.check-version.outputs.tag"
         run: |
           rm -rf dist
-          uvx --from=hatchling==1.31.0 hatchling build
+          uvx --from=hatchling==1.33.0 hatchling build
 
       - name: Publish package on PyPI
         if: steps.check-version.outputs.tag
