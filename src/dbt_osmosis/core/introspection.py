@@ -1413,11 +1413,26 @@ def _catalog_columns_for_relation(
         return None
 
     logger.debug(":blue_book: Catalog found => Checking for ref => %s", rendered_relation)
-    matcher = getattr(t.cast(t.Any, relation), "matches", None)
+    # CatalogTable.key() folds case, so first preserve an exact raw identity
+    # across both sections before retaining the existing adapter matching fallback.
+    relation_identity = (relation.database, relation.schema, relation.identifier)
     catalog_entry = _find_first(
         chain(catalog.nodes.values(), catalog.sources.values()),
-        lambda entry: _catalog_entry_matches(matcher, entry),
+        lambda entry: (
+            (
+                entry.metadata.database,
+                entry.metadata.schema,
+                entry.metadata.name,
+            )
+            == relation_identity
+        ),
     )
+    if catalog_entry is None:
+        matcher = getattr(t.cast(t.Any, relation), "matches", None)
+        catalog_entry = _find_first(
+            chain(catalog.nodes.values(), catalog.sources.values()),
+            lambda entry: _catalog_entry_matches(matcher, entry),
+        )
     if not catalog_entry:
         return None
 

@@ -18,6 +18,8 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures("fresh_caches")
 from dbt.adapters.base.column import Column
+from dbt.adapters.base.relation import BaseRelation
+from dbt.artifacts.schemas.catalog import CatalogArtifact
 
 from dbt_osmosis.core.introspection import (
     PropertyAccessor,
@@ -184,6 +186,121 @@ def test_get_columns_reprocesses_cached_columns_for_new_context_filters():
 
     assert set(initial) == {"visible", "skip_me"}
     assert set(filtered) == {"visible"}
+    assert calls == [("dev", relation.render())]
+
+
+def _catalog_table(identity, column_name="right_column"):
+    return {
+        "metadata": {"type": "table", **identity},
+        "columns": {
+            column_name: {
+                "name": column_name,
+                "type": "INTEGER" if column_name == "right_column" else "VARCHAR",
+                "index": 1,
+                "comment": f"Documentation for {column_name}",
+            },
+        },
+        "stats": {},
+    }
+
+
+def _catalog_context(data):
+    calls = []
+    context = _make_introspection_context({}, calls)
+    catalog = CatalogArtifact.from_dict(data)
+    context.read_catalog = lambda: catalog
+    return context, catalog, calls
+
+
+@pytest.mark.parametrize("component", ["database", "schema", "name"])
+@pytest.mark.parametrize(
+    "exact_section,other_section",
+    [("nodes", "nodes"), ("sources", "sources"), ("nodes", "sources"), ("sources", "nodes")],
+)
+@pytest.mark.parametrize("exact_first", [False, True])
+def test_get_columns_prefers_exact_catalog_identity(
+    component, exact_section, other_section, exact_first
+):
+    """Case-folded matches must not hide an exact identity anywhere in the catalog."""
+    exact = {"database": "db", "schema": "public", "name": "orders"}
+    exact[component] = exact[component].capitalize()
+    other = {**exact, component: exact[component].lower()}
+    data = {"metadata": {}, "nodes": {}, "sources": {}}
+    entries = [
+        (other_section, "other", _catalog_table(other, "wrong_column")),
+        (exact_section, "exact", _catalog_table(exact)),
+    ]
+    if exact_first:
+        entries.reverse()
+    for section, key, table in entries:
+        data[section][key] = table
+    context, catalog, calls = _catalog_context(data)
+    before = catalog.to_dict()
+    relation = BaseRelation.create(
+        database=exact["database"],
+        schema=exact["schema"],
+        identifier=exact["name"],
+    )
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert columns["right_column"].type == "INTEGER"
+    assert columns["right_column"].comment == "Documentation for right_column"
+    assert catalog.to_dict() == before
+    assert calls == []
+
+
+@pytest.mark.parametrize("database", ["absent", None, "db"])
+@pytest.mark.parametrize("catalog_name", ["Orders", "orders"])
+def test_get_columns_preserves_catalog_fallback_and_optional_database(database, catalog_name):
+    """Retain legacy case-insensitive and omitted database lookup behavior."""
+    identity = {"schema": "public", "name": catalog_name}
+    if database != "absent":
+        identity["database"] = database
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {"source.pkg.orders": _catalog_table(identity)},
+    })
+    before = catalog.to_dict()
+    relation = BaseRelation.create(database="db", schema="public", identifier="Orders")
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert columns["right_column"].type == "INTEGER"
+    assert columns["right_column"].comment == "Documentation for right_column"
+    assert catalog.to_dict() == before
+    assert calls == []
+
+
+@pytest.mark.parametrize("has_catalog", [False, True])
+def test_get_columns_retains_missing_catalog_relation_warehouse_fallback(has_catalog):
+    """No catalog match must still use the existing adapter path."""
+    relation = BaseRelation.create(database="db", schema="public", identifier="orders")
+    calls = []
+    context = _make_introspection_context(
+        {("dev", relation.render()): [Column.from_description("warehouse_column", "integer")]},
+        calls,
+    )
+    if has_catalog:
+        catalog = CatalogArtifact.from_dict({
+            "metadata": {},
+            "sources": {},
+            "nodes": {
+                "model.pkg.other": _catalog_table({
+                    "database": "db",
+                    "schema": "public",
+                    "name": "other",
+                })
+            },
+        })
+        context.read_catalog = lambda: catalog
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["warehouse_column"]
     assert calls == [("dev", relation.render())]
 
 
