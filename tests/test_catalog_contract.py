@@ -1,17 +1,20 @@
-"""Catalog input contracts; real producer coverage uses the built DuckDB fixture."""
+"""Catalog contracts for live Core fixtures and a recorded full dbt v2 producer."""
 
 import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from dbt.adapters.duckdb.relation import DuckDBRelation
 from ruamel.yaml import YAML
 
 from dbt_osmosis.core.catalog_operations import _load_catalog
 from dbt_osmosis.core.exceptions import CatalogValidationError
+from dbt_osmosis.core.introspection import get_columns
 from dbt_osmosis.core.settings import YamlRefactorContext, YamlRefactorSettings
 
 
@@ -255,6 +258,93 @@ def test_actual_core_generated_catalog(built_duckdb_template):
                 assert loaded.columns[key].type == column["type"]
                 assert loaded.columns[key].comment == column.get("comment")
     assert path.read_bytes() == before
+
+
+@pytest.mark.usefixtures("fresh_caches")
+@pytest.mark.parametrize(
+    "section,unique_id,expected",
+    [
+        (
+            "nodes",
+            "model.osmosis_fusion_fixture.accounts",
+            [
+                ("account_id", "INTEGER", "Original account identifier.", 1),
+                ("status", "VARCHAR", "Original account status.", 2),
+                ("is_active", "BOOLEAN", "Original active marker.", 3),
+            ],
+        ),
+        (
+            "nodes",
+            "model.osmosis_fusion_fixture.account_labels",
+            [
+                ("account_id", "INTEGER", "Original label identifier.", 1),
+                ("account_status", "VARCHAR", "Original label status.", 2),
+            ],
+        ),
+        (
+            "sources",
+            "source.osmosis_fusion_fixture.local_fixture.physical_accounts",
+            [
+                ("account_id", "INTEGER", "Original account identifier.", 1),
+                ("status", "VARCHAR", "Original account status.", 2),
+                ("is_active", "BOOLEAN", "Original active marker.", 3),
+            ],
+        ),
+    ],
+)
+def test_actual_fusion_catalog_columns_without_warehouse(tmp_path, section, unique_id, expected):
+    """Consume unedited full dbt 2.0.12 output without installing that producer in CI."""
+    fixture = Path(__file__).parent / "fixtures" / "fusion_2_0_12" / "catalog.json"
+    before = fixture.read_bytes()
+    path = tmp_path / "catalog.json"
+    path.write_bytes(before)
+    raw = json.loads(before)
+    assert raw["metadata"]["dbt_version"] == "2.0.12"
+    assert raw["metadata"]["dbt_schema_version"] == "https://schemas.getdbt.com/dbt/catalog/v1.json"
+    catalog = _load_catalog(SimpleNamespace(catalog_path=str(path)))
+    assert catalog.errors is None
+    assert (len(catalog.nodes), len(catalog.sources)) == (2, 1)
+    table = getattr(catalog, section)[unique_id]
+    assert (table.metadata.database, table.metadata.schema) == ("fixture", "main")
+    assert table.metadata.type == "BASE TABLE"
+    assert [
+        (c["name"], c["type"], c["comment"], c["index"])
+        for c in raw[section][unique_id]["columns"].values()
+    ] == expected
+    assert [(c.name, c.type, c.comment, c.index) for c in table.columns.values()] == expected
+    # The source points at the same physical table as a model. Isolate sections
+    # in memory so the source case cannot pass by matching the model entry.
+    view = SimpleNamespace(
+        nodes=catalog.nodes if section == "nodes" else {},
+        sources=catalog.sources if section == "sources" else {},
+    )
+    adapter = Mock()
+    context = SimpleNamespace(
+        project=SimpleNamespace(
+            adapter=adapter,
+            config=SimpleNamespace(disable_introspection=False),
+            runtime_cfg=SimpleNamespace(credentials=SimpleNamespace(type="duckdb")),
+        ),
+        settings=YamlRefactorSettings(),
+        ignore_patterns=[],
+        read_catalog=lambda: view,
+    )
+    relation = DuckDBRelation.create(
+        database="fixture", schema="main", identifier=table.metadata.name
+    )
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == [name for name, _, _, _ in expected]
+    # Core 1.8's catalog ColumnMetadata is a separate class; get_columns converts
+    # it to the shared class with zero-based indexes. Assert producer ordinals
+    # above at the loader boundary, and stable consumer order/metadata here.
+    assert [(c.name, c.type, c.comment) for c in columns.values()] == [
+        (name, dtype, comment) for name, dtype, comment, _ in expected
+    ]
+    adapter.get_columns_in_relation.assert_not_called()
+    assert path.read_bytes() == before
+    assert fixture.read_bytes() == before
 
 
 @pytest.mark.parametrize(
