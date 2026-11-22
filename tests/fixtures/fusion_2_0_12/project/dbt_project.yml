@@ -1,0 +1,13 @@
+name: osmosis_fusion_fixture
+version: '1.0'
+config-version: 2
+profile: osmosis_fusion_fixture
+model-paths: [models]
+flags:
+  send_anonymous_usage_stats: false
+models:
+  osmosis_fusion_fixture:
+    +materialized: table
+    +persist_docs:
+      relation: true
+      columns: true
