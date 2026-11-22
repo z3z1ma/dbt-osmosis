@@ -307,6 +307,11 @@ def test_actual_fusion_catalog_columns_without_warehouse(tmp_path, section, uniq
     table = getattr(catalog, section)[unique_id]
     assert (table.metadata.database, table.metadata.schema) == ("fixture", "main")
     assert table.metadata.type == "BASE TABLE"
+    assert [
+        (c["name"], c["type"], c["comment"], c["index"])
+        for c in raw[section][unique_id]["columns"].values()
+    ] == expected
+    assert [(c.name, c.type, c.comment, c.index) for c in table.columns.values()] == expected
     # The source points at the same physical table as a model. Isolate sections
     # in memory so the source case cannot pass by matching the model entry.
     view = SimpleNamespace(
@@ -331,7 +336,12 @@ def test_actual_fusion_catalog_columns_without_warehouse(tmp_path, section, uniq
     columns = get_columns(context, relation)
 
     assert list(columns) == [name for name, _, _, _ in expected]
-    assert [(c.name, c.type, c.comment, c.index) for c in columns.values()] == expected
+    # Core 1.8's catalog ColumnMetadata is a separate class; get_columns converts
+    # it to the shared class with zero-based indexes. Assert producer ordinals
+    # above at the loader boundary, and stable consumer order/metadata here.
+    assert [(c.name, c.type, c.comment) for c in columns.values()] == [
+        (name, dtype, comment) for name, dtype, comment, _ in expected
+    ]
     adapter.get_columns_in_relation.assert_not_called()
     assert path.read_bytes() == before
     assert fixture.read_bytes() == before

@@ -82,9 +82,15 @@ runtime contract.
 
 ## What the regression establishes
 
-The catalog loader and public `get_columns` preserve this producer's model and source
-column names, INTEGER/VARCHAR/BOOLEAN types, comments, and indexes without warehouse
-fallback or rewriting input bytes. The source case isolates the source map in memory,
+The catalog loader preserves this producer's exact one-based model/source column
+ordinals, names, INTEGER/VARCHAR/BOOLEAN types, and comments. Public `get_columns`
+preserves the column order, names, types, and comments without warehouse fallback or
+rewriting input bytes. Output ordinals are not a portable consumer contract: Core
+1.8.10 loads its own catalog `ColumnMetadata` class, which the existing consumer
+converts to the shared class with zero-based indexes; Core 1.11.8 loads the shared
+class directly and retains the producer's indexes. Both loaders preserve the original
+one-based ordinals. The test checks these distinct boundaries without normalizing
+runtime behavior. The source case isolates the source map in memory,
 so it cannot pass by selecting the model for the same physical table. The on-disk
 fixture remains unchanged.
 
