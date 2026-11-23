@@ -15,3 +15,5 @@ No new dependencies, CLI flags, warehouse access, releases, freshness policies, 
 Compatibility limit: when no exact raw identity exists, the historical approximate-only fallback remains; this fix does not prove that fallback is safe for every quoted case-sensitive relation. Tightening it needs a separate adapter-specific compatibility investigation, not an implicit global behavior change.
 
 The PostgreSQL quoted-component investigation on 2026-11-23 established the bounded exception above. Other no-exact adapter behavior remains unchanged; see `.10x/tickets/2026-11-23-quoted-catalog-resolution.md`.
+
+2026-11-23 authorized refinement: `postgres-unquoted-catalog-precedence.md` now governs PostgreSQL ASCII SQL-included unquoted schema/identifier precedence and fallback. Its proven canonical identity exception supersedes raw exact-first/unquoted-preservation requirements only for that scope; the remaining contract stays unchanged.

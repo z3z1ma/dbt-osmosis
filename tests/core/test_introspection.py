@@ -407,6 +407,244 @@ def test_postgres_catalog_continues_after_quoted_mismatch_to_valid_source():
     assert catalog.to_dict() == before
 
 
+@pytest.mark.parametrize("component", ["schema", "identifier"])
+@pytest.mark.parametrize(
+    "canonical_section,literal_section",
+    [("nodes", "nodes"), ("sources", "sources"), ("nodes", "sources"), ("sources", "nodes")],
+)
+@pytest.mark.parametrize("canonical_first", [False, True])
+def test_postgres_unquoted_prefers_sql_identity(
+    component, canonical_section, literal_section, canonical_first
+):
+    requested = {"database": "db", "schema": "public", "identifier": "orders"}
+    requested[component] = requested[component].capitalize()
+    literal = {
+        "database": requested["database"],
+        "schema": requested["schema"],
+        "name": requested["identifier"],
+    }
+    canonical = {
+        **literal,
+        ("name" if component == "identifier" else component): requested[component].lower(),
+    }
+    data = {"metadata": {}, "nodes": {}, "sources": {}}
+    entries = [
+        (literal_section, "literal", _catalog_table(literal, "wrong_column")),
+        (canonical_section, "canonical", _catalog_table(canonical)),
+    ]
+    if canonical_first:
+        entries.reverse()
+    for section, key, table in entries:
+        data[section][key] = table
+    context, catalog, calls = _catalog_context(data)
+    context.project.runtime_cfg.credentials.type = "postgres"
+    relation = BaseRelation.create(**requested, quote_policy={component: False})
+    before, relation_before = catalog.to_dict(), relation.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert (columns["right_column"].type, columns["right_column"].comment) == (
+        "INTEGER",
+        "Documentation for right_column",
+    )
+    assert calls == []
+    assert catalog.to_dict() == before
+    assert relation.to_dict() == relation_before
+
+
+@pytest.mark.parametrize("section", ["nodes", "sources"])
+@pytest.mark.parametrize(
+    "schema_quoted,identifier_quoted", [(False, True), (True, False), (False, False), (True, True)]
+)
+def test_postgres_unquoted_respects_each_quote_policy(section, schema_quoted, identifier_quoted):
+    identity = {
+        "database": "db",
+        "schema": "Public" if schema_quoted else "public",
+        "name": "Orders" if identifier_quoted else "orders",
+    }
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {},
+        section: {
+            "unrelated": _catalog_table(
+                {
+                    "database": "db",
+                    "schema": "public" if schema_quoted else "Public",
+                    "name": "orders" if identifier_quoted else "Orders",
+                },
+                "wrong_column",
+            ),
+            "canonical": _catalog_table(identity),
+        },
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    relation = BaseRelation.create(
+        database="db",
+        schema="Public",
+        identifier="Orders",
+        quote_policy={"schema": schema_quoted, "identifier": identifier_quoted},
+    )
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert columns["right_column"].comment == "Documentation for right_column"
+    assert calls == []
+    assert catalog.to_dict() == before
+
+
+@pytest.mark.parametrize("section", ["nodes", "sources"])
+@pytest.mark.parametrize("component", ["schema", "identifier"])
+@pytest.mark.parametrize("requested_lower", [False, True])
+@pytest.mark.parametrize("disable_introspection", [False, True])
+def test_postgres_unquoted_missing_sql_identity_keeps_fallback_policy(
+    section, component, requested_lower, disable_introspection
+):
+    requested = {"database": "db", "schema": "public", "identifier": "orders"}
+    requested[component] = (
+        requested[component] if requested_lower else requested[component].capitalize()
+    )
+    candidate = {"database": "db", "schema": "public", "name": "orders"}
+    key = "name" if component == "identifier" else component
+    candidate[key] = candidate[key].capitalize()
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {},
+        section: {"wrong_literal": _catalog_table(candidate, "wrong_column")},
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    context.project.config.disable_introspection = disable_introspection
+    relation = BaseRelation.create(**requested, quote_policy={component: False})
+    context.project.adapter._columns_by_target[("dev", relation.render())] = [
+        Column.from_description("warehouse_column", "integer")
+    ]
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ([] if disable_introspection else ["warehouse_column"])
+    assert calls == ([] if disable_introspection else [("dev", relation.render())])
+    assert catalog.to_dict() == before
+
+
+@pytest.mark.parametrize("section", ["nodes", "sources"])
+@pytest.mark.parametrize("database", ["absent", None, "db"])
+def test_postgres_unquoted_keeps_optional_database_matching(section, database):
+    identity = {"schema": "public", "name": "orders"}
+    if database != "absent":
+        identity["database"] = database
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {},
+        section: {
+            "literal": _catalog_table({**identity, "name": "Orders"}, "wrong_column"),
+            "canonical": _catalog_table(identity),
+        },
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    relation = BaseRelation.create(
+        database="db", schema="public", identifier="Orders", quote_policy={"identifier": False}
+    )
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert calls == []
+    assert catalog.to_dict() == before
+
+
+@pytest.mark.parametrize("database_included", [False, True])
+@pytest.mark.parametrize("database_quoted", [False, True])
+def test_postgres_unquoted_preserves_database_identity(database_included, database_quoted):
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {
+            "wrong_database": _catalog_table(
+                {"database": "db", "schema": "public", "name": "orders"}, "wrong_column"
+            ),
+            "literal": _catalog_table(
+                {"database": "Db", "schema": "public", "name": "Orders"}, "wrong_literal"
+            ),
+        },
+        "sources": {
+            "canonical": _catalog_table({"database": "Db", "schema": "public", "name": "orders"})
+        },
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    relation = BaseRelation.create(
+        database="Db",
+        schema="public",
+        identifier="Orders",
+        quote_policy={"database": database_quoted, "identifier": False},
+    ).include(database=database_included)
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert calls == []
+    assert catalog.to_dict() == before
+
+
+@pytest.mark.parametrize("component", ["schema", "identifier"])
+@pytest.mark.parametrize("non_ascii", [False, True])
+def test_postgres_unquoted_preserves_unscoped_components(component, non_ascii):
+    requested = {"database": "db", "schema": "public", "identifier": "orders"}
+    requested[component] = "Örders" if non_ascii else "Orders"
+    key = "name" if component == "identifier" else component
+    identity = {"database": "db", "schema": requested["schema"], "name": requested["identifier"]}
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {
+            "folded": _catalog_table({**identity, key: identity[key].lower()}, "wrong_column"),
+        },
+        "sources": {"literal": _catalog_table(identity)},
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    relation = BaseRelation.create(**requested, quote_policy={component: False})
+    if not non_ascii:
+        relation = relation.include(**{component: False})
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert calls == []
+    assert catalog.to_dict() == before
+
+
+@pytest.mark.parametrize("adapter_type", ["duckdb", "trino", "snowflake"])
+def test_postgres_unquoted_change_preserves_other_adapter_precedence(adapter_type):
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {
+            "folded": _catalog_table(
+                {"database": "db", "schema": "public", "name": "orders"}, "wrong_column"
+            ),
+        },
+        "sources": {
+            "literal": _catalog_table({"database": "db", "schema": "public", "name": "Orders"})
+        },
+    })
+    context.project.runtime_cfg.credentials.type = adapter_type
+    relation = BaseRelation.create(
+        database="db", schema="public", identifier="Orders", quote_policy={"identifier": False}
+    )
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == (["RIGHT_COLUMN"] if adapter_type == "snowflake" else ["right_column"])
+    assert calls == []
+    assert catalog.to_dict() == before
+
+
 @pytest.mark.parametrize("has_catalog", [False, True])
 def test_get_columns_retains_missing_catalog_relation_warehouse_fallback(has_catalog):
     """No catalog match must still use the existing adapter path."""
