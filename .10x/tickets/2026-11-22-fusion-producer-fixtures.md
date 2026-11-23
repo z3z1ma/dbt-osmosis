@@ -1,6 +1,6 @@
-Status: active
+Status: done
 Created: 2026-11-22
-Updated: 2026-11-22
+Updated: 2026-11-23
 
 # Genuine pinned Fusion producer artifact evidence
 
@@ -35,7 +35,7 @@ None observed for bounded download/use; artifact content and redistribution must
 1. Official PyPI bootstrap/CDN wheel hashes matched; observed proprietary CLI 2.0.12 and native extension digest recorded below and in fixture README. Original inputs/catalog inspected; no binary, macros, secrets, or user-specific identifiers redistributed.
 2. Actual parse/build succeeded locally; catalog v1, manifest v12, run-results v6, 2 physical models and 1 source verified below.
 3. Existing loader and public column consumer pass the real recorded catalog; 169 focused tests pass on Python Core 1.11.8. Both actual manifests deserialized under that Core version, without claiming a manifest-only runtime.
-4. Independent review and exact-head/postmerge CI remain parent-owned gates.
+4. Independent review and correction rereviews passed. Final-head and post-merge CI passed; see the completion journal below.
 
 ## Review
 - 2026-11-22 independent reviewer inspected the final test/fixture/documentation diff and executor's journaled provenance/validation, without repeating suites.
@@ -77,3 +77,9 @@ The official PyPI sdist is a checksum-pinned CDN wheel downloader, not the engin
 - Corrected assertions to check exact one-based names/types/comments/indexes on both raw fixture and typed loader output; public `get_columns` continues to require exact names/types/comments and ordered keys without fallback or input mutation. Removed only the unsupported cross-version public index convention assumption, not catalog ordinal validation. No broad either/or assertion, runtime normalization, skips, or source edits. Updated fixture/public docs and roadmap to distinguish producer/loader ordinals from public output order.
 - After correction, `PYTHONPATH=src /tmp/osmosis-fusion-core18-env/bin/python -m pytest tests/test_catalog_contract.py -k actual_fusion -q`: **3 passed, 55 deselected** in 0.58s (`/tmp/osmosis-fusion-core18-after.log`). The same command with `/tmp/osmosis-correctness-env/bin/python` (Core 1.11.8) passed **3 tests** in 0.82s (`/tmp/osmosis-fusion-modern-after.log`); the previous modern 169-test run included the original three passing cases. No unchanged broad suite repeated.
 - Pinned Ruff 0.16.2 lint/format and `git diff --check` passed. Raw fixture SHA256 remains `7e6faa5cedf317d7321350b6461518d622072bf12c306d4c950e6e4e1a1171aa`. Initial offline uvx invocation lacked writable tool-cache location; used the pinned Ruff already installed in the isolated Core 1.8 environment. No dependency/lockfile edits. Independent rereview requested; exact-head CI must rerun after integration.
+
+### Completion reconciliation (2026-11-23)
+- #482 merged as `ec92d9b02ec7e790cea3020ce57900a709b219c4`. Reviewed final head `834088c`; exact-head PR Tests `45057394543` and push Tests `45057390089` each passed 25 executed jobs, canary skipped; lint passed. Merged tree equality was verified by the integration owner.
+- Re-read main Tests `45063489067`: success, 25 successful jobs and one skipped canary. Lint `45063489117`: success. Both identify merge SHA above.
+- Automatic Release `45065501839`: success; validation job success; Publish package on PyPI and Publish the release notes steps skipped. This was validation, not publication. Latest GitHub release remains v1.6.0.
+- Final local corrections passed three fixture cases each on Core 1.8.10 and 1.11.8; the original broad focused run passed 169 tests. No new broad local run is claimed. No remaining integration blocker.

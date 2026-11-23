@@ -28,6 +28,8 @@ The YAML and migration CLI commands require an explicitly supplied `--catalog-pa
 
 Catalog generation can be requested with `--create-catalog-if-not-exists`; it requires introspection to be enabled. For a relation not found in a loaded catalog, column lookup may fall back to the warehouse unless `--disable-introspection` is enabled.
 
+PostgreSQL catalog fallback respects quoted identifier case: if a requested quoted database, schema, or table name differs from the raw catalog name, that candidate is not used. Missing catalog database metadata retains its existing wildcard behavior. If no candidate remains, the missing-relation fallback above applies; enable `--disable-introspection` to prevent live column lookup. Exact identity precedence and unquoted matching remain unchanged. This rule is specific to PostgreSQL; quoted identifiers can be case-insensitive or session-dependent on other adapters.
+
 For catalog-backed column lookup without live column introspection:
 
 ```shell

@@ -275,6 +275,138 @@ def test_get_columns_preserves_catalog_fallback_and_optional_database(database, 
     assert calls == []
 
 
+# PostgresRelation inherits BaseRelation matching unchanged; the installed adapter
+# equivalence and actual-object reproduction are recorded in the 2026-11-23 ticket.
+# These constructed catalogs are adversarial inputs, not producer fixtures.
+@pytest.mark.parametrize("section", ["nodes", "sources"])
+@pytest.mark.parametrize("component", ["database", "schema", "name"])
+@pytest.mark.parametrize("requested_upper", [False, True])
+@pytest.mark.parametrize("disable_introspection", [False, True])
+def test_postgres_catalog_rejects_quoted_case_distinct_entry(
+    section, component, requested_upper, disable_introspection
+):
+    requested = {"database": "db", "schema": "public", "name": "orders"}
+    candidate = dict(requested)
+    (requested if requested_upper else candidate)[component] = requested[component].capitalize()
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {},
+        section: {"constructed": _catalog_table(candidate, "wrong_column")},
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    context.project.config.disable_introspection = disable_introspection
+    relation = BaseRelation.create(
+        database=requested["database"], schema=requested["schema"], identifier=requested["name"]
+    )
+    context.project.adapter._columns_by_target[("dev", relation.render())] = [
+        Column.from_description("warehouse_column", "integer")
+    ]
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ([] if disable_introspection else ["warehouse_column"])
+    assert calls == ([] if disable_introspection else [("dev", relation.render())])
+    assert catalog.to_dict() == before
+
+
+@pytest.mark.parametrize("section", ["nodes", "sources"])
+@pytest.mark.parametrize("database", ["absent", None, "db"])
+def test_postgres_catalog_keeps_quoted_identity_with_unquoted_folding(section, database):
+    identity = {"schema": "public", "name": "Orders"}
+    if database != "absent":
+        identity["database"] = database
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {},
+        section: {"constructed": _catalog_table(identity)},
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    # The identifier is quoted, the schema is not. Folding the latter must not
+    # prevent the correctly cased quoted identifier from matching.
+    relation = BaseRelation.create(
+        database="db", schema="PUBLIC", identifier="Orders", quote_policy={"schema": False}
+    )
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert (columns["right_column"].type, columns["right_column"].comment) == (
+        "INTEGER",
+        "Documentation for right_column",
+    )
+    assert calls == []
+    assert catalog.to_dict() == before
+
+
+@pytest.mark.parametrize("adapter_type", ["postgres", "duckdb", "trino", "snowflake"])
+def test_catalog_retains_adapter_specific_unquoted_fallback(adapter_type):
+    context, _, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {
+            "constructed": _catalog_table({"database": "db", "schema": "public", "name": "orders"})
+        },
+    })
+    context.project.runtime_cfg.credentials.type = adapter_type
+    relation = BaseRelation.create(
+        database="db", schema="public", identifier="Orders", quote_policy={"identifier": False}
+    )
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == (["RIGHT_COLUMN"] if adapter_type == "snowflake" else ["right_column"])
+    assert calls == []
+
+
+@pytest.mark.parametrize("adapter_type", ["duckdb", "trino", "snowflake"])
+def test_catalog_retains_other_adapters_quoted_fallback(adapter_type):
+    context, _, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {},
+        "sources": {
+            "constructed": _catalog_table({"database": "db", "schema": "public", "name": "orders"})
+        },
+    })
+    context.project.runtime_cfg.credentials.type = adapter_type
+    relation = BaseRelation.create(database="db", schema="public", identifier="Orders")
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == (["RIGHT_COLUMN"] if adapter_type == "snowflake" else ["right_column"])
+    assert calls == []
+
+
+def test_postgres_catalog_continues_after_quoted_mismatch_to_valid_source():
+    # No entry has the exact raw triple because the requested schema is unquoted.
+    context, catalog, calls = _catalog_context({
+        "metadata": {},
+        "nodes": {
+            "wrong": _catalog_table(
+                {"database": "db", "schema": "public", "name": "orders"}, "wrong_column"
+            )
+        },
+        "sources": {
+            "right": _catalog_table({"database": "db", "schema": "public", "name": "Orders"})
+        },
+    })
+    context.project.runtime_cfg.credentials.type = "postgres"
+    relation = BaseRelation.create(
+        database="db", schema="PUBLIC", identifier="Orders", quote_policy={"schema": False}
+    )
+    before = catalog.to_dict()
+
+    columns = get_columns(context, relation)
+
+    assert list(columns) == ["right_column"]
+    assert columns["right_column"].comment == "Documentation for right_column"
+    assert calls == []
+    assert catalog.to_dict() == before
+
+
 @pytest.mark.parametrize("has_catalog", [False, True])
 def test_get_columns_retains_missing_catalog_relation_warehouse_fallback(has_catalog):
     """No catalog match must still use the existing adapter path."""

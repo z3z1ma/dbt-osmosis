@@ -1402,6 +1402,20 @@ def _catalog_entry_matches(matcher: t.Any, entry: t.Any) -> bool:
         return True
 
 
+def _postgres_quoted_catalog_components_match(relation: BaseRelation, entry: t.Any) -> bool:
+    """Preserve PostgreSQL quoted case before catalog keys erase it."""
+    metadata = entry.metadata
+    return (
+        (
+            metadata.database is None
+            or not relation.quote_policy.database
+            or relation.database == metadata.database
+        )
+        and (not relation.quote_policy.schema or relation.schema == metadata.schema)
+        and (not relation.quote_policy.identifier or relation.identifier == metadata.name)
+    )
+
+
 def _catalog_columns_for_relation(
     context: t.Any,
     relation: BaseRelation,
@@ -1429,9 +1443,13 @@ def _catalog_columns_for_relation(
     )
     if catalog_entry is None:
         matcher = getattr(t.cast(t.Any, relation), "matches", None)
+        is_postgres = context.project.runtime_cfg.credentials.type == "postgres"
         catalog_entry = _find_first(
             chain(catalog.nodes.values(), catalog.sources.values()),
-            lambda entry: _catalog_entry_matches(matcher, entry),
+            lambda entry: (
+                (not is_postgres or _postgres_quoted_catalog_components_match(relation, entry))
+                and _catalog_entry_matches(matcher, entry)
+            ),
         )
     if not catalog_entry:
         return None
