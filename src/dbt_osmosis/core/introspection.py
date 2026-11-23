@@ -1416,6 +1416,15 @@ def _postgres_quoted_catalog_components_match(relation: BaseRelation, entry: t.A
     )
 
 
+def _postgres_unquoted_catalog_component(
+    value: str | None, *, quoted: bool, included: bool
+) -> str | None:
+    """Resolve only evidenced ASCII SQL components, not connection database names."""
+    if value is not None and value.isascii() and included and not quoted:
+        return value.lower()
+    return None
+
+
 def _catalog_columns_for_relation(
     context: t.Any,
     relation: BaseRelation,
@@ -1427,9 +1436,26 @@ def _catalog_columns_for_relation(
         return None
 
     logger.debug(":blue_book: Catalog found => Checking for ref => %s", rendered_relation)
-    # CatalogTable.key() folds case, so first preserve an exact raw identity
-    # across both sections before retaining the existing adapter matching fallback.
-    relation_identity = (relation.database, relation.schema, relation.identifier)
+    is_postgres = context.project.runtime_cfg.credentials.type == "postgres"
+    unquoted_schema = unquoted_identifier = None
+    if is_postgres:
+        unquoted_schema = _postgres_unquoted_catalog_component(
+            relation.schema,
+            quoted=relation.quote_policy.schema,
+            included=relation.include_policy.schema,
+        )
+        unquoted_identifier = _postgres_unquoted_catalog_component(
+            relation.identifier,
+            quoted=relation.quote_policy.identifier,
+            included=relation.include_policy.identifier,
+        )
+    # Compare raw catalog identity with the requested SQL identity before the
+    # folded fallback. PostgreSQL unquoted ASCII tokens name lowercase objects.
+    relation_identity = (
+        relation.database,
+        relation.schema if unquoted_schema is None else unquoted_schema,
+        relation.identifier if unquoted_identifier is None else unquoted_identifier,
+    )
     catalog_entry = _find_first(
         chain(catalog.nodes.values(), catalog.sources.values()),
         lambda entry: (
@@ -1443,11 +1469,12 @@ def _catalog_columns_for_relation(
     )
     if catalog_entry is None:
         matcher = getattr(t.cast(t.Any, relation), "matches", None)
-        is_postgres = context.project.runtime_cfg.credentials.type == "postgres"
         catalog_entry = _find_first(
             chain(catalog.nodes.values(), catalog.sources.values()),
             lambda entry: (
                 (not is_postgres or _postgres_quoted_catalog_components_match(relation, entry))
+                and (unquoted_schema is None or entry.metadata.schema == unquoted_schema)
+                and (unquoted_identifier is None or entry.metadata.name == unquoted_identifier)
                 and _catalog_entry_matches(matcher, entry)
             ),
         )

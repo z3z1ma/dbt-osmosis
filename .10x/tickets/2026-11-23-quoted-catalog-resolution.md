@@ -1,4 +1,4 @@
-Status: active
+Status: done
 Created: 2026-11-23
 Updated: 2026-11-23
 
@@ -27,10 +27,10 @@ User-ratified investigation/fix scope and constraints; existing no-exact behavio
 - Re-read #482 main Tests45063489067:25success/1skip, lint45063489117 success. Release45065501839 success with both publication steps skipped; latestreleasev1.6.0. Reconciled roadmap and prior ticket.
 
 ## Blockers
-Implementation and local validation complete; independent review and exact-head/post-merge CI remain required integration gates. No unresolved implementation blocker.
+None. Merged #483 at `bebaeb9ea78ae8f32c250bf4c4a4a9b1ef39894e`; independent review and exact-head/post-merge CI passed.
 
 ## Evidence
-Actual installed adapter reproduction, 25 failing regressions before correction, 207 focused tests after correction and adapter compatibility controls are journaled below. Independent review and exact-head/post-merge CI remain integration gates.
+Actual installed adapter reproduction, 25 failing regressions before correction, 207 focused tests after correction and adapter compatibility controls are journaled below. Independent review and exact-head/post-merge CI passed for merged #483.
 
 ## Review
 - 2026-11-23 independent adversarial review: **pass; no findings in the bounded change**. Reviewer inspected the contract, complete runtime/test/documentation diff, actual installed PostgresRelation and BaseRelation source, and executor's journaled before/after evidence. No verification suites were repeated.
@@ -64,3 +64,6 @@ Actual installed PostgreSQL objects reproduced wrong metadata in both identifier
 
 ### Requested-null compatibility check (2026-11-23)
 - Parent/reviewer requested checking requested relation database=None or schema=None against nonnull candidate metadata with quoted flags true. `/tmp/osmosis-quoted-none-request.py` uses actual PostgresRelation and constructed catalog; bypassing only the new guard exercises the unchanged historical exact/fallback path, then compares the current public get_columns result. Both requested-null components returned empty before and after with introspection disabled; zero adapter calls. Output `/tmp/osmosis-quoted-none-request.log`. Existing BaseRelation.matches already rejects the nonnull candidate component against a null requested component, so the guard introduces no compatibility change here. No production correction or broad test rerun was needed.
+
+### Completed integration reconciled 2026-11-23
+- #483 merged as `bebaeb9ea78ae8f32c250bf4c4a4a9b1ef39894e`. Exact-head PR Tests45209220318 and push Tests45209168058 each passed 25 executed jobs, with scheduled canary skipped; lint passed. Post-merge Tests45216264367 passed 25 jobs, canary skipped; lint45216264330 passed. Merged tree matched reviewed tree. No manual release or #468 action.
