@@ -1,6 +1,6 @@
-Status: active
+Status: done
 Created: 2026-11-23
-Updated: 2026-11-23
+Updated: 2026-11-24
 Parent: .10x/tickets/2026-11-23-quoted-catalog-resolution.md
 
 # PostgreSQL unquoted exact-first catalog precedence
@@ -24,10 +24,10 @@ User authorized this follow-up; the active bounded spec resolves only included u
 - 2026-11-23: Offline script `/tmp/osmosis-unquoted-followup.py` with actual installed PostgresRelation (dbt-postgres1.11.0/Core1.12.7) constructed catalog entries raw `Orders` (wrong_mixed_case) and `orders` (correct_lowercase). Requested relation rendered `"db"."public".Orders` with identifier quote flag false. Public get_columns returned `wrong_mixed_case`; expected PostgreSQL SQL resolution targets lowercase `orders`. Output `/tmp/osmosis-unquoted-followup.log`. No database connection was made; catalog is constructed, not real producer evidence.
 
 ## Blockers
-None for the bounded ASCII SQL-included schema/identifier contract. Independent review and exact-head/post-merge CI remain integration gates.
+None for the bounded ASCII SQL-included schema/identifier contract. Integration and post-merge verification completed in #484.
 
 ## Evidence
-Actual adapter matrix and 44 failing new regressions reproduced the defect; all 264 focused tests pass after the bounded correction, with lint and type checks passing. Independent review and full CI remain integration gates.
+Actual adapter matrix and 44 failing new regressions reproduced the defect; all 264 focused tests pass after the bounded correction, with lint and type checks passing. Independent review passed. Merged #484 at `9bbb1c3ac4f0631427de180550b889e21c8ca79c`; exact-head PR Tests `45222290778` and push Tests `45222234617` each passed 25 executed jobs with canary skipped. Post-merge Tests `45229779053` passed 25 jobs with canary skipped; lint `45229779110` passed. Verified merged tree equals reviewed tree.
 
 ## Review
 - 2026-11-23 independent reviewer inspected the final source, test, spec, public-documentation and roadmap diff plus executor evidence; no test suite was repeated.
