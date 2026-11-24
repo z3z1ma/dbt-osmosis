@@ -7,8 +7,8 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: end-of-file-fixer
-        # Preserve the recorded producer's exact bytes and provenance checksum.
-        exclude: ^tests/fixtures/fusion_2_0_12/catalog\.json$
+        # Preserve these recorded producers' exact bytes and provenance checksums.
+        exclude: ^tests/fixtures/(fusion_2_0_12|dbt_oss_2_0_11)/catalog\.json$
       - id: trailing-whitespace
       - id: detect-private-key
       - id: debug-statements

@@ -1,4 +1,4 @@
-"""Catalog contracts for live Core fixtures and a recorded full dbt v2 producer."""
+"""Catalog contracts for live Core fixtures and recorded full/OSS dbt v2 producers."""
 
 import json
 import os
@@ -262,6 +262,13 @@ def test_actual_core_generated_catalog(built_duckdb_template):
 
 @pytest.mark.usefixtures("fresh_caches")
 @pytest.mark.parametrize(
+    "producer_fixture,producer_version",
+    [
+        pytest.param("fusion_2_0_12", "2.0.12", id="full-dbt-2.0.12"),
+        pytest.param("dbt_oss_2_0_11", "2.0.11", id="apache-oss-2.0.11"),
+    ],
+)
+@pytest.mark.parametrize(
     "section,unique_id,expected",
     [
         (
@@ -292,14 +299,16 @@ def test_actual_core_generated_catalog(built_duckdb_template):
         ),
     ],
 )
-def test_actual_fusion_catalog_columns_without_warehouse(tmp_path, section, unique_id, expected):
-    """Consume unedited full dbt 2.0.12 output without installing that producer in CI."""
-    fixture = Path(__file__).parent / "fixtures" / "fusion_2_0_12" / "catalog.json"
+def test_actual_v2_catalog_columns_without_warehouse(
+    tmp_path, section, unique_id, expected, producer_fixture, producer_version
+):
+    """Consume separately recorded producer output without installing v2 in CI."""
+    fixture = Path(__file__).parent / "fixtures" / producer_fixture / "catalog.json"
     before = fixture.read_bytes()
     path = tmp_path / "catalog.json"
     path.write_bytes(before)
     raw = json.loads(before)
-    assert raw["metadata"]["dbt_version"] == "2.0.12"
+    assert raw["metadata"]["dbt_version"] == producer_version
     assert raw["metadata"]["dbt_schema_version"] == "https://schemas.getdbt.com/dbt/catalog/v1.json"
     catalog = _load_catalog(SimpleNamespace(catalog_path=str(path)))
     assert catalog.errors is None

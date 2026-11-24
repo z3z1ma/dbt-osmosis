@@ -1,0 +1,8 @@
+osmosis_fusion_fixture:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: /tmp/osmosis-oss-2011-project/fixture.duckdb
+      schema: main
+      threads: 1

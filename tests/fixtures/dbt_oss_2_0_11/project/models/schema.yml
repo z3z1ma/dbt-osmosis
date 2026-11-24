@@ -1,0 +1,26 @@
+version: 2
+models:
+  - name: accounts
+    description: Original local fixture accounts.
+    columns:
+      - name: account_id
+        description: Original account identifier.
+      - name: status
+        description: Original account status.
+      - name: is_active
+        description: Original active marker.
+  - name: account_labels
+    description: Original local fixture labels.
+    columns:
+      - name: account_id
+        description: Original label identifier.
+      - name: account_status
+        description: Original label status.
+sources:
+  - name: local_fixture
+    database: fixture
+    schema: main
+    tables:
+      - name: physical_accounts
+        identifier: accounts
+        description: Original source declaration for the local accounts table.

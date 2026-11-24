@@ -1,6 +1,6 @@
 Status: active
 Created: 2026-11-16
-Updated: 2026-11-23
+Updated: 2026-11-24
 
 # dbt-osmosis maintenance roadmap
 
@@ -74,4 +74,14 @@ Separate bounded follow-up: installed PostgresRelation also reproduced unquoted 
 
 Owner: `.10x/tickets/2026-11-23-postgres-unquoted-catalog-precedence.md`; contract: `.10x/specs/postgres-unquoted-catalog-precedence.md`. Actual installed PostgresRelation/Core 1.12.7 showed public get_columns choosing literal mixed-case catalog metadata for an unquoted SQL reference that resolves lowercase, in both catalog maps and mixed-quote combinations. The bounded correction resolves only included, unquoted, entirely ASCII schema/identifier components to lowercase and compares candidates literally in priority and fallback selection. It does not normalize donor metadata or change connection database identity, non-ASCII names, excluded components, other adapters, or #483 quoted protection. Raw artifacts and relation objects remain unchanged. Constructed offline catalogs are regression inputs, not producer or warehouse certification.
 
-PostgreSQL parser source uses ASCII downcasing with separate encoding-dependent high-bit behavior; generic Unicode casefold and connection database normalization were deliberately not inferred. The current contract preserves optional catalog database matching and existing enabled/disabled introspection behavior. Independent review and exact-head/post-merge CI remain required integration gates.
+PostgreSQL parser source uses ASCII downcasing with separate encoding-dependent high-bit behavior; generic Unicode casefold and connection database normalization were deliberately not inferred. The current contract preserves optional catalog database matching and existing enabled/disabled introspection behavior. Merged #484 at `9bbb1c3ac4f0631427de180550b889e21c8ca79c`; independent review passed, both exact-head matrices and post-merge Tests `45229779053` passed 25 executed jobs each with canary skipped, and lint `45229779110` passed. Automatic Release `45233729918` validated successfully, with PyPI and release-notes publication steps skipped; latest release remains v1.6.0, observed 2026-11-24.
+
+## Apache-only dbt OSS producer iteration (2026-11-24)
+
+Owner: `.10x/tickets/2026-11-24-oss-producer-artifacts.md`. Fresh main was `9bbb1c3`; inventory contained zero issues and only excluded draft #468, with no dependency PRs. Official current package metadata identifies stable Python Core1.12.7, dbt-duckdb1.11.1, dbt-adapters1.24.6 and full dbt2.0.12. The available Apache-only `dbt-oss` release is 2.0.11; its 2.0.12 metadata endpoint returns HTTP404. Current versions and MCP tooling alone justify no dependency/support changes or remote-service feature.
+
+The official checksum-pinned OSS2.0.11 ARM64 wheel was installed separately, its native identity verified, and its built-in DuckDB adapter successfully parsed and built the same original two-model project used for the full2.0.12 experiment. Actual outputs are manifestv12, catalogv1 and run-resultsv6; read-only local queries confirmed both physical tables. The separate raw catalog and original inputs are retained in `tests/fixtures/dbt_oss_2_0_11/`, with exact hashes and reproduction steps. No binary, database, bundled macro payload or sensitive input is committed.
+
+The shared regression keeps producer/version identity separate while checking both model/source maps, exact loader ordinals, caller-visible names/types/comments/order, no warehouse fallback and unchanged artifact bytes. All non-metadata catalog content matches the recorded full2.0.12 artifact for these original inputs. That comparison does not establish engine parity across different distributions/versions. Core1.12.7 also deserialized the two actual OSS manifests as a measured experiment, not a manifest-only runtime contract. Runtime behavior and dependencies are unchanged.
+
+Next evidence gate remains concrete consumer or adapter behavior outside these bounded fixtures; absent such a reproduction, do not broaden runtime support or normalize additional identifier semantics. #468 remains excluded. Independent review and normal exact-head/post-merge verification are required before integrating this iteration.
