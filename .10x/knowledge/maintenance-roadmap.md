@@ -1,6 +1,6 @@
 Status: active
 Created: 2026-11-16
-Updated: 2026-11-24
+Updated: 2026-11-25
 
 # dbt-osmosis maintenance roadmap
 
@@ -84,4 +84,17 @@ The official checksum-pinned OSS2.0.11 ARM64 wheel was installed separately, its
 
 The shared regression keeps producer/version identity separate while checking both model/source maps, exact loader ordinals, caller-visible names/types/comments/order, no warehouse fallback and unchanged artifact bytes. All non-metadata catalog content matches the recorded full2.0.12 artifact for these original inputs. That comparison does not establish engine parity across different distributions/versions. Core1.12.7 also deserialized the two actual OSS manifests as a measured experiment, not a manifest-only runtime contract. Runtime behavior and dependencies are unchanged.
 
-Next evidence gate remains concrete consumer or adapter behavior outside these bounded fixtures; absent such a reproduction, do not broaden runtime support or normalize additional identifier semantics. #468 remains excluded. Independent review and normal exact-head/post-merge verification are required before integrating this iteration.
+Next evidence gate remains concrete consumer or adapter behavior outside these bounded fixtures; absent such a reproduction, do not broaden runtime support or normalize additional identifier semantics. #468 remains excluded. Merged #485 at `a6a1929bb9f5f87b29432d89abed6f0d5c770054`. Independent review passed; exact-head PR Tests `45424728079` and push Tests `45424672048` each passed 25 executed jobs with canary skipped, and lint `45424728343` passed. Post-merge Tests `45433113974` passed 25 executed jobs with canary skipped; lint `45433114217` passed. Automatic Release `45438503483` validated successfully; PyPI and release-notes publication steps were skipped.
+
+
+## Supplied-catalog CLI boundary audit (2026-11-25)
+
+Owner: `.10x/tickets/2026-11-25-catalog-cli-boundary.md`. Fresh main remains `a6a1929`; zero issues and only excluded draft #468, with no dependency queue. Official PyPI metadata now identifies full dbt 2.0.13; Core remains 1.12.7, OSS 2.0.11, dbt-adapters 1.24.6, dbt-duckdb 1.11.1, dbt-postgres 1.11.0 and SQLGlot 30.35.0. These are observations, not an upgrade or new support claim. Existing full 2.0.12 and OSS 2.0.11 fixtures retain their exact producer identities.
+
+Current primary [catalog contract](https://docs.getdbt.com/reference/artifacts/catalog-json) describes column index as ordinal; the [v1 schema](https://schemas.getdbt.com/dbt/catalog/v1.json) defines a columns object with required integer index, without positivity/uniqueness constraints. The prose's array label is not shape authority. [Version docs](https://docs.getdbt.com/docs/dbt-versions) continue to distinguish Python 1.x and Rust 2.x; [OSS installation](https://docs.getdbt.com/docs/local/install-dbt-v2) requires isolated distribution entry points. The [embedded DuckDB path](https://docs.getdbt.com/docs/local/connect-data-platform/duckdb-setup) remains authentication-free. [MCP tooling](https://docs.getdbt.com/docs/dbt-ai/about-mcp) supplies local/remote integrations, but no measured osmosis gap calls for another service surface.
+
+Next bounded decision: test actual CLI output against catalog ordinals when object members are reordered, with explicit user-order settings and model/source preservation controls. Derived inputs must be labeled separately from unchanged producer fixtures. Patch only a demonstrated wrong result; preserve ties, legacy acceptance and unsupported boundaries unless separately justified.
+
+## Catalog ordinal conversion iteration (2026-11-25)
+
+Owner: `.10x/tickets/2026-11-25-catalog-cli-boundary.md`; contract: `.10x/specs/catalog-column-ordinals.md`. Actual offline `yaml document` with derived reordered copies of both recorded full2.0.12 and OSS2.0.11 catalogs exposed Core1.8 replacing producer indexes with enumeration offsets, causing default database sorting to reorder model and source YAML incorrectly. Core1.12 retained correct ordinals. The bounded correction passes original catalog indexes through existing metadata conversion without changing shared-class objects, name normalization, ignore patterns, warehouse flattening or alphabetical settings. Negative, zero, sparse and tied integers retain their existing accepted semantics. Before-fix regressions failed8cases; local supported-baseline focused checks now pass, with exact evidence in the ticket. Independent review and normal CI remain required before integration is claimed. Next decision remains a concrete evidenced consumer/adapter boundary; no new engine/support promise or #468 work follows.
