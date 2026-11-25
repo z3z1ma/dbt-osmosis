@@ -345,12 +345,7 @@ def test_actual_v2_catalog_columns_without_warehouse(
     columns = get_columns(context, relation)
 
     assert list(columns) == [name for name, _, _, _ in expected]
-    # Core 1.8's catalog ColumnMetadata is a separate class; get_columns converts
-    # it to the shared class with zero-based indexes. Assert producer ordinals
-    # above at the loader boundary, and stable consumer order/metadata here.
-    assert [(c.name, c.type, c.comment) for c in columns.values()] == [
-        (name, dtype, comment) for name, dtype, comment, _ in expected
-    ]
+    assert [(c.name, c.type, c.comment, c.index) for c in columns.values()] == expected
     adapter.get_columns_in_relation.assert_not_called()
     assert path.read_bytes() == before
     assert fixture.read_bytes() == before

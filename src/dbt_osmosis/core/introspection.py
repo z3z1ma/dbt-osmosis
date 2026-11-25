@@ -1381,11 +1381,16 @@ def _processed_columns(
     context: t.Any,
     result_node: ResultNode | None,
     columns: t.Iterable[BaseColumn | ColumnMetadata],
+    *,
+    catalog: bool = False,
 ) -> OrderedDict[str, ColumnMetadata]:
     """Convert raw warehouse or catalog columns into normalized metadata."""
     normalized_columns: OrderedDict[str, ColumnMetadata] = OrderedDict()
     index = 0
     for column in columns:
+        if catalog:
+            # Older Core catalog classes need conversion but already carry ordinals.
+            index = t.cast("ColumnMetadata", column).index
         index = _add_processed_columns(context, result_node, normalized_columns, column, index)
     return normalized_columns
 
@@ -1543,7 +1548,7 @@ def get_columns(
 
     catalog_columns = _catalog_columns_for_relation(context, relation, rendered_relation)
     if catalog_columns is not None:
-        return _processed_columns(context, result_node, catalog_columns)
+        return _processed_columns(context, result_node, catalog_columns, catalog=True)
 
     if context.project.config.disable_introspection:
         logger.warning(
