@@ -1,6 +1,6 @@
-Status: active
+Status: done
 Created: 2026-11-25
-Updated: 2026-11-25
+Updated: 2026-11-26
 
 # Offline supplied-catalog consumer audit
 
@@ -28,14 +28,14 @@ User-ratified offline investigation. Existing catalog input and round-trip YAML 
 - Read root/core instructions and 10x. Rechecked official catalog, OSS install and version docs 2026-11-25. Catalog remains v1 with index described as ordinal; Python1.x and Rust2.x remain distinct runtimes. No new support claim follows.
 
 ## Blockers
-Local implementation and checks complete. Independent review and exact-head/post-merge CI remain integration gates.
+None. Independent review and exact-head/post-merge gates completed; reconciliation verified2026-11-26.
 
 ## Evidence
 1. Baseline inventory and runtime versions recorded below.
 2. Fourteen successful actual CLI investigation runs expose the Core1.8 ordinal loss and current-Core controls; two distinct real producer fixtures supplied derived adversarial inputs.
 3. Seven-line runtime diff passes catalog-specific original index into unchanged conversion/normalization. Warehouse branch remains unchanged.
 4. Before-fix regressions:8failed/8passed. After-fix focused Core1.8:283passed plus25new-control passes; Core1.12:296passed. Final retained-negative adjustment:24affected passes each baseline. Ruff0.16.2 and typechecks pass. CLI checks include dry-run byte/mtime preservation, ordinary model/source output, alphabetical settings and unchanged artifact.
-5. Independent review and remote integration pending.
+5. Independent review passed. Exact-head PR/push matrices and post-merge Tests/lint succeeded; integration evidence appended below.
 
 ## Review
 Independent review by `catalog_ordinal_reviewer`, 2026-11-25, against immutable implementation commit `461cabbecc207c1dcfc3b7181f070fd909e17e5e` (tree `17a726f774c72e1b043afec65974522d32cb47a0`).
@@ -70,3 +70,7 @@ The apparent dictionary-order issue was not sufficient evidence: modern Core tra
 - Reviewer preliminary feedback strengthened negative-index assertion (negative on retained instead of ignored column), and replaced unverified pre-1.9 wording with observed Core1.8. Re-ran affected conversion cases on both baselines: **24passed,5deselected** each, `/tmp/osmosis-ordinal-core18-negative.log` and `/tmp/osmosis-ordinal-core12-negative.log`.
 - Canonical `/tmp/osmosis-quoted-core12-env/bin/ruff` verified0.16.2: check and format--check on all three changed Python files pass; git diff--check passes. Initial shell Ruff0.15.20 also passed but canonical0.16.2 is the recorded gate. `/tmp/osmosis-quoted-core12-env/bin/basedpyright --pythonpath /tmp/osmosis-quoted-core12-env/bin/python src/dbt_osmosis/core src/dbt_osmosis/cli --outputjson`: **39files,0errors,2014existing warnings**, `/tmp/osmosis-ordinal-types.json`.
 - Limits: no live warehouse or fullengine compatibility certification. Local interpreter evidence covers Core1.8.10 and1.12.7; remaining supported combinations require ordinary CI. Reordered catalogs are derived consumer inputs; rawproducer fixtures and original checkout remain unchanged. No dependency, support-policy, release or excluded#468 action.
+
+### Integration reconciliation, 2026-11-26
+- #486 merged as17879821f209bebd07e828aca44f3b17ad7bdb23. Published exact headf6a708389f65b7acb7793f156560cba3ee477052 matched reviewed local tree6a707aaf. PR Tests45639041516/push Tests45638979123 each passed25 executed jobs with canary skipped; lint45639041796 passed.
+- Fresh remote main remains exact merge17879821. Post-merge Tests45646307049:25success/1canaryskip; lint45646307040:success. Automatic Release45650314452 completed successfully, validation passed, PyPI and release-notes publication steps skipped. Latest releasev1.6.0; no manual publication. Zero issues and only excluded draft468. This closes the previously pending integration language; historical review limits remain unchanged.

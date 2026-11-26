@@ -1,0 +1,8 @@
+name: literal_fixture
+version: '1.0'
+config-version: 2
+profile: literal_fixture
+model-paths: [models]
+models:
+  literal_fixture:
+    +materialized: table
