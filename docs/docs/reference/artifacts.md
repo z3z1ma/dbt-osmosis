@@ -18,6 +18,8 @@ The existing catalog loader accepts:
 
 These checks cover fields consumed by dbt-osmosis, followed by dbt's typed deserialization. They are not a complete JSON Schema validator, a freshness check, or a guarantee that the catalog belongs to your current project. Generate it for the intended project, target, and warehouse state. New or additional producer metadata alone neither rejects an otherwise compatible artifact nor certifies that producer's runtime.
 
+DuckDB column names are literal values: `id`, `[id]`, and names containing backticks or double-quote characters remain distinct. To request SQL quoting, use the separate YAML `quote: true` property with the actual column name; do not add delimiters to its name. Preserving literal names in dbt-osmosis does not fix upstream generic-test SQL escaping for names containing double-quote characters.
+
 ## Failure and fallback behavior
 
 An existing invalid artifact produces an actionable error naming its path. Validation happens before YAML mutation; invalid input does not silently trigger warehouse fallback or catalog regeneration. The input artifact is not rewritten. Project loading may already have occurred before validation, so this is not a promise of zero dbt activity.

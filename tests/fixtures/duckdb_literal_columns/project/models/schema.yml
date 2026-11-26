@@ -1,0 +1,64 @@
+version: 2
+models:
+- name: accounts
+  description: Preserved model.
+  columns:
+  - name: id
+    quote: true
+    description: Doc id
+    data_tests:
+    - not_null
+  - name: '[id]'
+    quote: true
+    description: Doc [id]
+    data_tests:
+    - not_null
+  - name: '`id`'
+    quote: true
+    description: Doc `id`
+    data_tests:
+    - not_null
+  - name: '[[edge]]'
+    quote: true
+    description: Doc [[edge]]
+    data_tests:
+    - not_null
+  - name: '"id"'
+    quote: true
+    description: Doc "id"
+    data_tests:
+    - not_null
+sources:
+- name: local_fixture
+  database: fixture
+  schema: main
+  tables:
+  - name: physical_accounts
+    identifier: accounts
+    description: Preserved source.
+    columns:
+    - name: id
+      quote: true
+      description: Doc id
+      data_tests:
+      - not_null
+    - name: '[id]'
+      quote: true
+      description: Doc [id]
+      data_tests:
+      - not_null
+    - name: '`id`'
+      quote: true
+      description: Doc `id`
+      data_tests:
+      - not_null
+    - name: '[[edge]]'
+      quote: true
+      description: Doc [[edge]]
+      data_tests:
+      - not_null
+    - name: '"id"'
+      quote: true
+      description: Doc "id"
+      data_tests:
+      - not_null

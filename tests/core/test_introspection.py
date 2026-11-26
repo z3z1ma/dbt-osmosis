@@ -695,11 +695,11 @@ def test_normalize_column_name_snowflake(input_col, expected):
     assert normalize_column_name(input_col, "snowflake") == expected
 
 
-def test_normalize_column_name_others():
+def test_normalize_column_name_postgres():
     """Test column name normalization for other adapters."""
     # For other adapters, we only strip outer quotes but do not uppercase or lowercase for now
-    assert normalize_column_name('"My_Col"', "duckdb") == "My_Col"
-    assert normalize_column_name("my_col", "duckdb") == "my_col"
+    assert normalize_column_name('"My_Col"', "postgres") == "My_Col"
+    assert normalize_column_name("my_col", "postgres") == "my_col"
 
 
 def test_maybe_use_precise_dtype_numeric():

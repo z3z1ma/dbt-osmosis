@@ -53,14 +53,14 @@ def test_catalog_conversion_retains_ordinals(shared, section, indexes, quoted):
     result = get_columns(
         context, DuckDBRelation.create(database="fixture", schema="main", identifier="accounts")
     )
-    assert list(result) == ["last", "first"]
+    assert list(result) == (["[last]", "[first]"] if quoted else ["last", "first"])
     assert [(c.name, c.type, c.comment, c.index) for c in result.values()] == [
-        (f"[{name}]" if shared and quoted else name, "INTEGER", f"Doc {name}", indexes[index])
+        (f"[{name}]" if quoted else name, "INTEGER", f"Doc {name}", indexes[index])
         for name, index in [("last", 0), ("first", 2)]
     ]
     assert [c.index for c in raw.values()] == list(indexes)
     if shared:
-        assert result["last"] is raw["last"]
+        assert result["[last]" if quoted else "last"] is raw["last"]
     adapter.get_columns_in_relation.assert_not_called()
 
 

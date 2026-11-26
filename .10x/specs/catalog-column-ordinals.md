@@ -21,3 +21,6 @@ The implementation MUST leave the current shared metadata-class behavior, public
 Current https://docs.getdbt.com/reference/artifacts/catalog-json identifies index as ordinal. https://schemas.getdbt.com/dbt/catalog/v1.json defines a columns object with required integer index, no minimum/default/uniqueness constraint. Existing sort_columns_as_in_database sorts by metadata.index and explicit alphabetical configuration is separately authoritative. The actual Core1.8 CLI counterexample and newer-Core controls are recorded in `.10x/tickets/2026-11-25-catalog-cli-boundary.md`. User-authorized offline roadmap correctness maintenance supplies scope; parent approved this bounded direction after measured evidence. Historical #482/#485 zero-based observations remain evidence, now superseded as intended behavior by the reproduced CLI defect.
 
 No support-policy/dependency changes, warehouse execution, release, #468 action or broader runtime equivalence claim.
+
+## DuckDB identity refinement (2026-11-26)
+`.10x/specs/duckdb-literal-column-identifiers.md` now governs DuckDB literal-name normalization. The original-index contract and non-DuckDB normalization behavior remain unchanged; the earlier preservation-only scope did not establish stripping punctuation from physical DuckDB identifiers as correct.
