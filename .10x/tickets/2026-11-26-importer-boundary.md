@@ -1,6 +1,6 @@
-Status: active
+Status: done
 Created: 2026-11-26
-Updated: 2026-11-26
+Updated: 2026-11-27
 
 # Offline importer boundary investigation
 
@@ -28,7 +28,7 @@ Offline investigation and maintenance authorized by user. Existing catalog impor
 - Automatic Release45650314452 completed successfully on exact main, validation job successful. Publish package on PyPI and Publish the release notes steps both skipped. No manual release action.
 
 ## Blockers
-Local implementation complete and independent review passes. Exact-head CI and post-merge checks remain integration gates.
+None. Integration and post-merge checks completed; see closure observation below.
 
 ## Evidence
 1. Fresh-main/backlog/release evidence is recorded in the journal; no excluded action was taken.
@@ -76,3 +76,6 @@ Reviewer: `review_literal_identifiers`, independent of implementation. Reviewed 
 - Ruff0.16.2 check and format--check pass for all four affected Python files. `git diff --check` passes. Basedpyright39files/0errors/2014existingwarnings remains valid because runtime did not change after that check.
 - Added the reviewer's public artifact-reference clarification: DuckDB names are literal values, quote:true is separate, and preserving embedded double quotes does not fix upstream generic-test SQL escaping. No runtime/test change followed immutable implementation review.
 - Remaining scope boundary: local producer evidence covers Core1.12.7/dbt-duckdb1.11.1/DuckDB2.0.0, consumer evidence Core1.8.10 and1.12.7. Other adapters retain old behavior; no new support, engine parity, warehouse or generic-test quoting claim is made. Draft-first publication, exact-head normal CI and post-merge verification are still required from the integration owner.
+
+### Integration closure observed 2026-11-27
+Merged #487 at 48472a2d57952647cd9c50a8f1c28a3681722579. Exact-head PR Tests45847375230 and push Tests45847315267 each passed 25 executed jobs with one canary skipped; lint45847374925 passed. Post-merge Tests45854841823 passed 25 jobs with one canary skipped; lint45854841720 passed. Automatic Release45859440320 completed successfully: validation passed and PyPI/release-notes publication skipped. Latest release is v1.6.0. Earlier pending statements are historical journal observations superseded by this closure. No product change or repeated local test was needed to reconcile status.

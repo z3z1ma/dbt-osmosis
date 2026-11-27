@@ -1,0 +1,10 @@
+alias_fixture:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: fixture.duckdb
+      threads: 1
+      attach:
+        - path: other.duckdb
+          alias: other

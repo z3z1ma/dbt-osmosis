@@ -1,0 +1,38 @@
+version: 2
+models:
+- name: accounts
+  description: Keep model
+  columns:
+  - name: id
+    description: Correct model doc
+    meta:
+      sentinel: model
+    data_type: STALE
+- name: decoy
+- name: other
+sources:
+- name: local
+  database: fixture
+  schema: main
+  tables:
+  - name: accounts
+    identifier: physical_accounts
+    columns:
+    - name: id
+      description: Correct source doc
+      meta:
+        sentinel: source
+      data_type: STALE
+  - name: decoy_source
+    identifier: accounts
+    columns:
+    - name: id
+      description: Decoy source doc
+- name: other_local
+  database: other
+  schema: main
+  tables:
+  - name: physical_accounts
+    columns:
+    - name: id
+      description: Other database doc
