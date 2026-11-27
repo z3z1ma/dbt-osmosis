@@ -69,25 +69,17 @@ def _catalog_column_types(
     context: YamlRefactorContextProtocol,
     node: ResultNode,
 ) -> dict[str, str]:
-    catalog_column_types: dict[str, str] = {}
-    if catalog := context.read_catalog():
-        from dbt_osmosis.core.introspection import _find_first
+    from dbt_osmosis.core.introspection import (
+        _catalog_columns_for_relation,
+        _relation_for_column_collection,
+        _rendered_relation_name,
+    )
 
-        # For source nodes, search catalog.sources; for model nodes, search catalog.nodes
-        # CatalogTable metadata doesn't have a 'source' field, so we match based on which dict we're searching
-        if hasattr(node, "source_name"):
-            catalog_entries = catalog.sources.values()
-        else:
-            catalog_entries = catalog.nodes.values()
-
-        catalog_entry = _find_first(
-            catalog_entries,
-            lambda c: c.metadata.name == node.name and c.metadata.schema == node.schema,
-        )
-        if catalog_entry:
-            for col_name, col_meta in catalog_entry.columns.items():
-                catalog_column_types[_normalized_column_name(context, col_name)] = col_meta.type
-    return catalog_column_types
+    if not context.read_catalog():
+        return {}
+    relation, _ = _relation_for_column_collection(context, node)
+    columns = _catalog_columns_for_relation(context, relation, _rendered_relation_name(relation))
+    return {_normalized_column_name(context, column.name): column.type for column in columns or ()}
 
 
 def _column_dict_from_manifest(

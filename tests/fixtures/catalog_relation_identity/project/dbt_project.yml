@@ -1,0 +1,8 @@
+name: alias_fixture
+version: '1.0'
+config-version: 2
+profile: alias_fixture
+model-paths: [models]
+models:
+  alias_fixture:
+    +materialized: table
