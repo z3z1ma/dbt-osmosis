@@ -1037,11 +1037,10 @@ def test_catalog_data_type_used_in_sync(yaml_context: YamlRefactorContext):
     --catalog-path is provided. Catalog data types should take precedence
     over manifest data types.
     """
+    from copy import deepcopy
     from unittest import mock as mock_patch
-    from unittest.mock import PropertyMock
 
-    from dbt.artifacts.resources.types import NodeType
-    from dbt.contracts.graph.nodes import ModelNode
+    from dbt.contracts.graph.nodes import ColumnInfo
     from dbt.contracts.results import CatalogResults
     from dbt_common.contracts.metadata import ColumnMetadata, TableMetadata
 
@@ -1064,48 +1063,29 @@ def test_catalog_data_type_used_in_sync(yaml_context: YamlRefactorContext):
     mock_catalog.nodes = {"model.test.test_model": catalog_table}
     mock_catalog.sources = {}
 
-    # Create a mock node with different (incorrect) data types in manifest
-    mock_node = mock_patch.Mock(spec=ModelNode)
-    mock_node.unique_id = "model.test.test_model"
-    mock_node.name = "test_model"
-    mock_node.schema = "test_schema"
-    mock_node.description = "Test model"
-    mock_node.resource_type = NodeType.Model
-    mock_node.package_name = "test"
-
-    # Mock columns with different types than catalog
-    mock_col1 = mock_patch.Mock()
-    mock_col1.name = "col1"
-    mock_col1.to_dict.return_value = {"name": "col1", "data_type": "INTEGER"}  # Wrong type
-    mock_col1.meta = {}
-
-    mock_col2 = mock_patch.Mock()
-    mock_col2.name = "col2"
-    mock_col2.to_dict.return_value = {"name": "col2", "data_type": "TEXT"}  # Wrong type
-    mock_col2.meta = {}
-
-    mock_node.columns = {"col1": mock_col1, "col2": mock_col2}
-    mock_node.meta = {}
-    mock_node.config = mock_patch.Mock()
-    mock_node.config.extra = {}
+    # A parsed node supplies database, alias/identifier and quoting to the real adapter.
+    node = deepcopy(yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"])
+    node.name = node.alias = "test_model"
+    node.database = "test_db"
+    node.schema = "test_schema"
+    node.columns = {
+        "col1": ColumnInfo(name="col1", data_type="INTEGER"),  # Wrong type
+        "col2": ColumnInfo(name="col2", data_type="TEXT"),  # Wrong type
+    }
 
     # Doc section to sync into
     doc_section = {"columns": []}
 
-    # Mock context with catalog and runtime_cfg credentials
-    mock_runtime = mock_patch.Mock()
-    mock_runtime.credentials.type = "postgres"
-
     with (
-        mock_patch.patch.object(yaml_context, "_catalog", mock_catalog),
+        mock_patch.patch.object(yaml_context, "read_catalog", return_value=mock_catalog),
         mock_patch.patch.object(
-            type(yaml_context.project),
-            "runtime_cfg",
-            new_callable=PropertyMock,
-            return_value=mock_runtime,
-        ),
+            yaml_context.project.adapter,
+            "get_columns_in_relation",
+            side_effect=AssertionError("Catalog sync must not introspect"),
+        ) as introspect,
     ):
-        _sync_doc_section(yaml_context, mock_node, doc_section)
+        _sync_doc_section(yaml_context, node, doc_section)
+    introspect.assert_not_called()
 
     # Verify catalog data types were used
     assert len(doc_section["columns"]) == 2
@@ -1122,56 +1102,33 @@ def test_sync_without_catalog_falls_back_to_manifest(
     """Behavior test: Verify that when no catalog is available, sync falls back
     to manifest data types.
     """
+    from copy import deepcopy
     from unittest import mock as mock_patch
-    from unittest.mock import PropertyMock
 
-    from dbt.artifacts.resources.types import NodeType
-    from dbt.contracts.graph.nodes import ModelNode
+    from dbt.contracts.graph.nodes import ColumnInfo
 
     from dbt_osmosis.core.sync_operations import _sync_doc_section
 
-    # Create a mock node with data types in manifest
-    mock_node = mock_patch.Mock(spec=ModelNode)
-    mock_node.unique_id = "model.test.test_model"
-    mock_node.name = "test_model"
-    mock_node.schema = "test_schema"
-    mock_node.description = "Test model"
-    mock_node.resource_type = NodeType.Model
-    mock_node.package_name = "test"
-
-    # Mock columns with manifest types
-    mock_col1 = mock_patch.Mock()
-    mock_col1.name = "col1"
-    mock_col1.to_dict.return_value = {"name": "col1", "data_type": "INTEGER"}
-    mock_col1.meta = {}
-
-    mock_col2 = mock_patch.Mock()
-    mock_col2.name = "col2"
-    mock_col2.to_dict.return_value = {"name": "col2", "data_type": "TEXT"}
-    mock_col2.meta = {}
-
-    mock_node.columns = {"col1": mock_col1, "col2": mock_col2}
-    mock_node.meta = {}
-    mock_node.config = mock_patch.Mock()
-    mock_node.config.extra = {}
+    node = deepcopy(yaml_context.project.manifest.nodes["model.jaffle_shop_duckdb.customers"])
+    node.columns = {
+        "col1": ColumnInfo(name="col1", data_type="INTEGER"),
+        "col2": ColumnInfo(name="col2", data_type="TEXT"),
+    }
 
     # Doc section to sync into
     doc_section = {"columns": []}
 
-    # Mock context WITHOUT catalog (catalog is None)
-    mock_runtime = mock_patch.Mock()
-    mock_runtime.credentials.type = "postgres"
-
+    # Clearing _catalog alone reloads settings.catalog_path; make absence explicit.
     with (
-        mock_patch.patch.object(yaml_context, "_catalog", None),
+        mock_patch.patch.object(yaml_context, "read_catalog", return_value=None),
         mock_patch.patch.object(
-            type(yaml_context.project),
-            "runtime_cfg",
-            new_callable=PropertyMock,
-            return_value=mock_runtime,
-        ),
+            yaml_context.project.adapter,
+            "get_columns_in_relation",
+            side_effect=AssertionError("Missing catalog must not introspect"),
+        ) as introspect,
     ):
-        _sync_doc_section(yaml_context, mock_node, doc_section)
+        _sync_doc_section(yaml_context, node, doc_section)
+    introspect.assert_not_called()
 
     # Verify manifest data types were used (fallback behavior)
     assert len(doc_section["columns"]) == 2
